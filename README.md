@@ -9,6 +9,7 @@ Första modulen är skademotorn. Policy, produkt, tariff, billing och ledger kom
 - [Arbetssätt](docs/arbetssatt.md) – roller, flöde och vad klart betyder
 - [Roadmap](docs/roadmap.md) – milstolpar fram till första sålda försäkringen
 - [Status](docs/status.md) – var vi är och nästa steg
+- [Testning](docs/testning.md) – testlager och vad som krävs
 - [Beslut](docs/adr/README.md) – arkitekturbeslut (ADR)
 
 ## Skademotorn
@@ -18,7 +19,7 @@ Policydata äger den inte. Den läses via ett utbytbart gränssnitt, så motorn 
 
 ```
 npm install
-npm test               # 55 tester: värdetyper, domän, tjänst och kontrakt
+npm test               # 68 tester: enhet, egenskaper, tjänst och kontrakt
 npm run typecheck
 npm run lint:openapi   # kontrakt och implementation har exakt samma operationer
 npm run dev            # http://localhost:8787, kontraktet på /openapi.yaml

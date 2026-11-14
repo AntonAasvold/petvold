@@ -10,6 +10,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - `claims-core` använder `common`. `Ore` heter nu `MinorUnits`, och `kr()` är borttagen (oanvänd, och text hör inte hemma i kärnan).
 - Fel rättat: `assertDate` godkände datum som inte finns, t.ex. `2026-02-30`.
 - ADR 0011 (beslutad): gemensam kärna för värdetyper.
+- Teststrategi: ADR 0012 (beslutad) och `docs/testning.md`. fast-check införd, 13 egenskapstester för `common` och ersättningsberäkningen, 68 tester totalt. Kontrollerat att ett inplanterat fel (taket borttaget) fångas.
 
 **Nästa steg**
 1. Gemensamma kontraktsdelar: `Money`, `Problem`, sidindelning och `Ref` som delad OpenAPI-fil.
