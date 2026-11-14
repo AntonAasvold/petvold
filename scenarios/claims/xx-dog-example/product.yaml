@@ -1,0 +1,67 @@
+# Example EUR market, dog, vet care (XX-DOG-EXAMPLE@2026.1)
+# Made-up product terms for scenarios and tests. Not any real insurer's terms (ADR 0009).
+# Scenarios in this directory merge their `given` into these defaults.
+
+rules:
+  rulesVersion: DE-DOG-EXAMPLE-2026.1
+  market: DE
+  vatReimbursable: false
+  nonReimbursableCategories:
+    - food
+    - grooming
+  diagnosisGroups:
+    ORT-KORSBAND-V: ortopedi-bakben
+    ORT-KORSBAND-H: ortopedi-bakben
+    ORT-HALTA-HB-H: ortopedi-bakben
+    ORA-OTIT: ora
+    GI-ENTERIT: mag-tarm
+  autoSettleMax: 50000
+policy:
+  policyId: pol_rex
+  policyVersionId: pv_rex_v1
+  market: DE
+  currency: EUR
+  animalId: ani_rex
+  animalBirthDate: 2017-05-01
+  productVersion: XX-DOG-EXAMPLE@2026.1
+  status: active
+  validFrom: 2026-01-01
+  validTo: 2027-01-01
+  inceptionDate: 2025-01-01
+  policyYearStart: 2026-01-01
+  policyYearEnd: 2027-01-01
+  vetCare:
+    code: vet_care
+    annualLimit: 500000
+    deductible:
+      fixed: 5000
+      fixedPer: claim
+      variableBp: 2000
+      variableBpByAge:
+        - fromAgeYears: 8
+          bp: 3000
+    waitingPeriodDays: 30
+  riders: []
+claim:
+  id: clm_rex_1
+  claimNo: X-2026-0001
+  policyId: pol_rex
+  animalId: ani_rex
+  market: DE
+  currency: EUR
+  channel: customer
+  treatmentFrom: 2026-10-02
+  treatmentTo: 2026-10-02
+  diagnosisCode: ORA-OTIT
+  receivedAt: 2026-10-03T08:00:00Z
+  lines:
+    - id: l1
+      description: Examination
+      category: examination
+      amount: 11900
+      vat: 1900
+    - id: l2
+      description: Medication
+      category: medication
+      amount: 23800
+      vat: 3800

@@ -1,0 +1,14 @@
+name: A diagnosis covered by a rider is rejected
+description: |
+  The diagnosis is exactly the one in Bella's rider (lameness, right hind leg),
+  so the claim is not covered.
+given:
+  claim:
+    diagnosisCode: ORT-HALTA-HB-H
+    treatmentFrom: 2026-10-05
+    treatmentTo: 2026-10-05
+expect:
+  proposedOutcome: rejected
+  mode: manual
+  rules:
+    RIDER: fail

@@ -232,6 +232,18 @@ test('rejecting against the proposal: 403 without claims:override, 422 without m
   assert.equal(decision.reasonCode, 'pre_existing_condition');
 });
 
+test('a stored decision can be replayed through the API', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { key: 'key-00000301', body: input(otitisClaim()) });
+  const res = await call('POST', '/v1/claims/clm_021877/decisions/1/replays');
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as any;
+  assertSchema('ReplayResult', body);
+  assert.equal(body.status, 'identical');
+  assert.equal((await call('POST', '/v1/claims/clm_021877/decisions/2/replays')).status, 404);
+  assert.equal((await call('POST', '/v1/claims/clm_021877/decisions/0/replays')).status, 422);
+});
+
 test('a stale inputHash gives 409', async () => {
   const { call } = setup();
   await call('POST', '/v1/claims', { key: 'key-00000007', body: input(cruciateClaim()) });

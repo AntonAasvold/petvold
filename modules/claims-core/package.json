@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./test-suites/claims-store": "./test-suites/claims-store.ts"
+    "./test-suites/claims-store": "./test-suites/claims-store.ts",
+    "./test-suites/scenarios": "./test-suites/scenarios.ts"
   },
   "dependencies": {
     "@petvold/common": "^0.1.0"
