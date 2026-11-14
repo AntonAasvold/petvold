@@ -22,7 +22,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Förklaring per beslut och begäran om mänsklig prövning
 - [x] Integrationstester mot Postgres
 - [ ] Behörighet (ADR 0016): rättigheter i kontraktet, omfång per marknad och klinik
-- [ ] Reserv, beslutsförslag, beslut och attest som kedja, med beloppsgränser och fyraögonsprincip. Ett attesterat beslut ger en utbetalningsorder (händelse). Själva betalningen kommer med betalningsmodulen i M5.
+- [ ] Reserv, beslutsförslag, beslut och attest som kedja, med beloppsgränser och fyraögonsprincip. Reserven bokas i ledgern när ärendet går till handläggare och löses upp när beslutet bokas. Ett attesterat beslut ger en utbetalningsorder (händelse). Själva betalningen kommer med betalningsmodulen i M5.
 
 ## Nästa
 
@@ -73,17 +73,21 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
   - Autogiro (Bankgirot)
   - SEPA Direct Debit
   - Bankfil ISO 20022 (`pain.001`, `camt.054`)
-- Utbetalning av ersättning från skademotorn.
+- Utbetalning av ersättning från skademotorn. Obetald, förfallen premie kvittas först om villkoren tillåter det, och kvittningen syns i utbetalningsordern och i förklaringen till kunden.
 - Billing: premieplaner, fakturor, påminnelser, tillgodohavande och utebliven betalning.
-- Ledger för premier och betalningar.
+- Ledger för premier och betalningar, med bokföringsperioder som skärs på bokföringsdatum och dagsavslut. En stängd period ändras aldrig: en rättelse bokas i en öppen period.
 
 **M6 – Stöd**: dokument, utskick med preferenser, ärenden, interaktionslogg, klinikintegration.
 
-**Händelser utåt**: CloudEvents-kuvert och AsyncAPI när det finns en mottagare utanför Petvold (ADR 0008).
+**Händelser utåt**: CloudEvents-kuvert och AsyncAPI när det finns en mottagare utanför Petvold (ADR 0008). Varje händelse bär ärendets id och ett spårnings-id (W3C Trace Context), så att allt som hänt i ett ärende kan följas över moduler.
 
-**M7 – Drift**: Kubernetes med CloudNativePG, observabilitet, säkerhetskopiering, DORA-anpassning.
+**Insikt – läsmodell för portföljen**: en egen modul som bara läser händelser och kan byggas om genom att spela upp dem. Den visar till exempel automatiseringsgrad, andel avvikelser, tid till utbetalning och prövningar. Belopp läses ur ledgern, och modulen håller inga egna. Kärnan ändras inte.
+
+**M7 – Drift**: Kubernetes med CloudNativePG, observabilitet, säkerhetskopiering, DORA-anpassning. Volymprov med genererade portföljer (tusentals försäkringar och skador) mot Postgres, med mål för svarstid och genomströmning.
 
 ## Öppna frågor
+
+- Kvittning av premie mot ersättning: när villkor och lag tillåter det per marknad, och om kunden ska kunna välja bort det. Utreds med källor i ADR:n för utbetalning.
 
 - Licens: stängd, källkod tillgänglig eller öppen källkod?
 - Gemensamt försäkringsbelopp för en kull.
@@ -92,3 +96,13 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - Retroaktivt avslut när ersättning redan är betald för tiden efter avslutet: återkrav, avräkning mot premieåterbetalning eller avskrivning?
 - Premieåterbetalning vid avslut: per dag eller enligt produktens regel, och vid ånger?
 - Moln och klientlager.
+
+## Källor för punkter som lagts till 2026-11-14
+
+Punkterna om kvittning, bokföringsperioder, spårnings-id, läsmodell och volymprov är allmän praxis. De bygger på publika källor och inte på något annat systems material (ADR 0009).
+
+- Bokföringslag (1999:1078): löpande bokföring, verifikationer och att bokförda uppgifter inte får ändras utan att ändringen dokumenteras.
+- W3C Trace Context (W3C Recommendation). w3.org/TR/trace-context
+- CloudEvents 1.0, tillägget *Distributed Tracing*. github.com/cloudevents/spec
+- Martin Fowler: *CQRS* (2011) och *Event Sourcing* (2005). martinfowler.com
+- Kvittning: allmänna civilrättsliga regler och försäkringsvillkoren. Exakta lagrum per marknad fastställs i ADR:n innan det byggs.
