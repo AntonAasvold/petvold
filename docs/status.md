@@ -12,7 +12,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Underlagen** kommer via skademodulens tjänst, varje ärendes senaste beslut i perioden. API-lagret filtrerar på serie och anroparens omfång.
   - **Migration 0012:** index på `claims.decision (decided_at)`.
 - Dokumentation: produktkonfiguration (simulering med exempel), behörighet och arkitektur.
-- 228 tester och 76 databastester.
+- **Rättat fel i outboxen:** `pendingEvents` sorterade på id som text (`order by id` syftade på `id::text`). Därför kom id 10 före id 9, och reläet kunde publicera händelser i fel ordning när sekvensen passerade en siffergräns. Felet upptäcktes när CI föll. Nu sorteras det på det numeriska id:t, och ett regressionstest sätter sekvensen till 8 och kontrollerar ordningen 9, 10, 11.
+- 228 tester och 77 databastester.
 
 **Nästa steg**
 1. Produktkatalogen `catalog`: referensdata med översättningar, produkter och produktversioner.

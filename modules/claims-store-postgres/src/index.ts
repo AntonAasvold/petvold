@@ -452,7 +452,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
 
   async pendingEvents(limit: number): Promise<OutboxEntry[]> {
     const { rows } = await this.pool.query(
-      `select id::text as id, payload from claims.outbox where published_at is null order by id limit $1`,
+      `select o.id::text as id, o.payload from claims.outbox o where o.published_at is null order by o.id limit $1`,
       [limit],
     );
     return rows.map((r) => ({ id: r.id, event: r.payload }));
