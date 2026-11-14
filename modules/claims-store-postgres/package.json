@@ -1,0 +1,16 @@
+{
+  "name": "@petvold/claims-store-postgres",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@petvold/claims-core": "^0.1.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@petvold/claims-store-memory": "^0.1.0"
+  }
+}
