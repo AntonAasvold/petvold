@@ -170,7 +170,8 @@ test('EUR market through the whole flow: booked in EUR', async () => {
   const { service, store } = setup();
   const r = await service.registerClaim(eurClaim());
   assert.equal(r.decision!.payout, 17_500);
-  assert.ok(store.dump().journals[0]!.lines.some((l) => l.account.startsWith('claim_payable:EUR:')));
+  const accountsBooked = store.dump().journals[0]!.lines.map((l) => l.account.split(':').slice(0, 2).join(':'));
+  assert.deepEqual(accountsBooked, ['limit_consumed:EUR', 'limit_available:EUR', 'claim_expense:EUR', 'claim_payable:EUR']);
   // Deductible per claim: no period is stored
   assert.equal(store.dump().periods.length, 0);
   const second = await service.registerClaim(eurClaim({ id: 'clm_rex_2', claimNo: 'X-2' }));

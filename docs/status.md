@@ -2,6 +2,23 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 10)
+
+**Gjort**
+- #11 mergad: dev-servern på Postgres.
+- Valuta i kontonamnen för försäkringsbelopp (ADR 0014): `limit_consumed:<valuta>:<djur>:<moment>:<årsstart>`, som `claim_*`-kontona redan har.
+- Kontonamnen byggs på ett ställe, `accounts` i `claims-core/src/ledger.ts`. Lagringarna och sviten använder samma funktioner.
+- `getConsumed` tar en `LimitKey` (djur, moment, försäkringsår och valuta). Belopp i en annan valuta räknas aldrig med (nytt test i sviten).
+- Tjänsten vägrar bokföra om ärendet och policyn har olika valuta. Bedömningen avslår redan sådana ärenden, så det är ett skydd för en journal med en enda valuta.
+- Migration 0004 byter namn på befintliga konton med journalens valuta. Provad upp, ner och upp igen med data i gammalt format.
+- 98 tester och 36 databastester.
+
+**Nästa steg**
+1. ADR om behörighet.
+2. AsyncAPI för händelserna och CloudEvents-kuvert i reläet.
+3. Kedjan reserv, beslutsförslag, beslut, attest och betalning (resten av M1).
+4. Gemensamma kontraktsdelar (Money, Problem, paginering, Ref) och Biome.
+
 ## 2026-11-14 (pass 9)
 
 **Gjort**

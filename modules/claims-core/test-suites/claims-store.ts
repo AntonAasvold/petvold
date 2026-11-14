@@ -12,7 +12,8 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreConflictError, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore, type DecisionCommit } from '../src/ports.ts';
-import type { Assessment, Claim, ClaimDecision, DeductiblePeriod, LedgerJournal } from '../src/types.ts';
+import type { Assessment, Claim, ClaimDecision, CurrencyCode, DeductiblePeriod, LedgerJournal } from '../src/types.ts';
+import { accounts, type LimitKey } from '../src/ledger.ts';
 
 /** A store that also exposes its outbox, as every implementation must. */
 export type StoreWithOutbox = ClaimsStore & ClaimsOutbox;
@@ -84,21 +85,25 @@ function decision(claimId: string, seq: number, payout: number, overrides: Parti
   };
 }
 
-/** Journal consuming `amount` of the animal's annual limit, as the service books it. */
-function consumption(d: ClaimDecision, amount: number, animalId = 'ani_suite', yearStart = YEAR): LedgerJournal {
-  const key = `${animalId}:vet_care:${yearStart}`;
+function limit(animalId = 'ani_suite', policyYearStart = YEAR, currency: CurrencyCode = 'SEK'): LimitKey {
+  return { animalId, coverage: 'vet_care', policyYearStart, currency };
+}
+
+/** Journal consuming `amount` of the limit, as the service books it. */
+function consumption(d: ClaimDecision, amount: number, key: LimitKey = limit()): LedgerJournal {
+  const cur = key.currency;
   return {
     id: `jrn_${d.id}`,
     sourceType: 'claim_decision',
     sourceId: d.id,
     claimId: d.claimId,
-    currency: 'SEK',
+    currency: cur,
     bookedAt: d.decidedAt,
     lines: [
-      { account: `limit_consumed:${key}`, amount },
-      { account: `limit_available:${key}`, amount: -amount },
-      { account: `claim_expense:SEK:${d.claimId}`, amount },
-      { account: `claim_payable:SEK:${d.claimId}`, amount: -amount },
+      { account: accounts.limitConsumed(key), amount },
+      { account: accounts.limitAvailable(key), amount: -amount },
+      { account: accounts.claimExpense(cur, d.claimId), amount },
+      { account: accounts.claimPayable(cur, d.claimId), amount: -amount },
     ],
   };
 }
@@ -192,7 +197,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       const again = decision('clm_a', 1, 70_000, { id: 'dec_annat' });
       await assert.rejects(store.commitDecision(commit(again, [consumption(again, 70_000)])), isConflict('decision_exists'));
       assert.deepEqual(await store.getDecisions('clm_a'), [d]);
-      assert.equal(await store.getConsumed('ani_suite', 'vet_care', YEAR), 50_000);
+      assert.equal(await store.getConsumed(limit()), 50_000);
     });
 
     it('a decision requires a stored claim', async (store) => {
@@ -208,7 +213,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       bad.lines[1]!.amount = -49_999;
       await assert.rejects(store.commitDecision(commit(d, [bad], period('dp_a', 'clm_a', '2026-10-01', '2027-02-03'))));
       assert.deepEqual(await store.getDecisions('clm_a'), []);
-      assert.equal(await store.getConsumed('ani_suite', 'vet_care', YEAR), 0);
+      assert.equal(await store.getConsumed(limit()), 0);
       assert.equal(await store.findDeductiblePeriod('ani_suite', 'ora', '2026-11-01'), null);
     });
 
@@ -222,13 +227,25 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       await store.commitDecision(commit(a1, [consumption(a1, 50_000)]));
       await store.commitDecision(commit(a2, [consumption(a2, -20_000)])); // reassessment books the difference
       await store.commitDecision(commit(b, [consumption(b, 10_000)]));
-      await store.commitDecision(commit(other, [consumption(other, 99_000, 'ani_annat')]));
-      await store.commitDecision(commit(otherYear, [consumption(otherYear, 88_000, 'ani_suite', '2025-04-01')]));
+      await store.commitDecision(commit(other, [consumption(other, 99_000, limit('ani_annat'))]));
+      await store.commitDecision(commit(otherYear, [consumption(otherYear, 88_000, limit('ani_suite', '2025-04-01'))]));
 
-      assert.equal(await store.getConsumed('ani_suite', 'vet_care', YEAR), 40_000);
-      assert.equal(await store.getConsumed('ani_suite', 'vet_care', YEAR, 'clm_a'), 10_000);
-      assert.equal(await store.getConsumed('ani_suite', 'vet_care', '2025-04-01'), 88_000);
-      assert.equal(await store.getConsumed('ani_okant', 'vet_care', YEAR), 0);
+      assert.equal(await store.getConsumed(limit()), 40_000);
+      assert.equal(await store.getConsumed(limit(), 'clm_a'), 10_000);
+      assert.equal(await store.getConsumed(limit('ani_suite', '2025-04-01')), 88_000);
+      assert.equal(await store.getConsumed(limit('ani_okant')), 0);
+    });
+
+    it('the consumed limit counts only amounts in the limit\'s currency', async (store) => {
+      await save(store, claim('clm_sek'));
+      await save(store, claim('clm_eur', { market: 'DE', currency: 'EUR' }));
+      const sek = decision('clm_sek', 1, 50_000);
+      const eur = decision('clm_eur', 1, 7_000);
+      await store.commitDecision(commit(sek, [consumption(sek, 50_000)]));
+      await store.commitDecision(commit(eur, [consumption(eur, 7_000, limit('ani_suite', YEAR, 'EUR'))]));
+
+      assert.equal(await store.getConsumed(limit()), 50_000);
+      assert.equal(await store.getConsumed(limit('ani_suite', YEAR, 'EUR')), 7_000);
     });
 
     // Deductible periods ----------------------------------------------------
@@ -279,7 +296,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
         isConflict('period_overlaps'),
       );
       assert.deepEqual(await store.getDecisions('clm_b'), []);
-      assert.equal(await store.getConsumed('ani_suite', 'vet_care', YEAR), 0);
+      assert.equal(await store.getConsumed(limit()), 0);
     });
 
     it('a period may start on the day another ends', async (store) => {

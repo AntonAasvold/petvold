@@ -9,6 +9,8 @@
 import pg from 'pg';
 import {
   StoreConflictError,
+  accounts,
+  type LimitKey,
   type Claim,
   type ClaimDecision,
   type ClaimsEvent,
@@ -169,12 +171,12 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       : null;
   }
 
-  async getConsumed(animalId: string, coverage: string, policyYearStart: ISODate, excludeClaimId?: string): Promise<MinorUnits> {
+  async getConsumed(limit: LimitKey, excludeClaimId?: string): Promise<MinorUnits> {
     const { rows } = await this.pool.query(
       `select coalesce(sum(jl.amount_minor), 0)::bigint as consumed
        from claims.journal_line jl join claims.journal j on j.id = jl.journal_id
        where jl.account = $1 and ($2::text is null or j.claim_id <> $2)`,
-      [`limit_consumed:${animalId}:${coverage}:${policyYearStart}`, excludeClaimId ?? null],
+      [accounts.limitConsumed(limit), excludeClaimId ?? null],
     );
     return rows[0].consumed;
   }

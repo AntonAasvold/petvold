@@ -10,9 +10,12 @@ import type {
   LedgerJournal,
   MarketCode,
   MinorUnits,
+  PolicySnapshot,
   Timestamp,
 } from './types.ts';
 import { assertDate } from '@petvold/common';
+import { accounts, type LimitKey } from './ledger.ts';
+
 
 export type DomainErrorCode = 'not_found' | 'validation' | 'conflict';
 
@@ -60,6 +63,10 @@ export interface ClaimsServiceDeps {
 }
 
 const COVERAGE = 'vet_care';
+
+function limitKey(animalId: string, policy: PolicySnapshot): LimitKey {
+  return { animalId, coverage: COVERAGE, policyYearStart: policy.policyYearStart, currency: policy.currency };
+}
 
 /**
  * A clash in the store means someone else got there first, e.g. two concurrent
@@ -161,7 +168,7 @@ export class ClaimsService {
     if (!policy || policy.animalId !== animalId || !policy.vetCare) {
       throw new DomainError('not_found', 'No vet care cover in force for the animal on that date');
     }
-    const consumed = await this.d.store.getConsumed(animalId, COVERAGE, policy.policyYearStart);
+    const consumed = await this.d.store.getConsumed(limitKey(animalId, policy));
     return {
       animalId,
       policyId,
@@ -187,7 +194,7 @@ export class ClaimsService {
       ? await this.d.store.findDeductiblePeriod(claim.animalId, scope.diagnosisGroup, claim.treatmentFrom, ownClaimId)
       : null;
     const consumedBefore = policy
-      ? await this.d.store.getConsumed(claim.animalId, COVERAGE, policy.policyYearStart, ownClaimId)
+      ? await this.d.store.getConsumed(limitKey(claim.animalId, policy), ownClaimId)
       : 0;
     return assess({ claim, policy, rules, openDeductiblePeriod, consumedBefore });
   }
@@ -221,8 +228,11 @@ export class ClaimsService {
     const policy = await this.d.policies.getPolicyAt(claim.policyId, claim.treatmentFrom);
     if (diff !== 0) {
       if (!policy) throw new DomainError('conflict', 'The policy could not be read when booking');
-      const limitKey = `${claim.animalId}:${COVERAGE}:${policy.policyYearStart}`;
       const cur = claim.currency;
+      // One currency per journal: a claim in another currency than the policy is
+      // rejected by the assessment and never gets here with an amount.
+      if (policy.currency !== cur) throw new DomainError('conflict', 'The claim and the policy have different currencies');
+      const limit = limitKey(claim.animalId, policy);
       journals.push({
         id: this.d.ids.next('jrn'),
         sourceType: 'claim_decision',
@@ -231,10 +241,10 @@ export class ClaimsService {
         currency: cur,
         bookedAt: now,
         lines: [
-          { account: `limit_consumed:${limitKey}`, amount: diff },
-          { account: `limit_available:${limitKey}`, amount: -diff },
-          { account: `claim_expense:${cur}:${claim.id}`, amount: diff },
-          { account: `claim_payable:${cur}:${claim.id}`, amount: -diff },
+          { account: accounts.limitConsumed(limit), amount: diff },
+          { account: accounts.limitAvailable(limit), amount: -diff },
+          { account: accounts.claimExpense(cur, claim.id), amount: diff },
+          { account: accounts.claimPayable(cur, claim.id), amount: -diff },
         ],
       });
     }
