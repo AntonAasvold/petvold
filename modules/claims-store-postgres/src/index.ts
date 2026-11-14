@@ -288,3 +288,33 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
     }
   }
 }
+
+/** A stored response for an idempotency key, as the API layer needs it. */
+export interface IdempotentResponse {
+  fingerprint: string;
+  status: number;
+  body: unknown;
+}
+
+/**
+ * Responses per idempotency key in `claims.idempotency`, so that a retried
+ * request gets the same response even after a restart. The first response for
+ * a key wins; later writes for the same key are ignored.
+ */
+export class PostgresIdempotencyStore {
+  constructor(private readonly pool: pg.Pool) {}
+
+  async get(key: string): Promise<IdempotentResponse | null> {
+    const { rows } = await this.pool.query(`select fingerprint, status, body from claims.idempotency where scoped_key = $1`, [key]);
+    const r = rows[0];
+    return r ? { fingerprint: r.fingerprint, status: r.status, body: r.body } : null;
+  }
+
+  async put(key: string, value: IdempotentResponse): Promise<void> {
+    await this.pool.query(
+      `insert into claims.idempotency (scoped_key, fingerprint, status, body) values ($1, $2, $3, $4)
+       on conflict (scoped_key) do nothing`,
+      [key, value.fingerprint, value.status, JSON.stringify(value.body ?? null)],
+    );
+  }
+}

@@ -2,6 +2,22 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 9)
+
+**Gjort**
+- #10 mergad: outbox och relä.
+- Dev-servern på Postgres: väljer lagring efter `CLAIMS_DATABASE_URL` i `.env`, ansluter som `claims_service` och skriver ut vilken lagring som används. Utan variabeln körs allt i minnet som förut.
+- `PostgresIdempotencyStore` i `claims.idempotency`: ett upprepat anrop ger samma svar även efter omstart (4 tester).
+- Slumpade id:n i dev-servern, så att id:n inte upprepas mellan omstarter.
+- Verifierat: registrera, starta om, samma nyckel ger samma beslut, ärendet och förbrukat belopp finns kvar, och ett nytt anrop för samma ärende ger 409.
+- 97 tester och 35 databastester.
+
+**Nästa steg**
+1. Valuta i kontonamnen `limit_*` (ADR 0014).
+2. ADR om behörighet.
+3. AsyncAPI för händelserna och CloudEvents-kuvert i reläet.
+4. Kedjan reserv, beslutsförslag, beslut, attest och betalning (resten av M1).
+
 ## 2026-11-14 (pass 8)
 
 **Gjort**

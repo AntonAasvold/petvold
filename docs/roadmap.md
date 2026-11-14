@@ -14,6 +14,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 **M1 – Skademotorn på riktig lagring**
 - [x] `ClaimsStore` mot Postgres (klarar den gemensamma sviten)
 - [x] Outbox i samma transaktion som ärendet och beslutet, med relä
+- [x] Dev-servern på Postgres
 - [x] Gemensam testsvit för `ClaimsStore` (lager 4) och databastester (lager 6)
 - [ ] Scenarier som data (lager 3)
 - [x] Integrationstester mot Postgres
