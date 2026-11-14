@@ -1,13 +1,16 @@
 import { Hono, type Context } from 'hono';
 import type { Claim, ClaimsService, Clock } from '@petvold/claims-core';
 import { DomainError } from '@petvold/claims-core';
-import { formatErrors, openapiText, validatorFor, type FieldError } from './contract.ts';
+import { formatErrors, openapiText, operationPermissions, validatorFor, type FieldError } from './contract.ts';
+import { routePath } from 'hono/route';
+import { assertRolePermissions, DEFAULT_ROLES, isPermission, permissionsOf, type RolePermissions } from './permissions.ts';
 import { localizeDeep, pickLocale } from './messages.ts';
 
 /** Who is calling. Comes from a JWT in production (e.g. the insurer's identity provider, or OAuth for clinics). */
 export interface Principal {
   subject: string;
-  roles: Array<'handler' | 'approver' | 'clinic' | 'system'>;
+  /** Role names from the token. Mapped to permissions with the installation's `roles`. */
+  roles: string[];
 }
 
 export interface Authenticator {
@@ -35,6 +38,8 @@ export interface AppDeps {
   auth: Authenticator;
   idempotency: IdempotencyStore;
   clock: Clock;
+  /** Role -> permissions for this installation (ADR 0016). Defaults to DEFAULT_ROLES. */
+  roles?: RolePermissions;
 }
 
 type Env = { Variables: { principal: Principal } };
@@ -71,15 +76,14 @@ function send(c: Context, body: unknown, status = 200) {
   });
 }
 
-function requireRole(p: Principal, ...roles: Principal['roles']): boolean {
-  return p.roles.some((r) => roles.includes(r) || r === 'system');
-}
-
 /**
  * The HTTP layer. Thin on purpose: validate against the contract, authenticate,
  * handle idempotency, call the service and translate domain errors to problem+json.
  */
 export function createApp(d: AppDeps) {
+  const roles = d.roles ?? DEFAULT_ROLES;
+  assertRolePermissions(roles);
+  const contractPermissions = operationPermissions();
   const app = new Hono<Env>();
 
   app.get('/openapi.yaml', (c) => c.body(openapiText, 200, { 'content-type': 'application/yaml' }));
@@ -91,6 +95,16 @@ export function createApp(d: AppDeps) {
     const principal = await d.auth.authenticate(token);
     if (!principal) return problem(c, 401, 'Not authenticated');
     c.set('principal', principal);
+
+    // The permission comes from the contract for the matched operation (ADR 0016).
+    // No matched operation: fall through to 404.
+    const route = routePath(c, -1);
+    if (route !== '/v1/*') {
+      const permission = contractPermissions.get(operationKey(c.req.method, route));
+      if (!isPermission(permission) || !permissionsOf(principal.roles, roles).has(permission)) {
+        return problem(c, 403, 'Not permitted', isPermission(permission) ? `Requires the permission ${permission}` : undefined);
+      }
+    }
     await next();
   });
 
@@ -113,7 +127,6 @@ export function createApp(d: AppDeps) {
   }
 
   app.post('/v1/claims', async (c) => {
-    if (!requireRole(c.get('principal'), 'handler', 'clinic')) return problem(c, 403, 'Not permitted');
     const r = await readJson(c, 'ClaimInput');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => {
@@ -135,7 +148,6 @@ export function createApp(d: AppDeps) {
 
   app.post('/v1/claims/:claimId/decisions', async (c) => {
     const p = c.get('principal');
-    if (!requireRole(p, 'handler', 'approver')) return problem(c, 403, 'Not permitted');
     const r = await readJson(c, 'DecideRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => {
@@ -146,7 +158,6 @@ export function createApp(d: AppDeps) {
 
   app.post('/v1/claims/:claimId/reassessments', async (c) => {
     const p = c.get('principal');
-    if (!requireRole(p, 'handler', 'approver')) return problem(c, 403, 'Not permitted');
     const r = await readJson(c, 'ReassessRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => {
@@ -168,6 +179,12 @@ export function createApp(d: AppDeps) {
     return send(c, await d.service.getLimits(c.req.param('policyId'), c.req.param('animalId'), onDate));
   });
 
+  // Every operation must have a valid permission in the contract, so a new
+  // operation is closed until someone has decided who may call it.
+  for (const op of implementedOperations(app)) {
+    if (!isPermission(contractPermissions.get(op))) throw new Error(`${op} has no valid x-permission in the contract`);
+  }
+
   app.notFound((c) => problem(c, 404, 'The resource does not exist'));
 
   app.onError((err, c) => {
@@ -182,9 +199,12 @@ export function createApp(d: AppDeps) {
   return app;
 }
 
+/** A Hono route as 'METHOD /path' in OpenAPI format. */
+function operationKey(method: string, honoPath: string): string {
+  return `${method} ${honoPath.replace(/:([A-Za-z]+)/g, '{$1}')}`;
+}
+
 /** Hono routes as 'METHOD /path' in OpenAPI format, for the contract check. */
 export function implementedOperations(app: Hono<any>): string[] {
-  return app.routes
-    .filter((r) => r.path.startsWith('/v1/') && r.method !== 'ALL')
-    .map((r) => `${r.method} ${r.path.replace(/:([A-Za-z]+)/g, '{$1}')}`);
+  return app.routes.filter((r) => r.path.startsWith('/v1/') && r.method !== 'ALL').map((r) => operationKey(r.method, r.path));
 }

@@ -9,6 +9,7 @@ För försäkringsbolag, produktägare och handläggare. Ingen kod krävs för a
 - [Översikt](funktion/README.md): vad Petvold är, vilka delar som finns och vad som är byggt
 - [Skadereglering](funktion/skadereglering.md): hur ett ärende bedöms, beräknas och beslutas
 - [Produktkonfiguration](funktion/produktkonfiguration.md): vad en produkt och en policy styr i regleringen och hur det ställs in
+- [Behörighet](funktion/behorighet.md): roller, rättigheter och hur en installation ställer in dem
 
 ## Teknik: hur Petvold är byggt
 

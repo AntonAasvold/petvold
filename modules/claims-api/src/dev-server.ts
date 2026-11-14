@@ -6,7 +6,8 @@
  * Without it everything lives in memory. Policies and rules are always the
  * in-memory sample data until the policy and product modules exist.
  *
- * Tokens: 'dev-handler' (claims handler), 'dev-clinic' (clinic).
+ * Tokens: 'dev-handler' (claims handler), 'dev-clinic' (clinic), 'dev-job'
+ * (reassessment job). Roles map to permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
  */
 import { randomUUID } from 'node:crypto';
@@ -64,6 +65,7 @@ setInterval(() => void relayOutbox(store, logSink, clock).catch((err) => console
 const tokens: Record<string, Principal> = {
   'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler', 'approver'] },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'] },
+  'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'] },
 };
 
 const app = createApp({
@@ -87,4 +89,4 @@ console.log(`Claims engine listening on http://localhost:${port}`);
 console.log(`  Storage:   ${storage}`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (claims handler), dev-clinic (clinic)`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-clinic (clinic), dev-job (reassessment job)`);

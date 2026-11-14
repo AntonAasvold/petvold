@@ -1,7 +1,14 @@
 /** Fails if the contract and the implementation have drifted apart. Runs in CI. */
 import { ClaimsService } from '@petvold/claims-core';
-import { createApp, implementedOperations, contractOperations } from '../src/index.ts';
+import { createApp, implementedOperations, contractOperations, operationPermissions, isPermission } from '../src/index.ts';
 import { InMemoryIdempotencyStore } from '../src/app.ts';
+
+// Every operation must name one known permission (ADR 0016).
+const withoutPermission = [...operationPermissions()].filter(([, p]) => !isPermission(p)).map(([op, p]) => `${op} (${String(p)})`);
+if (withoutPermission.length) {
+  console.error('Operations without a valid x-permission:', withoutPermission);
+  process.exit(1);
+}
 
 const app = createApp({
   service: {} as ClaimsService,
@@ -19,4 +26,4 @@ if (missing.length || extra.length) {
   if (extra.length) console.error('  Implemented but not in the contract:', extra);
   process.exit(1);
 }
-console.log(`OK – ${spec.size} operations in the contract, all implemented`);
+console.log(`OK – ${spec.size} operations in the contract, all implemented, all with a permission`);

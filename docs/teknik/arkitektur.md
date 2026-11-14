@@ -75,7 +75,7 @@ Händelser skrivs till `claims.outbox` i samma transaktion som ändringen (ADR 0
 - **Fel** som `application/problem+json` (RFC 9457).
 - **Idempotens:** anrop som skapar något kräver `Idempotency-Key`. Svaret sparas per anropare och nyckel, i Postgres när dev-servern kör mot databasen.
 - **Språk:** regelskäl är koder som översätts efter `Accept-Language` (`messages.ts`).
-- **Behörighet:** roller per anrop i dag. Rättigheter i kontraktet och omfång per marknad och klinik är föreslaget i ADR 0016.
+- **Behörighet (ADR 0016):** varje operation har en rättighet i kontraktet (`x-permission`). En middleware hittar operationen som matchats, läser rättigheten ur kontraktet och jämför med anroparens roller (`permissions.ts`). Rättigheterna står inte i koden. `createApp` vägrar starta om en operation saknar giltig rättighet eller om rollinställningen har en okänd rättighet, och `lint:openapi` stoppar samma fel i CI. Se [Behörighet](../funktion/behorighet.md).
 
 ## Installation
 
