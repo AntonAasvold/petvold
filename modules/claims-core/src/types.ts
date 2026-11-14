@@ -236,6 +236,33 @@ export interface ClaimDecision {
   /** True if the handler decided against the proposal. Then reasonCode and reason are set. */
   deviatesFromProposal: boolean;
   reasonCode?: DeviationReasonCode;
+  /**
+   * True if no person judged the outcome: automatic settlement and reassessment.
+   * The customer may request a human review of an automated decision (ADR 0018, GDPR art. 22).
+   */
+  automated: boolean;
+  /** Set when this decision is the human review of a request (ReviewRequest.id). */
+  reviewRequestId?: string;
+}
+
+/**
+ * A request for human review of an automated decision (ADR 0018, GDPR art. 22).
+ * Open until a claims handler decides the claim; that decision closes it.
+ */
+export interface ReviewRequest {
+  id: string;
+  claimId: string;
+  /** The automated decision the customer wants reviewed. */
+  decisionId: string;
+  decisionSeq: number;
+  /** Who made the request, e.g. the customer channel or a handler on the customer's behalf. */
+  requestedBy: string;
+  /** The customer's view, in their own words. */
+  statement?: string;
+  requestedAt: Timestamp;
+  /** The human decision that closed the request. Set together with closedAt. */
+  closedByDecisionId?: string;
+  closedAt?: Timestamp;
 }
 
 /** Everything the assessment needs. Pure data in, pure data out: no calls, no clock, no text. */

@@ -14,11 +14,13 @@ import type {
   MarketCode,
   MinorUnits,
   PolicySnapshot,
+  ReviewRequest,
   Timestamp,
 } from './types.ts';
 import { assertDate } from '@petvold/common';
 import { accounts, type LimitKey } from './ledger.ts';
 import { replay, type ReplayResult } from './replay.ts';
+import { explainDecision, type DecisionExplanation } from './explain.ts';
 
 
 export type DomainErrorCode = 'not_found' | 'validation' | 'conflict' | 'forbidden';
@@ -47,6 +49,12 @@ export interface DecideCommand {
    * decision is rejected with 'conflict' instead of being made on stale data.
    */
   expectedInputHash?: string;
+}
+
+export interface ReviewRequestCommand {
+  requestedBy: string;
+  /** The customer's view, in their own words. */
+  statement?: string;
 }
 
 export interface LimitsView {
@@ -78,11 +86,13 @@ interface Assessed {
   input: AssessmentInput;
 }
 
-/** How a decision relates to the proposal, and the motivation when it deviates. */
+/** How a decision came about: the motivation when it deviates, whether a person judged it, and the review it answers. */
 interface Motivation {
   reason?: string;
   reasonCode?: DeviationReasonCode;
   deviatesFromProposal: boolean;
+  automated: boolean;
+  reviewRequestId?: string;
 }
 
 const COVERAGE = 'vet_care';
@@ -123,7 +133,10 @@ export class ClaimsService {
     const { assessment } = assessed;
     const decision =
       assessment.mode === 'auto'
-        ? await this.commit(claim, assessed, assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept', 'auto', { deviatesFromProposal: false })
+        ? await this.commit(claim, assessed, assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept', 'auto', {
+            deviatesFromProposal: false,
+            automated: true,
+          })
         : null;
     return { claim, assessment, decision };
   }
@@ -147,7 +160,10 @@ export class ClaimsService {
     return (await this.assessInternal(draft, undefined, undefined)).assessment;
   }
 
-  /** Claims handler decision. */
+  /**
+   * Claims handler decision. If the claim has an open request for human review,
+   * this decision is the review and closes the request (ADR 0018).
+   */
   async decide(claimId: string, cmd: DecideCommand): Promise<ClaimDecision> {
     const claim = await this.requireClaim(claimId);
     const assessed = await this.assessInternal(claim, undefined, claim.id);
@@ -167,16 +183,21 @@ export class ClaimsService {
         throw new DomainError('validation', 'Deciding against the proposal requires reasonCode and reason');
       }
     }
+    const open = (await this.d.store.getReviewRequests(claimId)).find((r) => !r.closedAt);
     return this.commit(claim, assessed, cmd.action, cmd.decidedBy, {
       deviatesFromProposal: deviates,
+      automated: false,
       ...(cmd.reason ? { reason: cmd.reason } : {}),
       ...(deviates && cmd.reasonCode ? { reasonCode: cmd.reasonCode } : {}),
+      ...(open ? { reviewRequestId: open.id } : {}),
     });
   }
 
   /**
    * Reassessment, e.g. after a retroactive policy change. Creates a new decision
-   * if the basis has changed; the ledger books only the difference.
+   * if the basis has changed; the ledger books only the difference. The new
+   * decision follows the proposal without anyone judging it, so it is automated,
+   * and it does not close an open review request.
    */
   async reassess(claimId: string, decidedBy: string, reason: string): Promise<ClaimDecision | null> {
     const claim = await this.requireClaim(claimId);
@@ -185,7 +206,7 @@ export class ClaimsService {
     const assessed = await this.assessInternal(claim, undefined, claim.id);
     if (assessed.assessment.inputHash === prev.assessment.inputHash) return null;
     const action = assessed.assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept';
-    return this.commit(claim, assessed, action, decidedBy, { reason, deviatesFromProposal: false });
+    return this.commit(claim, assessed, action, decidedBy, { reason, deviatesFromProposal: false, automated: true });
   }
 
   async getClaim(claimId: string): Promise<Claim> {
@@ -206,6 +227,54 @@ export class ClaimsService {
   async replayDecision(claimId: string, seq: number): Promise<ReplayResult> {
     const { decision, evidence } = await this.decisionWithEvidence(claimId, seq);
     return replay(evidence, decision.assessment, this.d.engineVersion ?? 'unknown');
+  }
+
+  /** Explanation of a stored decision for the customer, the handler or an auditor (ADR 0018). */
+  async explainDecision(claimId: string, seq: number): Promise<DecisionExplanation> {
+    const decisions = await this.getDecisions(claimId);
+    const decision = decisions.find((d) => d.seq === seq);
+    if (!decision) throw new DomainError('not_found', `Decision ${claimId}#${seq} does not exist`);
+    return explainDecision(decision, {
+      evidence: await this.d.store.getEvidence(decision.id),
+      isLatest: decisions.every((d) => d.seq <= seq),
+      reviewRequests: await this.d.store.getReviewRequests(claimId),
+    });
+  }
+
+  /**
+   * The customer asks for a person to review an automated decision (ADR 0018,
+   * GDPR art. 22). Only the latest decision, only if it is automated, and one
+   * open request per claim. The review is the next handler decision.
+   */
+  async requestReview(claimId: string, seq: number, cmd: ReviewRequestCommand): Promise<ReviewRequest> {
+    const decisions = await this.getDecisions(claimId);
+    const decision = decisions.find((d) => d.seq === seq);
+    if (!decision) throw new DomainError('not_found', `Decision ${claimId}#${seq} does not exist`);
+    if (decisions.some((d) => d.seq > seq)) throw new DomainError('conflict', 'A later decision has replaced this one');
+    if (!decision.automated) throw new DomainError('conflict', 'The decision was made by a person and is not open for review here');
+    const now = this.d.clock.now();
+    const statement = cmd.statement?.trim();
+    const request: ReviewRequest = {
+      id: this.d.ids.next('rvw'),
+      claimId,
+      decisionId: decision.id,
+      decisionSeq: decision.seq,
+      requestedBy: cmd.requestedBy,
+      ...(statement ? { statement } : {}),
+      requestedAt: now,
+    };
+    await this.d.store
+      .saveReviewRequest(request, [{ type: 'claim.review_requested', occurredAt: now, request }])
+      .catch((e: unknown) => {
+        if (e instanceof StoreConflictError) throw new DomainError('conflict', 'The claim already has an open review request');
+        throw e;
+      });
+    return request;
+  }
+
+  async getReviewRequests(claimId: string): Promise<ReviewRequest[]> {
+    await this.requireClaim(claimId);
+    return this.d.store.getReviewRequests(claimId);
   }
 
   private async decisionWithEvidence(claimId: string, seq: number): Promise<{ decision: ClaimDecision; evidence: DecisionEvidence }> {
@@ -281,6 +350,8 @@ export class ClaimsService {
       ...(motivation.reason ? { reason: motivation.reason } : {}),
       deviatesFromProposal: motivation.deviatesFromProposal,
       ...(motivation.reasonCode ? { reasonCode: motivation.reasonCode } : {}),
+      automated: motivation.automated,
+      ...(motivation.reviewRequestId ? { reviewRequestId: motivation.reviewRequestId } : {}),
     };
     const evidence: DecisionEvidence = {
       decisionId: decision.id,
@@ -323,7 +394,16 @@ export class ClaimsService {
     }
 
     const events: ClaimsEvent[] = [{ type: 'claim.decided', occurredAt: now, decision }];
-    await asConflict(this.d.store.commitDecision({ decision, journals, deductiblePeriod, evidence, events }));
+    await asConflict(
+      this.d.store.commitDecision({
+        decision,
+        journals,
+        deductiblePeriod,
+        evidence,
+        events,
+        ...(motivation.reviewRequestId ? { closesReviewRequestId: motivation.reviewRequestId } : {}),
+      }),
+    );
     return decision;
   }
 

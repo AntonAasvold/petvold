@@ -95,6 +95,58 @@ Anropet `GET /v1/policies/{policy}/animals/{djur}/limits?onDate=` visar årets f
 - **Omprövning bokför skillnaden.** Om ersättningen går från 1 500 kr till 1 700 kr bokförs 200 kr. Vid avslag i en omprövning återförs hela beloppet, och självriskperioden stängs.
 - **Samma anrop två gånger.** Anrop som skapar något kräver en `Idempotency-Key`. Ett upprepat anrop med samma nyckel ger samma svar och skapar inget nytt.
 
+## Förklaring och mänsklig prövning
+
+GDPR ger den som berörs av ett automatiskt beslut rätt att förstå logiken bakom beslutet (artikel 13–15). Den som berörs har också rätt att få beslutet prövat av en människa, att framföra sin synpunkt och att bestrida beslutet (artikel 22). Petvold stödjer det så här (ADR 0018).
+
+**Automatiska beslut är märkta.** Varje beslut har `automated`.
+- `true`: ingen människa bedömde utfallet. Det gäller automatisk reglering och omprövning, eftersom en omprövning följer motorns förslag utan att någon prövar det.
+- `false`: en handläggare fattade beslutet.
+
+**Förklaring per beslut:** `GET /v1/claims/{id}/decisions/{seq}/explanation`. Förklaringen byggs bara av det sparade beslutet och dess underlag, så den ser likadan ut i dag som om fem år. Samma svar kan visas för kund, handläggare och revisor. Den innehåller:
+
+| Del | Innehåll |
+| --- | --- |
+| `mainReason` | Det enda skäl som bäst förklarar utfallet (se nedan) |
+| `rules` | Alla regler motorn prövade, i ordning |
+| `steps` | Beräkningen steg för steg. Avdrag är negativa, så stegen summerar till ersättningen. Tom vid avslag. |
+| `deviation` | Handläggarens skälkod och motivering, om beslutet avviker från förslaget |
+| `humanReview` | Om kunden kan begära mänsklig prövning nu, och en öppen begäran om det finns en |
+| `basis` | Regelversion, produktversion, policyversion, kontrollsumma, beräkningsmodell och motorns version |
+
+Huvudskälet väljs i den här ordningen:
+1. handläggarens avvikelse (`deviation.<skälkod>`)
+2. den första regeln som inte uppfylldes, till exempel `waiting.within`
+3. inget att ersätta (`decision.nothing_payable`)
+4. delvis ersättning (`decision.partial`)
+5. hel ersättning (`decision.approved`)
+
+Varje del har en stabil nyckel (`reason`) och värden (`params`). Texten (`message`) kommer på det språk som anges i `Accept-Language`.
+
+**Exempel:** förklaring av öroninflammationen i exempel 1, på svenska.
+
+| Steg | Belopp | Text |
+| --- | ---: | --- |
+| `billed` | 4 000 kr | Fakturerat belopp |
+| `deductible_fixed` | −2 000 kr | Fast självrisk |
+| `deductible_variable` | −500 kr | Rörlig självrisk, 25 % |
+| `payout` | 1 500 kr | Ersättning |
+
+Huvudskälet är `decision.approved`: "Ersättning beviljas med hela beloppet efter självrisk, 1 500,00 kr". `humanReview.available` är `true`.
+
+Om skadan kommer inom en öppen självriskperiod ersätts raden för fast självrisk av `deductible_fixed_in_period` med beloppet 0 kr och periodens datum.
+
+**Begäran om mänsklig prövning:** `POST /v1/claims/{id}/decisions/{seq}/review-requests`, med kundens synpunkt i `statement` (valfri, högst 4 000 tecken). Rättigheten är `claims:request-review`. Regler:
+- Prövning kan bara begäras för ärendets senaste beslut, och bara om det är automatiskt. Annars svarar Petvold 409. Den som är missnöjd med en handläggares beslut har en annan väg: försäkringsbolagets klagomålshantering.
+- Ett ärende har högst en öppen begäran åt gången.
+- Begäran är öppen tills en handläggare fattar nästa beslut i ärendet. Det beslutet är prövningen. Det får `reviewRequestId` och stänger begäran i samma transaktion.
+- Prövningen följer samma regler som andra beslut. Handläggaren kan bekräfta beslutet eller avvika med skälkod och motivering.
+- En automatisk omprövning under tiden stänger inte begäran.
+
+`GET /v1/claims/{id}/review-requests` visar ärendets begäranden, öppna och stängda.
+
+*Inte byggt än:* tidsgräns för när prövningen ska vara klar, påminnelser och kö för handläggare. De kommer med ärendehanteringen i M6.
+
 ## Händelser
 
-När en skada registreras eller beslutas skrivs en händelse (`claim.registered`, `claim.decided`) i samma transaktion. Händelserna levereras minst en gång, i ordning. I dag loggas de bara. Leverans till andra system (webhook eller kö) kommer när det finns en mottagare (ADR 0008).
+När en skada registreras, beslutas eller får en begäran om prövning skrivs en händelse (`claim.registered`, `claim.decided`, `claim.review_requested`) i samma transaktion. Händelserna levereras minst en gång, i ordning. I dag loggas de bara. Leverans till andra system (webhook eller kö) kommer när det finns en mottagare (ADR 0008).

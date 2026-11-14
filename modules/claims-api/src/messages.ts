@@ -1,4 +1,4 @@
-import type { Assessment, RuleResult } from '@petvold/claims-core';
+import type { Assessment, DecisionExplanation, Reason } from '@petvold/claims-core';
 
 /**
  * Message catalogues for rule outcomes. The core returns only `reason` + `params`;
@@ -28,6 +28,22 @@ const catalogs: Record<Locale, Record<string, string>> = {
     'rider.possible': 'Möjlig koppling till förbehåll: {description} (samma diagnosgrupp)',
     'rider.none': 'Inga förbehåll berör diagnosen',
     'limit.capped': 'Ersättningen begränsas av återstående försäkringsbelopp ({remaining:money})',
+    'decision.approved': 'Ersättning beviljas med hela beloppet efter självrisk, {payout:money}',
+    'decision.partial': 'Ersättning beviljas delvis med {payout:money}',
+    'decision.nothing_payable': 'Inget att ersätta: hela beloppet ryms inom självrisken eller ersätts inte',
+    'deviation.pre_existing_condition': 'Handläggaren avslog ersättningen: besväret fanns före försäkringens början',
+    'deviation.not_covered': 'Handläggaren avslog ersättningen: kostnaden omfattas inte av försäkringen',
+    'deviation.insufficient_documentation': 'Handläggaren avslog ersättningen: underlaget räcker inte för att bedöma skadan',
+    'deviation.incorrect_invoice': 'Handläggaren avslog ersättningen: fakturan är felaktig',
+    'deviation.other': 'Handläggaren avslog ersättningen, se motiveringen',
+    'step.billed': 'Fakturerat belopp',
+    'step.non_reimbursable': 'Kostnader som inte ersätts, till exempel foder',
+    'step.vat_excluded': 'Moms som inte ersätts',
+    'step.deductible_fixed': 'Fast självrisk',
+    'step.deductible_fixed_in_period': 'Ingen fast självrisk: den är redan betald i självriskperioden {validFrom} till {validTo}',
+    'step.deductible_variable': 'Rörlig självrisk, {percent} %',
+    'step.limit_capped': 'Begränsning till återstående försäkringsbelopp ({remaining:money})',
+    'step.payout': 'Ersättning',
   },
   en: {
     'policy.not_found': 'No policy was in force on {date}',
@@ -49,6 +65,22 @@ const catalogs: Record<Locale, Record<string, string>> = {
     'rider.possible': 'Possibly related to exclusion: {description} (same diagnosis group)',
     'rider.none': 'No exclusions apply to the diagnosis',
     'limit.capped': 'Payout limited by the remaining annual limit ({remaining:money})',
+    'decision.approved': 'Approved in full after the deductible, {payout:money}',
+    'decision.partial': 'Approved in part, {payout:money}',
+    'decision.nothing_payable': 'Nothing to pay: the whole amount falls within the deductible or is not reimbursed',
+    'deviation.pre_existing_condition': 'The claims handler rejected the claim: the condition existed before the policy started',
+    'deviation.not_covered': 'The claims handler rejected the claim: the cost is not covered by the policy',
+    'deviation.insufficient_documentation': 'The claims handler rejected the claim: the documentation is not enough to assess the claim',
+    'deviation.incorrect_invoice': 'The claims handler rejected the claim: the invoice is incorrect',
+    'deviation.other': 'The claims handler rejected the claim, see the motivation',
+    'step.billed': 'Amount billed',
+    'step.non_reimbursable': 'Costs that are not reimbursed, such as food',
+    'step.vat_excluded': 'VAT that is not reimbursed',
+    'step.deductible_fixed': 'Fixed deductible',
+    'step.deductible_fixed_in_period': 'No fixed deductible: already paid in the deductible period {validFrom} to {validTo}',
+    'step.deductible_variable': 'Variable deductible, {percent} %',
+    'step.limit_capped': 'Limited to the remaining annual limit ({remaining:money})',
+    'step.payout': 'Payout',
   },
 };
 
@@ -67,7 +99,8 @@ export function formatMoney(minor: number, currency: string, locale: Locale): st
   return new Intl.NumberFormat(intlLocale[locale], { style: 'currency', currency }).format(minor / 10 ** digits);
 }
 
-export function renderRule(r: RuleResult, locale: Locale): string {
+/** Renders a reason key with its params, e.g. a rule outcome or an explanation step. */
+export function renderRule(r: Reason, locale: Locale): string {
   const template = catalogs[locale][r.reason] ?? catalogs.en[r.reason] ?? r.reason;
   return template.replace(/\{(\w+)(?::(money))?\}/g, (_, key: string, kind?: string) => {
     const v = r.params[key];
@@ -79,6 +112,20 @@ export function renderRule(r: RuleResult, locale: Locale): string {
 
 export function localizeAssessment<T extends Assessment>(a: T, locale: Locale): T {
   return { ...a, rules: a.rules.map((r) => ({ ...r, message: renderRule(r, locale) })) };
+}
+
+/** Adds text to every part of a decision explanation. */
+export function localizeExplanation(e: DecisionExplanation, locale: Locale) {
+  const withText = <T extends Reason>(r: T) => ({ ...r, message: renderRule(r, locale) });
+  return {
+    ...e,
+    mainReason: withText(e.mainReason),
+    rules: e.rules.map(withText),
+    steps: e.steps.map(withText),
+    ...(e.deviation
+      ? { deviation: { ...e.deviation, message: renderRule({ reason: `deviation.${e.deviation.reasonCode}`, params: {} }, locale) } }
+      : {}),
+  };
 }
 
 /** Adds text to every assessment in a response, at any depth. */

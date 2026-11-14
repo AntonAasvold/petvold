@@ -46,6 +46,7 @@ function setup(opts: { roles?: RolePermissions } = {}) {
     system: { subject: 'batch', roles: ['system'] },
     job: { subject: 'reassessment-job', roles: ['reassessment-job'] },
     team: { subject: 'team@example.test', roles: ['claims-team'] },
+    customer: { subject: 'customer-portal', roles: ['customer-channel'] },
   };
   const app = createApp({
     service,
@@ -242,6 +243,71 @@ test('a stored decision can be replayed through the API', async () => {
   assert.equal(body.status, 'identical');
   assert.equal((await call('POST', '/v1/claims/clm_021877/decisions/2/replays')).status, 404);
   assert.equal((await call('POST', '/v1/claims/clm_021877/decisions/0/replays')).status, 422);
+});
+
+test('the explanation of an automatic decision in Swedish: main reason, steps and the right to review', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000301', body: input(otitisClaim()) });
+  const res = await call('GET', '/v1/claims/clm_021877/decisions/1/explanation', { lang: 'sv', token: 'customer' });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-language'), 'sv');
+  const body = (await res.json()) as any;
+  assertSchema('DecisionExplanation', body);
+  assert.equal(body.automated, true);
+  assert.match(body.mainReason.message, /1\s?500,00\s?kr/);
+  assert.match(body.steps.at(-1).message, /^Ers/, 'Swedish text for the payout step');
+  assert.ok(body.rules.every((r: { message?: string }) => typeof r.message === 'string'));
+  assert.deepEqual(body.humanReview, { available: true });
+  assert.equal((await call('GET', '/v1/claims/clm_021877/decisions/2/explanation')).status, 404);
+  assert.equal((await call('GET', '/v1/claims/clm_021877/decisions/x/explanation')).status, 422);
+});
+
+test('human review: the customer channel requests it, a handler answers, and the request is closed', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000311', body: input(otitisClaim()) });
+  const path = '/v1/claims/clm_021877/decisions/1/review-requests';
+  const body = { statement: 'The ear infection started after the waiting period.' };
+
+  assert.equal((await call('POST', path, { token: 'clinic', key: 'key-00000312', body })).status, 403);
+  assert.equal((await call('POST', path, { token: 'customer', body })).status, 422, 'Idempotency-Key is required');
+  assert.equal((await call('POST', path, { token: 'customer', key: 'key-00000313', body: { note: 'x' } })).status, 422);
+
+  const res = await call('POST', path, { token: 'customer', key: 'key-00000314', body });
+  assert.equal(res.status, 201);
+  const req = (await res.json()) as any;
+  assertSchema('ReviewRequest', req);
+  assert.equal(req.requestedBy, 'customer-portal');
+
+  const again = await call('POST', path, { token: 'customer', key: 'key-00000315', body });
+  assert.equal(again.status, 409);
+  assertSchema('Problem', await again.json());
+
+  const dec = await call('POST', '/v1/claims/clm_021877/decisions', { key: 'key-00000316', body: { action: 'accept' } });
+  const review = (await dec.json()) as any;
+  assertSchema('Decision', review);
+  assert.equal(review.automated, false);
+  assert.equal(review.reviewRequestId, req.id);
+
+  const list = (await (await call('GET', '/v1/claims/clm_021877/review-requests', { token: 'customer' })).json()) as any;
+  assert.equal(list.items.length, 1);
+  assertSchema('ReviewRequest', list.items[0]);
+  assert.equal(list.items[0].closedByDecisionId, review.id);
+  assert.equal((await call('POST', '/v1/claims/clm_021877/decisions/2/review-requests', { token: 'customer', key: 'key-00000317', body: {} })).status, 409);
+});
+
+test('the explanation of a deviation names the reason code in the reader\'s language', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000321', body: input(cruciateClaim()) });
+  await call('POST', '/v1/claims/clm_048213/decisions', {
+    key: 'key-00000322',
+    body: { action: 'reject', reasonCode: 'incorrect_invoice', reason: 'The invoice is for another animal' },
+  });
+  const body = (await (await call('GET', '/v1/claims/clm_048213/decisions/1/explanation', { lang: 'en' })).json()) as any;
+  assertSchema('DecisionExplanation', body);
+  assert.equal(body.mainReason.reason, 'deviation.incorrect_invoice');
+  assert.match(body.deviation.message, /invoice is incorrect/);
+  assert.equal(body.deviation.reason, 'The invoice is for another animal');
+  assert.equal(body.humanReview.available, false);
 });
 
 test('a stale inputHash gives 409', async () => {

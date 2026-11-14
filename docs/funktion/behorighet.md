@@ -16,10 +16,11 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | Rättighet | Ger rätt att | Anrop |
 | --- | --- | --- |
 | `claims:register` | Anmäla en skada | `POST /v1/claims` |
-| `claims:read` | Läsa ett ärende, dess bedömning och beslut | `GET /v1/claims/{id}`, `.../assessment`, `.../decisions` |
+| `claims:read` | Läsa ett ärende, dess bedömning, beslut, förklaringar och begäranden om prövning, och räkna om ett beslut | `GET /v1/claims/{id}`, `.../assessment`, `.../decisions`, `.../decisions/{seq}/explanation`, `.../review-requests`, `POST .../decisions/{seq}/replays` |
 | `claims:decide` | Fatta beslut i ett ärende | `POST /v1/claims/{id}/decisions` |
 | `claims:override` | Besluta mot bedömningens förslag, med skälkod och motivering (ADR 0018) | Kontrolleras inom `POST /v1/claims/{id}/decisions` |
 | `claims:reassess` | Ompröva ett beslutat ärende | `POST /v1/claims/{id}/reassessments` |
+| `claims:request-review` | Begära mänsklig prövning av ett automatiskt beslut för kundens räkning (ADR 0018) | `POST /v1/claims/{id}/decisions/{seq}/review-requests` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
 | `limits:read` | Se förbrukat och återstående försäkringsbelopp | `GET /v1/policies/{p}/animals/{a}/limits` |
 
@@ -33,6 +34,7 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `approver` | `claims:read`, `limits:read` | Attestant. Rätten att attestera kommer med attestkedjan i M1. |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview` | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
+| `customer-channel` | `claims:read`, `claims:request-review` | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
 
 ## Egna roller
 
@@ -51,9 +53,9 @@ Inställningarna kontrolleras när Petvold startar. En okänd rättighet, till e
 
 ## Planerat
 
-- **Omfång** (behörighet del 2): en klinik ser bara ärenden den själv har skickat in, och en handläggare bara ärenden i sina marknader. Ett ärende utanför omfånget ger `404`. **Tills dess kan en klinik läsa alla ärenden.**
+- **Omfång** (behörighet del 2): en klinik ser bara ärenden den själv har skickat in, en handläggare bara ärenden i sina marknader, och kundkanalen bara den inloggade kundens ärenden. Ett ärende utanför omfånget ger `404`. **Tills dess kan en klinik och kundkanalen läsa alla ärenden.**
 - **Beloppsgränser och fyraögonsprincip** (behörighet del 3, med attestkedjan): beslut över en gräns kräver attest av någon annan.
 
 ## Lokalt
 
-Dev-servern har tre tokens: `dev-handler` (handläggare och attestant), `dev-clinic` (klinik) och `dev-job` (omprövningsjobb).
+Dev-servern har fyra tokens: `dev-handler` (handläggare och attestant), `dev-clinic` (klinik), `dev-job` (omprövningsjobb) och `dev-customer` (kundkanal).

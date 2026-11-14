@@ -19,7 +19,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Beviskedja per beslut (ADR 0018): underlag och motorns version sparas med beslutet
 - [x] Motivering krävs när beslutet avviker från förslaget
 - [x] Omräkning av sparade beslut, och scenarier som data (lager 3) som räknas om i CI
-- [ ] Förklaring per beslut och begäran om mänsklig prövning
+- [x] Förklaring per beslut och begäran om mänsklig prövning
 - [x] Integrationstester mot Postgres
 - [ ] Behörighet (ADR 0016): rättigheter i kontraktet, omfång per marknad och klinik
 - [ ] Reserv, beslutsförslag, beslut och attest som kedja, med beloppsgränser och fyraögonsprincip. Ett attesterat beslut ger en utbetalningsorder (händelse). Själva betalningen kommer med betalningsmodulen i M5.

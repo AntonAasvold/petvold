@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relayOutbox, type ClaimsEvent } from '@petvold/claims-core';
+import { eventClaimId, relayOutbox, type ClaimsEvent } from '@petvold/claims-core';
 import { FixedClock, InMemoryClaimsStore, fixtures } from '@petvold/claims-store-memory';
 
 const clock = new FixedClock('2026-11-14T10:00:00.000Z');
@@ -14,7 +14,7 @@ async function storeWithClaims(...ids: string[]) {
   return store;
 }
 
-const claimId = (e: ClaimsEvent) => (e.type === 'claim.registered' ? e.claim.id : e.decision.claimId);
+const claimId = eventClaimId;
 
 test('the relay publishes pending events in order and marks them as published', async () => {
   const store = await storeWithClaims('clm_1', 'clm_2', 'clm_3');
