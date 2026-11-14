@@ -4,7 +4,7 @@ import { parse } from 'yaml';
 import { createRequire } from 'node:module';
 import type { ValidateFunction, ErrorObject } from 'ajv';
 
-// ajv och ajv-formats är CommonJS; läs in dem via require för stabil interop.
+// ajv and ajv-formats are CommonJS; load them via require for stable interop.
 const require = createRequire(import.meta.url);
 type AjvLike = {
   addSchema(schema: object): unknown;
@@ -29,11 +29,11 @@ ajv.addSchema({ ...openapi, $id: 'openapi' });
 
 const cache = new Map<string, ValidateFunction>();
 
-/** Validator för ett namngivet schema i kontraktet, t.ex. 'ClaimInput'. */
+/** Validator for a named schema in the contract, e.g. 'ClaimInput'. */
 export function validatorFor(schemaName: string): ValidateFunction {
   const cached = cache.get(schemaName);
   if (cached) return cached;
-  if (!openapi.components.schemas[schemaName]) throw new Error(`Schemat ${schemaName} finns inte i kontraktet`);
+  if (!openapi.components.schemas[schemaName]) throw new Error(`Schema ${schemaName} does not exist in the contract`);
   const v = ajv.compile({ $ref: `openapi#/components/schemas/${schemaName}` });
   cache.set(schemaName, v);
   return v;
@@ -49,14 +49,14 @@ export function formatErrors(errors: ErrorObject[] | null | undefined): FieldErr
     path: e.instancePath || '/',
     message:
       e.keyword === 'additionalProperties'
-        ? `okänt fält '${(e.params as { additionalProperty: string }).additionalProperty}'`
+        ? `unknown field '${(e.params as { additionalProperty: string }).additionalProperty}'`
         : e.keyword === 'unevaluatedProperties'
-          ? `okänt fält '${(e.params as { unevaluatedProperty: string }).unevaluatedProperty}'`
-          : (e.message ?? 'ogiltigt värde'),
+          ? `unknown field '${(e.params as { unevaluatedProperty: string }).unevaluatedProperty}'`
+          : (e.message ?? 'invalid value'),
   }));
 }
 
-/** Alla operationer i kontraktet som 'METHOD /path'. */
+/** All operations in the contract as 'METHOD /path'. */
 export function contractOperations(): string[] {
   const methods = ['get', 'post', 'put', 'patch', 'delete'];
   return Object.entries(openapi.paths).flatMap(([path, item]) =>

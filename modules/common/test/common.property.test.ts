@@ -1,4 +1,4 @@
-/** Egenskapstester: invarianter som ska gälla för alla indata, inte bara valda exempel. */
+/** Property tests: invariants that must hold for all inputs, not just chosen examples. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
@@ -14,7 +14,7 @@ const range: fc.Arbitrary<DateRange> = fc
   .tuple(date, fc.option(fc.integer({ min: 1, max: 800 }), { nil: undefined }))
   .map(([from, days]) => (days === undefined ? { from } : { from, to: addDays(from, days) }));
 
-test('egenskap: subtraktion upphäver addition', () => {
+test('property: subtraction undoes addition', () => {
   fc.assert(
     fc.property(amount, amount, (a, b) => {
       assert.deepEqual(subtractMoney(addMoney(money(a, 'SEK'), money(b, 'SEK')), money(b, 'SEK')), money(a, 'SEK'));
@@ -22,7 +22,7 @@ test('egenskap: subtraktion upphäver addition', () => {
   );
 });
 
-test('egenskap: summan beror inte på ordningen', () => {
+test('property: the sum does not depend on order', () => {
   fc.assert(
     fc.property(fc.array(amount, { maxLength: 20 }), (xs) => {
       const items = xs.map((x) => money(x, 'EUR'));
@@ -31,7 +31,7 @@ test('egenskap: summan beror inte på ordningen', () => {
   );
 });
 
-test('egenskap: applyBp ligger mellan 0 och beloppet och avviker högst en halv enhet', () => {
+test('property: applyBp lies between 0 and the amount and is off by at most half a unit', () => {
   fc.assert(
     fc.property(nonNegative, bp, (a, p) => {
       const r = applyBp(a, p);
@@ -41,7 +41,7 @@ test('egenskap: applyBp ligger mellan 0 och beloppet och avviker högst en halv 
   );
 });
 
-test('egenskap: applyBp är monoton i belopp och baspunkter', () => {
+test('property: applyBp is monotonic in amount and basis points', () => {
   fc.assert(
     fc.property(nonNegative, nonNegative, bp, bp, (a, b, p, q) => {
       const [lo, hi] = a <= b ? [a, b] : [b, a];
@@ -52,7 +52,7 @@ test('egenskap: applyBp är monoton i belopp och baspunkter', () => {
   );
 });
 
-test('egenskap: addDays ger giltiga datum och går att vända', () => {
+test('property: addDays gives valid dates and can be reversed', () => {
   fc.assert(
     fc.property(date, fc.integer({ min: -3_000, max: 3_000 }), (d, n) => {
       const moved = addDays(d, n);
@@ -62,7 +62,7 @@ test('egenskap: addDays ger giltiga datum och går att vända', () => {
   );
 });
 
-test('egenskap: överlapp är symmetriskt och ett intervall överlappar sig självt', () => {
+test('property: overlap is symmetric and a range overlaps itself', () => {
   fc.assert(
     fc.property(range, range, (a, b) => {
       assert.equal(rangesOverlap(a, b), rangesOverlap(b, a));
@@ -71,7 +71,7 @@ test('egenskap: överlapp är symmetriskt och ett intervall överlappar sig sjä
   );
 });
 
-test('egenskap: två perioder som följer direkt på varandra överlappar aldrig', () => {
+test('property: two back-to-back periods never overlap', () => {
   fc.assert(
     fc.property(date, fc.integer({ min: 1, max: 800 }), fc.integer({ min: 1, max: 800 }), (from, d1, d2) => {
       const first = { from, to: addDays(from, d1) };

@@ -11,32 +11,32 @@ import type {
 } from './types.ts';
 
 /**
- * Det enda skademotorn vet om policykärnan. Implementeras som ett tunt
- * anti-corruption layer mot befintlig kärna, Socotra eller en egen policykärna.
+ * All the claims engine knows about the policy core. Implemented as a thin
+ * anti-corruption layer towards an external policy system or Petvold's own.
  */
 export interface PolicyPort {
   /**
-   * Policyn som den gällde på `onDate`, enligt vad policykärnan visste vid
-   * `knownAt` (utelämnat = nu). null om ingen version gällde det datumet.
+   * The policy as it applied on `onDate`, according to what the policy core
+   * knew at `knownAt` (omitted = now). null if no version applied on that date.
    */
   getPolicyAt(policyId: string, onDate: ISODate, knownAt?: Timestamp): Promise<PolicySnapshot | null>;
 }
 
-/** Produktens skaderegler per produktversion. */
+/** The product's claims rules per product version. */
 export interface RulesPort {
   getRules(productVersion: string): Promise<ClaimsRules>;
 }
 
-/** Skademotorns eget tillstånd. Postgres i drift, i minnet i tester. */
+/** The claims engine's own state. Postgres in production, in memory in tests. */
 export interface ClaimsStore {
-  /** Kastar StoreConflictError('claim_exists') om id:t redan finns. */
+  /** Throws StoreConflictError('claim_exists') if the id already exists. */
   saveClaim(claim: Claim): Promise<void>;
   getClaim(claimId: string): Promise<Claim | null>;
 
   /**
-   * Självriskperiod för djur och diagnosgrupp som täcker `onDate`.
-   * Perioder som öppnats av `excludeClaimId` ignoreras, så att en omprövning
-   * räknar på samma sätt som det ursprungliga beslutet.
+   * Deductible period for the animal and diagnosis group that covers `onDate`.
+   * Periods opened by `excludeClaimId` are ignored, so that a reassessment
+   * calculates the same way as the original decision.
    */
   findDeductiblePeriod(
     animalId: string,
@@ -46,30 +46,30 @@ export interface ClaimsStore {
   ): Promise<DeductiblePeriod | null>;
 
   /**
-   * Förbrukat försäkringsbelopp för djur, moment och försäkringsår, enligt ledgern.
-   * Ärendets eget tidigare förbrukade belopp exkluderas vid omprövning.
+   * Consumed limit for the animal, coverage and policy year, according to the ledger.
+   * The claim's own previously consumed amount is excluded on reassessment.
    */
   getConsumed(animalId: string, coverage: string, policyYearStart: ISODate, excludeClaimId?: string): Promise<MinorUnits>;
 
-  /** Ärendets beslut i stigande löpnummer. Tom lista om inga finns. */
+  /** The claim's decisions in ascending sequence. Empty list if there are none. */
   getDecisions(claimId: string): Promise<ClaimDecision[]>;
   /**
-   * Sparar beslut, journaler och ändrade självriskperioder atomiskt
-   * (en databastransaktion i drift). Perioder som ärendet tidigare öppnat
-   * ersätts av `deductiblePeriod` (eller tas bort om den är null).
+   * Stores the decision, journals and changed deductible periods atomically
+   * (one database transaction in production). Periods the claim opened earlier
+   * are replaced by `deductiblePeriod` (or removed if it is null).
    *
-   * Allt eller inget: vid fel sparas ingenting. Kastar StoreConflictError med
-   * 'decision_exists' (samma ärende och löpnummer) eller 'period_overlaps'
-   * (krock med ett annat ärendes självriskperiod). En journal som inte
-   * balanserar eller ett beslut för ett okänt ärende avvisas med ett vanligt fel.
+   * All or nothing: on error, nothing is stored. Throws StoreConflictError with
+   * 'decision_exists' (same claim and sequence) or 'period_overlaps' (clash
+   * with another claim's deductible period). A journal that does not balance
+   * or a decision for an unknown claim is rejected with a plain error.
    */
   commitDecision(commit: DecisionCommit): Promise<void>;
 }
 
 /**
- * Lagringen avvisar en ändring som krockar med befintligt tillstånd.
- * Alla implementationer kastar detta fel för samma situationer, så att
- * tjänsten kan svara 409 i stället för 500 (se test-suites/claims-store.ts).
+ * The store rejects a change that conflicts with existing state.
+ * Every implementation throws this error in the same situations, so that
+ * the service can answer 409 instead of 500 (see test-suites/claims-store.ts).
  */
 export class StoreConflictError extends Error {
   constructor(
@@ -100,8 +100,8 @@ export type ClaimsEvent =
   | { type: 'claim.decided'; occurredAt: Timestamp; decision: ClaimDecision };
 
 /**
- * Utgående händelser. I drift skrivs de till en outbox i samma
- * databastransaktion som ändringen och publiceras därifrån.
+ * Outgoing events. In production they are written to an outbox in the same
+ * database transaction as the change and published from there.
  */
 export interface EventSink {
   publish(event: ClaimsEvent): Promise<void>;

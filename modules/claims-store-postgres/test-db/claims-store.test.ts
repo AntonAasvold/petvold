@@ -1,7 +1,7 @@
 /**
- * Den gemensamma sviten för ClaimsStore mot riktig Postgres (lager 4, ADR 0012).
- * Lagringen ansluter som tjänsterollen claims_service, så sviten bevisar också
- * att rättigheterna i 0002 räcker. Tabellerna töms före varje test av ägaren.
+ * The shared ClaimsStore suite against real Postgres (layer 4, ADR 0012).
+ * The store connects as the service role claims_service, so the suite also
+ * proves the grants in 0002 are sufficient. The owner empties the tables before each test.
  */
 import { after } from 'node:test';
 import pg from 'pg';
@@ -11,7 +11,7 @@ import { createPool, PostgresClaimsStore } from '../src/index.ts';
 const ownerUrl = process.env.TEST_DATABASE_URL;
 const serviceUrl = process.env.CLAIMS_TEST_DATABASE_URL;
 if (!ownerUrl || !serviceUrl) {
-  throw new Error('TEST_DATABASE_URL och CLAIMS_TEST_DATABASE_URL krävs. Kopiera .env.example till .env och kör npm run dev:up.');
+  throw new Error('TEST_DATABASE_URL and CLAIMS_TEST_DATABASE_URL are required. Copy .env.example to .env and run npm run dev:up.');
 }
 
 const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 });

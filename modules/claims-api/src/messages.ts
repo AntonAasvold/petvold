@@ -1,9 +1,9 @@
 import type { Assessment, RuleResult } from '@petvold/claims-core';
 
 /**
- * Språkfiler för regelutfall. Kärnan returnerar bara `reason` + `params`;
- * texten skapas här i kanten. Nytt språk = ny katalog, ingen ändring i kärnan.
- * `{name}` ersätts med params.name; `{name:money}` formateras som belopp.
+ * Message catalogues for rule outcomes. The core returns only `reason` + `params`;
+ * the text is produced here at the edge. New language = new catalogue, no change in the core.
+ * `{name}` is replaced by params.name; `{name:money}` is formatted as an amount.
  */
 export type Locale = 'sv' | 'en';
 
@@ -54,7 +54,7 @@ const catalogs: Record<Locale, Record<string, string>> = {
 
 const intlLocale: Record<Locale, string> = { sv: 'sv-SE', en: 'en-GB' };
 
-/** Väljer språk ur Accept-Language. Standard: engelska. */
+/** Picks the language from Accept-Language. Default: English. */
 export function pickLocale(acceptLanguage: string | undefined): Locale {
   const wanted = (acceptLanguage ?? '')
     .split(',')
@@ -81,7 +81,7 @@ export function localizeAssessment<T extends Assessment>(a: T, locale: Locale): 
   return { ...a, rules: a.rules.map((r) => ({ ...r, message: renderRule(r, locale) })) };
 }
 
-/** Lägger på text för alla bedömningar i ett svar, oavsett nivå. */
+/** Adds text to every assessment in a response, at any depth. */
 export function localizeDeep<T>(value: T, locale: Locale): T {
   if (Array.isArray(value)) return value.map((v) => localizeDeep(v, locale)) as T;
   if (value && typeof value === 'object') {

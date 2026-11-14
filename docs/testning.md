@@ -19,7 +19,7 @@ Lager 3 byggs i M1. Lager 4 och 6 finns för skademotorn.
 
 - **Deterministiskt.** Ingen riktig klocka, inga slumpade id:n och inget nätverk i lager 1–3. `Clock` och `IdGenerator` injiceras.
 - **Påhittade data.** Exempel och scenarier hittas på. Regler hämtas från publika villkor med källa (ADR 0009).
-- **Namnge testet efter regeln**, på svenska: `'öppen självriskperiod: ingen fast självrisk'`, inte `'test 3'`.
+- **Namnge testet efter regeln**, på engelska: `'open deductible period: no fixed deductible'`, inte `'test 3'`.
 - **Pengar i minsta enhet** i testdata. Skriv beloppet i klartext i en kommentar när det hjälper: `455_500, // 25 % av 18 220 kr`.
 - **Kontraktet är facit för API:et.** Varje svar i API-testerna valideras mot `openapi.yaml`.
 

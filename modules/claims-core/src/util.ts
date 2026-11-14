@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-/** Deterministisk JSON (sorterade nycklar) för hash av indata. */
+/** Deterministic JSON (sorted keys) for hashing inputs. */
 export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (value && typeof value === 'object') {

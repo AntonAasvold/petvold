@@ -1,16 +1,16 @@
 /**
- * Domäntyper för skademotorn.
+ * Domain types for the claims engine.
  *
- * Konventioner (se @petvold/common):
- * - Belopp är heltal i minsta valutaenhet. Aldrig flyttal för pengar.
- * - Datum är ISO-datum 'YYYY-MM-DD' utan tid. Tidpunkter är ISO-tidsstämplar.
+ * Conventions (see @petvold/common):
+ * - Amounts are integers in the smallest currency unit. Never floats for money.
+ * - Dates are ISO dates 'YYYY-MM-DD' without time. Points in time are ISO timestamps.
  */
 import type { CurrencyCode, ISODate, MarketCode, MinorUnits, Timestamp } from '@petvold/common';
 
 export type { CurrencyCode, ISODate, MarketCode, MinorUnits, Timestamp };
 
 // ---------------------------------------------------------------------------
-// Skadeärende
+// Claim
 // ---------------------------------------------------------------------------
 
 export type ClaimChannel = 'clinic_direct' | 'customer';
@@ -18,13 +18,13 @@ export type ClaimChannel = 'clinic_direct' | 'customer';
 export interface ClaimLine {
   id: string;
   description: string;
-  /** Kategori enligt produktens skaderegler, t.ex. 'examination', 'surgery', 'food'. */
+  /** Category per the product's claims rules, e.g. 'examination', 'surgery', 'food'. */
   category: string;
-  /** Diagnoskod för raden om den avviker från ärendets huvuddiagnos. */
+  /** Diagnosis code for the line if it differs from the claim's main diagnosis. */
   diagnosisCode?: string;
-  /** Belopp inklusive moms, i ärendets valuta. */
+  /** Amount including VAT, in the claim's currency. */
   amount: MinorUnits;
-  /** Momsdelen av amount, om fakturan anger den. */
+  /** The VAT part of amount, if the invoice states it. */
   vat?: MinorUnits;
 }
 
@@ -38,59 +38,59 @@ export interface Claim {
   channel: ClaimChannel;
   treatmentFrom: ISODate;
   treatmentTo: ISODate;
-  /** Huvuddiagnos för ärendet. */
+  /** Main diagnosis for the claim. */
   diagnosisCode: string;
   lines: ClaimLine[];
   receivedAt: Timestamp;
 }
 
 // ---------------------------------------------------------------------------
-// Policydata som skademotorn läser (kontrakt mot policykärnan)
+// Policy data the claims engine reads (contract with the policy core)
 // ---------------------------------------------------------------------------
 
 /**
- * Självriskmodell. Täcker de vanliga europeiska varianterna:
- * - 'period': fast självrisk en gång per självriskperiod och diagnosgrupp (t.ex. Norden)
- * - 'claim':  fast självrisk på varje skada
- * - 'policy_year': fast självrisk en gång per försäkringsår
- * plus rörlig självrisk som kan öka med djurets ålder.
+ * Deductible model. Covers the common European variants:
+ * - 'period': fixed deductible once per deductible period and diagnosis group (e.g. the Nordics)
+ * - 'claim':  fixed deductible on every claim
+ * - 'policy_year': fixed deductible once per policy year
+ * plus a variable deductible that can increase with the animal's age.
  */
 export interface DeductibleTerms {
   fixed: MinorUnits;
   fixedPer: 'period' | 'claim' | 'policy_year';
-  /** Krävs när fixedPer är 'period'. */
+  /** Required when fixedPer is 'period'. */
   periodDays?: number;
-  /** Rörlig självrisk i baspunkter: 2500 = 25 %. */
+  /** Variable deductible in basis points: 2500 = 25 %. */
   variableBp: number;
-  /** Högre rörlig självrisk från en viss ålder; den högsta tillämpliga gäller. */
+  /** Higher variable deductible from a given age; the highest applicable step wins. */
   variableBpByAge?: Array<{ fromAgeYears: number; bp: number }>;
 }
 
 export interface VetCareTerms {
   code: 'vet_care';
-  /** Försäkringsbelopp per försäkringsår. */
+  /** Annual limit per policy year. */
   annualLimit: MinorUnits;
   deductible: DeductibleTerms;
-  /** Karenstid från försäkringens startdatum. */
+  /** Waiting period from the policy's inception date. */
   waitingPeriodDays: number;
 }
 
 export interface Rider {
   id: string;
   description: string;
-  /** Diagnoskoder som undantas för just detta djur. */
+  /** Diagnosis codes excluded for this particular animal. */
   diagnosisCodes: string[];
   validFrom: ISODate;
   validTo?: ISODate;
 }
 
 /**
- * Policyn så som den gällde på ett visst datum (giltighetstid), enligt det
- * policykärnan visste vid en viss tidpunkt (registreringstid).
+ * The policy as it applied on a given date (valid time), according to what
+ * the policy core knew at a given point in time (system time).
  */
 export interface PolicySnapshot {
   policyId: string;
-  /** Id för den bitemporala version som snapshoten bygger på. */
+  /** Id of the bitemporal version this snapshot is based on. */
   policyVersionId: string;
   market: MarketCode;
   currency: CurrencyCode;
@@ -98,12 +98,12 @@ export interface PolicySnapshot {
   animalBirthDate: ISODate;
   productVersion: string;
   status: 'active' | 'cancelled';
-  /** Versionens giltighetsintervall, validTo exklusivt. */
+  /** The version's validity range, validTo exclusive. */
   validFrom: ISODate;
   validTo?: ISODate;
-  /** Försäkringens ursprungliga startdatum, för karenstid. */
+  /** The policy's original inception date, for the waiting period. */
   inceptionDate: ISODate;
-  /** Det försäkringsår som behandlingsdatumet faller i, slut exklusivt. */
+  /** The policy year the treatment date falls in, end exclusive. */
   policyYearStart: ISODate;
   policyYearEnd: ISODate;
   vetCare?: VetCareTerms;
@@ -111,40 +111,40 @@ export interface PolicySnapshot {
 }
 
 // ---------------------------------------------------------------------------
-// Produktens skaderegler (versionerad konfiguration)
+// The product's claims rules (versioned configuration)
 // ---------------------------------------------------------------------------
 
 export interface ClaimsRules {
-  /** t.ex. 'SE-HUND-2026.2' */
+  /** e.g. 'SE-HUND-2026.2' */
   rulesVersion: string;
   market: MarketCode;
-  /** Ersätts momsen på veterinärfakturor? Varierar mellan marknader och kundtyper. */
+  /** Is VAT on vet invoices reimbursed? Varies between markets and customer types. */
   vatReimbursable: boolean;
-  /** Kategorier som aldrig ersätts, t.ex. foder. */
+  /** Categories that are never reimbursed, e.g. food. */
   nonReimbursableCategories: string[];
-  /** Diagnoskod -> diagnosgrupp. Styr självriskperioder och förbehållsmatchning. */
+  /** Diagnosis code -> diagnosis group. Drives deductible periods and rider matching. */
   diagnosisGroups: Record<string, string>;
-  /** Högsta ersättning som får regleras utan handläggare. */
+  /** Highest payout that may be settled without a claims handler. */
   autoSettleMax: MinorUnits;
 }
 
 // ---------------------------------------------------------------------------
-// Tillstånd som skademotorn själv äger
+// State owned by the claims engine
 // ---------------------------------------------------------------------------
 
 export interface DeductiblePeriod {
   id: string;
   animalId: string;
-  /** Diagnosgrupp, eller '*' för en period som gäller hela försäkringsåret. */
+  /** Diagnosis group, or '*' for a period covering the whole policy year. */
   diagnosisGroup: string;
   validFrom: ISODate;
-  /** Exklusivt slutdatum. */
+  /** Exclusive end date. */
   validTo: ISODate;
   openedByClaimId: string;
 }
 
 // ---------------------------------------------------------------------------
-// Bedömning och beslut
+// Assessment and decision
 // ---------------------------------------------------------------------------
 
 export type RuleStatus = 'pass' | 'fail' | 'review' | 'info';
@@ -161,9 +161,9 @@ export type RuleCode =
   | 'LIMIT';
 
 /**
- * Regelutfall utan text: `reason` är en stabil nyckel och `params` värdena.
- * Text på kundens eller handläggarens språk skapas i kanten (API, UI).
- * Belopp i params anges i minsta valutaenhet och har valutan i `currency`.
+ * Rule outcome without text: `reason` is a stable key and `params` the values.
+ * Text in the customer's or handler's language is produced at the edge (API, UI).
+ * Amounts in params are in the smallest currency unit, with the currency in `currency`.
  */
 export interface RuleResult {
   code: RuleCode;
@@ -178,7 +178,7 @@ export interface Calculation {
   base: MinorUnits;
   currency: CurrencyCode;
   vatExcluded: MinorUnits;
-  /** true om ärendet tar ut fast självrisk och öppnar en ny period (för 'period' och 'policy_year'). */
+  /** true if the claim charges the fixed deductible and opens a new period (for 'period' and 'policy_year'). */
   opensDeductiblePeriod: boolean;
   deductibleVariableBp: number;
   deductibleFixed: MinorUnits;
@@ -188,7 +188,7 @@ export interface Calculation {
   consumedBefore: MinorUnits;
   remainingBefore: MinorUnits;
   payout: MinorUnits;
-  /** Vad kunden betalar själv av det fakturerade beloppet. */
+  /** What the customer pays themselves of the billed amount. */
   customerShare: MinorUnits;
   cappedByLimit: boolean;
 }
@@ -214,7 +214,7 @@ export interface Assessment {
 export interface ClaimDecision {
   id: string;
   claimId: string;
-  /** 1, 2, 3 … – en ny rad per beslut eller omprövning, aldrig uppdatering. */
+  /** 1, 2, 3 … – a new row per decision or reassessment, never an update. */
   seq: number;
   outcome: Outcome;
   payout: MinorUnits;
@@ -225,12 +225,12 @@ export interface ClaimDecision {
 }
 
 // ---------------------------------------------------------------------------
-// Ledger (dubbel bokföring, append-only)
+// Ledger (double-entry, append-only)
 // ---------------------------------------------------------------------------
 
 export interface LedgerLine {
   account: string;
-  /** + debet, − kredit. Varje journal summerar till noll. */
+  /** + debit, − credit. Every journal sums to zero. */
   amount: MinorUnits;
 }
 
@@ -239,7 +239,7 @@ export interface LedgerJournal {
   sourceType: 'claim_decision';
   sourceId: string;
   claimId: string;
-  /** Alla rader i journalen är i denna valuta (ADR 0014). */
+  /** All lines in the journal are in this currency (ADR 0014). */
   currency: CurrencyCode;
   bookedAt: Timestamp;
   lines: LedgerLine[];

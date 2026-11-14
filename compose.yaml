@@ -1,9 +1,9 @@
-# Lokal miljö för Petvold. Kräver bara `docker compose` (OrbStack, Colima eller Docker Desktop).
+# Local environment for Petvold. Needs only `docker compose` (OrbStack, Colima or Docker Desktop).
 #
-# Samma Postgres-version och Debian-bas som CloudNativePG-imagen i drift
-# (ghcr.io/cloudnative-pg/postgresql:18.7-standard-trixie). Den imagen saknar
-# entrypoint utanför operatorn, så lokalt används den officiella imagen.
-# Uppgradera båda samtidigt.
+# Same Postgres version and Debian base as the CloudNativePG image in production
+# (ghcr.io/cloudnative-pg/postgresql:18.7-standard-trixie). That image has no
+# entrypoint outside the operator, so the official image is used locally.
+# Upgrade both together.
 
 name: petvold
 

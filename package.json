@@ -18,7 +18,8 @@
     "dev:down": "docker compose down",
     "dev:reset": "docker compose down -v && npm run dev:up",
     "db:migrate": "dbmate --wait --no-dump-schema up && dbmate --env TEST_DATABASE_URL --wait --no-dump-schema up",
-    "db:new": "dbmate new"
+    "db:new": "dbmate new",
+    "lint:lang": "tsx scripts/check-language.ts"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

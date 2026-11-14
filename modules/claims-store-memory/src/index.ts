@@ -18,9 +18,9 @@ import type {
 } from '@petvold/claims-core';
 
 /**
- * Lagring i minnet med samma semantik som Postgres-schemat: beslut och
- * journaler läggs bara till, och varje journal måste balansera.
- * För tester och lokal utveckling.
+ * In-memory store with the same semantics as the Postgres schema: decisions
+ * and journals are append-only, and every journal must balance.
+ * For tests and local development.
  */
 export class InMemoryClaimsStore implements ClaimsStore {
   private claims = new Map<string, Claim>();
@@ -29,7 +29,7 @@ export class InMemoryClaimsStore implements ClaimsStore {
   private periods: DeductiblePeriod[] = [];
 
   async saveClaim(claim: Claim) {
-    if (this.claims.has(claim.id)) throw new StoreConflictError('claim_exists', `Skadeärendet ${claim.id} finns redan`);
+    if (this.claims.has(claim.id)) throw new StoreConflictError('claim_exists', `Claim ${claim.id} already exists`);
     this.claims.set(claim.id, structuredClone(claim));
   }
 
@@ -66,15 +66,15 @@ export class InMemoryClaimsStore implements ClaimsStore {
       .map((d) => structuredClone(d));
   }
 
-  /** Kontrollerar allt först och ändrar sedan, så att ett fel aldrig lämnar halva beslutet kvar. */
+  /** Checks everything first and then changes, so an error never leaves half a decision behind. */
   async commitDecision({ decision, journals, deductiblePeriod }: DecisionCommit) {
-    if (!this.claims.has(decision.claimId)) throw new Error(`Skadeärendet ${decision.claimId} finns inte`);
+    if (!this.claims.has(decision.claimId)) throw new Error(`Claim ${decision.claimId} does not exist`);
     for (const j of journals) {
       const sum = j.lines.reduce((s, l) => s + l.amount, 0);
-      if (sum !== 0) throw new Error(`Journal ${j.id} balanserar inte (${sum})`);
+      if (sum !== 0) throw new Error(`Journal ${j.id} does not balance (${sum})`);
     }
     if (this.decisions.some((d) => d.claimId === decision.claimId && d.seq === decision.seq)) {
-      throw new StoreConflictError('decision_exists', `Beslut ${decision.claimId}#${decision.seq} finns redan`);
+      throw new StoreConflictError('decision_exists', `Decision ${decision.claimId}#${decision.seq} already exists`);
     }
     const remaining = this.periods.filter((p) => p.openedByClaimId !== decision.claimId);
     if (deductiblePeriod) {
@@ -85,7 +85,7 @@ export class InMemoryClaimsStore implements ClaimsStore {
           p.validFrom < deductiblePeriod.validTo &&
           deductiblePeriod.validFrom < p.validTo,
       );
-      if (clash) throw new StoreConflictError('period_overlaps', `Självriskperioden krockar med ${clash.id}`);
+      if (clash) throw new StoreConflictError('period_overlaps', `The deductible period clashes with ${clash.id}`);
     }
     this.decisions.push(structuredClone(decision));
     this.journals.push(...structuredClone(journals));
@@ -93,21 +93,21 @@ export class InMemoryClaimsStore implements ClaimsStore {
     if (deductiblePeriod) this.periods.push({ ...deductiblePeriod });
   }
 
-  /** Endast för tester och felsökning. */
+  /** For tests and debugging only. */
   dump() {
     return { decisions: this.decisions, journals: this.journals, periods: this.periods };
   }
 }
 
 /**
- * Policyport i minnet som stöder bitemporala uppslag: varje version har
- * giltighetstid och registreringstid.
+ * In-memory policy port supporting bitemporal lookups: every version has
+ * valid time and system time.
  */
 export interface StoredPolicyVersion {
   snapshot: PolicySnapshot;
-  /** När versionen registrerades. */
+  /** When the version was recorded. */
   sysFrom: Timestamp;
-  /** När versionen ersattes; utelämnad = fortfarande aktuell. */
+  /** When the version was superseded; omitted = still current. */
   sysTo?: Timestamp;
 }
 
@@ -118,10 +118,10 @@ export class InMemoryPolicyPort implements PolicyPort {
     this.versions.push(v);
   }
 
-  /** Ersätter en version i registreringstid (retroaktiv ändring). */
+  /** Supersedes a version in system time (retroactive change). */
   supersede(policyVersionId: string, at: Timestamp) {
     const v = this.versions.find((x) => x.snapshot.policyVersionId === policyVersionId && !x.sysTo);
-    if (!v) throw new Error(`Ingen aktuell version ${policyVersionId}`);
+    if (!v) throw new Error(`No current version ${policyVersionId}`);
     v.sysTo = at;
   }
 

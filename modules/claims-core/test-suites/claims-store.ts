@@ -1,13 +1,13 @@
 /**
- * Gemensam testsvit för ClaimsStore (lager 4, ADR 0012).
+ * Shared test suite for ClaimsStore (layer 4, ADR 0012).
  *
- * Varje implementation (minne, Postgres …) kör samma svit med sin egen fabrik:
+ * Every implementation (memory, Postgres …) runs the same suite with its own factory:
  *
  *   claimsStoreSuite('InMemoryClaimsStore', async () => ({ store: new InMemoryClaimsStore() }));
  *
- * Sviten är porten `ClaimsStore` uttryckt som tester. Det som står här gäller
- * för alla implementationer, och en ny implementation är klar när den går igenom.
- * Tidsstämplar anges i kanonisk form (`Date#toISOString`) och ska komma tillbaka oförändrade.
+ * The suite is the `ClaimsStore` port expressed as tests. What it states holds
+ * for every implementation, and a new implementation is done when it passes.
+ * Timestamps are given in canonical form (`Date#toISOString`) and must come back unchanged.
  */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,15 +16,15 @@ import type { Assessment, Claim, ClaimDecision, DeductiblePeriod, LedgerJournal 
 
 export interface StoreHarness {
   store: ClaimsStore;
-  /** Körs efter varje test, t.ex. för att stänga en anslutning. */
+  /** Runs after each test, e.g. to close a connection. */
   cleanup?: () => Promise<void>;
 }
 
-/** Skapar en ny, tom lagring för varje test. */
+/** Creates a new, empty store for each test. */
 export type StoreFactory = () => Promise<StoreHarness>;
 
 // ---------------------------------------------------------------------------
-// Påhittade testdata
+// Made-up test data
 // ---------------------------------------------------------------------------
 
 const YEAR = '2026-04-01';
@@ -42,8 +42,8 @@ function claim(id: string, overrides: Partial<Claim> = {}): Claim {
     treatmentTo: '2026-10-02',
     diagnosisCode: 'ORA-OTIT',
     lines: [
-      { id: 'l1', description: 'Undersökning', category: 'examination', amount: 65_000, vat: 13_000 },
-      { id: 'l2', description: 'Läkemedel', category: 'medication', amount: 35_000, diagnosisCode: 'ORA-OTIT' },
+      { id: 'l1', description: 'Examination', category: 'examination', amount: 65_000, vat: 13_000 },
+      { id: 'l2', description: 'Medication', category: 'medication', amount: 35_000, diagnosisCode: 'ORA-OTIT' },
     ],
     receivedAt: '2026-10-02T09:15:00.000Z',
     ...overrides,
@@ -81,7 +81,7 @@ function decision(claimId: string, seq: number, payout: number, overrides: Parti
   };
 }
 
-/** Journal som förbrukar `amount` av djurets försäkringsbelopp, som tjänsten bokför. */
+/** Journal consuming `amount` of the animal's annual limit, as the service books it. */
 function consumption(d: ClaimDecision, amount: number, animalId = 'ani_suite', yearStart = YEAR): LedgerJournal {
   const key = `${animalId}:vet_care:${yearStart}`;
   return {
@@ -112,12 +112,12 @@ const isConflict = (reason: StoreConflictError['reason']) => (e: unknown) =>
   e instanceof StoreConflictError && e.reason === reason;
 
 // ---------------------------------------------------------------------------
-// Sviten
+// The suite
 // ---------------------------------------------------------------------------
 
 export function claimsStoreSuite(name: string, factory: StoreFactory): void {
   describe(`ClaimsStore: ${name}`, () => {
-    /** Kör ett test mot en ny, tom lagring. */
+    /** Runs a test against a new, empty store. */
     const it = (title: string, fn: (store: ClaimsStore) => Promise<void>) =>
       test(title, async () => {
         const h = await factory();
@@ -128,48 +128,48 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
         }
       });
 
-    // Ärenden ---------------------------------------------------------------
+    // Claims -----------------------------------------------------------------
 
-    it('ett sparat ärende läses tillbaka oförändrat', async (store) => {
+    it('a stored claim is read back unchanged', async (store) => {
       const c = claim('clm_a');
       await store.saveClaim(c);
       assert.deepEqual(await store.getClaim('clm_a'), c);
     });
 
-    it('ett okänt ärende ger null', async (store) => {
+    it('an unknown claim gives null', async (store) => {
       assert.equal(await store.getClaim('clm_finns_inte'), null);
     });
 
-    it('ett ärende med samma id kan inte sparas två gånger', async (store) => {
+    it('a claim with the same id cannot be stored twice', async (store) => {
       await store.saveClaim(claim('clm_a'));
       await assert.rejects(store.saveClaim(claim('clm_a', { diagnosisCode: 'GI-ENTERIT' })), isConflict('claim_exists'));
       assert.equal((await store.getClaim('clm_a'))?.diagnosisCode, 'ORA-OTIT');
     });
 
-    it('ändringar i ett läst objekt påverkar inte lagringen', async (store) => {
+    it('changes to a read object do not affect the store', async (store) => {
       await store.saveClaim(claim('clm_a'));
       const read = (await store.getClaim('clm_a'))!;
       read.lines[0]!.amount = 1;
       assert.equal((await store.getClaim('clm_a'))?.lines[0]?.amount, 65_000);
     });
 
-    // Beslut ------------------------------------------------------------------
+    // Decisions ---------------------------------------------------------------
 
-    it('ett ärende utan beslut har en tom lista', async (store) => {
+    it('a claim without decisions has an empty list', async (store) => {
       await store.saveClaim(claim('clm_a'));
       assert.deepEqual(await store.getDecisions('clm_a'), []);
     });
 
-    it('beslut läses tillbaka oförändrade och i ordning', async (store) => {
+    it('decisions are read back unchanged and in order', async (store) => {
       await store.saveClaim(claim('clm_a'));
       const first = decision('clm_a', 1, 50_000);
-      const second = decision('clm_a', 2, 30_000, { decidedBy: 'handlaggare@example.test', reason: 'Omprövning' });
+      const second = decision('clm_a', 2, 30_000, { decidedBy: 'handlaggare@example.test', reason: 'Reassessment' });
       await store.commitDecision(commit(first, [consumption(first, 50_000)]));
       await store.commitDecision(commit(second, [consumption(second, -20_000)]));
       assert.deepEqual(await store.getDecisions('clm_a'), [first, second]);
     });
 
-    it('samma löpnummer kan inte beslutas två gånger', async (store) => {
+    it('the same sequence number cannot be decided twice', async (store) => {
       await store.saveClaim(claim('clm_a'));
       const d = decision('clm_a', 1, 50_000);
       await store.commitDecision(commit(d, [consumption(d, 50_000)]));
@@ -179,13 +179,13 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.equal(await store.getConsumed('ani_suite', 'vet_care', YEAR), 50_000);
     });
 
-    it('beslut kräver ett sparat ärende', async (store) => {
+    it('a decision requires a stored claim', async (store) => {
       await assert.rejects(store.commitDecision(commit(decision('clm_saknas', 1, 0))));
     });
 
     // Ledger ------------------------------------------------------------------
 
-    it('en journal som inte balanserar avvisas och inget sparas', async (store) => {
+    it('an unbalanced journal is rejected and nothing is stored', async (store) => {
       await store.saveClaim(claim('clm_a'));
       const d = decision('clm_a', 1, 50_000);
       const bad = consumption(d, 50_000);
@@ -196,7 +196,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.equal(await store.findDeductiblePeriod('ani_suite', 'ora', '2026-11-01'), null);
     });
 
-    it('förbrukat belopp är summan av ärendenas journaler för djur och försäkringsår', async (store) => {
+    it('the consumed limit is the sum of the claims\' journals for animal and policy year', async (store) => {
       for (const id of ['clm_a', 'clm_b', 'clm_annat_djur', 'clm_annat_ar']) await store.saveClaim(claim(id));
       const a1 = decision('clm_a', 1, 50_000);
       const a2 = decision('clm_a', 2, 30_000);
@@ -204,7 +204,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       const other = decision('clm_annat_djur', 1, 99_000);
       const otherYear = decision('clm_annat_ar', 1, 88_000);
       await store.commitDecision(commit(a1, [consumption(a1, 50_000)]));
-      await store.commitDecision(commit(a2, [consumption(a2, -20_000)])); // omprövning bokar skillnaden
+      await store.commitDecision(commit(a2, [consumption(a2, -20_000)])); // reassessment books the difference
       await store.commitDecision(commit(b, [consumption(b, 10_000)]));
       await store.commitDecision(commit(other, [consumption(other, 99_000, 'ani_annat')]));
       await store.commitDecision(commit(otherYear, [consumption(otherYear, 88_000, 'ani_suite', '2025-04-01')]));
@@ -215,9 +215,9 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.equal(await store.getConsumed('ani_okant', 'vet_care', YEAR), 0);
     });
 
-    // Självriskperioder -------------------------------------------------------
+    // Deductible periods ----------------------------------------------------
 
-    it('en självriskperiod gäller från första dagen till dagen före slutdatum', async (store) => {
+    it('a deductible period applies from its first day to the day before its end date', async (store) => {
       await store.saveClaim(claim('clm_a'));
       const p = period('dp_a', 'clm_a', '2026-10-01', '2027-02-03');
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], p));
@@ -227,21 +227,21 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.equal(await store.findDeductiblePeriod('ani_suite', 'ora', '2026-09-30'), null);
     });
 
-    it('självriskperioder gäller bara samma djur och diagnosgrupp', async (store) => {
+    it('deductible periods apply only to the same animal and diagnosis group', async (store) => {
       await store.saveClaim(claim('clm_a'));
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], period('dp_a', 'clm_a', '2026-10-01', '2027-02-03')));
       assert.equal(await store.findDeductiblePeriod('ani_annat', 'ora', '2026-11-01'), null);
       assert.equal(await store.findDeductiblePeriod('ani_suite', 'mag-tarm', '2026-11-01'), null);
     });
 
-    it('perioder som ärendet självt öppnat kan uteslutas', async (store) => {
+    it('periods opened by the claim itself can be excluded', async (store) => {
       await store.saveClaim(claim('clm_a'));
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], period('dp_a', 'clm_a', '2026-10-01', '2027-02-03')));
       assert.equal(await store.findDeductiblePeriod('ani_suite', 'ora', '2026-11-01', 'clm_a'), null);
       assert.notEqual(await store.findDeductiblePeriod('ani_suite', 'ora', '2026-11-01', 'clm_annat'), null);
     });
 
-    it('ett nytt beslut ersätter perioden som ärendet öppnat, och null tar bort den', async (store) => {
+    it('a new decision replaces the period the claim opened, and null removes it', async (store) => {
       await store.saveClaim(claim('clm_a'));
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], period('dp_1', 'clm_a', '2026-10-01', '2027-02-03')));
       const moved = period('dp_2', 'clm_a', '2026-10-05', '2027-02-07');
@@ -253,7 +253,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.equal(await store.findDeductiblePeriod('ani_suite', 'ora', '2026-11-01'), null);
     });
 
-    it('perioder för samma djur och grupp får inte överlappa, och inget sparas', async (store) => {
+    it('periods for the same animal and group must not overlap, and nothing is stored', async (store) => {
       await store.saveClaim(claim('clm_a'));
       await store.saveClaim(claim('clm_b'));
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], period('dp_a', 'clm_a', '2026-10-01', '2027-02-03')));
@@ -266,7 +266,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.equal(await store.getConsumed('ani_suite', 'vet_care', YEAR), 0);
     });
 
-    it('en period får börja samma dag som en annan slutar', async (store) => {
+    it('a period may start on the day another ends', async (store) => {
       await store.saveClaim(claim('clm_a'));
       await store.saveClaim(claim('clm_b'));
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], period('dp_a', 'clm_a', '2026-10-01', '2027-02-03')));

@@ -4,7 +4,7 @@ import { DomainError } from '@petvold/claims-core';
 import { formatErrors, openapiText, validatorFor, type FieldError } from './contract.ts';
 import { localizeDeep, pickLocale } from './messages.ts';
 
-/** Vem som anropar. Kommer från JWT i drift (t.ex. Supabase Auth eller OAuth för kliniker). */
+/** Who is calling. Comes from a JWT in production (e.g. the insurer's identity provider, or OAuth for clinics). */
 export interface Principal {
   subject: string;
   roles: Array<'handler' | 'approver' | 'clinic' | 'system'>;
@@ -14,7 +14,7 @@ export interface Authenticator {
   authenticate(bearerToken: string | undefined): Promise<Principal | null>;
 }
 
-/** Sparar svar per idempotensnyckel. Postgres-tabell i drift. */
+/** Stores responses per idempotency key. A Postgres table in production. */
 export interface IdempotencyStore {
   get(key: string): Promise<{ fingerprint: string; status: number; body: unknown } | null>;
   put(key: string, value: { fingerprint: string; status: number; body: unknown }): Promise<void>;
@@ -54,14 +54,14 @@ async function readJson(c: Context, schema: string): Promise<{ ok: true; body: a
   try {
     body = await c.req.json();
   } catch {
-    return { ok: false, res: problem(c, 422, 'Ogiltig JSON') };
+    return { ok: false, res: problem(c, 422, 'Invalid JSON') };
   }
   const v = validatorFor(schema);
-  if (!v(body)) return { ok: false, res: problem(c, 422, 'Begäran följer inte kontraktet', undefined, formatErrors(v.errors)) };
+  if (!v(body)) return { ok: false, res: problem(c, 422, 'The request does not follow the contract', undefined, formatErrors(v.errors)) };
   return { ok: true, body };
 }
 
-/** JSON-svar med regeltexter på det språk anroparen bett om. */
+/** JSON response with rule texts in the language the caller asked for. */
 function send(c: Context, body: unknown, status = 200) {
   const locale = pickLocale(c.req.header('accept-language'));
   return c.body(JSON.stringify(localizeDeep(body, locale)), status as 200, {
@@ -76,8 +76,8 @@ function requireRole(p: Principal, ...roles: Principal['roles']): boolean {
 }
 
 /**
- * HTTP-lagret. Tunt med avsikt: validera mot kontraktet, autentisera,
- * hantera idempotens, anropa tjänsten och översätt domänfel till problem+json.
+ * The HTTP layer. Thin on purpose: validate against the contract, authenticate,
+ * handle idempotency, call the service and translate domain errors to problem+json.
  */
 export function createApp(d: AppDeps) {
   const app = new Hono<Env>();
@@ -89,22 +89,22 @@ export function createApp(d: AppDeps) {
     const header = c.req.header('authorization');
     const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
     const principal = await d.auth.authenticate(token);
-    if (!principal) return problem(c, 401, 'Inte autentiserad');
+    if (!principal) return problem(c, 401, 'Not authenticated');
     c.set('principal', principal);
     await next();
   });
 
-  /** Kör en skapande operation exakt en gång per Idempotency-Key. */
+  /** Runs a creating operation exactly once per Idempotency-Key. */
   async function idempotent(c: Context<Env>, body: unknown, run: () => Promise<{ status: number; body: unknown }>) {
     const key = c.req.header('idempotency-key');
     if (!key || key.length < 8 || key.length > 128) {
-      return problem(c, 422, 'Idempotency-Key saknas eller har fel längd (8–128 tecken)');
+      return problem(c, 422, 'Idempotency-Key is missing or has the wrong length (8–128 characters)');
     }
     const scoped = `${c.get('principal').subject}:${c.req.method}:${c.req.path}:${key}`;
     const fingerprint = JSON.stringify(body);
     const prior = await d.idempotency.get(scoped);
     if (prior) {
-      if (prior.fingerprint !== fingerprint) return problem(c, 422, 'Idempotency-Key återanvänd med annan begäran');
+      if (prior.fingerprint !== fingerprint) return problem(c, 422, 'Idempotency-Key reused with a different request');
       return prior.status === 204 ? c.body(null, 204) : send(c, prior.body, prior.status);
     }
     const result = await run();
@@ -113,7 +113,7 @@ export function createApp(d: AppDeps) {
   }
 
   app.post('/v1/claims', async (c) => {
-    if (!requireRole(c.get('principal'), 'handler', 'clinic')) return problem(c, 403, 'Saknar behörighet');
+    if (!requireRole(c.get('principal'), 'handler', 'clinic')) return problem(c, 403, 'Not permitted');
     const r = await readJson(c, 'ClaimInput');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => {
@@ -127,7 +127,7 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/claims/:claimId/assessment', async (c) => {
     const knownAt = c.req.query('knownAt');
-    if (knownAt !== undefined && Number.isNaN(Date.parse(knownAt))) return problem(c, 422, 'knownAt är inte en giltig tidpunkt');
+    if (knownAt !== undefined && Number.isNaN(Date.parse(knownAt))) return problem(c, 422, 'knownAt is not a valid point in time');
     return send(c, await d.service.assessClaim(c.req.param('claimId'), knownAt));
   });
 
@@ -135,7 +135,7 @@ export function createApp(d: AppDeps) {
 
   app.post('/v1/claims/:claimId/decisions', async (c) => {
     const p = c.get('principal');
-    if (!requireRole(p, 'handler', 'approver')) return problem(c, 403, 'Saknar behörighet');
+    if (!requireRole(p, 'handler', 'approver')) return problem(c, 403, 'Not permitted');
     const r = await readJson(c, 'DecideRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => {
@@ -146,7 +146,7 @@ export function createApp(d: AppDeps) {
 
   app.post('/v1/claims/:claimId/reassessments', async (c) => {
     const p = c.get('principal');
-    if (!requireRole(p, 'handler', 'approver')) return problem(c, 403, 'Saknar behörighet');
+    if (!requireRole(p, 'handler', 'approver')) return problem(c, 403, 'Not permitted');
     const r = await readJson(c, 'ReassessRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => {
@@ -164,11 +164,11 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/policies/:policyId/animals/:animalId/limits', async (c) => {
     const onDate = c.req.query('onDate');
-    if (!onDate) return problem(c, 422, 'onDate krävs');
+    if (!onDate) return problem(c, 422, 'onDate is required');
     return send(c, await d.service.getLimits(c.req.param('policyId'), c.req.param('animalId'), onDate));
   });
 
-  app.notFound((c) => problem(c, 404, 'Resursen finns inte'));
+  app.notFound((c) => problem(c, 404, 'The resource does not exist'));
 
   app.onError((err, c) => {
     if (err instanceof DomainError) {
@@ -176,13 +176,13 @@ export function createApp(d: AppDeps) {
       return problem(c, status, err.message);
     }
     console.error(err);
-    return problem(c, 500, 'Internt fel');
+    return problem(c, 500, 'Internal error');
   });
 
   return app;
 }
 
-/** Hono-routes som 'METHOD /path' i OpenAPI-format, för kontraktskontrollen. */
+/** Hono routes as 'METHOD /path' in OpenAPI format, for the contract check. */
 export function implementedOperations(app: Hono<any>): string[] {
   return app.routes
     .filter((r) => r.path.startsWith('/v1/') && r.method !== 'ALL')
