@@ -1,0 +1,17 @@
+{
+  "name": "petvold",
+  "private": true,
+  "type": "module",
+  "workspaces": ["modules/*"],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --import tsx --test \"modules/*/test/*.test.ts\"",
+    "dev": "tsx modules/claims-api/src/dev-server.ts",
+    "lint:openapi": "tsx modules/claims-api/scripts/check-contract.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4",
+    "typescript": "^5.9"
+  }
+}

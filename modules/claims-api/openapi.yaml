@@ -1,0 +1,516 @@
+openapi: 3.1.0
+info:
+  title: Skademotor – Claims API
+  version: 0.1.0
+  summary: Headless skadereglering för djurförsäkring.
+  description: |
+    Kontraktet är källan till sanning. Servern validerar inkommande
+    anrop mot schemana här, och kontraktstesterna validerar svaren.
+
+    Konventioner:
+    - Alla belopp är heltal i öre (`Money`).
+    - Datum är `YYYY-MM-DD`, tidpunkter ISO 8601 med tidszon.
+    - Fel returneras som `application/problem+json` (RFC 9457).
+    - Alla skapande POST-anrop kräver `Idempotency-Key`.
+    - Marknad (ISO 3166-1) och valuta (ISO 4217) finns på alla ärenden.
+      Belopp växlas aldrig: ett ärende har samma valuta som försäkringen.
+    - Regelutfall har en stabil `reason` och `params`. Texten i `message`
+      är en bekvämlighet på det språk som begärs med `Accept-Language`
+      (sv, en; standard en).
+servers:
+  - url: http://localhost:8787
+security:
+  - bearerAuth: []
+tags:
+  - name: claims
+  - name: decisions
+  - name: previews
+  - name: limits
+
+paths:
+  /v1/claims:
+    post:
+      tags: [claims]
+      operationId: registerClaim
+      summary: Registrera ett skadeärende
+      description: |
+        Ärendet bedöms direkt. Om alla regler är gröna och beloppet ligger
+        under gränsen för automatisk reglering fattas beslutet automatiskt
+        och returneras i `decision`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClaimInput' }
+      responses:
+        '201':
+          description: Registrerat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterClaimResult' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}:
+    get:
+      tags: [claims]
+      operationId: getClaim
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '200':
+          description: Skadeärendet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Claim' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/claims/{claimId}/assessment:
+    get:
+      tags: [claims]
+      operationId: assessClaim
+      summary: Aktuell bedömning, utan att spara något
+      description: |
+        `knownAt` gör bedömningen mot policyn så som den var känd vid en
+        viss tidpunkt (registreringstid). Utelämnad = nu.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - name: knownAt
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Bedömning
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assessment' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/claims/{claimId}/decisions:
+    get:
+      tags: [decisions]
+      operationId: listDecisions
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '200':
+          description: Alla beslut i ordning, äldst först
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Decision' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [decisions]
+      operationId: decideClaim
+      summary: Fatta handläggarbeslut
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecideRequest' }
+      responses:
+        '201':
+          description: Beslut fattat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Decision' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}/reassessments:
+    post:
+      tags: [decisions]
+      operationId: reassessClaim
+      summary: Ompröva ett beslutat ärende
+      description: |
+        Bedömer om ärendet mot aktuellt underlag, t.ex. efter en retroaktiv
+        policyändring. Har utfallet ändrats skapas ett nytt beslut och
+        ledgern bokar skillnaden. 204 om inget ändrats.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReassessRequest' }
+      responses:
+        '201':
+          description: Nytt beslut
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Decision' }
+        '204':
+          description: Underlaget oförändrat, inget nytt beslut
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/claim-previews:
+    post:
+      tags: [previews]
+      operationId: previewClaim
+      summary: Förhandsbesked, t.ex. i klinikens kassa
+      description: Bedömer ett utkast utan att spara eller reservera något.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClaimInput' }
+      responses:
+        '200':
+          description: Bedömning
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assessment' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/policies/{policyId}/animals/{animalId}/limits:
+    get:
+      tags: [limits]
+      operationId: getLimits
+      summary: Förbrukat och återstående försäkringsbelopp
+      parameters:
+        - name: policyId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: animalId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: onDate
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/Date' }
+      responses:
+        '200':
+          description: Belopp för försäkringsåret som datumet faller i
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Limits' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+webhooks:
+  claim.registered:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClaimRegisteredEvent' }
+      responses:
+        '2XX': { description: Mottaget }
+  claim.decided:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClaimDecidedEvent' }
+      responses:
+        '2XX': { description: Mottaget }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ClaimId:
+      name: claimId
+      in: path
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 128 }
+
+  responses:
+    NotFound:
+      description: Finns inte
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: Konflikt med aktuellt tillstånd
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unprocessable:
+      description: Ogiltig begäran
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Money:
+      type: integer
+      description: Belopp i öre.
+    NonNegativeMoney:
+      type: integer
+      minimum: 0
+      description: Belopp i öre, aldrig negativt.
+    Market:
+      type: string
+      pattern: '^[A-Z]{2}$'
+      description: ISO 3166-1 alpha-2, t.ex. SE, NO, DK, FI, DE.
+    Currency:
+      type: string
+      pattern: '^[A-Z]{3}$'
+      description: ISO 4217, t.ex. SEK, NOK, DKK, EUR.
+    Date:
+      type: string
+      pattern: '^\d{4}-\d{2}-\d{2}$'
+      format: date
+    DateTime:
+      type: string
+      format: date-time
+
+    ClaimLine:
+      type: object
+      additionalProperties: false
+      required: [id, description, category, amount]
+      properties:
+        id: { type: string, minLength: 1 }
+        description: { type: string, minLength: 1 }
+        category:
+          type: string
+          description: Kategori enligt produktens skaderegler, t.ex. examination, surgery, food.
+        diagnosisCode: { type: string }
+        amount:
+          $ref: '#/components/schemas/NonNegativeMoney'
+          description: Belopp inklusive moms.
+        vat:
+          $ref: '#/components/schemas/NonNegativeMoney'
+          description: Momsdelen av amount, om fakturan anger den.
+
+    ClaimFields:
+      type: object
+      required: [id, claimNo, policyId, animalId, market, currency, channel, treatmentFrom, treatmentTo, diagnosisCode, lines]
+      properties:
+        id: { type: string, minLength: 1 }
+        claimNo: { type: string, minLength: 1 }
+        policyId: { type: string, minLength: 1 }
+        animalId: { type: string, minLength: 1 }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        channel: { type: string, enum: [clinic_direct, customer] }
+        treatmentFrom: { $ref: '#/components/schemas/Date' }
+        treatmentTo: { $ref: '#/components/schemas/Date' }
+        diagnosisCode: { type: string, minLength: 1 }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/ClaimLine' }
+
+    ClaimInput:
+      description: Det klienten skickar. receivedAt sätts av servern.
+      allOf:
+        - $ref: '#/components/schemas/ClaimFields'
+      unevaluatedProperties: false
+
+    Claim:
+      allOf:
+        - $ref: '#/components/schemas/ClaimFields'
+        - type: object
+          required: [receivedAt]
+          properties:
+            receivedAt: { $ref: '#/components/schemas/DateTime' }
+      unevaluatedProperties: false
+
+    RuleResult:
+      type: object
+      required: [code, status, reason, params]
+      properties:
+        code:
+          type: string
+          enum: [POLICY_FOUND, POLICY_ACTIVE, ANIMAL_MATCHES, MARKET_CURRENCY, WAITING_PERIOD, COVERAGE, RIDER, DIAGNOSIS_KNOWN, LIMIT]
+        status: { type: string, enum: [pass, fail, review, info] }
+        reason:
+          type: string
+          description: Stabil nyckel, t.ex. rider.possible. Använd den för logik och egna översättningar.
+        params:
+          type: object
+          additionalProperties:
+            type: [string, number]
+        message:
+          type: string
+          description: Text på språket från Accept-Language.
+
+    Calculation:
+      type: object
+      required:
+        - currency
+        - billed
+        - nonReimbursable
+        - vatExcluded
+        - base
+        - opensDeductiblePeriod
+        - deductibleFixed
+        - deductibleVariableBp
+        - deductibleVariable
+        - payableBeforeLimit
+        - annualLimit
+        - consumedBefore
+        - remainingBefore
+        - payout
+        - customerShare
+        - cappedByLimit
+      properties:
+        currency: { $ref: '#/components/schemas/Currency' }
+        billed: { $ref: '#/components/schemas/Money' }
+        nonReimbursable: { $ref: '#/components/schemas/Money' }
+        vatExcluded:
+          $ref: '#/components/schemas/Money'
+          description: Moms som inte ersätts på marknaden.
+        base: { $ref: '#/components/schemas/Money' }
+        opensDeductiblePeriod: { type: boolean }
+        deductibleFixed: { $ref: '#/components/schemas/Money' }
+        deductibleVariableBp:
+          type: integer
+          description: Rörlig självrisk i baspunkter (2500 = 25 %), efter åldersjustering.
+        deductibleVariable: { $ref: '#/components/schemas/Money' }
+        payableBeforeLimit: { $ref: '#/components/schemas/Money' }
+        annualLimit: { $ref: '#/components/schemas/Money' }
+        consumedBefore: { $ref: '#/components/schemas/Money' }
+        remainingBefore: { $ref: '#/components/schemas/Money' }
+        payout: { $ref: '#/components/schemas/Money' }
+        customerShare: { $ref: '#/components/schemas/Money' }
+        cappedByLimit: { type: boolean }
+
+    Assessment:
+      type: object
+      required: [claimId, market, currency, policyVersionId, productVersion, rulesVersion, rules, calculation, proposedOutcome, mode, diagnosisGroup, inputHash]
+      properties:
+        claimId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        policyVersionId: { type: [string, 'null'] }
+        productVersion: { type: [string, 'null'] }
+        rulesVersion: { type: string }
+        rules:
+          type: array
+          items: { $ref: '#/components/schemas/RuleResult' }
+        calculation:
+          oneOf:
+            - $ref: '#/components/schemas/Calculation'
+            - type: 'null'
+        proposedOutcome: { $ref: '#/components/schemas/Outcome' }
+        mode:
+          type: string
+          enum: [auto, manual]
+          description: auto = får regleras utan handläggare.
+        diagnosisGroup: { type: [string, 'null'] }
+        inputHash:
+          type: string
+          description: Hash av allt underlag. Skicka med som expectedInputHash vid beslut.
+
+    Outcome:
+      type: string
+      enum: [approved, partial, rejected]
+
+    Decision:
+      type: object
+      required: [id, claimId, seq, outcome, payout, assessment, decidedBy, decidedAt]
+      properties:
+        id: { type: string }
+        claimId: { type: string }
+        seq: { type: integer, minimum: 1 }
+        outcome: { $ref: '#/components/schemas/Outcome' }
+        payout: { $ref: '#/components/schemas/NonNegativeMoney' }
+        assessment: { $ref: '#/components/schemas/Assessment' }
+        decidedBy: { type: string }
+        decidedAt: { $ref: '#/components/schemas/DateTime' }
+        reason: { type: string }
+
+    RegisterClaimResult:
+      type: object
+      required: [claim, assessment, decision]
+      properties:
+        claim: { $ref: '#/components/schemas/Claim' }
+        assessment: { $ref: '#/components/schemas/Assessment' }
+        decision:
+          oneOf:
+            - $ref: '#/components/schemas/Decision'
+            - type: 'null'
+
+    DecideRequest:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action: { type: string, enum: [accept, reject] }
+        reason: { type: string, maxLength: 2000 }
+        expectedInputHash:
+          type: string
+          description: inputHash från bedömningen handläggaren såg. Avvisas med 409 om underlaget ändrats.
+
+    ReassessRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    Limits:
+      type: object
+      required: [animalId, policyId, market, currency, coverage, policyYearStart, policyYearEnd, annualLimit, consumed, remaining]
+      properties:
+        animalId: { type: string }
+        policyId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        coverage: { type: string, enum: [vet_care] }
+        policyYearStart: { $ref: '#/components/schemas/Date' }
+        policyYearEnd: { $ref: '#/components/schemas/Date' }
+        annualLimit: { $ref: '#/components/schemas/Money' }
+        consumed: { $ref: '#/components/schemas/Money' }
+        remaining: { $ref: '#/components/schemas/Money' }
+
+    ClaimRegisteredEvent:
+      type: object
+      required: [type, occurredAt, claim]
+      properties:
+        type: { const: claim.registered }
+        occurredAt: { $ref: '#/components/schemas/DateTime' }
+        claim: { $ref: '#/components/schemas/Claim' }
+
+    ClaimDecidedEvent:
+      type: object
+      required: [type, occurredAt, decision]
+      properties:
+        type: { const: claim.decided }
+        occurredAt: { $ref: '#/components/schemas/DateTime' }
+        decision: { $ref: '#/components/schemas/Decision' }
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              path: { type: string }
+              message: { type: string }

@@ -1,0 +1,12 @@
+{
+  "name": "@petvold/claims-store-memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@petvold/claims-core": "^0.1.0"
+  }
+}
