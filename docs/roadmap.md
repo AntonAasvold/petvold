@@ -19,6 +19,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [ ] Scenarier som data (lager 3)
 - [x] Integrationstester mot Postgres
 - [ ] AsyncAPI för `claim.registered` och `claim.decided`
+- [ ] Betalningsmodul (ADR 0017): port mot betaltjänster, tillståndsmaskin, fake-adapter och första riktiga adaptern
 - [ ] Reserv, beslutsförslag, beslut, attest och betalning som kedja
 
 ## Nästa
@@ -41,7 +42,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 
 ## Senare
 
-**M5 – Pengar**: Billing, betalningar, ledger för premier, tillgodohavande, utebliven betalning.
+**M5 – Pengar**: Billing (premieplaner, fakturor, påminnelser), fler betaladaptrar (Autogiro, SEPA, open banking), ledger för premier, tillgodohavande, utebliven betalning.
 
 **M6 – Stöd**: dokument, utskick med preferenser, ärenden, interaktionslogg, klinikintegration.
 
