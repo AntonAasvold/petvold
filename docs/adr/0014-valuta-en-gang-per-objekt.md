@@ -36,7 +36,7 @@ Vi väljer **A**:
 - Ingen brytande ändring i kontraktet. `Money` i `@petvold/common` behålls för fristående belopp och för beräkningar som ska kontrollera valutan.
 - Klienter måste läsa beloppet tillsammans med objektets `currency`. Kontraktets beskrivning av `Money`-fälten säger det redan.
 - En regel för kontraktslinten blir möjlig: ett schema med beloppsfält måste ha `currency`.
-- Ledgern behöver en migration: `currency` på `claims.journal` och valuta i kontonamnen `limit_*`.
+- Ledgern behöver en migration: `currency` på `claims.journal` och valuta i kontonamnen `limit_*`. Genomfört i migration 0003 (journalens valuta) och 0004 (kontonamnen).
 
 ## Alternativ
 

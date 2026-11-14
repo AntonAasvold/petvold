@@ -57,7 +57,7 @@ test('the migrations have been applied', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
   assert.deepEqual(
     rows.map((r) => r.version),
-    ['0001', '0002', '0003'],
+    ['0001', '0002', '0003', '0004'],
   );
 });
 

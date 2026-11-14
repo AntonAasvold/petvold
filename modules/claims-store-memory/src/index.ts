@@ -1,4 +1,4 @@
-import { StoreConflictError } from '@petvold/claims-core';
+import { StoreConflictError, accounts } from '@petvold/claims-core';
 import type {
   Claim,
   ClaimDecision,
@@ -10,6 +10,7 @@ import type {
   DeductiblePeriod,
   ISODate,
   LedgerJournal,
+  LimitKey,
   MinorUnits,
   PolicyPort,
   PolicySnapshot,
@@ -56,8 +57,8 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
     return hit ? { ...hit } : null;
   }
 
-  async getConsumed(animalId: string, coverage: string, policyYearStart: ISODate, excludeClaimId?: string): Promise<MinorUnits> {
-    const account = `limit_consumed:${animalId}:${coverage}:${policyYearStart}`;
+  async getConsumed(limit: LimitKey, excludeClaimId?: string): Promise<MinorUnits> {
+    const account = accounts.limitConsumed(limit);
     return this.journals
       .filter((j) => j.claimId !== excludeClaimId)
       .flatMap((j) => j.lines)

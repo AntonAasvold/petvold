@@ -4,5 +4,7 @@ export { assess, calculate, validateClaim, deductibleScope, ageInYears, variable
 export type { AssessmentInput } from './assess.ts';
 export { ClaimsService, DomainError } from './service.ts';
 export { relayOutbox } from './relay.ts';
+export { accounts } from './ledger.ts';
+export type { LimitKey } from './ledger.ts';
 export type { DecideCommand, LimitsView, ClaimsServiceDeps, DomainErrorCode } from './service.ts';
 export { sha256, canonicalJson } from './util.ts';

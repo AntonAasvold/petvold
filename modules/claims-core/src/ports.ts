@@ -9,6 +9,7 @@ import type {
   Timestamp,
   Claim,
 } from './types.ts';
+import type { LimitKey } from './ledger.ts';
 
 /**
  * All the claims engine knows about the policy core. Implemented as a thin
@@ -50,10 +51,11 @@ export interface ClaimsStore {
   ): Promise<DeductiblePeriod | null>;
 
   /**
-   * Consumed limit for the animal, coverage and policy year, according to the ledger.
+   * Consumed amount of the limit, according to the ledger (the balance of
+   * `accounts.limitConsumed(limit)`). Only amounts in the limit's currency count.
    * The claim's own previously consumed amount is excluded on reassessment.
    */
-  getConsumed(animalId: string, coverage: string, policyYearStart: ISODate, excludeClaimId?: string): Promise<MinorUnits>;
+  getConsumed(limit: LimitKey, excludeClaimId?: string): Promise<MinorUnits>;
 
   /** The claim's decisions in ascending sequence. Empty list if there are none. */
   getDecisions(claimId: string): Promise<ClaimDecision[]>;
