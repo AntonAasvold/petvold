@@ -16,7 +16,7 @@ const addFormats: (ajv: AjvLike) => void = require('ajv-formats').default;
 export const OPENAPI_PATH = fileURLToPath(new URL('../openapi.yaml', import.meta.url));
 
 export interface OpenApiDoc {
-  paths: Record<string, Record<string, { operationId?: string }>>;
+  paths: Record<string, Record<string, { operationId?: string; 'x-permission'?: unknown }>>;
   components: { schemas: Record<string, unknown> };
 }
 
@@ -63,5 +63,17 @@ export function contractOperations(): string[] {
     Object.keys(item)
       .filter((m) => methods.includes(m))
       .map((m) => `${m.toUpperCase()} ${path}`),
+  );
+}
+
+/** The permission (`x-permission`) per operation, as 'METHOD /path' -> value. Missing = undefined. */
+export function operationPermissions(): Map<string, unknown> {
+  const methods = ['get', 'post', 'put', 'patch', 'delete'];
+  return new Map(
+    Object.entries(openapi.paths).flatMap(([path, item]) =>
+      Object.entries(item)
+        .filter(([m]) => methods.includes(m))
+        .map(([m, op]) => [`${m.toUpperCase()} ${path}`, op['x-permission']] as const),
+    ),
   );
 }

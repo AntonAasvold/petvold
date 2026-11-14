@@ -1,6 +1,6 @@
 # 0016. Behörighet: rättigheter i kontraktet, roller per installation och åtkomst till data
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-14
 
 ## Sammanhang

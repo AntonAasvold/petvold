@@ -2,6 +2,32 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 12)
+
+**Gjort**
+- Mergat: #13 (ADR 0016 behörighet), #14 (dokumentation för funktion och teknik), #15 (ADR 0017 betalningar, väntar till M5), #16 (ADR 0018 beslutsmotor och beviskedja).
+- ADR 0016 beslutad. Behörighet del 1:
+  - `x-permission` på varje operation i kontraktet, med 401 och 403 som svar.
+  - En central kontroll i API:et läser rättigheten ur kontraktet för den matchade operationen. Rättigheterna står inte i koden.
+  - Roller översätts till rättigheter per installation (`roles` i `createApp`, standard `DEFAULT_ROLES`). Okända rättigheter stoppar starten.
+  - `system` släpper inte längre igenom allt. Ny roll `reassessment-job`.
+  - Läsningar, förhandsbesked och försäkringsbelopp kräver nu rättighet.
+  - `lint:openapi` stoppar en operation utan giltig rättighet (provat).
+- Ny sida `docs/funktion/behorighet.md`, och arkitektur uppdaterad.
+- 105 tester.
+
+**Nästa steg**
+1. Beviskedja (ADR 0018): underlag och motorns version sparas med beslutet, och motivering krävs vid avvikelse från förslaget (migration 0005).
+2. Omräkning av sparade beslut, och scenarier som data som räknas om i CI.
+3. Förklaring per beslut och begäran om mänsklig prövning.
+4. Behörighet del 2: omfång per marknad och klinik.
+5. Attestkedjan med beloppsgränser och utbetalningsorder.
+
+**Öppet**
+- En klinik kan läsa alla ärenden tills del 2 är klar.
+- Rollinställningen ges i koden (`createApp`). Den ska läsas från installationens konfiguration.
+- ADR 0017 och 0018 är föreslagna. 0018 beslutas när beviskedjan byggs. 0017 har öppna frågor till M5.
+
 ## 2026-11-14 (pass 11)
 
 **Gjort**

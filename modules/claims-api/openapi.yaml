@@ -12,6 +12,9 @@ info:
     - Dates are `YYYY-MM-DD`, points in time ISO 8601 with time zone.
     - Errors are returned as `application/problem+json` (RFC 9457).
     - All creating POST requests require `Idempotency-Key`.
+    - Every operation requires one permission, given in `x-permission`
+      (e.g. `claims:decide`). The caller's roles come from the token and are
+      mapped to permissions per installation. A missing permission gives 403.
     - Market (ISO 3166-1) and currency (ISO 4217) are on every claim.
       Amounts are never converted: a claim has the same currency as the policy.
     - Rule outcomes have a stable `reason` and `params`. The text in `message`
@@ -32,8 +35,11 @@ paths:
     post:
       tags: [claims]
       operationId: registerClaim
+      x-permission: claims:register
       summary: Register a claim
       description: |
+        Requires the permission `claims:register`.
+
         The claim is assessed immediately. If every rule is green and the amount
         is below the auto-settle limit, the decision is made automatically
         and returned in `decision`.
@@ -52,6 +58,8 @@ paths:
               foreStart:
                 $ref: '#/components/examples/ClaimBeforePolicy'
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '201':
           description: Registered
           content:
@@ -64,9 +72,13 @@ paths:
     get:
       tags: [claims]
       operationId: getClaim
+      x-permission: claims:read
+      description: Requires the permission `claims:read`.
       parameters:
         - $ref: '#/components/parameters/ClaimId'
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: The claim
           content:
@@ -78,8 +90,11 @@ paths:
     get:
       tags: [claims]
       operationId: assessClaim
+      x-permission: claims:read
       summary: Current assessment, without storing anything
       description: |
+        Requires the permission `claims:read`.
+
         `knownAt` assesses against the policy as it was known at a given
         point in time (system time). Omitted = now.
       parameters:
@@ -89,6 +104,8 @@ paths:
           required: false
           schema: { type: string, format: date-time }
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: Assessment
           content:
@@ -100,9 +117,13 @@ paths:
     get:
       tags: [decisions]
       operationId: listDecisions
+      x-permission: claims:read
+      description: Requires the permission `claims:read`.
       parameters:
         - $ref: '#/components/parameters/ClaimId'
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: All decisions in order, oldest first
           content:
@@ -118,7 +139,9 @@ paths:
     post:
       tags: [decisions]
       operationId: decideClaim
+      x-permission: claims:decide
       summary: Make a claims handler decision
+      description: Requires the permission `claims:decide`.
       parameters:
         - $ref: '#/components/parameters/ClaimId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -133,6 +156,8 @@ paths:
               avsla:
                 $ref: '#/components/examples/DecideReject'
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '201':
           description: Decision made
           content:
@@ -146,8 +171,11 @@ paths:
     post:
       tags: [decisions]
       operationId: reassessClaim
+      x-permission: claims:reassess
       summary: Reassess a decided claim
       description: |
+        Requires the permission `claims:reassess`.
+
         Reassesses the claim against the current basis, e.g. after a retroactive
         policy change. If the basis has changed, a new decision is created and
         the ledger books the difference. 204 if nothing changed.
@@ -163,6 +191,8 @@ paths:
               omprovning:
                 $ref: '#/components/examples/Reassess'
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '201':
           description: New decision
           content:
@@ -177,8 +207,12 @@ paths:
     post:
       tags: [previews]
       operationId: previewClaim
+      x-permission: claims:preview
       summary: Pre-approval, e.g. at the clinic's checkout
-      description: Assesses a draft without storing or reserving anything.
+      description: |
+        Requires the permission `claims:preview`.
+
+        Assesses a draft without storing or reserving anything.
       requestBody:
         required: true
         content:
@@ -192,6 +226,8 @@ paths:
               foreStart:
                 $ref: '#/components/examples/ClaimBeforePolicy'
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: Assessment
           content:
@@ -203,7 +239,9 @@ paths:
     get:
       tags: [limits]
       operationId: getLimits
+      x-permission: limits:read
       summary: Consumed and remaining annual limit
+      description: Requires the permission `limits:read`.
       parameters:
         - name: policyId
           in: path
@@ -218,6 +256,8 @@ paths:
           required: true
           schema: { $ref: '#/components/schemas/Date' }
       responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: Amounts for the policy year the date falls in
           content:
@@ -264,6 +304,16 @@ components:
       schema: { type: string, minLength: 8, maxLength: 128 }
 
   responses:
+    Unauthenticated:
+      description: No valid token
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: The caller lacks the operation's permission (`x-permission`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     NotFound:
       description: Not found
       content:

@@ -18,13 +18,17 @@ import {
   messageKeys,
   supportedLocales,
   openapi,
+  operationPermissions,
+  isPermission,
+  DEFAULT_ROLES,
   type Principal,
+  type RolePermissions,
 } from '@petvold/claims-api';
 import { docsPage, SCALAR_VERSION } from '../src/docs.ts';
 
 const { bellaPolicy, cruciateClaim, otitisClaim, eurPolicy, eurClaim, RULES_SE_DOG, RULES_EUR_EXAMPLE, PRODUCT, PRODUCT_EUR } = fixtures;
 
-function setup() {
+function setup(opts: { roles?: RolePermissions } = {}) {
   const clock = new FixedClock('2026-11-13T14:00:00Z');
   const service = new ClaimsService({
     policies: new InMemoryPolicyPort([
@@ -39,10 +43,14 @@ function setup() {
   const tokens: Record<string, Principal> = {
     handler: { subject: 'handlaggare@example.test', roles: ['handler', 'approver'] },
     clinic: { subject: 'klinik-001', roles: ['clinic'] },
+    system: { subject: 'batch', roles: ['system'] },
+    job: { subject: 'reassessment-job', roles: ['reassessment-job'] },
+    team: { subject: 'team@example.test', roles: ['claims-team'] },
   };
   const app = createApp({
     service,
     clock,
+    ...(opts.roles ? { roles: opts.roles } : {}),
     idempotency: new InMemoryIdempotencyStore(),
     auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) },
   });
@@ -154,6 +162,56 @@ test('a clinic may not make decisions', async () => {
   await call('POST', '/v1/claims', { key: 'key-00000005', body: input(cruciateClaim()), token: 'clinic' });
   const res = await call('POST', '/v1/claims/clm_048213/decisions', { token: 'clinic', key: 'key-00000006', body: { action: 'accept' } });
   assert.equal(res.status, 403);
+});
+
+test('a clinic may not read limits, and the problem names the permission', async () => {
+  const { call } = setup();
+  const res = await call('GET', '/v1/policies/pol_bella/animals/ani_bella/limits?onDate=2026-11-13', { token: 'clinic' });
+  assert.equal(res.status, 403);
+  const body = (await res.json()) as any;
+  assertSchema('Problem', body);
+  assert.match(body.detail, /limits:read/);
+});
+
+test('no role grants everything: system and unknown roles get nothing', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { key: 'key-00000101', body: input(otitisClaim()) });
+  for (const path of ['/v1/claims/clm_021877', '/v1/claims/clm_021877/decisions']) {
+    assert.equal((await call('GET', path, { token: 'system' })).status, 403);
+    assert.equal((await call('GET', path, { token: 'team' })).status, 403);
+  }
+});
+
+test('the reassessment job may reassess but not decide', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { key: 'key-00000102', body: input(otitisClaim()) });
+  const re = await call('POST', '/v1/claims/clm_021877/reassessments', { token: 'job', key: 'key-00000103', body: { reason: 'Nightly run' } });
+  assert.equal(re.status, 204);
+  const dec = await call('POST', '/v1/claims/clm_021877/decisions', { token: 'job', key: 'key-00000104', body: { action: 'reject' } });
+  assert.equal(dec.status, 403);
+});
+
+test('an installation maps its own role names to permissions', async () => {
+  const { call } = setup({ roles: { ...DEFAULT_ROLES, 'claims-team': ['claims:read'] } });
+  await call('POST', '/v1/claims', { key: 'key-00000105', body: input(otitisClaim()) });
+  assert.equal((await call('GET', '/v1/claims/clm_021877', { token: 'team' })).status, 200);
+  const dec = await call('POST', '/v1/claims/clm_021877/decisions', { token: 'team', key: 'key-00000106', body: { action: 'reject' } });
+  assert.equal(dec.status, 403);
+});
+
+test('roles with an unknown permission are rejected at start-up', () => {
+  assert.throws(() => setup({ roles: { handler: ['claims:everything' as never] } }), /unknown permission 'claims:everything'/);
+});
+
+test('every operation in the contract names a known permission', () => {
+  for (const [op, permission] of operationPermissions()) {
+    assert.ok(isPermission(permission), `${op} has x-permission ${String(permission)}`);
+  }
+});
+
+test('an unknown path still gives 404, not 403', async () => {
+  const { call } = setup();
+  assert.equal((await call('GET', '/v1/nothing-here', { token: 'clinic' })).status, 404);
 });
 
 test('a stale inputHash gives 409', async () => {
