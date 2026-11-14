@@ -9,7 +9,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - `modules/common` med `Money`, `MinorUnits`, `applyBp`, `MarketCode`, `CurrencyCode`, `ISODate`, `DateRange`. 12 nya tester, 55 totalt.
 - `claims-core` använder `common`. `Ore` heter nu `MinorUnits`, och `kr()` är borttagen (oanvänd, och text hör inte hemma i kärnan).
 - Fel rättat: `assertDate` godkände datum som inte finns, t.ex. `2026-02-30`.
-- ADR 0011 (föreslagen): gemensam kärna för värdetyper.
+- ADR 0011 (beslutad): gemensam kärna för värdetyper.
 
 **Nästa steg**
 1. Gemensamma kontraktsdelar: `Money`, `Problem`, sidindelning och `Ref` som delad OpenAPI-fil.

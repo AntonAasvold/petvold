@@ -1,6 +1,6 @@
 # 0011. Gemensam kärna för värdetyper (`@petvold/common`)
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-14
 
 ## Sammanhang
