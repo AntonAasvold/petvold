@@ -42,8 +42,8 @@ async function seedDecision(): Promise<void> {
      values ('clm_t1', 'T-1', 'pol_t', 'ani_t', 'SE', 'SEK', 'customer', '2026-10-01', '2026-10-01', 'ORA-OTIT')`,
   );
   await db.query(
-    `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version, decided_by)
-     values ('dec_t1', 'clm_t1', 1, 'approved', 100000, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'auto')`,
+    `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version, decided_by, automated)
+     values ('dec_t1', 'clm_t1', 1, 'approved', 100000, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'auto', true)`,
   );
   await db.query(
     `insert into claims.decision_evidence (decision_id, input, calculation_model, engine_version)
@@ -62,7 +62,7 @@ test('the migrations have been applied', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
   assert.deepEqual(
     rows.map((r) => r.version),
-    ['0001', '0002', '0003', '0004', '0005'],
+    ['0001', '0002', '0003', '0004', '0005', '0006'],
   );
 });
 
@@ -137,8 +137,8 @@ test('a decision without evidence is rejected at commit', async () => {
   await inTx(async () => {
     await seedDecision();
     await db.query(
-      `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version, decided_by)
-       values ('dec_t2', 'clm_t1', 2, 'approved', 100000, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'auto')`,
+      `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version, decided_by, automated)
+       values ('dec_t2', 'clm_t1', 2, 'approved', 100000, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'auto', true)`,
     );
     await rejects('set constraints all immediate', [], RAISE_EXCEPTION);
   });
@@ -158,12 +158,70 @@ test('a deviation from the proposal needs a known reason code and a reason', asy
   await inTx(async () => {
     await seedDecision();
     const insert = `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version,
-                                                 decided_by, reason, deviates_from_proposal, reason_code)
-                    values ($1, 'clm_t1', $2, 'rejected', 0, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'h1', $3, true, $4)`;
+                                                 decided_by, reason, deviates_from_proposal, reason_code, automated)
+                    values ($1, 'clm_t1', $2, 'rejected', 0, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'h1', $3, true, $4, false)`;
     await rejects(insert, ['dec_d1', 2, null, 'other'], CHECK_VIOLATION);
     await rejects(insert, ['dec_d2', 2, ' ', 'other'], CHECK_VIOLATION);
     await rejects(insert, ['dec_d3', 2, 'Seen before', null], CHECK_VIOLATION);
     await rejects(insert, ['dec_d4', 2, 'Seen before', 'made_up'], CHECK_VIOLATION);
     await db.query(insert, ['dec_d5', 2, 'Seen before', 'pre_existing_condition']);
+  });
+});
+
+const UNIQUE_VIOLATION = '23505';
+
+/** A human decision (seq 2) that may answer a review request. */
+async function humanDecision(id: string, seq: number, reviewRequestId: string | null): Promise<void> {
+  await db.query(
+    `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version, decided_by,
+                                  automated, review_request_id)
+     values ($1, 'clm_t1', $2, 'approved', 100000, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'h1', false, $3)`,
+    [id, seq, reviewRequestId],
+  );
+  await db.query(`insert into claims.decision_evidence (decision_id, input, calculation_model, engine_version) values ($1, '{}', 'vet-care.v1', 't')`, [id]);
+}
+
+const insertReview = `insert into claims.review_request (id, claim_id, decision_id, decision_seq, requested_by, requested_at)
+                      values ($1, 'clm_t1', $2, $3, 'customer-portal', now())`;
+
+test('a review request concerns an automated decision on the same claim, and only one is open', async () => {
+  await inTx(async () => {
+    await seedDecision();
+    await rejects(insertReview, ['rvw_wrong_seq', 'dec_t1', 2], RAISE_EXCEPTION);
+    await db.query(insertReview, ['rvw_1', 'dec_t1', 1]);
+    await rejects(insertReview, ['rvw_2', 'dec_t1', 1], UNIQUE_VIOLATION);
+    await humanDecision('dec_h0', 2, null);
+    await rejects(insertReview, ['rvw_human', 'dec_h0', 2], RAISE_EXCEPTION);
+  });
+});
+
+test('a review request is closed once, by the human decision that answers it', async () => {
+  await inTx(async () => {
+    await seedDecision();
+    await db.query(insertReview, ['rvw_1', 'dec_t1', 1]);
+    await db.query('set local role claims_service');
+    const close = `update claims.review_request set closed_by_decision_id = $2, closed_at = now() where id = $1`;
+    await rejects(close, ['rvw_1', 'dec_t1'], RAISE_EXCEPTION); // automated
+    await humanDecision('dec_h1', 2, null);
+    await rejects(close, ['rvw_1', 'dec_h1'], RAISE_EXCEPTION); // does not answer it
+    await humanDecision('dec_h2', 3, 'rvw_1');
+    await db.query(close, ['rvw_1', 'dec_h2']);
+    await rejects(close, ['rvw_1', 'dec_h2'], RAISE_EXCEPTION); // already closed
+    await rejects(`update claims.review_request set statement = 'x' where id = 'rvw_1'`, [], PERMISSION_DENIED);
+    await rejects(`delete from claims.review_request where id = 'rvw_1'`, [], PERMISSION_DENIED);
+  });
+});
+
+test('an automated decision cannot be the answer to a review', async () => {
+  await inTx(async () => {
+    await seedDecision();
+    await db.query(insertReview, ['rvw_1', 'dec_t1', 1]);
+    await rejects(
+      `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version, decided_by,
+                                    automated, review_request_id)
+       values ('dec_a2', 'clm_t1', 2, 'approved', 100000, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'auto', true, 'rvw_1')`,
+      [],
+      CHECK_VIOLATION,
+    );
   });
 });

@@ -16,6 +16,7 @@ import type {
   PolicyPort,
   PolicySnapshot,
   RulesPort,
+  ReviewRequest,
   ClaimsRules,
   Clock,
   IdGenerator,
@@ -33,6 +34,7 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   private evidence = new Map<string, DecisionEvidence>();
   private journals: LedgerJournal[] = [];
   private periods: DeductiblePeriod[] = [];
+  private reviews: ReviewRequest[] = [];
   private outbox: Array<OutboxEntry & { publishedAt?: Timestamp }> = [];
   private outboxSeq = 0;
 
@@ -81,8 +83,15 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   }
 
   /** Checks everything first and then changes, so an error never leaves half a decision behind. */
-  async commitDecision({ decision, journals, deductiblePeriod, evidence, events }: DecisionCommit) {
+  async commitDecision({ decision, journals, deductiblePeriod, evidence, events, closesReviewRequestId }: DecisionCommit) {
     if (!this.claims.has(decision.claimId)) throw new Error(`Claim ${decision.claimId} does not exist`);
+    const review = closesReviewRequestId ? this.reviews.find((r) => r.id === closesReviewRequestId) : undefined;
+    if (closesReviewRequestId && (!review || review.claimId !== decision.claimId || review.closedAt)) {
+      throw new Error(`Review request ${closesReviewRequestId} is not open for claim ${decision.claimId}`);
+    }
+    if (closesReviewRequestId && (decision.automated || decision.reviewRequestId !== closesReviewRequestId)) {
+      throw new Error(`Review request ${closesReviewRequestId} must be closed by the human decision that answers it`);
+    }
     if (evidence.decisionId !== decision.id) throw new Error(`Evidence for ${evidence.decisionId} given with decision ${decision.id}`);
     for (const j of journals) {
       const sum = j.lines.reduce((s, l) => s + l.amount, 0);
@@ -107,7 +116,26 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
     this.journals.push(...structuredClone(journals));
     this.periods = remaining;
     if (deductiblePeriod) this.periods.push({ ...deductiblePeriod });
+    if (review) Object.assign(review, { closedByDecisionId: decision.id, closedAt: decision.decidedAt });
     this.appendEvents(events);
+  }
+
+  async saveReviewRequest(request: ReviewRequest, events: ClaimsEvent[]) {
+    const decision = this.decisions.find((d) => d.id === request.decisionId);
+    if (!decision || decision.claimId !== request.claimId || decision.seq !== request.decisionSeq) {
+      throw new Error(`Decision ${request.decisionId} does not match claim ${request.claimId}#${request.decisionSeq}`);
+    }
+    if (!decision.automated) throw new Error(`Decision ${request.decisionId} is not automated`);
+    if (this.reviews.some((r) => r.id === request.id)) throw new Error(`Review request ${request.id} already exists`);
+    if (this.reviews.some((r) => r.claimId === request.claimId && !r.closedAt)) {
+      throw new StoreConflictError('review_open', `Claim ${request.claimId} already has an open review request`);
+    }
+    this.reviews.push(structuredClone(request));
+    this.appendEvents(events);
+  }
+
+  async getReviewRequests(claimId: string) {
+    return this.reviews.filter((r) => r.claimId === claimId).map((r) => structuredClone(r));
   }
 
   async pendingEvents(limit: number): Promise<OutboxEntry[]> {

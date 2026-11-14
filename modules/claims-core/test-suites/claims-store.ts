@@ -12,7 +12,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreConflictError, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore, type DecisionCommit } from '../src/ports.ts';
-import type { Assessment, Claim, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot } from '../src/types.ts';
+import type { Assessment, Claim, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot, ReviewRequest } from '../src/types.ts';
 import { accounts, type LimitKey } from '../src/ledger.ts';
 
 /** A store that also exposes its outbox, as every implementation must. */
@@ -82,6 +82,7 @@ function decision(claimId: string, seq: number, payout: number, overrides: Parti
     decidedBy: 'auto',
     decidedAt: `2026-10-0${2 + seq}T10:00:00.000Z`,
     deviatesFromProposal: false,
+    automated: (overrides.decidedBy ?? 'auto') === 'auto',
     ...overrides,
   };
 }
@@ -163,6 +164,23 @@ function period(id: string, openedByClaimId: string, validFrom: string, validTo:
 
 function registered(c: Claim): ClaimsEvent[] {
   return [{ type: 'claim.registered', occurredAt: c.receivedAt, claim: c }];
+}
+
+function reviewRequest(d: ClaimDecision, overrides: Partial<ReviewRequest> = {}): ReviewRequest {
+  return {
+    id: `rvw_${d.id}`,
+    claimId: d.claimId,
+    decisionId: d.id,
+    decisionSeq: d.seq,
+    requestedBy: 'customer-portal',
+    statement: 'The vet says this is a new illness.',
+    requestedAt: '2026-10-05T08:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function reviewRequested(request: ReviewRequest): ClaimsEvent[] {
+  return [{ type: 'claim.review_requested', occurredAt: request.requestedAt, request }];
 }
 
 function decided(d: ClaimDecision): ClaimsEvent[] {
@@ -393,6 +411,83 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       await store.commitDecision(commit(decision('clm_b', 1, 0), [], next));
       assert.deepEqual(await store.findDeductiblePeriod('ani_suite', 'ora', '2027-02-03'), next);
     });
+    // Review requests (ADR 0018) ------------------------------------------------
+
+    it('the automated flag and the answered review are read back with the decision', async (store) => {
+      await save(store, claim('clm_a'));
+      const auto = decision('clm_a', 1, 50_000);
+      await store.commitDecision(commit(auto, [consumption(auto, 50_000)]));
+      const req = reviewRequest(auto);
+      await store.saveReviewRequest(req, reviewRequested(req));
+      const human = decision('clm_a', 2, 50_000, { decidedBy: 'handlaggare@example.test', reviewRequestId: req.id });
+      await store.commitDecision({ ...commit(human), closesReviewRequestId: req.id });
+      assert.deepEqual(await store.getDecisions('clm_a'), [auto, human]);
+      assert.equal(auto.automated, true);
+      assert.equal(human.automated, false);
+    });
+
+    it('a review request is read back unchanged, and a claim without requests has an empty list', async (store) => {
+      await save(store, claim('clm_a'));
+      await save(store, claim('clm_b', { claimNo: 'S-b' }));
+      const d = decision('clm_a', 1, 50_000);
+      await store.commitDecision(commit(d, [consumption(d, 50_000)]));
+      const req = reviewRequest(d);
+      await store.saveReviewRequest(req, reviewRequested(req));
+      assert.deepEqual(await store.getReviewRequests('clm_a'), [req]);
+      assert.deepEqual(await store.getReviewRequests('clm_b'), []);
+    });
+
+    it('a claim has at most one open review request, and nothing is stored on conflict', async (store) => {
+      await save(store, claim('clm_a'));
+      const d = decision('clm_a', 1, 50_000);
+      await store.commitDecision(commit(d, [consumption(d, 50_000)]));
+      const first = reviewRequest(d);
+      await store.saveReviewRequest(first, reviewRequested(first));
+      const second = reviewRequest(d, { id: 'rvw_second' });
+      await assert.rejects(store.saveReviewRequest(second, reviewRequested(second)), isConflict('review_open'));
+      assert.deepEqual(await store.getReviewRequests('clm_a'), [first]);
+      assert.deepEqual(await pendingTypes(store), ['claim.registered', 'claim.decided', 'claim.review_requested']);
+    });
+
+    it('a review request for a decision made by a person is rejected', async (store) => {
+      await save(store, claim('clm_a'));
+      const d = decision('clm_a', 1, 50_000, { decidedBy: 'handlaggare@example.test' });
+      await store.commitDecision(commit(d, [consumption(d, 50_000)]));
+      await assert.rejects(store.saveReviewRequest(reviewRequest(d), []));
+      assert.deepEqual(await store.getReviewRequests('clm_a'), []);
+    });
+
+    it('the human decision closes the request in the same transaction, and a new request can then be made', async (store) => {
+      await save(store, claim('clm_a'));
+      const auto = decision('clm_a', 1, 50_000);
+      await store.commitDecision(commit(auto, [consumption(auto, 50_000)]));
+      const req = reviewRequest(auto);
+      await store.saveReviewRequest(req, reviewRequested(req));
+      const human = decision('clm_a', 2, 50_000, { decidedBy: 'handlaggare@example.test', reviewRequestId: req.id });
+      await store.commitDecision({ ...commit(human), closesReviewRequestId: req.id });
+      assert.deepEqual(await store.getReviewRequests('clm_a'), [{ ...req, closedByDecisionId: human.id, closedAt: human.decidedAt }]);
+
+      const again = decision('clm_a', 3, 50_000, { decidedAt: '2026-10-06T10:00:00.000Z' });
+      await store.commitDecision(commit(again));
+      const next = reviewRequest(again, { id: 'rvw_next', requestedAt: '2026-10-07T10:00:00.000Z' });
+      await store.saveReviewRequest(next, reviewRequested(next));
+      assert.equal((await store.getReviewRequests('clm_a')).length, 2);
+    });
+
+    it('closing a request needs the human decision that answers it, else nothing is stored', async (store) => {
+      await save(store, claim('clm_a'));
+      const auto = decision('clm_a', 1, 50_000);
+      await store.commitDecision(commit(auto, [consumption(auto, 50_000)]));
+      const req = reviewRequest(auto);
+      await store.saveReviewRequest(req, reviewRequested(req));
+      const automated = decision('clm_a', 2, 50_000, { reviewRequestId: req.id });
+      await assert.rejects(store.commitDecision({ ...commit(automated), closesReviewRequestId: req.id }));
+      const unknown = decision('clm_a', 2, 50_000, { decidedBy: 'handlaggare@example.test', reviewRequestId: 'rvw_unknown' });
+      await assert.rejects(store.commitDecision({ ...commit(unknown), closesReviewRequestId: 'rvw_unknown' }));
+      assert.deepEqual(await store.getDecisions('clm_a'), [auto]);
+      assert.deepEqual(await store.getReviewRequests('clm_a'), [req]);
+    });
+
     // Outbox ------------------------------------------------------------------
 
     it('a stored claim writes its event to the outbox', async (store) => {

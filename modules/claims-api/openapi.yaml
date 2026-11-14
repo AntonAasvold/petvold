@@ -27,6 +27,7 @@ security:
 tags:
   - name: claims
   - name: decisions
+  - name: reviews
   - name: previews
   - name: limits
 
@@ -192,10 +193,7 @@ paths:
         be reproduced exactly. Decisions made before evidence was stored give 404.
       parameters:
         - $ref: '#/components/parameters/ClaimId'
-        - name: seq
-          in: path
-          required: true
-          schema: { type: integer, minimum: 1 }
+        - $ref: '#/components/parameters/Seq'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -204,6 +202,100 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReplayResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/claims/{claimId}/decisions/{seq}/explanation:
+    get:
+      tags: [decisions]
+      operationId: explainDecision
+      x-permission: claims:read
+      summary: Explain a decision
+      description: |
+        Requires the permission `claims:read`.
+
+        Why the decision came out as it did (ADR 0018, GDPR art. 13–15 and 22):
+        the main reason, every rule the engine checked, the calculation step by
+        step, a handler's motivation when the decision deviates from the
+        proposal, and whether a human review can be requested. Built from the
+        stored decision and its evidence, so it is the same today and later.
+        Every part has a stable `reason` and `params`; `message` is the text in
+        the language from `Accept-Language`.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/Seq'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The explanation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DecisionExplanation' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}/decisions/{seq}/review-requests:
+    post:
+      tags: [reviews]
+      operationId: requestReview
+      x-permission: claims:request-review
+      summary: Request a human review of an automated decision
+      description: |
+        Requires the permission `claims:request-review`.
+
+        The customer's right to human review, to state their view and to
+        contest an automated decision (ADR 0018, GDPR art. 22). Allowed for
+        the claim's latest decision when it is automated (`automated: true`),
+        and only one open request per claim (409 otherwise). The request is
+        open until a claims handler decides the claim; that decision is the
+        review, carries `reviewRequestId` and closes the request.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/Seq'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewRequestInput' }
+            examples:
+              withStatement:
+                $ref: '#/components/examples/ReviewRequestWithStatement'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The request is open
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}/review-requests:
+    get:
+      tags: [reviews]
+      operationId: listReviewRequests
+      x-permission: claims:read
+      summary: List the claim's review requests
+      description: Requires the permission `claims:read`. Oldest first, open and closed.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The requests
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReviewRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /v1/claims/{claimId}/reassessments:
@@ -336,6 +428,12 @@ components:
       in: path
       required: true
       schema: { type: string }
+    Seq:
+      name: seq
+      in: path
+      required: true
+      description: The decision's sequence number on the claim, 1 for the first.
+      schema: { type: integer, minimum: 1 }
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -445,6 +543,10 @@ components:
         action: reject
         reasonCode: pre_existing_condition
         reason: The injury is covered by the rider.
+    ReviewRequestWithStatement:
+      summary: The customer contests an automatic decision
+      value:
+        statement: The ear infection started after the waiting period, see the attached journal.
     Reassess:
       summary: Reassess after a change
       value:
@@ -619,7 +721,7 @@ components:
 
     Decision:
       type: object
-      required: [id, claimId, seq, outcome, payout, assessment, decidedBy, decidedAt, deviatesFromProposal]
+      required: [id, claimId, seq, outcome, payout, assessment, decidedBy, decidedAt, deviatesFromProposal, automated]
       properties:
         id: { type: string }
         claimId: { type: string }
@@ -634,6 +736,15 @@ components:
           type: boolean
           description: True if the handler decided against the assessment's proposal. Then `reasonCode` and `reason` are always set.
         reasonCode: { $ref: '#/components/schemas/DeviationReasonCode' }
+        automated:
+          type: boolean
+          description: |
+            True if no person judged the outcome (automatic settlement or
+            reassessment). The customer may request a human review of an
+            automated decision.
+        reviewRequestId:
+          type: string
+          description: Set when this decision is the human review of a request.
 
     DeviationReasonCode:
       type: string
@@ -672,6 +783,103 @@ components:
               path: { type: string, description: 'JSON path in the assessment, e.g. /calculation/payout' }
               stored: {}
               replayed: {}
+
+    Reason:
+      type: object
+      required: [reason, params]
+      properties:
+        reason: { type: string, description: 'Stable key, e.g. decision.partial or waiting.within.' }
+        params:
+          type: object
+          additionalProperties:
+            type: [string, number]
+        message: { type: string, description: Text in the language from Accept-Language. }
+
+    ExplanationStep:
+      allOf:
+        - $ref: '#/components/schemas/Reason'
+        - type: object
+          required: [step, amount]
+          properties:
+            step:
+              type: string
+              enum: [billed, non_reimbursable, vat_excluded, deductible_fixed, deductible_fixed_in_period, deductible_variable, limit_capped, payout]
+            amount:
+              type: integer
+              description: In the smallest currency unit. Reductions are negative, so the steps add up to the payout.
+
+    DecisionExplanation:
+      type: object
+      required: [claimId, decisionId, seq, outcome, payout, currency, decidedAt, automated, mainReason, rules, steps, humanReview, basis]
+      properties:
+        claimId: { type: string }
+        decisionId: { type: string }
+        seq: { type: integer, minimum: 1 }
+        outcome: { $ref: '#/components/schemas/Outcome' }
+        payout: { $ref: '#/components/schemas/NonNegativeMoney' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        decidedAt: { $ref: '#/components/schemas/DateTime' }
+        automated: { type: boolean }
+        mainReason:
+          $ref: '#/components/schemas/Reason'
+          description: The one reason that best explains the outcome.
+        rules:
+          type: array
+          description: Every rule the engine checked, in order.
+          items: { $ref: '#/components/schemas/RuleResult' }
+        steps:
+          type: array
+          description: The calculation step by step. Empty when the claim was rejected.
+          items: { $ref: '#/components/schemas/ExplanationStep' }
+        deviation:
+          type: object
+          description: Set when a handler decided against the proposal.
+          required: [reasonCode, reason]
+          properties:
+            reasonCode: { $ref: '#/components/schemas/DeviationReasonCode' }
+            reason: { type: string }
+            message: { type: string, description: The reason code as text in the language from Accept-Language. }
+        reviewRequestId: { type: string, description: Set when this decision answers a review request. }
+        humanReview:
+          type: object
+          required: [available]
+          properties:
+            available: { type: boolean, description: A human review of this decision can be requested now. }
+            openRequestId: { type: string }
+        basis:
+          type: object
+          description: What makes the decision traceable and recalculable.
+          required: [rulesVersion, productVersion, policyVersionId, inputHash, calculationModel, engineVersion]
+          properties:
+            rulesVersion: { type: string }
+            productVersion: { type: [string, 'null'] }
+            policyVersionId: { type: [string, 'null'] }
+            inputHash: { type: string }
+            calculationModel: { type: [string, 'null'], description: null for decisions made before evidence was stored. }
+            engineVersion: { type: [string, 'null'] }
+
+    ReviewRequestInput:
+      type: object
+      additionalProperties: false
+      properties:
+        statement:
+          type: string
+          maxLength: 4000
+          description: The customer's view, in their own words.
+
+    ReviewRequest:
+      type: object
+      required: [id, claimId, decisionId, decisionSeq, requestedBy, requestedAt]
+      properties:
+        id: { type: string }
+        claimId: { type: string }
+        decisionId: { type: string }
+        decisionSeq: { type: integer, minimum: 1 }
+        requestedBy: { type: string }
+        statement: { type: string }
+        requestedAt: { $ref: '#/components/schemas/DateTime' }
+        closedByDecisionId: { type: string, description: The human decision that closed the request. }
+        closedAt: { $ref: '#/components/schemas/DateTime' }
 
     RegisterClaimResult:
       type: object
@@ -735,6 +943,14 @@ components:
         type: { const: claim.decided }
         occurredAt: { $ref: '#/components/schemas/DateTime' }
         decision: { $ref: '#/components/schemas/Decision' }
+
+    ClaimReviewRequestedEvent:
+      type: object
+      required: [type, occurredAt, request]
+      properties:
+        type: { const: claim.review_requested }
+        occurredAt: { $ref: '#/components/schemas/DateTime' }
+        request: { $ref: '#/components/schemas/ReviewRequest' }
 
     Problem:
       type: object

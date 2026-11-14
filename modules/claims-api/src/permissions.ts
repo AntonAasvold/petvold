@@ -13,6 +13,8 @@ export const PERMISSIONS = [
   /** Decide against the assessment's proposal (ADR 0018). Checked inside the decide operation. */
   'claims:override',
   'claims:reassess',
+  /** Ask for a human review of an automated decision on the customer's behalf (ADR 0018). */
+  'claims:request-review',
   'claims:preview',
   'limits:read',
 ] as const;
@@ -24,10 +26,21 @@ export type RolePermissions = Record<string, readonly Permission[]>;
 
 /** The default roles Petvold ships with, as a starting point for an installation. */
 export const DEFAULT_ROLES: RolePermissions = {
-  handler: ['claims:register', 'claims:read', 'claims:decide', 'claims:override', 'claims:reassess', 'claims:preview', 'limits:read'],
+  handler: [
+    'claims:register',
+    'claims:read',
+    'claims:decide',
+    'claims:override',
+    'claims:reassess',
+    'claims:request-review',
+    'claims:preview',
+    'limits:read',
+  ],
   approver: ['claims:read', 'limits:read'],
   clinic: ['claims:register', 'claims:read', 'claims:preview'],
   'reassessment-job': ['claims:read', 'claims:reassess'],
+  /** The insurer's customer portal or app, acting for a signed-in customer. */
+  'customer-channel': ['claims:read', 'claims:request-review'],
 };
 
 export function isPermission(value: unknown): value is Permission {

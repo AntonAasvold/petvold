@@ -2,6 +2,27 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 16)
+
+**Gjort**
+- #21 mergad: omräkning och scenarier.
+- Förklaring per beslut och mänsklig prövning (ADR 0018, GDPR art. 13–15 och 22):
+  - **Automatiska beslut märks** med `automated`. Det gäller automatisk reglering och omprövning. Gamla beslut fick värdet i migrationen.
+  - **Förklaring:** `GET /v1/claims/{id}/decisions/{seq}/explanation`. Den är en ren funktion `explainDecision()` i kärnan och ger huvudskäl, alla regler, beräkningen steg för steg (stegen summerar till ersättningen), avvikelse, möjlighet till prövning och underlagets versioner. Texten kommer på svenska och engelska via `messages.ts`.
+  - **Begäran om prövning:** `POST /v1/claims/{id}/decisions/{seq}/review-requests`. Den gäller bara ärendets senaste automatiska beslut, och ärendet kan ha högst en öppen begäran. Nästa beslut av en handläggare är prövningen och stänger begäran i samma transaktion. Händelsen heter `claim.review_requested`.
+  - **Ny rättighet** `claims:request-review` och ny standardroll `customer-channel` (kundportal). Ny dev-token `dev-customer`.
+  - **Migration 0006:** `claims.review_request`, med regler i databasen: en öppen begäran per ärende, bara automatiska beslut, och stängning bara av det mänskliga beslut som besvarar den. Provad ner och upp igen.
+- Kontraktet ändrades först. Dokumentationen är uppdaterad: skadereglering med ett exempel, behörighet och arkitektur.
+- 161 tester och 53 databastester.
+
+**Nästa steg**
+1. Behörighet del 2: omfång per marknad, klinik och kund.
+2. Attestkedjan med beloppsgränser, fyra ögon och utbetalningsorder. Det slutför M1.
+
+**Öppet**
+- Kundkanalen kan läsa och begära prövning i alla ärenden tills omfånget finns (del 2).
+- Tidsgräns, påminnelse och kö för prövningar kommer i M6.
+
 ## 2026-11-14 (pass 15)
 
 **Gjort**

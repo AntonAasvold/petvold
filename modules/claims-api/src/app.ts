@@ -4,7 +4,7 @@ import { DomainError } from '@petvold/claims-core';
 import { formatErrors, openapiText, operationPermissions, validatorFor, type FieldError } from './contract.ts';
 import { routePath } from 'hono/route';
 import { assertRolePermissions, DEFAULT_ROLES, isPermission, permissionsOf, type RolePermissions } from './permissions.ts';
-import { localizeDeep, pickLocale } from './messages.ts';
+import { localizeDeep, localizeExplanation, pickLocale } from './messages.ts';
 
 /** Who is calling. Comes from a JWT in production (e.g. the insurer's identity provider, or OAuth for clinics). */
 export interface Principal {
@@ -158,10 +158,32 @@ export function createApp(d: AppDeps) {
   });
 
   app.post('/v1/claims/:claimId/decisions/:seq/replays', async (c) => {
-    const seq = Number(c.req.param('seq'));
-    if (!Number.isInteger(seq) || seq < 1) return problem(c, 422, 'seq must be a positive integer');
+    const seq = parseSeq(c.req.param('seq'));
+    if (!seq) return problem(c, 422, 'seq must be a positive integer');
     return send(c, await d.service.replayDecision(c.req.param('claimId'), seq));
   });
+
+  app.get('/v1/claims/:claimId/decisions/:seq/explanation', async (c) => {
+    const seq = parseSeq(c.req.param('seq'));
+    if (!seq) return problem(c, 422, 'seq must be a positive integer');
+    const explanation = await d.service.explainDecision(c.req.param('claimId'), seq);
+    const locale = pickLocale(c.req.header('accept-language'));
+    return send(c, localizeExplanation(explanation, locale));
+  });
+
+  app.post('/v1/claims/:claimId/decisions/:seq/review-requests', async (c) => {
+    const p = c.get('principal');
+    const seq = parseSeq(c.req.param('seq'));
+    if (!seq) return problem(c, 422, 'seq must be a positive integer');
+    const r = await readJson(c, 'ReviewRequestInput');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => {
+      const request = await d.service.requestReview(c.req.param('claimId'), seq, { ...r.body, requestedBy: p.subject });
+      return { status: 201, body: request };
+    });
+  });
+
+  app.get('/v1/claims/:claimId/review-requests', async (c) => send(c, { items: await d.service.getReviewRequests(c.req.param('claimId')) }));
 
   app.post('/v1/claims/:claimId/reassessments', async (c) => {
     const p = c.get('principal');
@@ -204,6 +226,12 @@ export function createApp(d: AppDeps) {
   });
 
   return app;
+}
+
+/** A decision sequence number from the path, or null if it is not a positive integer. */
+function parseSeq(raw: string): number | null {
+  const seq = Number(raw);
+  return Number.isInteger(seq) && seq >= 1 ? seq : null;
 }
 
 /** A Hono route as 'METHOD /path' in OpenAPI format. */

@@ -7,13 +7,14 @@
  * in-memory sample data until the policy and product modules exist.
  *
  * Tokens: 'dev-handler' (claims handler), 'dev-clinic' (clinic), 'dev-job'
- * (reassessment job). Roles map to permissions with DEFAULT_ROLES (ADR 0016).
+ * (reassessment job), 'dev-customer' (customer channel). Roles map to
+ * permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
  */
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { serve } from '@hono/node-server';
-import { ClaimsService, relayOutbox, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore } from '@petvold/claims-core';
+import { ClaimsService, eventClaimId, relayOutbox, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore } from '@petvold/claims-core';
 import { InMemoryClaimsStore, InMemoryPolicyPort, StaticRulesPort, fixtures } from '@petvold/claims-store-memory';
 import { createPool, PostgresClaimsStore, PostgresIdempotencyStore } from '@petvold/claims-store-postgres';
 import { createApp, InMemoryIdempotencyStore, type IdempotencyStore, type Principal } from './index.ts';
@@ -70,7 +71,7 @@ const service = new ClaimsService({
 // The relay publishes events from the outbox. Here it just logs them.
 const logSink = {
   publish: async (e: ClaimsEvent) =>
-    console.log(`[event] ${e.type} ${e.type === 'claim.registered' ? e.claim.id : `${e.decision.claimId}#${e.decision.seq}`}`),
+    console.log(`[event] ${e.type} ${e.type === 'claim.decided' ? `${e.decision.claimId}#${e.decision.seq}` : eventClaimId(e)}`),
 };
 setInterval(() => void relayOutbox(store, logSink, clock).catch((err) => console.error('[relay]', err)), 1_000).unref();
 
@@ -78,6 +79,7 @@ const tokens: Record<string, Principal> = {
   'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler', 'approver'] },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'] },
   'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'] },
+  'dev-customer': { subject: 'customer-portal', roles: ['customer-channel'] },
 };
 
 const app = createApp({
@@ -101,4 +103,4 @@ console.log(`Claims engine listening on http://localhost:${port}`);
 console.log(`  Storage:   ${storage}`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (claims handler), dev-clinic (clinic), dev-job (reassessment job)`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);

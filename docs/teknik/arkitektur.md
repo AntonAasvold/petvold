@@ -68,6 +68,18 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 
 **Omräkning:** `replay()` i `claims-core/src/replay.ts` väljer beräkningsmodell ur `CALCULATION_MODELS`, kör det sparade underlaget och jämför med den sparade bedömningen fält för fält (JSON-pekare). Den används både av API:et (`POST /v1/claims/{id}/decisions/{seq}/replays`) och av scenariotesterna i CI ([Testning](testning.md#scenarier)). En ändring i `assess` eller `calculate` som ändrar resultatet för sparade beslut ska bli en ny beräkningsmodell, och den gamla behålls.
 
+**Förklaring:** `explainDecision()` i `claims-core/src/explain.ts` är en ren funktion av beslutet, underlaget och ärendets begäranden om prövning. Den ger nycklar och värden, ingen text. API:et lägger till text med `localizeExplanation()` i `messages.ts`.
+
+**Mänsklig prövning:**
+- **Tabeller.** `claims.decision.automated` märker automatiska beslut. Begäranden ligger i `claims.review_request` (migration 0006). Beslutet som besvarar en begäran har `review_request_id`.
+- **Stängning.** Den stängs i samma transaktion som beslutet (`DecisionCommit.closesReviewRequestId`).
+- **Databasen upprätthåller reglerna:**
+  - högst en öppen begäran per ärende (unikt partiellt index)
+  - begäran gäller ett automatiskt beslut i samma ärende
+  - den stängs en gång, av det mänskliga beslut som besvarar den (trigger)
+  - ett automatiskt beslut kan inte vara en prövning (check-constraint)
+- **Behörighet.** Tjänsterollen får bara uppdatera kolumnerna som stänger begäran.
+
 ## Ledgern
 
 Varje beslut som ändrar ersättningen bokförs som en journal med fyra rader som summerar till noll:

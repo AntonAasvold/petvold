@@ -10,6 +10,7 @@ import pg from 'pg';
 import {
   StoreConflictError,
   accounts,
+  eventClaimId,
   type LimitKey,
   type Claim,
   type ClaimDecision,
@@ -20,6 +21,7 @@ import {
   type DecisionCommit,
   type DecisionEvidence,
   type DeductiblePeriod,
+  type ReviewRequest,
   type ISODate,
   type MinorUnits,
   type Timestamp,
@@ -55,10 +57,9 @@ export function createPool(connectionString: string, options: Omit<pg.PoolConfig
 /** Writes events to the outbox within the caller's transaction (ADR 0008). */
 async function insertEvents(db: pg.PoolClient, events: ClaimsEvent[]): Promise<void> {
   for (const e of events) {
-    const aggregateId = e.type === 'claim.registered' ? e.claim.id : e.decision.claimId;
     await db.query(`insert into claims.outbox (type, aggregate_id, payload, created_at) values ($1, $2, $3, $4)`, [
       e.type,
-      aggregateId,
+      eventClaimId(e),
       JSON.stringify(e),
       e.occurredAt,
     ]);
@@ -185,7 +186,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
   async getDecisions(claimId: string): Promise<ClaimDecision[]> {
     const { rows } = await this.pool.query(
       `select id, claim_id, seq, outcome, payout_minor, assessment, decided_by, decided_at, reason,
-              deviates_from_proposal, reason_code
+              deviates_from_proposal, reason_code, automated, review_request_id
        from claims.decision where claim_id = $1 order by seq`,
       [claimId],
     );
@@ -201,6 +202,8 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       ...(d.reason !== null ? { reason: d.reason } : {}),
       deviatesFromProposal: d.deviates_from_proposal,
       ...(d.reason_code !== null ? { reasonCode: d.reason_code } : {}),
+      automated: d.automated,
+      ...(d.review_request_id !== null ? { reviewRequestId: d.review_request_id } : {}),
     }));
   }
 
@@ -215,15 +218,15 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       : null;
   }
 
-  async commitDecision({ decision: d, journals, deductiblePeriod: p, evidence, events }: DecisionCommit): Promise<void> {
+  async commitDecision({ decision: d, journals, deductiblePeriod: p, evidence, events, closesReviewRequestId }: DecisionCommit): Promise<void> {
     if (evidence.decisionId !== d.id) throw new Error(`Evidence for ${evidence.decisionId} given with decision ${d.id}`);
     await this.tx(async (db) => {
       const a = d.assessment;
       await db.query(
         `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash,
                                       rules_version, product_version, policy_version_id, decided_by, decided_at, reason,
-                                      deviates_from_proposal, reason_code)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+                                      deviates_from_proposal, reason_code, automated, review_request_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
         [
           d.id,
           d.claimId,
@@ -241,8 +244,18 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
           d.reason ?? null,
           d.deviatesFromProposal,
           d.reasonCode ?? null,
+          d.automated,
+          d.reviewRequestId ?? null,
         ],
       );
+      if (closesReviewRequestId) {
+        const closed = await db.query(
+          `update claims.review_request set closed_by_decision_id = $2, closed_at = $3
+           where id = $1 and claim_id = $4 and closed_at is null`,
+          [closesReviewRequestId, d.id, d.decidedAt, d.claimId],
+        );
+        if (closed.rowCount !== 1) throw new Error(`Review request ${closesReviewRequestId} is not open for claim ${d.claimId}`);
+      }
       await db.query(
         `insert into claims.decision_evidence (decision_id, input, calculation_model, engine_version) values ($1, $2, $3, $4)`,
         [evidence.decisionId, JSON.stringify(evidence.input), evidence.calculationModel, evidence.engineVersion],
@@ -279,6 +292,40 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       }
       throw e;
     });
+  }
+
+  async saveReviewRequest(r: ReviewRequest, events: ClaimsEvent[]): Promise<void> {
+    await this.tx(async (db) => {
+      await db.query(
+        `insert into claims.review_request (id, claim_id, decision_id, decision_seq, requested_by, statement, requested_at)
+         values ($1, $2, $3, $4, $5, $6, $7)`,
+        [r.id, r.claimId, r.decisionId, r.decisionSeq, r.requestedBy, r.statement ?? null, r.requestedAt],
+      );
+      await insertEvents(db, events);
+    }).catch((e: PgError) => {
+      if (e.code === UNIQUE_VIOLATION && e.constraint === 'review_request_one_open') {
+        throw new StoreConflictError('review_open', `Claim ${r.claimId} already has an open review request`);
+      }
+      throw e;
+    });
+  }
+
+  async getReviewRequests(claimId: string): Promise<ReviewRequest[]> {
+    const { rows } = await this.pool.query(
+      `select id, claim_id, decision_id, decision_seq, requested_by, statement, requested_at, closed_by_decision_id, closed_at
+       from claims.review_request where claim_id = $1 order by requested_at, id`,
+      [claimId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      claimId: r.claim_id,
+      decisionId: r.decision_id,
+      decisionSeq: r.decision_seq,
+      requestedBy: r.requested_by,
+      ...(r.statement !== null ? { statement: r.statement } : {}),
+      requestedAt: r.requested_at,
+      ...(r.closed_by_decision_id !== null ? { closedByDecisionId: r.closed_by_decision_id, closedAt: r.closed_at } : {}),
+    }));
   }
 
   async pendingEvents(limit: number): Promise<OutboxEntry[]> {

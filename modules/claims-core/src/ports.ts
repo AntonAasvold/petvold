@@ -7,6 +7,7 @@ import type {
   LedgerJournal,
   MinorUnits,
   PolicySnapshot,
+  ReviewRequest,
   Timestamp,
   Claim,
 } from './types.ts';
@@ -74,6 +75,15 @@ export interface ClaimsStore {
    * rejected with a plain error.
    */
   commitDecision(commit: DecisionCommit): Promise<void>;
+
+  /**
+   * Stores a request for human review and writes `events` to the outbox in the
+   * same transaction. Throws StoreConflictError('review_open') if the claim
+   * already has an open request; then nothing is stored.
+   */
+  saveReviewRequest(request: ReviewRequest, events: ClaimsEvent[]): Promise<void>;
+  /** The claim's review requests, oldest first. */
+  getReviewRequests(claimId: string): Promise<ReviewRequest[]>;
 }
 
 /**
@@ -83,7 +93,7 @@ export interface ClaimsStore {
  */
 export class StoreConflictError extends Error {
   constructor(
-    public readonly reason: 'claim_exists' | 'decision_exists' | 'period_overlaps',
+    public readonly reason: 'claim_exists' | 'decision_exists' | 'period_overlaps' | 'review_open',
     message: string,
   ) {
     super(message);
@@ -97,6 +107,12 @@ export interface DecisionCommit {
   deductiblePeriod: DeductiblePeriod | null;
   /** What the decision was based on (ADR 0018). `evidence.decisionId` must be `decision.id`. */
   evidence: DecisionEvidence;
+  /**
+   * The open review request this decision answers. Closed in the same transaction
+   * (closedByDecisionId = decision.id, closedAt = decision.decidedAt). A request
+   * that is unknown, for another claim or already closed is rejected with a plain error.
+   */
+  closesReviewRequestId?: string;
   /** Written to the outbox in the same transaction as the decision (ADR 0008). */
   events: ClaimsEvent[];
 }
@@ -111,7 +127,20 @@ export interface IdGenerator {
 
 export type ClaimsEvent =
   | { type: 'claim.registered'; occurredAt: Timestamp; claim: Claim }
-  | { type: 'claim.decided'; occurredAt: Timestamp; decision: ClaimDecision };
+  | { type: 'claim.decided'; occurredAt: Timestamp; decision: ClaimDecision }
+  | { type: 'claim.review_requested'; occurredAt: Timestamp; request: ReviewRequest };
+
+/** The claim an event concerns: the aggregate it belongs to in the outbox. */
+export function eventClaimId(e: ClaimsEvent): string {
+  switch (e.type) {
+    case 'claim.registered':
+      return e.claim.id;
+    case 'claim.decided':
+      return e.decision.claimId;
+    case 'claim.review_requested':
+      return e.request.claimId;
+  }
+}
 
 /**
  * Where the relay publishes events, e.g. a message broker or a webhook.

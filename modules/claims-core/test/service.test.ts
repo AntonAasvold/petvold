@@ -322,3 +322,139 @@ test('a stored decision can be replayed from its evidence and is identical', asy
   assert.equal(r.calculationModel, CALCULATION_MODEL);
   assert.equal(r.replayedWith.engineVersion, '0.1.0+test');
 });
+
+// Explanation and human review (ADR 0018, GDPR art. 22) ----------------------
+
+test('an automatic decision is marked automated, a handler decision is not', async () => {
+  const { service } = setup();
+  const auto = await service.registerClaim(otitisClaim());
+  assert.equal(auto.decision!.automated, true);
+  await service.registerClaim(cruciateClaim());
+  const manual = await service.decide('clm_048213', { action: 'accept', decidedBy: 'handlaggare@example.test' });
+  assert.equal(manual.automated, false);
+});
+
+test('the explanation of an automatic decision: main reason, rules, steps that add up, and review available', async () => {
+  const { service } = setup();
+  await service.registerClaim(otitisClaim());
+  const e = await service.explainDecision('clm_021877', 1);
+  assert.equal(e.automated, true);
+  assert.equal(e.mainReason.reason, e.outcome === 'partial' ? 'decision.partial' : 'decision.approved');
+  assert.ok(e.rules.length > 0);
+  assert.equal(e.steps[0]!.step, 'billed');
+  assert.equal(e.steps.at(-1)!.step, 'payout');
+  assert.equal(e.steps.at(-1)!.amount, 150_000);
+  const reductions = e.steps.slice(0, -1).reduce((s, x) => s + x.amount, 0);
+  assert.equal(reductions, e.payout, 'the steps add up to the payout');
+  assert.deepEqual(e.humanReview, { available: true });
+  assert.equal(e.basis.calculationModel, CALCULATION_MODEL);
+  assert.equal(e.basis.engineVersion, '0.1.0+test');
+});
+
+test('the explanation within an open deductible period names the period instead of a fixed deductible', async () => {
+  const { service } = setup();
+  await service.registerClaim(otitisClaim());
+  await service.registerClaim(otitisClaim({ id: 'clm_2', claimNo: 'S-2', treatmentFrom: '2026-07-01', treatmentTo: '2026-07-01' }));
+  const e = await service.explainDecision('clm_2', 1);
+  const step = e.steps.find((s) => s.step === 'deductible_fixed_in_period');
+  assert.ok(step, JSON.stringify(e.steps));
+  assert.equal(step.amount, 0);
+  assert.ok(step.params.validFrom && step.params.validTo);
+  assert.ok(!e.steps.some((s) => s.step === 'deductible_fixed'));
+});
+
+test('the explanation of a deviation gives the reason code as main reason and no calculation steps', async () => {
+  const { service } = setup();
+  await service.registerClaim(cruciateClaim());
+  await service.decide('clm_048213', {
+    action: 'reject',
+    decidedBy: 'handlaggare@example.test',
+    mayOverride: true,
+    reasonCode: 'pre_existing_condition',
+    reason: 'Lameness noted before inception',
+  });
+  const e = await service.explainDecision('clm_048213', 1);
+  assert.equal(e.mainReason.reason, 'deviation.pre_existing_condition');
+  assert.deepEqual(e.deviation, { reasonCode: 'pre_existing_condition', reason: 'Lameness noted before inception' });
+  assert.deepEqual(e.steps, []);
+  assert.equal(e.humanReview.available, false, 'a person already judged it');
+});
+
+test('the explanation of a rejection by rule gives the failed rule as main reason', async () => {
+  const { service } = setup();
+  await service.registerClaim(otitisClaim({ treatmentFrom: '2026-03-10', treatmentTo: '2026-03-10' })); // before the policy
+  await service.decide('clm_021877', { action: 'reject', decidedBy: 'handlaggare@example.test' });
+  const e = await service.explainDecision('clm_021877', 1);
+  assert.equal(e.outcome, 'rejected');
+  assert.equal(e.mainReason.reason, 'policy.not_found');
+  assert.equal(e.mainReason.params.date, '2026-03-10');
+});
+
+test('an unknown decision cannot be explained', async () => {
+  const { service } = setup();
+  await service.registerClaim(otitisClaim());
+  await assert.rejects(service.explainDecision('clm_021877', 2), (e: unknown) => e instanceof DomainError && e.code === 'not_found');
+});
+
+test('human review: requested for an automated decision, answered and closed by the next handler decision', async () => {
+  const { service, store, clock } = setup();
+  await service.registerClaim(otitisClaim());
+  clock.set('2026-11-14T08:00:00Z');
+  const req = await service.requestReview('clm_021877', 1, { requestedBy: 'customer-portal', statement: '  The vet says it is a new illness.  ' });
+  assert.equal(req.decisionSeq, 1);
+  assert.equal(req.statement, 'The vet says it is a new illness.');
+  assert.equal(req.closedAt, undefined);
+  assert.equal((await store.pendingEvents(10)).at(-1)!.event.type, 'claim.review_requested');
+
+  const e = await service.explainDecision('clm_021877', 1);
+  assert.deepEqual(e.humanReview, { available: false, openRequestId: req.id });
+
+  clock.set('2026-11-15T09:00:00Z');
+  const review = await service.decide('clm_021877', { action: 'accept', decidedBy: 'handlaggare@example.test' });
+  assert.equal(review.seq, 2);
+  assert.equal(review.automated, false);
+  assert.equal(review.reviewRequestId, req.id);
+  const [closed] = await service.getReviewRequests('clm_021877');
+  assert.equal(closed!.closedByDecisionId, review.id);
+  assert.equal(closed!.closedAt, '2026-11-15T09:00:00Z');
+  assert.equal((await service.explainDecision('clm_021877', 2)).reviewRequestId, req.id);
+});
+
+test('human review: only one open request per claim', async () => {
+  const { service } = setup();
+  await service.registerClaim(otitisClaim());
+  await service.requestReview('clm_021877', 1, { requestedBy: 'customer-portal' });
+  await assert.rejects(
+    service.requestReview('clm_021877', 1, { requestedBy: 'customer-portal' }),
+    (e: unknown) => e instanceof DomainError && e.code === 'conflict',
+  );
+});
+
+test('human review: not for a decision made by a person, nor for a replaced decision', async () => {
+  const { service } = setup();
+  await service.registerClaim(otitisClaim());
+  await service.decide('clm_021877', { action: 'accept', decidedBy: 'handlaggare@example.test' });
+  const conflict = (e: unknown) => e instanceof DomainError && e.code === 'conflict';
+  await assert.rejects(service.requestReview('clm_021877', 2, { requestedBy: 'customer-portal' }), conflict);
+  await assert.rejects(service.requestReview('clm_021877', 1, { requestedBy: 'customer-portal' }), conflict);
+  await assert.rejects(
+    service.requestReview('clm_021877', 3, { requestedBy: 'customer-portal' }),
+    (e: unknown) => e instanceof DomainError && e.code === 'not_found',
+  );
+});
+
+test('human review: a reassessment is automated and does not close the request', async () => {
+  const { service, policies, clock } = setup();
+  await service.registerClaim(otitisClaim());
+  const req = await service.requestReview('clm_021877', 1, { requestedBy: 'customer-portal' });
+  clock.set('2026-11-20T00:00:00Z');
+  policies.supersede('pv_bella_v4', '2026-11-20T00:00:00Z');
+  policies.add({ snapshot: bellaPolicy({ policyVersionId: 'pv_bella_v5', status: 'cancelled' }), sysFrom: '2026-11-20T00:00:00Z' });
+  const re = await service.reassess('clm_021877', 'reassessment-job', 'Retroactive cancellation');
+  assert.ok(re);
+  assert.equal(re.automated, true);
+  assert.equal(re.reviewRequestId, undefined);
+  assert.equal((await service.getReviewRequests('clm_021877'))[0]!.closedAt, undefined);
+  const review = await service.decide('clm_021877', { action: 'reject', decidedBy: 'handlaggare@example.test' });
+  assert.equal(review.reviewRequestId, req.id);
+});
