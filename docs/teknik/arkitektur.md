@@ -8,7 +8,7 @@ Petvold är en modulär monolit (ADR 0001): en process och en databas per instal
 
 ```mermaid
 flowchart LR
-  client[Klient: kundens system, klinik, handläggare] -->|HTTP + JWT| api[claims-api<br/>Hono, kontrakt, behörighet, idempotens]
+  client[Klient: kundens system, klinik, handläggare] -->|HTTP + JWT| api[api<br/>Hono, kontrakt, behörighet, idempotens]
   api --> core[claims-core<br/>ren domän: bedömning, beräkning, beslut]
   core -->|PolicyPort| policy[(Policy<br/>extern eller egen)]
   core -->|RulesPort| rules[(Produktregler)]
@@ -27,7 +27,7 @@ flowchart LR
 | `claims-store-postgres` | Lagring i Postgres med ren SQL (ADR 0015) och idempotensnycklar | `claims-core`, `pg` |
 | `decisioning` | Regeluppsättningar med livscykel: `DecisioningService`, porten `RuleSetStore`, lagring i minnet och i Postgres (schemat `decisioning`), och `DecisioningRulesPort` som skademotorn läser regler genom (ADR 0021) | `claims-core` (typer och kontrollsumma), `pg` |
 | `access` | Rollinställningen som versioner: tjänsten `AccessService`, porten `RoleConfigStore`, lagring i minnet och i Postgres (schemat `access`, ADR 0020) | `pg` |
-| `claims-api` | HTTP-lagret: validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, Hono |
+| `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, Hono |
 
 ## Portar och adaptrar
 
@@ -106,7 +106,7 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 **Rollinställningen (ADR 0020):**
 - **Versioner.** Modulen `access` sparar hela rollinställningen som versioner i `access.role_config` (migration 0009). Den har en egen tjänsteroll, `access_service`, som bara får läsa och lägga till.
 - **Läses vid varje anrop.** API-lagret läser gällande version vid varje anrop (`AccessService.current()`), så en ändring gäller direkt.
-- **Validering.** Modulen känner inte till rättigheterna. `claims-api` skickar med sin validering (`assertRoleDefinitions`).
+- **Validering.** Modulen känner inte till rättigheterna. `api` skickar med sin validering (`assertRoleDefinitions`).
 - **Optimistisk låsning.** En ny version sparas bara om den är exakt nästa nummer. Två samtidiga ändringar ger en vinnare och en 409.
 - **Utan databas.** Utan `access` i `createApp` ligger inställningen i minnet, med `roles` som version 1.
 
@@ -140,7 +140,7 @@ Händelser skrivs till `claims.outbox` i samma transaktion som ändringen (ADR 0
 
 ## API
 
-- **Kontraktet först** (ADR 0002). `modules/claims-api/openapi.yaml` är källan. Anrop valideras mot schemat, och `lint:openapi` kontrollerar att kontrakt och kod har exakt samma operationer.
+- **Kontraktet först** (ADR 0002). `modules/api/openapi.yaml` är källan. Anrop valideras mot schemat, och `lint:openapi` kontrollerar att kontrakt och kod har exakt samma operationer.
 - **Fel** som `application/problem+json` (RFC 9457).
 - **Idempotens:** anrop som skapar något kräver `Idempotency-Key`. Svaret sparas per anropare och nyckel, i Postgres när dev-servern kör mot databasen.
 - **Språk:** regelskäl är koder som översätts efter `Accept-Language` (`messages.ts`).

@@ -154,7 +154,7 @@ serve({
       ? new Response(docs, { headers: { 'content-type': 'text/html; charset=utf-8' } })
       : app.fetch(req),
 });
-console.log(`Claims engine listening on http://localhost:${port}`);
+console.log(`Petvold listening on http://localhost:${port}`);
 console.log(`  Storage:   ${storage}`);
 console.log(`  Rules:     ${decisioningUrl ? 'Postgres' : 'memory'}, series ${SERIES} (GET /v1/rule-sets/${SERIES}/versions)`);
 console.log(`  Roles:     ${accessUrl ? 'Postgres, versioned (GET /v1/access/roles)' : 'memory, versioned (GET /v1/access/roles)'}`);

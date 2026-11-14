@@ -28,7 +28,7 @@ export function docsPage({ specUrl, defaultToken }: DocsOptions): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Petvold – Claims API</title>
+  <title>Petvold API</title>
 </head>
 <body>
   <div id="app"></div>

@@ -4,7 +4,7 @@
  * The access module owns which permissions, bindings and amount limits each
  * role has in this installation. Every change is a new version with who, when
  * and why; nothing is overwritten. The module does not know the permissions
- * themselves: the caller supplies a validator (e.g. claims-api's).
+ * themselves: the caller supplies a validator (e.g. the api module's).
  */
 
 /** The smallest shape a role set has: role name -> definition with permissions. */

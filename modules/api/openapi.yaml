@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: Petvold – Claims API
+  title: Petvold API
   version: 0.1.0
-  summary: Headless claims handling for pet insurance.
+  summary: Headless core for pet insurance – claims, rule sets and access.
   description: |
     The contract is the source of truth. The server validates incoming
     requests against the schemas here, and the contract tests validate the responses.

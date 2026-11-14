@@ -2,6 +2,19 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 22)
+
+**Gjort**
+- #28 och #29 mergade: ADR 0021 och regeluppsättningarna.
+- HTTP-lagret har bytt namn från `claims-api` till `api` (`@petvold/api`), och kontraktet heter "Petvold API". Det har anrop för skador, regler och roller och är Petvolds enda HTTP-yta. Petvold körs som en process (modulär monolit, ADR 0001).
+
+**Nästa steg**
+1. Simulering av regelutkast mot sparade underlag.
+2. Produktkatalogen `catalog`.
+
+**Öppet**
+- ADR 0021 är Föreslagen och väntar på ditt beslut.
+
 ## 2026-11-14 (pass 21)
 
 **Gjort**

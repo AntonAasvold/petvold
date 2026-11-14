@@ -24,7 +24,7 @@ import {
   DEFAULT_ROLES,
   type Principal,
   type RoleDefinitions,
-} from '@petvold/claims-api';
+} from '@petvold/api';
 import { docsPage, SCALAR_VERSION } from '../src/docs.ts';
 
 const { bellaPolicy, cruciateClaim, otitisClaim, eurPolicy, eurClaim, RULES_SE_DOG, RULES_EUR_EXAMPLE, PRODUCT, PRODUCT_EUR } = fixtures;
