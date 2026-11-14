@@ -10,6 +10,14 @@ import {
   fixtures,
 } from '@petvold/claims-store-memory';
 
+/** A handler decision that must be made at once, not proposed. */
+async function decideNow(s: ClaimsService, claimId: string, cmd: Parameters<ClaimsService['decide']>[1]) {
+  const r = await s.decide(claimId, cmd);
+  assert.ok(r.decision, `expected a decision, got a proposal: ${JSON.stringify(r.proposal)}`);
+  return r.decision;
+}
+
+
 const { bellaPolicy, cruciateClaim, otitisClaim, RULES_SE_DOG, PRODUCT, eurPolicy, eurClaim, RULES_EUR_EXAMPLE, PRODUCT_EUR } = fixtures;
 
 function setup() {
@@ -45,7 +53,7 @@ test('a small claim is settled automatically, booked and opens a deductible peri
   assert.equal(r.decision.decidedBy, 'auto');
   assertBalanced(store);
   assert.equal(store.dump().periods.length, 1);
-  assert.deepEqual((await store.pendingEvents(10)).map((e) => e.event.type), ['claim.registered', 'claim.decided']);
+  assert.deepEqual((await store.pendingEvents(10)).map((e) => e.event.type), ['claim.registered', 'claim.decided', 'claim.payout_ordered']);
 
   const limits = await service.getLimits('pol_bella', 'ani_bella', '2026-11-13');
   assert.equal(limits.consumed, 150_000);
@@ -69,7 +77,7 @@ test('the design example goes to a handler and is decided with expectedInputHash
   assert.equal(r.decision, null);
   assert.equal(r.assessment.mode, 'manual');
 
-  const d = await service.decide('clm_048213', {
+  const d = await decideNow(service, 'clm_048213', {
     action: 'accept',
     decidedBy: 'handlaggare@example.test',
     reason: 'Left cruciate ligament, no link to the rider',
@@ -148,7 +156,7 @@ test('a proposed rejection cannot be accepted', async () => {
   const { service } = setup();
   await service.registerClaim(cruciateClaim({ id: 'c_x', claimNo: 'X', diagnosisCode: 'ORT-HALTA-HB-H' }));
   await assert.rejects(service.decide('c_x', { action: 'accept', decidedBy: 'h' }), (e: unknown) => e instanceof DomainError && e.code === 'validation');
-  const d = await service.decide('c_x', { action: 'reject', decidedBy: 'h', reason: 'Rider' });
+  const d = await decideNow(service, 'c_x', { action: 'reject', decidedBy: 'h', reason: 'Rider' });
   assert.equal(d.outcome, 'rejected');
   assert.equal(d.payout, 0);
 });
@@ -240,7 +248,7 @@ test('rejecting against the proposal requires a reason code and a reason', async
 test('a deviation is recorded with its reason code, and following the proposal is not', async () => {
   const { service } = setup();
   await service.registerClaim(cruciateClaim());
-  const d = await service.decide('clm_048213', {
+  const d = await decideNow(service, 'clm_048213', {
     action: 'reject',
     decidedBy: 'h',
     mayOverride: true,
@@ -330,7 +338,7 @@ test('an automatic decision is marked automated, a handler decision is not', asy
   const auto = await service.registerClaim(otitisClaim());
   assert.equal(auto.decision!.automated, true);
   await service.registerClaim(cruciateClaim());
-  const manual = await service.decide('clm_048213', { action: 'accept', decidedBy: 'handlaggare@example.test' });
+  const manual = await decideNow(service, 'clm_048213', { action: 'accept', decidedBy: 'handlaggare@example.test' });
   assert.equal(manual.automated, false);
 });
 
@@ -366,7 +374,7 @@ test('the explanation within an open deductible period names the period instead 
 test('the explanation of a deviation gives the reason code as main reason and no calculation steps', async () => {
   const { service } = setup();
   await service.registerClaim(cruciateClaim());
-  await service.decide('clm_048213', {
+  await decideNow(service, 'clm_048213', {
     action: 'reject',
     decidedBy: 'handlaggare@example.test',
     mayOverride: true,
@@ -383,7 +391,7 @@ test('the explanation of a deviation gives the reason code as main reason and no
 test('the explanation of a rejection by rule gives the failed rule as main reason', async () => {
   const { service } = setup();
   await service.registerClaim(otitisClaim({ treatmentFrom: '2026-03-10', treatmentTo: '2026-03-10' })); // before the policy
-  await service.decide('clm_021877', { action: 'reject', decidedBy: 'handlaggare@example.test' });
+  await decideNow(service, 'clm_021877', { action: 'reject', decidedBy: 'handlaggare@example.test' });
   const e = await service.explainDecision('clm_021877', 1);
   assert.equal(e.outcome, 'rejected');
   assert.equal(e.mainReason.reason, 'policy.not_found');
@@ -410,7 +418,7 @@ test('human review: requested for an automated decision, answered and closed by 
   assert.deepEqual(e.humanReview, { available: false, openRequestId: req.id });
 
   clock.set('2026-11-15T09:00:00Z');
-  const review = await service.decide('clm_021877', { action: 'accept', decidedBy: 'handlaggare@example.test' });
+  const review = await decideNow(service, 'clm_021877', { action: 'accept', decidedBy: 'handlaggare@example.test' });
   assert.equal(review.seq, 2);
   assert.equal(review.automated, false);
   assert.equal(review.reviewRequestId, req.id);
@@ -433,7 +441,7 @@ test('human review: only one open request per claim', async () => {
 test('human review: not for a decision made by a person, nor for a replaced decision', async () => {
   const { service } = setup();
   await service.registerClaim(otitisClaim());
-  await service.decide('clm_021877', { action: 'accept', decidedBy: 'handlaggare@example.test' });
+  await decideNow(service, 'clm_021877', { action: 'accept', decidedBy: 'handlaggare@example.test' });
   const conflict = (e: unknown) => e instanceof DomainError && e.code === 'conflict';
   await assert.rejects(service.requestReview('clm_021877', 2, { requestedBy: 'customer-portal' }), conflict);
   await assert.rejects(service.requestReview('clm_021877', 1, { requestedBy: 'customer-portal' }), conflict);
@@ -455,6 +463,161 @@ test('human review: a reassessment is automated and does not close the request',
   assert.equal(re.automated, true);
   assert.equal(re.reviewRequestId, undefined);
   assert.equal((await service.getReviewRequests('clm_021877'))[0]!.closedAt, undefined);
-  const review = await service.decide('clm_021877', { action: 'reject', decidedBy: 'handlaggare@example.test' });
+  const review = await decideNow(service, 'clm_021877', { action: 'reject', decidedBy: 'handlaggare@example.test' });
   assert.equal(review.reviewRequestId, req.id);
+});
+
+// Approval chain (ADR 0019) -----------------------------------------------------
+
+const HANDLER = 'handlaggare@example.test';
+const APPROVER = 'attestant@example.test';
+const LOW = { SEK: 1_000_000 }; // SEK 10,000: below the cruciate payout of SEK 12,165
+
+test('a decision above the handler\'s limit becomes a proposal: nothing is decided, booked or ordered', async () => {
+  const { service, store } = setup();
+  await service.registerClaim(cruciateClaim());
+  const r = await service.decide('clm_048213', { action: 'accept', decidedBy: HANDLER, decisionLimits: LOW });
+  assert.equal(r.decision, undefined);
+  assert.ok(r.proposal);
+  assert.equal(r.proposal.status, 'open');
+  assert.equal(r.proposal.payout, 1_216_500);
+  assert.equal(r.proposal.proposerLimit, 1_000_000);
+  assert.deepEqual(await service.getDecisions('clm_048213'), []);
+  assert.equal(store.dump().journals.length, 0);
+  assert.equal(store.dump().periods.length, 0);
+  assert.deepEqual((await store.pendingEvents(10)).map((e) => e.event.type), ['claim.registered', 'claim.decision_proposed']);
+});
+
+test('a currency missing from the limits has the limit 0, and no limits means no limit', async () => {
+  const { service } = setup();
+  await service.registerClaim(cruciateClaim());
+  const r = await service.decide('clm_048213', { action: 'accept', decidedBy: HANDLER, decisionLimits: { EUR: 99_999_999 } });
+  assert.ok(r.proposal);
+  assert.equal(r.proposal.proposerLimit, 0);
+});
+
+test('a payout of 0 never needs approval', async () => {
+  const { service } = setup();
+  await service.registerClaim(cruciateClaim());
+  const r = await service.decide('clm_048213', {
+    action: 'reject',
+    decidedBy: HANDLER,
+    decisionLimits: {},
+    mayOverride: true,
+    reasonCode: 'not_covered',
+    reason: 'Not covered',
+  });
+  assert.equal(r.decision?.payout, 0);
+});
+
+test('approval by someone else turns the proposal into a booked decision and a payout order', async () => {
+  const { service, store, clock } = setup();
+  await service.registerClaim(cruciateClaim({ clinicId: 'clinic_001' }));
+  const { proposal } = await service.decide('clm_048213', { action: 'accept', decidedBy: HANDLER, decisionLimits: LOW });
+  clock.set('2026-11-14T09:00:00Z');
+  const d = await service.approveProposal('clm_048213', proposal!.id, { approvedBy: APPROVER });
+  assert.equal(d.decidedBy, HANDLER);
+  assert.equal(d.approvedBy, APPROVER);
+  assert.equal(d.proposalId, proposal!.id);
+  assert.equal(d.payout, 1_216_500);
+  assert.equal(d.automated, false);
+  const [closed] = await service.getProposals('clm_048213');
+  assert.deepEqual(
+    { status: closed!.status, closedBy: closed!.closedBy, closedAt: closed!.closedAt, decisionId: closed!.decisionId },
+    { status: 'approved', closedBy: APPROVER, closedAt: '2026-11-14T09:00:00Z', decisionId: d.id },
+  );
+  assertBalanced(store);
+  const order = (await store.pendingEvents(10)).map((e) => e.event).find((e) => e.type === 'claim.payout_ordered');
+  assert.ok(order && order.type === 'claim.payout_ordered');
+  assert.deepEqual(
+    { amount: order.order.amount, currency: order.order.currency, decisionId: order.order.decisionId, clinicId: order.order.clinicId },
+    { amount: 1_216_500, currency: 'SEK', decisionId: d.id, clinicId: 'clinic_001' },
+  );
+});
+
+test('four eyes: the proposer cannot approve their own proposal', async () => {
+  const { service } = setup();
+  await service.registerClaim(cruciateClaim());
+  const { proposal } = await service.decide('clm_048213', { action: 'accept', decidedBy: HANDLER, decisionLimits: LOW });
+  await assert.rejects(
+    service.approveProposal('clm_048213', proposal!.id, { approvedBy: HANDLER }),
+    (e: unknown) => e instanceof DomainError && e.code === 'forbidden',
+  );
+  assert.equal((await service.getProposals('clm_048213'))[0]!.status, 'open');
+});
+
+test('the approver\'s own limit applies', async () => {
+  const { service } = setup();
+  await service.registerClaim(cruciateClaim());
+  const { proposal } = await service.decide('clm_048213', { action: 'accept', decidedBy: HANDLER, decisionLimits: LOW });
+  await assert.rejects(
+    service.approveProposal('clm_048213', proposal!.id, { approvedBy: APPROVER, approvalLimits: { SEK: 1_200_000 } }),
+    (e: unknown) => e instanceof DomainError && e.code === 'forbidden',
+  );
+  const d = await service.approveProposal('clm_048213', proposal!.id, { approvedBy: APPROVER, approvalLimits: { SEK: 1_216_500 } });
+  assert.equal(d.payout, 1_216_500);
+});
+
+test('an approval on a changed basis is refused; the proposal is returned and a new decision made', async () => {
+  const { service, policies, clock } = setup();
+  await service.registerClaim(cruciateClaim());
+  const { proposal } = await service.decide('clm_048213', { action: 'accept', decidedBy: HANDLER, decisionLimits: LOW });
+  clock.set('2026-11-20T00:00:00Z');
+  policies.supersede('pv_bella_v4', '2026-11-20T00:00:00Z');
+  policies.add({ snapshot: bellaPolicy({ policyVersionId: 'pv_bella_v5' }), sysFrom: '2026-11-20T00:00:00Z' });
+  await assert.rejects(
+    service.approveProposal('clm_048213', proposal!.id, { approvedBy: APPROVER }),
+    (e: unknown) => e instanceof DomainError && e.code === 'conflict',
+  );
+  const returned = await service.returnProposal('clm_048213', proposal!.id, { returnedBy: APPROVER, reason: 'The policy changed' });
+  assert.equal(returned.status, 'returned');
+  assert.equal(returned.returnReason, 'The policy changed');
+  await assert.rejects(
+    service.approveProposal('clm_048213', proposal!.id, { approvedBy: APPROVER }),
+    (e: unknown) => e instanceof DomainError && e.code === 'conflict',
+  );
+  const again = await service.decide('clm_048213', { action: 'accept', decidedBy: HANDLER, decisionLimits: LOW });
+  assert.ok(again.proposal);
+  assert.notEqual(again.proposal.id, proposal!.id);
+});
+
+test('while a proposal is open no other decision can be made, and a return needs a reason', async () => {
+  const { service } = setup();
+  await service.registerClaim(cruciateClaim());
+  const { proposal } = await service.decide('clm_048213', { action: 'accept', decidedBy: HANDLER, decisionLimits: LOW });
+  await assert.rejects(
+    service.decide('clm_048213', { action: 'accept', decidedBy: 'another@example.test' }),
+    (e: unknown) => e instanceof DomainError && e.code === 'conflict',
+  );
+  await assert.rejects(
+    service.returnProposal('clm_048213', proposal!.id, { returnedBy: APPROVER, reason: '  ' }),
+    (e: unknown) => e instanceof DomainError && e.code === 'validation',
+  );
+  await assert.rejects(
+    service.approveProposal('clm_048213', 'prp_unknown', { approvedBy: APPROVER }),
+    (e: unknown) => e instanceof DomainError && e.code === 'not_found',
+  );
+});
+
+test('an approved decision answers an open review request', async () => {
+  const { service } = setup();
+  await service.registerClaim(otitisClaim());
+  const req = await service.requestReview('clm_021877', 1, { requestedBy: 'customer-portal' });
+  const { proposal } = await service.decide('clm_021877', { action: 'accept', decidedBy: HANDLER, decisionLimits: { SEK: 0 } });
+  const d = await service.approveProposal('clm_021877', proposal!.id, { approvedBy: APPROVER });
+  assert.equal(d.reviewRequestId, req.id);
+});
+
+test('payout orders: only increases are ordered, for the difference', async () => {
+  const { service, store, policies, clock } = setup();
+  await service.registerClaim(otitisClaim()); // auto: SEK 1,500
+  const orders = async () =>
+    (await store.pendingEvents(100)).flatMap((e) => (e.event.type === 'claim.payout_ordered' ? [e.event.order.amount] : []));
+  assert.deepEqual(await orders(), [150_000]);
+  clock.set('2026-11-20T00:00:00Z');
+  policies.supersede('pv_bella_v4', '2026-11-20T00:00:00Z');
+  policies.add({ snapshot: bellaPolicy({ policyVersionId: 'pv_bella_v5', status: 'cancelled' }), sysFrom: '2026-11-20T00:00:00Z' });
+  const re = await service.reassess('clm_021877', 'reassessment-job', 'Retroactive cancellation');
+  assert.equal(re?.payout, 0);
+  assert.deepEqual(await orders(), [150_000], 'a decrease is not ordered');
 });

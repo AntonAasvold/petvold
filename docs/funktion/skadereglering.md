@@ -95,6 +95,29 @@ Anropet `GET /v1/policies/{policy}/animals/{djur}/limits?onDate=` visar årets f
 - **Omprövning bokför skillnaden.** Om ersättningen går från 1 500 kr till 1 700 kr bokförs 200 kr. Vid avslag i en omprövning återförs hela beloppet, och självriskperioden stängs.
 - **Samma anrop två gånger.** Anrop som skapar något kräver en `Idempotency-Key`. Ett upprepat anrop med samma nyckel ger samma svar och skapar inget nytt.
 
+## Attest och utbetalningsorder
+
+Ett beslut med en ersättning över handläggarens beloppsgräns fattas inte direkt. Det blir ett **beslutsförslag** som någon annan måste attestera (ADR 0019). Gränserna ställs in per roll och valuta (se [Behörighet](behorighet.md#beloppsgränser-och-fyra-ögon)).
+
+| Steg | Anrop | Vad händer |
+| --- | --- | --- |
+| 1. Handläggaren beslutar | `POST /v1/claims/{id}/decisions` | Inom gränsen: `201` och ett beslut. Över gränsen: `202` och ett förslag. Förslaget bokförs inte och öppnar ingen självriskperiod. |
+| 2a. Attest | `POST /v1/claims/{id}/proposals/{p}/approvals` | En annan person med `claims:approve` attesterar. Motorn bedömer ärendet igen, och underlaget måste vara exakt detsamma som i förslaget. Beslutet bokförs med `decidedBy` (handläggaren) och `approvedBy` (attestanten). |
+| 2b. Tillbaka | `POST /v1/claims/{id}/proposals/{p}/returns` | Attestanten skickar tillbaka förslaget med en motivering. Inget beslut fattas, och handläggaren kan besluta på nytt. |
+
+Regler:
+- **Fyra ögon.** Den som föreslog kan aldrig attestera sitt eget förslag.
+- **Ett öppet förslag per ärende.** Medan förslaget är öppet går det inte att fatta något annat beslut i ärendet (`409`).
+- **Samma underlag.** Har underlaget ändrats sedan förslaget, till exempel genom en retroaktiv policyändring eller en annan skada som förbrukat försäkringsbelopp, avvisas attesten (`409`). Förslaget skickas då tillbaka och görs om.
+- **Avslag kräver aldrig attest**, eftersom ersättningen då är 0.
+- **Automatiska beslut och omprövningar** följer produktens regler och kräver ingen attest.
+
+**Exempel:** handläggarens gräns är 10 000 kr. Korsbandsoperationen i exempel 2 ger 12 165 kr, så beslutet blir ett förslag. Attestanten godkänner, och ett beslut på 12 165 kr bokförs med båda namnen.
+
+**Utbetalningsorder.** Varje beslut som höjer ärendets ersättning skriver händelsen `claim.payout_ordered` med ökningen, valutan, försäkringen, kanalen och kliniken. En omprövning från 1 500 kr till 1 700 kr ger en order på 200 kr. En sänkning ger ingen order: återkrav är en öppen fråga. Betalningsmodulen (M5, ADR 0017) tar emot ordern och väljer mottagare, klinik eller kund.
+
+*Inte byggt än:* en reserv i ledgern medan ärendet ligger hos handläggare eller väntar på attest.
+
 ## Förklaring och mänsklig prövning
 
 GDPR ger den som berörs av ett automatiskt beslut rätt att förstå logiken bakom beslutet (artikel 13–15). Den som berörs har också rätt att få beslutet prövat av en människa, att framföra sin synpunkt och att bestrida beslutet (artikel 22). Petvold stödjer det så här (ADR 0018).
@@ -149,4 +172,13 @@ Om skadan kommer inom en öppen självriskperiod ersätts raden för fast själv
 
 ## Händelser
 
-När en skada registreras, beslutas eller får en begäran om prövning skrivs en händelse (`claim.registered`, `claim.decided`, `claim.review_requested`) i samma transaktion. Händelserna levereras minst en gång, i ordning. I dag loggas de bara. Leverans till andra system (webhook eller kö) kommer när det finns en mottagare (ADR 0008).
+Händelser skrivs i samma transaktion som ändringen:
+
+| Händelse | När |
+| --- | --- |
+| `claim.registered` | En skada registreras |
+| `claim.decided` | Ett beslut fattas |
+| `claim.decision_proposed` | Ett beslut över gränsen blir ett förslag |
+| `claim.proposal_returned` | Ett förslag skickas tillbaka |
+| `claim.payout_ordered` | Ett beslut höjer ersättningen |
+| `claim.review_requested` | Kunden begär mänsklig prövning | Händelserna levereras minst en gång, i ordning. I dag loggas de bara. Leverans till andra system (webhook eller kö) kommer när det finns en mottagare (ADR 0008).

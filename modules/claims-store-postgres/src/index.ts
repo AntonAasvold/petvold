@@ -22,6 +22,7 @@ import {
   type DecisionEvidence,
   type DeductiblePeriod,
   type ReviewRequest,
+  type DecisionProposal,
   type ISODate,
   type MinorUnits,
   type Timestamp,
@@ -190,7 +191,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
   async getDecisions(claimId: string): Promise<ClaimDecision[]> {
     const { rows } = await this.pool.query(
       `select id, claim_id, seq, outcome, payout_minor, assessment, decided_by, decided_at, reason,
-              deviates_from_proposal, reason_code, automated, review_request_id
+              deviates_from_proposal, reason_code, automated, review_request_id, approved_by, proposal_id
        from claims.decision where claim_id = $1 order by seq`,
       [claimId],
     );
@@ -208,6 +209,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       ...(d.reason_code !== null ? { reasonCode: d.reason_code } : {}),
       automated: d.automated,
       ...(d.review_request_id !== null ? { reviewRequestId: d.review_request_id } : {}),
+      ...(d.approved_by !== null ? { approvedBy: d.approved_by, proposalId: d.proposal_id } : {}),
     }));
   }
 
@@ -222,15 +224,15 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       : null;
   }
 
-  async commitDecision({ decision: d, journals, deductiblePeriod: p, evidence, events, closesReviewRequestId }: DecisionCommit): Promise<void> {
+  async commitDecision({ decision: d, journals, deductiblePeriod: p, evidence, events, closesReviewRequestId, closesProposalId }: DecisionCommit): Promise<void> {
     if (evidence.decisionId !== d.id) throw new Error(`Evidence for ${evidence.decisionId} given with decision ${d.id}`);
     await this.tx(async (db) => {
       const a = d.assessment;
       await db.query(
         `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash,
                                       rules_version, product_version, policy_version_id, decided_by, decided_at, reason,
-                                      deviates_from_proposal, reason_code, automated, review_request_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+                                      deviates_from_proposal, reason_code, automated, review_request_id, approved_by, proposal_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
         [
           d.id,
           d.claimId,
@@ -250,8 +252,18 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
           d.reasonCode ?? null,
           d.automated,
           d.reviewRequestId ?? null,
+          d.approvedBy ?? null,
+          d.proposalId ?? null,
         ],
       );
+      if (closesProposalId) {
+        const closed = await db.query(
+          `update claims.decision_proposal set status = 'approved', closed_by = $2, closed_at = $3, decision_id = $4
+           where id = $1 and claim_id = $5 and status = 'open'`,
+          [closesProposalId, d.approvedBy ?? null, d.decidedAt, d.id, d.claimId],
+        );
+        if (closed.rowCount !== 1) throw new StoreConflictError('proposal_closed', `Proposal ${closesProposalId} is not open`);
+      }
       if (closesReviewRequestId) {
         const closed = await db.query(
           `update claims.review_request set closed_by_decision_id = $2, closed_at = $3
@@ -311,6 +323,78 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
         throw new StoreConflictError('review_open', `Claim ${r.claimId} already has an open review request`);
       }
       throw e;
+    });
+  }
+
+  async saveProposal(p: DecisionProposal, events: ClaimsEvent[]): Promise<void> {
+    await this.tx(async (db) => {
+      await db.query(
+        `insert into claims.decision_proposal (id, claim_id, action, outcome, payout_minor, currency, input_hash, proposed_by, proposed_at,
+                                               reason, reason_code, deviates_from_proposal, proposer_limit_minor, status)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        [
+          p.id,
+          p.claimId,
+          p.action,
+          p.outcome,
+          p.payout,
+          p.currency,
+          p.inputHash,
+          p.proposedBy,
+          p.proposedAt,
+          p.reason ?? null,
+          p.reasonCode ?? null,
+          p.deviatesFromProposal,
+          p.proposerLimit,
+          p.status,
+        ],
+      );
+      await insertEvents(db, events);
+    }).catch((e: PgError) => {
+      if (e.code === UNIQUE_VIOLATION && e.constraint === 'decision_proposal_one_open') {
+        throw new StoreConflictError('proposal_open', `Claim ${p.claimId} already has an open proposal`);
+      }
+      throw e;
+    });
+  }
+
+  async getProposals(claimId: string): Promise<DecisionProposal[]> {
+    const { rows } = await this.pool.query(
+      `select id, claim_id, action, outcome, payout_minor, currency, input_hash, proposed_by, proposed_at, reason, reason_code,
+              deviates_from_proposal, proposer_limit_minor, status, closed_by, closed_at, decision_id, return_reason
+       from claims.decision_proposal where claim_id = $1 order by proposed_at, id`,
+      [claimId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      claimId: r.claim_id,
+      action: r.action,
+      outcome: r.outcome,
+      payout: r.payout_minor,
+      currency: r.currency,
+      inputHash: r.input_hash,
+      proposedBy: r.proposed_by,
+      proposedAt: r.proposed_at,
+      ...(r.reason !== null ? { reason: r.reason } : {}),
+      ...(r.reason_code !== null ? { reasonCode: r.reason_code } : {}),
+      deviatesFromProposal: r.deviates_from_proposal,
+      proposerLimit: r.proposer_limit_minor,
+      status: r.status,
+      ...(r.closed_by !== null ? { closedBy: r.closed_by, closedAt: r.closed_at } : {}),
+      ...(r.decision_id !== null ? { decisionId: r.decision_id } : {}),
+      ...(r.return_reason !== null ? { returnReason: r.return_reason } : {}),
+    }));
+  }
+
+  async returnProposal(proposalId: string, closedBy: string, closedAt: Timestamp, reason: string, events: ClaimsEvent[]): Promise<void> {
+    await this.tx(async (db) => {
+      const closed = await db.query(
+        `update claims.decision_proposal set status = 'returned', closed_by = $2, closed_at = $3, return_reason = $4
+         where id = $1 and status = 'open'`,
+        [proposalId, closedBy, closedAt, reason],
+      );
+      if (closed.rowCount !== 1) throw new StoreConflictError('proposal_closed', `Proposal ${proposalId} is not open`);
+      await insertEvents(db, events);
     });
   }
 

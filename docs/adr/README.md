@@ -20,5 +20,6 @@
 | [0016](0016-behorighet.md) | Behörighet: rättigheter i kontraktet, roller per installation och åtkomst till data | Beslutad |
 | [0017](0017-betalningar-och-betaltjanster.md) | Betalningar via en port med en adapter per betaltjänst | Föreslagen |
 | [0018](0018-beslutsmotor-och-beviskedja.md) | Beslutsmotor som egen modul, med beviskedja för varje beslut | Beslutad |
+| [0019](0019-attestkedja-och-utbetalningsorder.md) | Attestkedja: beslutsförslag, attest och utbetalningsorder | Föreslagen |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.

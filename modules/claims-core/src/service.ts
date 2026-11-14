@@ -15,6 +15,9 @@ import type {
   MinorUnits,
   PolicySnapshot,
   ReviewRequest,
+  DecisionProposal,
+  Outcome,
+  PayoutOrder,
   Timestamp,
 } from './types.ts';
 import { assertDate } from '@petvold/common';
@@ -44,11 +47,39 @@ export interface DecideCommand {
   /** Whether the caller may decide against the proposal (permission claims:override). */
   mayOverride?: boolean;
   /**
+   * The caller's limits for deciding alone (ADR 0019). A payout above the limit in
+   * the claim's currency becomes a proposal that someone else must approve.
+   * Omitted or null: no limit.
+   */
+  decisionLimits?: AmountLimits | null;
+  /**
    * inputHash from the assessment the handler looked at. If the basis has
    * changed since then (new policy version, another claim decided), the
    * decision is rejected with 'conflict' instead of being made on stale data.
    */
   expectedInputHash?: string;
+}
+
+/** Highest payout per currency, in the smallest unit. A currency that is missing has the limit 0. */
+export type AmountLimits = Partial<Record<CurrencyCode, MinorUnits>>;
+
+/** The limit in a currency. null or undefined limits mean no limit. */
+export function limitIn(limits: AmountLimits | null | undefined, currency: CurrencyCode): number {
+  return limits ? (limits[currency] ?? 0) : Number.POSITIVE_INFINITY;
+}
+
+/** A handler decision is made at once, or proposed for approval when it exceeds the handler's limit. */
+export type DecideResult = { decision: ClaimDecision; proposal?: never } | { proposal: DecisionProposal; decision?: never };
+
+export interface ApproveCommand {
+  approvedBy: string;
+  /** The approver's limits (ADR 0019). Omitted or null: no limit. */
+  approvalLimits?: AmountLimits | null;
+}
+
+export interface ReturnProposalCommand {
+  returnedBy: string;
+  reason: string;
 }
 
 export interface ReviewRequestCommand {
@@ -93,6 +124,14 @@ interface Motivation {
   deviatesFromProposal: boolean;
   automated: boolean;
   reviewRequestId?: string;
+  approvedBy?: string;
+  proposalId?: string;
+}
+
+/** Outcome and payout of a decision with this action on this assessment. */
+function decisionAmounts(assessment: Assessment, action: 'accept' | 'reject'): { outcome: Outcome; payout: MinorUnits } {
+  const outcome = action === 'reject' ? 'rejected' : assessment.proposedOutcome;
+  return { outcome, payout: outcome === 'rejected' ? 0 : (assessment.calculation?.payout ?? 0) };
 }
 
 const COVERAGE = 'vet_care';
@@ -162,9 +201,11 @@ export class ClaimsService {
 
   /**
    * Claims handler decision. If the claim has an open request for human review,
-   * this decision is the review and closes the request (ADR 0018).
+   * this decision is the review and closes the request (ADR 0018). If the payout
+   * exceeds the handler's limit, nothing is decided: a proposal is stored for
+   * someone else to approve (ADR 0019).
    */
-  async decide(claimId: string, cmd: DecideCommand): Promise<ClaimDecision> {
+  async decide(claimId: string, cmd: DecideCommand): Promise<DecideResult> {
     const claim = await this.requireClaim(claimId);
     const assessed = await this.assessInternal(claim, undefined, claim.id);
     const { assessment } = assessed;
@@ -183,14 +224,93 @@ export class ClaimsService {
         throw new DomainError('validation', 'Deciding against the proposal requires reasonCode and reason');
       }
     }
-    const open = (await this.d.store.getReviewRequests(claimId)).find((r) => !r.closedAt);
-    return this.commit(claim, assessed, cmd.action, cmd.decidedBy, {
+    await this.assertNoOpenProposal(claimId);
+    const motivation = {
       deviatesFromProposal: deviates,
-      automated: false,
       ...(cmd.reason ? { reason: cmd.reason } : {}),
       ...(deviates && cmd.reasonCode ? { reasonCode: cmd.reasonCode } : {}),
-      ...(open ? { reviewRequestId: open.id } : {}),
+    };
+    const { outcome, payout } = decisionAmounts(assessment, cmd.action);
+    const limit = limitIn(cmd.decisionLimits, claim.currency);
+    if (payout > limit) {
+      const now = this.d.clock.now();
+      const proposal: DecisionProposal = {
+        id: this.d.ids.next('prp'),
+        claimId,
+        action: cmd.action,
+        outcome,
+        payout,
+        currency: claim.currency,
+        inputHash: assessment.inputHash,
+        proposedBy: cmd.decidedBy,
+        proposedAt: now,
+        ...motivation,
+        proposerLimit: limit,
+        status: 'open',
+      };
+      await this.d.store.saveProposal(proposal, [{ type: 'claim.decision_proposed', occurredAt: now, proposal }]).catch((e: unknown) => {
+        if (e instanceof StoreConflictError) throw new DomainError('conflict', 'The claim already has an open proposal');
+        throw e;
+      });
+      return { proposal };
+    }
+    const review = await this.openReviewRequest(claimId);
+    return {
+      decision: await this.commit(claim, assessed, cmd.action, cmd.decidedBy, {
+        ...motivation,
+        automated: false,
+        ...(review ? { reviewRequestId: review.id } : {}),
+      }),
+    };
+  }
+
+  /**
+   * Approves an open proposal (ADR 0019): someone other than the proposer,
+   * within the approver's limit, on exactly the basis the proposal was made on.
+   * The approval becomes the decision, booked as usual.
+   */
+  async approveProposal(claimId: string, proposalId: string, cmd: ApproveCommand): Promise<ClaimDecision> {
+    const claim = await this.requireClaim(claimId);
+    const p = await this.requireOpenProposal(claimId, proposalId);
+    if (cmd.approvedBy === p.proposedBy) throw new DomainError('forbidden', 'The proposer cannot approve their own proposal (four eyes)');
+    if (p.payout > limitIn(cmd.approvalLimits, p.currency)) {
+      throw new DomainError('forbidden', 'The payout exceeds the approver\'s limit');
+    }
+    const assessed = await this.assessInternal(claim, undefined, claim.id);
+    if (assessed.assessment.inputHash !== p.inputHash) {
+      throw new DomainError('conflict', 'The basis has changed since the proposal. Return it and make a new decision.');
+    }
+    const review = await this.openReviewRequest(claimId);
+    return this.commit(claim, assessed, p.action, p.proposedBy, {
+      deviatesFromProposal: p.deviatesFromProposal,
+      ...(p.reason ? { reason: p.reason } : {}),
+      ...(p.reasonCode ? { reasonCode: p.reasonCode } : {}),
+      automated: false,
+      ...(review ? { reviewRequestId: review.id } : {}),
+      approvedBy: cmd.approvedBy,
+      proposalId: p.id,
     });
+  }
+
+  /** Sends an open proposal back without a decision (ADR 0019). */
+  async returnProposal(claimId: string, proposalId: string, cmd: ReturnProposalCommand): Promise<DecisionProposal> {
+    const p = await this.requireOpenProposal(claimId, proposalId);
+    const reason = cmd.reason.trim();
+    if (!reason) throw new DomainError('validation', 'A returned proposal needs a reason');
+    const now = this.d.clock.now();
+    const returned: DecisionProposal = { ...p, status: 'returned', closedBy: cmd.returnedBy, closedAt: now, returnReason: reason };
+    await this.d.store
+      .returnProposal(p.id, cmd.returnedBy, now, reason, [{ type: 'claim.proposal_returned', occurredAt: now, proposal: returned }])
+      .catch((e: unknown) => {
+        if (e instanceof StoreConflictError) throw new DomainError('conflict', 'The proposal is no longer open');
+        throw e;
+      });
+    return returned;
+  }
+
+  async getProposals(claimId: string): Promise<DecisionProposal[]> {
+    await this.requireClaim(claimId);
+    return this.d.store.getProposals(claimId);
   }
 
   /**
@@ -335,8 +455,7 @@ export class ClaimsService {
   ): Promise<ClaimDecision> {
     const prev = await this.latestDecision(claim.id);
     const now = this.d.clock.now();
-    const outcome = action === 'reject' ? 'rejected' : assessment.proposedOutcome;
-    const payout = outcome === 'rejected' ? 0 : (assessment.calculation?.payout ?? 0);
+    const { outcome, payout } = decisionAmounts(assessment, action);
 
     const decision: ClaimDecision = {
       id: this.d.ids.next('dec'),
@@ -352,6 +471,8 @@ export class ClaimsService {
       ...(motivation.reasonCode ? { reasonCode: motivation.reasonCode } : {}),
       automated: motivation.automated,
       ...(motivation.reviewRequestId ? { reviewRequestId: motivation.reviewRequestId } : {}),
+      ...(motivation.approvedBy ? { approvedBy: motivation.approvedBy } : {}),
+      ...(motivation.proposalId ? { proposalId: motivation.proposalId } : {}),
     };
     const evidence: DecisionEvidence = {
       decisionId: decision.id,
@@ -394,6 +515,20 @@ export class ClaimsService {
     }
 
     const events: ClaimsEvent[] = [{ type: 'claim.decided', occurredAt: now, decision }];
+    // An increase in the payout is ordered for payment (ADR 0019). A decrease is not a negative order.
+    if (diff > 0 && policy) {
+      const order: PayoutOrder = {
+        id: this.d.ids.next('po'),
+        claimId: claim.id,
+        decisionId: decision.id,
+        policyId: claim.policyId,
+        amount: diff,
+        currency: claim.currency,
+        channel: claim.channel,
+        ...(claim.clinicId ? { clinicId: claim.clinicId } : {}),
+      };
+      events.push({ type: 'claim.payout_ordered', occurredAt: now, order });
+    }
     await asConflict(
       this.d.store.commitDecision({
         decision,
@@ -402,9 +537,28 @@ export class ClaimsService {
         evidence,
         events,
         ...(motivation.reviewRequestId ? { closesReviewRequestId: motivation.reviewRequestId } : {}),
+        ...(motivation.proposalId ? { closesProposalId: motivation.proposalId } : {}),
       }),
     );
     return decision;
+  }
+
+  private async requireOpenProposal(claimId: string, proposalId: string): Promise<DecisionProposal> {
+    await this.requireClaim(claimId);
+    const p = (await this.d.store.getProposals(claimId)).find((x) => x.id === proposalId);
+    if (!p) throw new DomainError('not_found', `Proposal ${proposalId} does not exist`);
+    if (p.status !== 'open') throw new DomainError('conflict', `Proposal ${proposalId} is ${p.status}`);
+    return p;
+  }
+
+  private async assertNoOpenProposal(claimId: string): Promise<void> {
+    if ((await this.d.store.getProposals(claimId)).some((p) => p.status === 'open')) {
+      throw new DomainError('conflict', 'The claim has an open proposal awaiting approval');
+    }
+  }
+
+  private async openReviewRequest(claimId: string): Promise<ReviewRequest | undefined> {
+    return (await this.d.store.getReviewRequests(claimId)).find((r) => !r.closedAt);
   }
 
   private async latestDecision(claimId: string): Promise<ClaimDecision | null> {

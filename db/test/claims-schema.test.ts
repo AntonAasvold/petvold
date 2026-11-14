@@ -62,7 +62,7 @@ test('the migrations have been applied', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
   assert.deepEqual(
     rows.map((r) => r.version),
-    ['0001', '0002', '0003', '0004', '0005', '0006', '0007'],
+    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008'],
   );
 });
 
@@ -223,5 +223,39 @@ test('an automated decision cannot be the answer to a review', async () => {
       [],
       CHECK_VIOLATION,
     );
+  });
+});
+
+const insertProposal = `insert into claims.decision_proposal (id, claim_id, action, outcome, payout_minor, currency, input_hash, proposed_by,
+                                                              proposed_at, deviates_from_proposal, proposer_limit_minor)
+                        values ($1, 'clm_t1', 'accept', 'approved', 500000, 'SEK', 'h', 'h1', now(), false, $2)`;
+
+test('a proposal exceeds the proposer\'s limit, and only one is open per claim', async () => {
+  await inTx(async () => {
+    await seedDecision();
+    await rejects(insertProposal, ['prp_within', 500000], CHECK_VIOLATION);
+    await db.query(insertProposal, ['prp_1', 100000]);
+    await rejects(insertProposal, ['prp_2', 100000], UNIQUE_VIOLATION);
+  });
+});
+
+test('a proposal is closed once, only its closing fields change, and the approver is not the proposer', async () => {
+  await inTx(async () => {
+    await seedDecision();
+    await db.query(insertProposal, ['prp_1', 100000]);
+    await db.query('set local role claims_service');
+    await rejects(`update claims.decision_proposal set payout_minor = 1 where id = 'prp_1'`, [], PERMISSION_DENIED);
+    await rejects(`delete from claims.decision_proposal where id = 'prp_1'`, [], PERMISSION_DENIED);
+    await rejects(
+      `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version, decided_by,
+                                    automated, approved_by, proposal_id)
+       values ('dec_self', 'clm_t1', 2, 'approved', 500000, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'h1', false, 'h1', 'prp_1')`,
+      [],
+      CHECK_VIOLATION,
+    );
+    const ret = `update claims.decision_proposal set status = 'returned', closed_by = 'a1', closed_at = now(), return_reason = $2 where id = $1`;
+    await rejects(ret, ['prp_1', ' '], CHECK_VIOLATION);
+    await db.query(ret, ['prp_1', 'Check the invoice']);
+    await rejects(ret, ['prp_1', 'Again'], RAISE_EXCEPTION);
   });
 });

@@ -17,6 +17,7 @@ import type {
   PolicySnapshot,
   RulesPort,
   ReviewRequest,
+  DecisionProposal,
   ClaimsRules,
   Clock,
   IdGenerator,
@@ -35,6 +36,7 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   private journals: LedgerJournal[] = [];
   private periods: DeductiblePeriod[] = [];
   private reviews: ReviewRequest[] = [];
+  private proposals: DecisionProposal[] = [];
   private outbox: Array<OutboxEntry & { publishedAt?: Timestamp }> = [];
   private outboxSeq = 0;
 
@@ -83,7 +85,7 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   }
 
   /** Checks everything first and then changes, so an error never leaves half a decision behind. */
-  async commitDecision({ decision, journals, deductiblePeriod, evidence, events, closesReviewRequestId }: DecisionCommit) {
+  async commitDecision({ decision, journals, deductiblePeriod, evidence, events, closesReviewRequestId, closesProposalId }: DecisionCommit) {
     if (!this.claims.has(decision.claimId)) throw new Error(`Claim ${decision.claimId} does not exist`);
     const review = closesReviewRequestId ? this.reviews.find((r) => r.id === closesReviewRequestId) : undefined;
     if (closesReviewRequestId && (!review || review.claimId !== decision.claimId || review.closedAt)) {
@@ -91,6 +93,16 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
     }
     if (closesReviewRequestId && (decision.automated || decision.reviewRequestId !== closesReviewRequestId)) {
       throw new Error(`Review request ${closesReviewRequestId} must be closed by the human decision that answers it`);
+    }
+    const proposal = closesProposalId ? this.proposals.find((p) => p.id === closesProposalId) : undefined;
+    if (closesProposalId) {
+      if (!proposal || proposal.claimId !== decision.claimId) throw new Error(`Proposal ${closesProposalId} does not belong to claim ${decision.claimId}`);
+      if (proposal.status !== 'open') throw new StoreConflictError('proposal_closed', `Proposal ${closesProposalId} is ${proposal.status}`);
+      if (decision.proposalId !== proposal.id || !decision.approvedBy || decision.approvedBy === proposal.proposedBy) {
+        throw new Error(`Proposal ${closesProposalId} must be closed by a decision approved by someone other than the proposer`);
+      }
+    } else if (decision.proposalId || decision.approvedBy) {
+      throw new Error('An approved decision must close its proposal');
     }
     if (evidence.decisionId !== decision.id) throw new Error(`Evidence for ${evidence.decisionId} given with decision ${decision.id}`);
     for (const j of journals) {
@@ -117,6 +129,9 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
     this.periods = remaining;
     if (deductiblePeriod) this.periods.push({ ...deductiblePeriod });
     if (review) Object.assign(review, { closedByDecisionId: decision.id, closedAt: decision.decidedAt });
+    if (proposal) {
+      Object.assign(proposal, { status: 'approved', closedBy: decision.approvedBy, closedAt: decision.decidedAt, decisionId: decision.id });
+    }
     this.appendEvents(events);
   }
 
@@ -131,6 +146,28 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
       throw new StoreConflictError('review_open', `Claim ${request.claimId} already has an open review request`);
     }
     this.reviews.push(structuredClone(request));
+    this.appendEvents(events);
+  }
+
+  async saveProposal(proposal: DecisionProposal, events: ClaimsEvent[]) {
+    if (!this.claims.has(proposal.claimId)) throw new Error(`Claim ${proposal.claimId} does not exist`);
+    if (proposal.status !== 'open') throw new Error('A proposal is stored open');
+    if (this.proposals.some((p) => p.id === proposal.id)) throw new Error(`Proposal ${proposal.id} already exists`);
+    if (this.proposals.some((p) => p.claimId === proposal.claimId && p.status === 'open')) {
+      throw new StoreConflictError('proposal_open', `Claim ${proposal.claimId} already has an open proposal`);
+    }
+    this.proposals.push(structuredClone(proposal));
+    this.appendEvents(events);
+  }
+
+  async getProposals(claimId: string) {
+    return this.proposals.filter((p) => p.claimId === claimId).map((p) => structuredClone(p));
+  }
+
+  async returnProposal(proposalId: string, closedBy: string, closedAt: Timestamp, reason: string, events: ClaimsEvent[]) {
+    const p = this.proposals.find((x) => x.id === proposalId);
+    if (!p || p.status !== 'open') throw new StoreConflictError('proposal_closed', `Proposal ${proposalId} is not open`);
+    Object.assign(p, { status: 'returned', closedBy, closedAt, returnReason: reason });
     this.appendEvents(events);
   }
 

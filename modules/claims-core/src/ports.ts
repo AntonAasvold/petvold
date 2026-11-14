@@ -8,6 +8,8 @@ import type {
   MinorUnits,
   PolicySnapshot,
   ReviewRequest,
+  DecisionProposal,
+  PayoutOrder,
   Timestamp,
   Claim,
 } from './types.ts';
@@ -84,6 +86,20 @@ export interface ClaimsStore {
   saveReviewRequest(request: ReviewRequest, events: ClaimsEvent[]): Promise<void>;
   /** The claim's review requests, oldest first. */
   getReviewRequests(claimId: string): Promise<ReviewRequest[]>;
+
+  /**
+   * Stores an open decision proposal (ADR 0019) and writes `events` in the same
+   * transaction. Throws StoreConflictError('proposal_open') if the claim already
+   * has an open proposal; then nothing is stored.
+   */
+  saveProposal(proposal: DecisionProposal, events: ClaimsEvent[]): Promise<void>;
+  /** The claim's proposals, oldest first. */
+  getProposals(claimId: string): Promise<DecisionProposal[]>;
+  /**
+   * Returns an open proposal without a decision, and writes `events` in the same
+   * transaction. Throws StoreConflictError('proposal_closed') if it is not open.
+   */
+  returnProposal(proposalId: string, closedBy: string, closedAt: Timestamp, reason: string, events: ClaimsEvent[]): Promise<void>;
 }
 
 /**
@@ -93,7 +109,7 @@ export interface ClaimsStore {
  */
 export class StoreConflictError extends Error {
   constructor(
-    public readonly reason: 'claim_exists' | 'decision_exists' | 'period_overlaps' | 'review_open',
+    public readonly reason: 'claim_exists' | 'decision_exists' | 'period_overlaps' | 'review_open' | 'proposal_open' | 'proposal_closed',
     message: string,
   ) {
     super(message);
@@ -113,6 +129,13 @@ export interface DecisionCommit {
    * that is unknown, for another claim or already closed is rejected with a plain error.
    */
   closesReviewRequestId?: string;
+  /**
+   * The open proposal this decision approves (ADR 0019). Closed in the same
+   * transaction (status 'approved', closedBy = decision.approvedBy, closedAt =
+   * decision.decidedAt, decisionId = decision.id). If it is no longer open,
+   * StoreConflictError('proposal_closed') is thrown and nothing is stored.
+   */
+  closesProposalId?: string;
   /** Written to the outbox in the same transaction as the decision (ADR 0008). */
   events: ClaimsEvent[];
 }
@@ -128,7 +151,10 @@ export interface IdGenerator {
 export type ClaimsEvent =
   | { type: 'claim.registered'; occurredAt: Timestamp; claim: Claim }
   | { type: 'claim.decided'; occurredAt: Timestamp; decision: ClaimDecision }
-  | { type: 'claim.review_requested'; occurredAt: Timestamp; request: ReviewRequest };
+  | { type: 'claim.review_requested'; occurredAt: Timestamp; request: ReviewRequest }
+  | { type: 'claim.decision_proposed'; occurredAt: Timestamp; proposal: DecisionProposal }
+  | { type: 'claim.proposal_returned'; occurredAt: Timestamp; proposal: DecisionProposal }
+  | { type: 'claim.payout_ordered'; occurredAt: Timestamp; order: PayoutOrder };
 
 /** The claim an event concerns: the aggregate it belongs to in the outbox. */
 export function eventClaimId(e: ClaimsEvent): string {
@@ -139,6 +165,11 @@ export function eventClaimId(e: ClaimsEvent): string {
       return e.decision.claimId;
     case 'claim.review_requested':
       return e.request.claimId;
+    case 'claim.decision_proposed':
+    case 'claim.proposal_returned':
+      return e.proposal.claimId;
+    case 'claim.payout_ordered':
+      return e.order.claimId;
   }
 }
 

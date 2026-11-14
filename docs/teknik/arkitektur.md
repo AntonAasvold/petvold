@@ -80,6 +80,16 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
   - ett automatiskt beslut kan inte vara en prövning (check-constraint)
 - **Behörighet.** Tjänsterollen får bara uppdatera kolumnerna som stänger begäran.
 
+**Attestkedja (ADR 0019):**
+- **Tabeller.** Beslutsförslag ligger i `claims.decision_proposal` (migration 0008). Ett beslut som kommer från en attest har `approved_by` och `proposal_id`.
+- **Samma transaktion.** Attesten sparar beslutet, underlaget, bokföringen, utbetalningsordern och stängningen av förslaget i en transaktion (`DecisionCommit.closesProposalId`).
+- **Databasen upprätthåller reglerna:**
+  - högst ett öppet förslag per ärende (unikt partiellt index)
+  - förslaget överstiger alltid förslagsställarens gräns
+  - attestanten är aldrig den som beslutade (check-constraints på både förslag och beslut)
+  - förslaget stängs en gång, och bara stängningsfälten får ändras (trigger och kolumnrättigheter)
+- **Gränser.** De räknas ut i API-lagret (`amountLimitsOf` i `permissions.ts`) och skickas till tjänsten som `decisionLimits` och `approvalLimits`. Fyraögonsprincipen och gränskontrollen ligger i `claims-core`, så att de kan testas utan HTTP (ADR 0016).
+
 ## Ledgern
 
 Varje beslut som ändrar ersättningen bokförs som en journal med fyra rader som summerar till noll:

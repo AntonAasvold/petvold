@@ -21,6 +21,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `claims:decide` | Fatta beslut i ett ärende | `POST /v1/claims/{id}/decisions` |
 | `claims:override` | Besluta mot bedömningens förslag, med skälkod och motivering (ADR 0018) | Kontrolleras inom `POST /v1/claims/{id}/decisions` |
 | `claims:reassess` | Ompröva ett beslutat ärende | `POST /v1/claims/{id}/reassessments` |
+| `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
 | `claims:request-review` | Begära mänsklig prövning av ett automatiskt beslut för kundens räkning (ADR 0018) | `POST /v1/claims/{id}/decisions/{seq}/review-requests` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
 | `limits:read` | Se förbrukat och återstående försäkringsbelopp | `GET /v1/policies/{p}/animals/{a}/limits` |
@@ -31,8 +32,8 @@ Petvold levereras med de här rollerna som utgångspunkt:
 
 | Roll | Rättigheter | Bunden till | För |
 | --- | --- | --- | --- |
-| `handler` | Alla ovan | – | Skadehandläggare |
-| `approver` | `claims:read`, `limits:read` | – | Attestant. Rätten att attestera kommer med attestkedjan i M1. |
+| `handler` | Alla ovan utom `claims:approve`. Beslutar ensam upp till 25 000 SEK eller 2 500 EUR. | – | Skadehandläggare |
+| `approver` | `claims:read`, `claims:approve`, `limits:read`. Ingen gräns för attest. | – | Attestant |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview` | klinik | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | – | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
 | `customer-channel` | `claims:read`, `claims:request-review` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
@@ -82,21 +83,38 @@ createApp({
 
 `bindsTo` är `clinic` eller `policies`, eller saknas.
 
+## Beloppsgränser och fyra ögon
+
+En roll kan ha gränser per valuta, i minsta enhet (ADR 0019):
+
+```ts
+roles: {
+  ...DEFAULT_ROLES,
+  handler: { ...DEFAULT_ROLES.handler, decisionLimits: { SEK: 2_500_000, NOK: 2_500_000 } },
+  'senior-handler': { permissions: ['claims:read', 'claims:decide'], decisionLimits: { SEK: 10_000_000 } },
+  approver: { permissions: ['claims:read', 'claims:approve'], approvalLimits: { SEK: 50_000_000 } },
+}
+```
+
+- `decisionLimits` gäller rättigheten `claims:decide`. En ersättning över gränsen blir ett beslutsförslag som någon annan måste attestera.
+- `approvalLimits` gäller `claims:approve`. Över gränsen nekas attesten (`403`).
+- **Flera roller.** Bara roller med rättigheten räknas, och den högsta gränsen gäller. En sådan roll utan gränser betyder ingen gräns.
+- **Valuta utan gräns.** En valuta som saknas i en angiven gräns har gränsen 0, så att allt i den valutan kräver attest. Lägg därför till installationens alla valutor.
+- **Fyra ögon.** Den som föreslog får aldrig attestera sitt eget förslag (`403`). Det gäller oavsett roller, och databasen spärrar det också.
+- **Automatiska beslut** omfattas inte. Där gäller produktens gräns `autoSettleMax`.
+
 Inställningarna kontrolleras när Petvold startar. En okänd rättighet eller bindning, till exempel ett stavfel, gör att Petvold inte startar. Ett stavfel kan alltså aldrig ge eller ta bort rättigheter i tysthet.
 
 *(Planerat: inställningen läses från installationens konfiguration i stället för koden.)*
 
-## Planerat
-
-- **Beloppsgränser och fyraögonsprincip** (behörighet del 3, med attestkedjan): beslut över en gräns kräver attest av någon annan.
-
 ## Lokalt
 
-Dev-servern har fyra tokens:
+Dev-servern har fem tokens:
 
 | Token | Roll | Omfång |
 | --- | --- | --- |
-| `dev-handler` | handläggare och attestant | alla marknader |
+| `dev-handler` | handläggare, beslutar ensam upp till 25 000 kr | alla marknader |
+| `dev-approver` | attestant | alla marknader |
 | `dev-clinic` | klinik | SE, klinik `clinic_001` |
 | `dev-job` | omprövningsjobb | alla marknader |
 | `dev-customer` | kundkanal | SE, försäkringen `pol_bella` |

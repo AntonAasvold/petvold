@@ -245,6 +245,56 @@ export interface ClaimDecision {
   automated: boolean;
   /** Set when this decision is the human review of a request (ReviewRequest.id). */
   reviewRequestId?: string;
+  /** Set when the decision needed approval (ADR 0019): who approved it, never the same as decidedBy. */
+  approvedBy?: string;
+  /** The proposal the approval turned into this decision. */
+  proposalId?: string;
+}
+
+/**
+ * A handler's decision whose payout exceeds the handler's limit (ADR 0019).
+ * Nothing is booked until someone else approves it; the approval becomes a ClaimDecision.
+ */
+export interface DecisionProposal {
+  id: string;
+  claimId: string;
+  action: 'accept' | 'reject';
+  outcome: Outcome;
+  payout: MinorUnits;
+  currency: CurrencyCode;
+  /** The basis the proposal was made on. An approval requires exactly the same basis. */
+  inputHash: string;
+  proposedBy: string;
+  proposedAt: Timestamp;
+  reason?: string;
+  reasonCode?: DeviationReasonCode;
+  deviatesFromProposal: boolean;
+  /** The proposer's limit in the claim's currency, which the payout exceeded. */
+  proposerLimit: MinorUnits;
+  status: 'open' | 'approved' | 'returned';
+  /** Who approved or returned it, and when. Set when status is not 'open'. */
+  closedBy?: string;
+  closedAt?: Timestamp;
+  /** The decision the approval became. Set when status is 'approved'. */
+  decisionId?: string;
+  /** Why it was returned. Set when status is 'returned'. */
+  returnReason?: string;
+}
+
+/**
+ * An order to pay out an increase in a claim's payout (ADR 0019). Written as an
+ * event with the decision; the payments module chooses the payee (ADR 0017).
+ */
+export interface PayoutOrder {
+  id: string;
+  claimId: string;
+  decisionId: string;
+  policyId: string;
+  /** The increase in the claim's payout. Always positive. */
+  amount: MinorUnits;
+  currency: CurrencyCode;
+  channel: ClaimChannel;
+  clinicId?: string;
 }
 
 /**
