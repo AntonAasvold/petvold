@@ -6,7 +6,8 @@ Petvold är en headless kärna för djurförsäkring (hund, katt, häst) för eu
 
 1. Läs `docs/status.md`, `docs/roadmap.md` och relevanta ADR i `docs/adr/`.
 2. Följ `docs/arbetssatt.md`: branch, små PR:er, kontrakt före kod.
-3. Avsluta med att uppdatera `docs/status.md`.
+3. Uppdatera dokumentationen i samma PR som koden: `docs/funktion/` (beteende, konfiguration, exempel) och `docs/teknik/` (hur det är byggt).
+4. Avsluta med att uppdatera `docs/status.md`.
 
 ## Regler
 

@@ -9,7 +9,7 @@ En försäkringskärna räknar med pengar, datum och regler som ändras över ti
 
 ## Beslut
 
-Vi testar i sex lager enligt `docs/testning.md`:
+Vi testar i sex lager enligt `docs/teknik/testning.md`:
 
 1. Enhetstester för ren domänkod, med `node:test`.
 2. Egenskapstester med fast-check för invarianter: bevarande, gränser, monotoni, idempotens.
