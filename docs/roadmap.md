@@ -16,7 +16,10 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Outbox i samma transaktion som ärendet och beslutet, med relä
 - [x] Dev-servern på Postgres
 - [x] Gemensam testsvit för `ClaimsStore` (lager 4) och databastester (lager 6)
-- [ ] Scenarier som data (lager 3)
+- [ ] Beviskedja per beslut (ADR 0018): underlag och motorns version sparas med beslutet
+- [ ] Motivering krävs när beslutet avviker från förslaget
+- [ ] Omräkning av sparade beslut, och scenarier som data (lager 3) som räknas om i CI
+- [ ] Förklaring per beslut och begäran om mänsklig prövning
 - [x] Integrationstester mot Postgres
 - [ ] AsyncAPI för `claim.registered` och `claim.decided`
 - [ ] Reserv, beslutsförslag, beslut, attest och betalning som kedja
@@ -25,6 +28,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 
 **M2 – Produkt och djur**
 - [ ] Produktkatalog: versionerade produktpaket, regler, referensdata (arter, raser, kön) med översättningar
+- [ ] Beslutsmotorn `decisioning` (ADR 0018): regeluppsättningar i databasen, publicering med fyra ögon, kontrollsumma i beviskedjan och simulering av regelutkast
 - [ ] Djurregister: djur, kullar, ägarskap med giltighetstid
 - [ ] Part: person, organisation, roller
 
