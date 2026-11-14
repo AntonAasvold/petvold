@@ -5,11 +5,12 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 ## 2026-11-14 (pass 3)
 
 **Gjort**
-- Utvecklingsmiljö (ADR 0013, föreslagen, och `docs/utvecklingsmiljo.md`): `.node-version` (24), `compose.yaml` med Postgres 18.7, dbmate för migreringar, testdatabas och tjänsteroll `claims_service`.
+- Utvecklingsmiljö (ADR 0013, beslutad, och `docs/utvecklingsmiljo.md`): `.node-version` (24), `compose.yaml` med Postgres 18.7, dbmate för migreringar, testdatabas och tjänsteroll `claims_service`.
 - Migration `0002_claims_grants.sql`: tjänsterollen får bara läsa och lägga till, plus ersätta självriskperioder och markera händelser som publicerade.
 - Databastester (`db/test/`, lager 6): balanserade journaler, inga överlappande perioder, historik går inte att ändra eller radera för tjänsterollen.
 - CI: samma Node-version som lokalt, och ett jobb som kör `npm run dev:up`, databastesterna och backning av migreringarna.
 - Verifierat lokalt med OrbStack: `dev:up` och alla databastester gröna.
+- ADR 0011–0013 beslutade. #2, #5 (ersätter #3) och #4 mergade till `main`.
 
 **Nästa steg**
 1. Gemensam testsvit för `ClaimsStore` (lager 4) och sedan `claims-store-postgres`.

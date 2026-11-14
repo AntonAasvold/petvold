@@ -1,6 +1,6 @@
 # 0013. Lokal miljö med docker compose och migreringar med dbmate
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-14
 
 ## Sammanhang
