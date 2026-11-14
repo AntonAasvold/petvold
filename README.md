@@ -4,6 +4,13 @@ En headless kärna för djurförsäkring – hund, katt och häst – byggd API-
 
 Första modulen är skademotorn. Policy, produkt, tariff, billing och ledger kommer efter.
 
+## Dokumentation
+
+- [Arbetssätt](docs/arbetssatt.md) – roller, flöde och vad klart betyder
+- [Roadmap](docs/roadmap.md) – milstolpar fram till första sålda försäkringen
+- [Status](docs/status.md) – var vi är och nästa steg
+- [Beslut](docs/adr/README.md) – arkitekturbeslut (ADR)
+
 ## Skademotorn
 
 Skademotorn äger skadan: regler, beräkning, självriskperioder, förbrukat försäkringsbelopp, beslut och ledger.
