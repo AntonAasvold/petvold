@@ -11,5 +11,6 @@
 | [0007](0007-en-policy-per-djur.md) | En försäkring per djur, samlade i grupper | Beslutad |
 | [0008](0008-handelser-outbox-cloudevents.md) | Händelser via outbox och CloudEvents | Beslutad |
 | [0009](0009-rent-ursprung.md) | Rent ursprung för kod och underlag | Beslutad |
+| [0010](0010-en-installation-per-kund.md) | En installation per kund (silo) | Föreslagen |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.
