@@ -106,7 +106,7 @@ Databastesterna i `db/test/` kontrollerar just de reglerna mot riktig Postgres i
 
 ## Nästa steg
 
-- Outbox i samma transaktion som beslutet, och dev-servern på Postgres.
+- Dev-servern på Postgres, så att data sparas mellan omstarter.
 - `policy-adapter-*`: `PolicyPort` mot befintlig policykärna.
 - Regler som versionerade paket per marknad i stället för `StaticRulesPort`.
 - Klinikadapter för direktreglering och en dokumentmodul för beslutsbrev.
