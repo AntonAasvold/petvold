@@ -20,6 +20,7 @@ import {
   openapi,
   operationPermissions,
   isPermission,
+  amountLimitsOf,
   DEFAULT_ROLES,
   type Principal,
   type RoleDefinitions,
@@ -47,6 +48,7 @@ function setup(opts: { roles?: RoleDefinitions } = {}) {
     job: { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
     team: { subject: 'team@example.test', roles: ['claims-team'], markets: '*' },
     customer: { subject: 'customer-portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
+    approver: { subject: 'attestant@example.test', roles: ['approver'], markets: ['SE', 'DE'] },
   };
   const app = createApp({
     service,
@@ -502,4 +504,75 @@ test('a claim registered by a clinic follows the contract, with its clinic id', 
   const body = (await res.json()) as any;
   assertSchema('RegisterClaimResult', body);
   assertSchema('Claim', (await (await call('GET', '/v1/claims/clm_021877', { token: 'clinic' })).json()) as any);
+});
+
+// Approval chain (ADR 0019) ---------------------------------------------------------
+
+const lowHandler = { ...DEFAULT_ROLES, handler: { ...DEFAULT_ROLES.handler!, decisionLimits: { SEK: 1_000_000 } } };
+
+test('above the limit: 202 with a proposal, approval by someone else gives 201 with the decision', async () => {
+  const { call } = setup({ roles: lowHandler });
+  await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000501', body: input(cruciateClaim()) });
+  const res = await call('POST', '/v1/claims/clm_048213/decisions', { key: 'key-00000502', body: { action: 'accept' } });
+  assert.equal(res.status, 202);
+  const proposal = (await res.json()) as any;
+  assertSchema('DecisionProposal', proposal);
+  assert.equal(proposal.status, 'open');
+
+  const busy = await call('POST', '/v1/claims/clm_048213/decisions', { key: 'key-00000503', body: { action: 'accept' } });
+  assert.equal(busy.status, 409);
+
+  const approvals = `/v1/claims/clm_048213/proposals/${proposal.id}/approvals`;
+  assert.equal((await call('POST', approvals, { token: 'clinic', key: 'key-00000504', body: {} })).status, 403, 'clinic lacks claims:approve');
+  const own = await call('POST', approvals, { key: 'key-00000505', body: {} });
+  assert.equal(own.status, 403, 'four eyes');
+  assert.match(((await own.json()) as any).title, /four eyes/);
+
+  const ok = await call('POST', approvals, { token: 'approver', key: 'key-00000506', body: {} });
+  assert.equal(ok.status, 201);
+  const decision = (await ok.json()) as any;
+  assertSchema('Decision', decision);
+  assert.equal(decision.decidedBy, 'handlaggare@example.test');
+  assert.equal(decision.approvedBy, 'attestant@example.test');
+
+  const list = (await (await call('GET', '/v1/claims/clm_048213/proposals')).json()) as any;
+  assertSchema('DecisionProposal', list.items[0]);
+  assert.equal(list.items[0].status, 'approved');
+  assert.equal((await call('POST', approvals, { token: 'approver', key: 'key-00000507', body: {} })).status, 409);
+});
+
+test('a proposal can be returned with a reason, and then decided anew', async () => {
+  const { call } = setup({ roles: lowHandler });
+  await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000511', body: input(cruciateClaim()) });
+  const proposal = (await (await call('POST', '/v1/claims/clm_048213/decisions', { key: 'key-00000512', body: { action: 'accept' } })).json()) as any;
+  const returns = `/v1/claims/clm_048213/proposals/${proposal.id}/returns`;
+  assert.equal((await call('POST', returns, { token: 'approver', key: 'key-00000513', body: {} })).status, 422);
+  const res = await call('POST', returns, { token: 'approver', key: 'key-00000514', body: { reason: 'Check the food line' } });
+  assert.equal(res.status, 200);
+  const returned = (await res.json()) as any;
+  assertSchema('DecisionProposal', returned);
+  assert.equal(returned.status, 'returned');
+  assert.equal((await call('POST', '/v1/claims/clm_048213/decisions', { key: 'key-00000515', body: { action: 'accept' } })).status, 202);
+});
+
+test('within the default limit a handler decides at once', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000521', body: input(cruciateClaim()) });
+  assert.equal((await call('POST', '/v1/claims/clm_048213/decisions', { key: 'key-00000522', body: { action: 'accept' } })).status, 201);
+});
+
+test('limits in the role settings are checked at start-up', () => {
+  assert.throws(() => setup({ roles: { handler: { permissions: ['claims:decide'], decisionLimits: { SEK: -1 } } } }), /not a non-negative integer/);
+  assert.throws(() => setup({ roles: { handler: { permissions: ['claims:decide'], decisionLimits: { sek: 1 } } } }), /invalid currency/);
+});
+
+test('the amount limit of several roles: only roles with the permission count, and the highest wins', () => {
+  const roles = {
+    a: { permissions: ['claims:decide' as const], decisionLimits: { SEK: 100, EUR: 5 } },
+    b: { permissions: ['claims:decide' as const], decisionLimits: { SEK: 300 } },
+    c: { permissions: ['claims:read' as const] },
+    d: { permissions: ['claims:decide' as const] },
+  };
+  assert.deepEqual(amountLimitsOf(['a', 'b', 'c'], roles, 'decide'), { SEK: 300, EUR: 5 });
+  assert.equal(amountLimitsOf(['a', 'd'], roles, 'decide'), null, 'a role without limits has no limit');
 });

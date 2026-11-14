@@ -18,6 +18,8 @@ export const PERMISSIONS = [
   /** Decide against the assessment's proposal (ADR 0018). Checked inside the decide operation. */
   'claims:override',
   'claims:reassess',
+  /** Approve or return another handler's decision proposal (ADR 0019). */
+  'claims:approve',
   /** Ask for a human review of an automated decision on the customer's behalf (ADR 0018). */
   'claims:request-review',
   'claims:preview',
@@ -37,6 +39,14 @@ export interface RoleDefinition {
    * e.g. a customer portal acting for a signed-in customer.
    */
   bindsTo?: Binding;
+  /**
+   * Highest payout per currency the role may decide alone (claims:decide, ADR 0019).
+   * Above it, the decision becomes a proposal. Omitted: no limit. A currency
+   * missing from the map has the limit 0.
+   */
+  decisionLimits?: Readonly<Record<string, number>>;
+  /** Highest payout per currency the role may approve (claims:approve). Omitted: no limit. */
+  approvalLimits?: Readonly<Record<string, number>>;
 }
 
 /** Role name -> definition. Configured per installation. */
@@ -55,8 +65,10 @@ export const DEFAULT_ROLES: RoleDefinitions = {
       'claims:preview',
       'limits:read',
     ],
+    // SEK 25,000 and EUR 2,500 alone; above that, someone with claims:approve approves.
+    decisionLimits: { SEK: 2_500_000, EUR: 250_000 },
   },
-  approver: { permissions: ['claims:read', 'limits:read'] },
+  approver: { permissions: ['claims:read', 'claims:approve', 'limits:read'] },
   clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview'], bindsTo: 'clinic' },
   'reassessment-job': { permissions: ['claims:read', 'claims:reassess'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */
@@ -77,6 +89,14 @@ export function assertRoleDefinitions(roles: RoleDefinitions): void {
     if (def.bindsTo !== undefined && def.bindsTo !== 'clinic' && def.bindsTo !== 'policies') {
       throw new Error(`Role '${role}' has an unknown binding '${String(def.bindsTo)}'`);
     }
+    for (const field of ['decisionLimits', 'approvalLimits'] as const) {
+      for (const [currency, amount] of Object.entries(def[field] ?? {})) {
+        if (!/^[A-Z]{3}$/.test(currency)) throw new Error(`Role '${role}' has ${field} for an invalid currency '${currency}'`);
+        if (!Number.isSafeInteger(amount) || amount < 0) {
+          throw new Error(`Role '${role}' has ${field}.${currency} that is not a non-negative integer`);
+        }
+      }
+    }
   }
 }
 
@@ -87,6 +107,22 @@ function known(roleNames: readonly string[], roles: RoleDefinitions): RoleDefini
 /** The permissions a caller with these roles has. Unknown roles give nothing. */
 export function permissionsOf(roleNames: readonly string[], roles: RoleDefinitions): Set<Permission> {
   return new Set(known(roleNames, roles).flatMap((d) => d.permissions));
+}
+
+/**
+ * The caller's amount limits for deciding or approving (ADR 0019): only roles
+ * with the permission count, and the highest limit per currency wins. null means
+ * no limit: some role with the permission has none. Callers without the
+ * permission never reach the operation, so their limits do not matter.
+ */
+export function amountLimitsOf(roleNames: readonly string[], roles: RoleDefinitions, kind: 'decide' | 'approve'): Record<string, number> | null {
+  const permission: Permission = kind === 'decide' ? 'claims:decide' : 'claims:approve';
+  const field = kind === 'decide' ? 'decisionLimits' : 'approvalLimits';
+  const defs = known(roleNames, roles).filter((d) => d.permissions.includes(permission));
+  if (defs.length === 0 || defs.some((d) => !d[field])) return defs.length === 0 ? {} : null;
+  const out: Record<string, number> = {};
+  for (const d of defs) for (const [cur, amount] of Object.entries(d[field]!)) out[cur] = Math.max(out[cur] ?? 0, amount);
+  return out;
 }
 
 /** The attributes in the caller's token that limit what it may see. */

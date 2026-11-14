@@ -1,7 +1,7 @@
 export * from './types.ts';
 export * from './ports.ts';
 export { CALCULATION_MODEL, assess, calculate, validateClaim, deductibleScope, ageInYears, variableBpFor } from './assess.ts';
-export { ClaimsService, DomainError } from './service.ts';
+export { ClaimsService, DomainError, limitIn } from './service.ts';
 export { relayOutbox } from './relay.ts';
 export { replay, diff, CALCULATION_MODELS } from './replay.ts';
 export type { ReplayResult, Difference } from './replay.ts';
@@ -9,5 +9,5 @@ export { explainDecision } from './explain.ts';
 export type { DecisionExplanation, ExplanationStep, ExplanationStepCode, ExplainContext, Reason } from './explain.ts';
 export { accounts } from './ledger.ts';
 export type { LimitKey } from './ledger.ts';
-export type { DecideCommand, ReviewRequestCommand, LimitsView, ClaimsServiceDeps, DomainErrorCode } from './service.ts';
+export type { DecideCommand, DecideResult, AmountLimits, ApproveCommand, ReturnProposalCommand, ReviewRequestCommand, LimitsView, ClaimsServiceDeps, DomainErrorCode } from './service.ts';
 export { sha256, canonicalJson } from './util.ts';

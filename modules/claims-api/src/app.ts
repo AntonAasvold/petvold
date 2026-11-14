@@ -4,6 +4,7 @@ import { DomainError } from '@petvold/claims-core';
 import { formatErrors, openapiText, operationPermissions, validatorFor, type FieldError } from './contract.ts';
 import { routePath } from 'hono/route';
 import {
+  amountLimitsOf,
   assertRoleDefinitions,
   coversClaim,
   coversPolicy,
@@ -187,8 +188,33 @@ export function createApp(d: AppDeps) {
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => {
       const mayOverride = permissionsOf(p.roles, roles).has('claims:override');
-      const decision = await d.service.decide(c.req.param('claimId'), { ...r.body, decidedBy: p.subject, mayOverride });
+      const decisionLimits = amountLimitsOf(p.roles, roles, 'decide');
+      const result = await d.service.decide(c.req.param('claimId'), { ...r.body, decidedBy: p.subject, mayOverride, decisionLimits });
+      // 201: decided. 202: above the handler's limit, proposed for approval (ADR 0019).
+      return result.decision ? { status: 201, body: result.decision } : { status: 202, body: result.proposal };
+    });
+  });
+
+  app.get('/v1/claims/:claimId/proposals', async (c) => send(c, { items: await d.service.getProposals(c.req.param('claimId')) }));
+
+  app.post('/v1/claims/:claimId/proposals/:proposalId/approvals', async (c) => {
+    const p = c.get('principal');
+    const r = await readJson(c, 'ApproveRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => {
+      const approvalLimits = amountLimitsOf(p.roles, roles, 'approve');
+      const decision = await d.service.approveProposal(c.req.param('claimId'), c.req.param('proposalId'), { approvedBy: p.subject, approvalLimits });
       return { status: 201, body: decision };
+    });
+  });
+
+  app.post('/v1/claims/:claimId/proposals/:proposalId/returns', async (c) => {
+    const p = c.get('principal');
+    const r = await readJson(c, 'ReturnProposalRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => {
+      const proposal = await d.service.returnProposal(c.req.param('claimId'), c.req.param('proposalId'), { returnedBy: p.subject, reason: r.body.reason });
+      return { status: 200, body: proposal };
     });
   });
 

@@ -2,6 +2,29 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 18)
+
+**Gjort**
+- #23 mergad: behörighet del 2. Roadmap-PR #24 är öppen med nya punkter från jämförelsen med ett annat system. Bara idéer på allmän nivå, med publika källor.
+- Attestkedjan (ADR 0019, Föreslagen):
+  - **Beslutsförslag.** Över handläggarens gräns blir beslutet ett förslag (`202`). Inget bokförs, och ärendet kan ha högst ett öppet förslag.
+  - **Attest.** Attesten kräver `claims:approve`, en annan person än den som föreslog, att beloppet ryms inom attestantens gräns och samma underlag (kontrollsumman). Beslutet får `approvedBy` och `proposalId`. Ett förslag kan också skickas tillbaka med en motivering.
+  - **Gränser per roll och valuta:** `decisionLimits` och `approvalLimits`. En valuta som saknas har gränsen 0. Handläggare beslutar ensamma upp till 25 000 SEK eller 2 500 EUR. `approver` har `claims:approve`.
+  - **Utbetalningsorder.** `claim.payout_ordered` skrivs för varje höjning av ersättningen, i samma transaktion som beslutet.
+  - **Migration 0008:** `claims.decision_proposal` med regler i databasen (ett öppet per ärende, fyra ögon, stängs en gång). Provad ner och upp igen.
+  - Ny dev-token `dev-approver`. `dev-handler` är nu bara handläggare.
+- Dokumentation: skadereglering (attest, utbetalningsorder, händelser), behörighet (gränser) och arkitektur.
+- 190 tester och 61 databastester.
+
+**Nästa steg**
+1. Reserv i ledgern medan ärendet ligger hos handläggare eller väntar på attest. Det slutför M1.
+2. M2: produktkatalog och modulen `decisioning`.
+
+**Öppet**
+- ADR 0019 är Föreslagen och väntar på ditt beslut.
+- Återkrav när en omprövning sänker en redan utbetald ersättning (M3 och M5).
+- Omprövningar omfattas inte av beloppsgränser.
+
 ## 2026-11-14 (pass 17)
 
 **Gjort**

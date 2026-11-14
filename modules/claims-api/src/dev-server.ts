@@ -6,8 +6,8 @@
  * Without it everything lives in memory. Policies and rules are always the
  * in-memory sample data until the policy and product modules exist.
  *
- * Tokens: 'dev-handler' (claims handler), 'dev-clinic' (clinic), 'dev-job'
- * (reassessment job), 'dev-customer' (customer channel). Roles map to
+ * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-clinic'
+ * (clinic), 'dev-job' (reassessment job), 'dev-customer' (customer channel). Roles map to
  * permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
  */
@@ -76,7 +76,8 @@ const logSink = {
 setInterval(() => void relayOutbox(store, logSink, clock).catch((err) => console.error('[relay]', err)), 1_000).unref();
 
 const tokens: Record<string, Principal> = {
-  'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler', 'approver'], markets: '*' },
+  'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler'], markets: '*' },
+  'dev-approver': { subject: 'attestant@example.test', roles: ['approver'], markets: '*' },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
   // Acts for the customer who owns Bella's policy in the sample data.
@@ -104,4 +105,4 @@ console.log(`Claims engine listening on http://localhost:${port}`);
 console.log(`  Storage:   ${storage}`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (claims handler), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);

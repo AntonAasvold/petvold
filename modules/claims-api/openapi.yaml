@@ -33,6 +33,7 @@ tags:
   - name: claims
   - name: decisions
   - name: reviews
+  - name: approvals
   - name: previews
   - name: limits
 
@@ -157,6 +158,13 @@ paths:
 
         Every decision stores its evidence: exactly the input the engine
         assessed, the calculation model and the engine version.
+
+        If the payout exceeds the caller's decision limit in the claim's
+        currency, nothing is decided: the answer is `202` with a decision
+        proposal that someone else with `claims:approve` must approve
+        (ADR 0019). While a proposal is open, no other decision can be made
+        on the claim (409). A decision that increases the payout writes the
+        event `claim.payout_ordered`.
       parameters:
         - $ref: '#/components/parameters/ClaimId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -178,6 +186,104 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Decision' }
+        '202':
+          description: The payout exceeds the caller's limit. A proposal awaits approval.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DecisionProposal' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}/proposals:
+    get:
+      tags: [approvals]
+      operationId: listProposals
+      x-permission: claims:read
+      summary: List the claim's decision proposals
+      description: Requires the permission `claims:read`. Oldest first, open and closed.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The proposals
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/DecisionProposal' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/claims/{claimId}/proposals/{proposalId}/approvals:
+    post:
+      tags: [approvals]
+      operationId: approveProposal
+      x-permission: claims:approve
+      summary: Approve a decision proposal
+      description: |
+        Requires the permission `claims:approve`.
+
+        Turns an open proposal into a decision (ADR 0019). The approver must
+        not be the proposer (403, four eyes), and the payout must be within
+        the approver's limit (403). The engine assesses the claim again; if
+        the basis is no longer the one the proposal was made on, the approval
+        is refused (409) and the proposal must be returned. The decision is
+        booked as usual and records `approvedBy` and `proposalId`.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApproveRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Approved; the decision is made
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Decision' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}/proposals/{proposalId}/returns:
+    post:
+      tags: [approvals]
+      operationId: returnProposal
+      x-permission: claims:approve
+      summary: Return a decision proposal without a decision
+      description: |
+        Requires the permission `claims:approve`.
+
+        Closes an open proposal with a reason. Nothing is decided or booked,
+        and a new decision can be made on the claim.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReturnProposalRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: Returned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DecisionProposal' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
@@ -433,6 +539,11 @@ components:
       in: path
       required: true
       schema: { type: string }
+    ProposalId:
+      name: proposalId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
     Seq:
       name: seq
       in: path
@@ -753,6 +864,63 @@ components:
         reviewRequestId:
           type: string
           description: Set when this decision is the human review of a request.
+        approvedBy:
+          type: string
+          description: Set when the decision needed approval (ADR 0019). Never the same as `decidedBy`.
+        proposalId:
+          type: string
+          description: The proposal the approval turned into this decision.
+
+    DecisionProposal:
+      type: object
+      required: [id, claimId, action, outcome, payout, currency, inputHash, proposedBy, proposedAt, deviatesFromProposal, proposerLimit, status]
+      properties:
+        id: { type: string }
+        claimId: { type: string }
+        action: { type: string, enum: [accept, reject] }
+        outcome: { $ref: '#/components/schemas/Outcome' }
+        payout: { $ref: '#/components/schemas/NonNegativeMoney' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        inputHash: { type: string, description: The basis the proposal was made on. An approval requires the same basis. }
+        proposedBy: { type: string }
+        proposedAt: { $ref: '#/components/schemas/DateTime' }
+        reason: { type: string }
+        reasonCode: { $ref: '#/components/schemas/DeviationReasonCode' }
+        deviatesFromProposal: { type: boolean }
+        proposerLimit:
+          $ref: '#/components/schemas/NonNegativeMoney'
+          description: The proposer's limit in the claim's currency, which the payout exceeded.
+        status: { type: string, enum: [open, approved, returned] }
+        closedBy: { type: string }
+        closedAt: { $ref: '#/components/schemas/DateTime' }
+        decisionId: { type: string, description: The decision the approval became. }
+        returnReason: { type: string }
+
+    ApproveRequest:
+      type: object
+      additionalProperties: false
+      description: Empty for now. An object, so fields can be added later.
+
+    ReturnProposalRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    PayoutOrder:
+      type: object
+      required: [id, claimId, decisionId, policyId, amount, currency, channel]
+      description: An increase in a claim's payout, ordered for payment (ADR 0019). The payments module chooses the payee.
+      properties:
+        id: { type: string }
+        claimId: { type: string }
+        decisionId: { type: string }
+        policyId: { type: string }
+        amount: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        channel: { type: string, enum: [clinic_direct, customer] }
+        clinicId: { type: string }
 
     DeviationReasonCode:
       type: string
@@ -959,6 +1127,30 @@ components:
         type: { const: claim.review_requested }
         occurredAt: { $ref: '#/components/schemas/DateTime' }
         request: { $ref: '#/components/schemas/ReviewRequest' }
+
+    ClaimDecisionProposedEvent:
+      type: object
+      required: [type, occurredAt, proposal]
+      properties:
+        type: { const: claim.decision_proposed }
+        occurredAt: { $ref: '#/components/schemas/DateTime' }
+        proposal: { $ref: '#/components/schemas/DecisionProposal' }
+
+    ClaimProposalReturnedEvent:
+      type: object
+      required: [type, occurredAt, proposal]
+      properties:
+        type: { const: claim.proposal_returned }
+        occurredAt: { $ref: '#/components/schemas/DateTime' }
+        proposal: { $ref: '#/components/schemas/DecisionProposal' }
+
+    ClaimPayoutOrderedEvent:
+      type: object
+      required: [type, occurredAt, order]
+      properties:
+        type: { const: claim.payout_ordered }
+        occurredAt: { $ref: '#/components/schemas/DateTime' }
+        order: { $ref: '#/components/schemas/PayoutOrder' }
 
     Problem:
       type: object

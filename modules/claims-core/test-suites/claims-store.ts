@@ -12,7 +12,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreConflictError, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore, type DecisionCommit } from '../src/ports.ts';
-import type { Assessment, Claim, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot, ReviewRequest } from '../src/types.ts';
+import type { Assessment, Claim, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot, ReviewRequest, DecisionProposal } from '../src/types.ts';
 import { accounts, type LimitKey } from '../src/ledger.ts';
 
 /** A store that also exposes its outbox, as every implementation must. */
@@ -177,6 +177,28 @@ function reviewRequest(d: ClaimDecision, overrides: Partial<ReviewRequest> = {})
     requestedAt: '2026-10-05T08:00:00.000Z',
     ...overrides,
   };
+}
+
+function proposal(claimId: string, overrides: Partial<DecisionProposal> = {}): DecisionProposal {
+  return {
+    id: `prp_${claimId}`,
+    claimId,
+    action: 'accept',
+    outcome: 'partial',
+    payout: 1_216_500,
+    currency: 'SEK',
+    inputHash: `hash-${claimId}`,
+    proposedBy: 'handlaggare@example.test',
+    proposedAt: '2026-10-03T08:00:00.000Z',
+    deviatesFromProposal: false,
+    proposerLimit: 1_000_000,
+    status: 'open',
+    ...overrides,
+  };
+}
+
+function proposed(p: DecisionProposal): ClaimsEvent[] {
+  return [{ type: 'claim.decision_proposed', occurredAt: p.proposedAt, proposal: p }];
 }
 
 function reviewRequested(request: ReviewRequest): ClaimsEvent[] {
@@ -494,6 +516,67 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       await assert.rejects(store.commitDecision({ ...commit(unknown), closesReviewRequestId: 'rvw_unknown' }));
       assert.deepEqual(await store.getDecisions('clm_a'), [auto]);
       assert.deepEqual(await store.getReviewRequests('clm_a'), [req]);
+    });
+
+    // Decision proposals (ADR 0019) ----------------------------------------------
+
+    it('a proposal is read back unchanged and writes its event', async (store) => {
+      await save(store, claim('clm_a'));
+      const p = proposal('clm_a');
+      await store.saveProposal(p, proposed(p));
+      assert.deepEqual(await store.getProposals('clm_a'), [p]);
+      assert.deepEqual(await store.getProposals('clm_unknown'), []);
+      assert.deepEqual(await pendingTypes(store), ['claim.registered', 'claim.decision_proposed']);
+    });
+
+    it('a claim has at most one open proposal, and nothing is stored on conflict', async (store) => {
+      await save(store, claim('clm_a'));
+      const p = proposal('clm_a');
+      await store.saveProposal(p, proposed(p));
+      const second = proposal('clm_a', { id: 'prp_second' });
+      await assert.rejects(store.saveProposal(second, proposed(second)), isConflict('proposal_open'));
+      assert.deepEqual(await store.getProposals('clm_a'), [p]);
+      assert.deepEqual(await pendingTypes(store), ['claim.registered', 'claim.decision_proposed']);
+    });
+
+    it('the approving decision closes the proposal in the same transaction', async (store) => {
+      await save(store, claim('clm_a'));
+      const p = proposal('clm_a');
+      await store.saveProposal(p, proposed(p));
+      const d = decision('clm_a', 1, 1_216_500, { decidedBy: p.proposedBy, approvedBy: 'approver@example.test', proposalId: p.id });
+      await store.commitDecision({ ...commit(d, [consumption(d, 1_216_500)]), closesProposalId: p.id });
+      assert.deepEqual(await store.getDecisions('clm_a'), [d]);
+      assert.deepEqual(await store.getProposals('clm_a'), [
+        { ...p, status: 'approved', closedBy: 'approver@example.test', closedAt: d.decidedAt, decisionId: d.id },
+      ]);
+    });
+
+    it('the proposer cannot approve, and nothing is stored', async (store) => {
+      await save(store, claim('clm_a'));
+      const p = proposal('clm_a');
+      await store.saveProposal(p, proposed(p));
+      const d = decision('clm_a', 1, 1_216_500, { decidedBy: p.proposedBy, approvedBy: p.proposedBy, proposalId: p.id });
+      await assert.rejects(store.commitDecision({ ...commit(d, [consumption(d, 1_216_500)]), closesProposalId: p.id }));
+      assert.deepEqual(await store.getDecisions('clm_a'), []);
+      assert.equal(await store.getConsumed(limit()), 0);
+      assert.equal((await store.getProposals('clm_a'))[0]!.status, 'open');
+    });
+
+    it('a returned proposal cannot be approved or returned again, and a new one can be made', async (store) => {
+      await save(store, claim('clm_a'));
+      const p = proposal('clm_a');
+      await store.saveProposal(p, proposed(p));
+      await store.returnProposal(p.id, 'approver@example.test', '2026-10-04T08:00:00.000Z', 'Check the invoice', []);
+      assert.deepEqual(await store.getProposals('clm_a'), [
+        { ...p, status: 'returned', closedBy: 'approver@example.test', closedAt: '2026-10-04T08:00:00.000Z', returnReason: 'Check the invoice' },
+      ]);
+      await assert.rejects(store.returnProposal(p.id, 'approver@example.test', '2026-10-04T09:00:00.000Z', 'Again', []), isConflict('proposal_closed'));
+      const d = decision('clm_a', 1, 1_216_500, { decidedBy: p.proposedBy, approvedBy: 'approver@example.test', proposalId: p.id });
+      await assert.rejects(store.commitDecision({ ...commit(d, [consumption(d, 1_216_500)]), closesProposalId: p.id }), isConflict('proposal_closed'));
+      assert.deepEqual(await store.getDecisions('clm_a'), []);
+      const next = proposal('clm_a', { id: 'prp_next', proposedAt: '2026-10-05T08:00:00.000Z' });
+      await store.saveProposal(next, proposed(next));
+      assert.equal((await store.getProposals('clm_a')).length, 2);
     });
 
     // Outbox ------------------------------------------------------------------

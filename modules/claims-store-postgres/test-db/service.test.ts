@@ -10,6 +10,14 @@ import { ClaimsService, assess, sha256 } from '@petvold/claims-core';
 import { FixedClock, InMemoryPolicyPort, SequentialIds, StaticRulesPort, fixtures } from '@petvold/claims-store-memory';
 import { createPool, PostgresClaimsStore } from '../src/index.ts';
 
+/** A handler decision that must be made at once, not proposed. */
+async function decideNow(s: ClaimsService, claimId: string, cmd: Parameters<ClaimsService['decide']>[1]) {
+  const r = await s.decide(claimId, cmd);
+  assert.ok(r.decision, `expected a decision, got a proposal: ${JSON.stringify(r.proposal)}`);
+  return r.decision;
+}
+
+
 const owner = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
 const pool = createPool(process.env.CLAIMS_TEST_DATABASE_URL!, { max: 4 });
 after(async () => {
@@ -18,7 +26,7 @@ after(async () => {
 });
 beforeEach(async () => {
   await owner.query(
-    `truncate claims.journal_line, claims.journal, claims.deductible_period, claims.decision_evidence, claims.review_request, claims.decision,
+    `truncate claims.journal_line, claims.journal, claims.deductible_period, claims.decision_evidence, claims.review_request, claims.decision_proposal, claims.decision,
               claims.claim_line, claims.claim, claims.outbox, claims.idempotency`,
   );
 });
@@ -54,7 +62,7 @@ test('handler decision, consumed limit and reassessment without change', async (
   assert.equal(reg.decision, null);
 
   const a = await service.assessClaim(cruciateClaim().id);
-  const d = await service.decide(cruciateClaim().id, { action: 'accept', decidedBy: 'h1', expectedInputHash: a.inputHash });
+  const d = await decideNow(service, cruciateClaim().id, { action: 'accept', decidedBy: 'h1', expectedInputHash: a.inputHash });
   assert.equal(d.outcome, 'partial');
 
   const limits = await service.getLimits('pol_bella', 'ani_bella', '2026-11-11');
