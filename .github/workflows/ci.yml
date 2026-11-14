@@ -32,7 +32,14 @@ jobs:
       - run: cp .env.example .env
       - run: npm run dev:up
       - run: npm run test:db
-      - name: Migreringarna går att backa och köra igen
-        run: npx dbmate --env TEST_DATABASE_URL --no-dump-schema rollback && npx dbmate --env TEST_DATABASE_URL --no-dump-schema rollback && npm run db:migrate
+      - name: Senaste migreringen går att backa och köra igen med data i tabellerna
+        run: |
+          npx dbmate --env TEST_DATABASE_URL --no-dump-schema rollback
+          npx dbmate --env TEST_DATABASE_URL --no-dump-schema up
+      - name: Alla migreringar går att backa och köra igen
+        run: |
+          for _ in db/migrations/*.sql; do npx dbmate --env TEST_DATABASE_URL --no-dump-schema rollback; done
+          npm run db:migrate
+          npm run test:db
       - if: failure()
         run: docker compose logs postgres

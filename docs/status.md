@@ -7,7 +7,9 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 **Gjort**
 - `modules/claims-store-postgres`: `PostgresClaimsStore` klarar alla 16 tester i den gemensamma sviten, ansluten som `claims_service`.
 - Tjänsten körd mot Postgres: automatisk reglering, handläggarbeslut, förbrukat belopp, omprövning och självriskperiod (3 tester).
-- Migration 0003: fakturaradernas ordning (`line_no`) och valuta på journaler (ADR 0014). `LedgerJournal` har `currency`.
+- Migration 0003: fakturaradernas ordning (`line_no`) och valuta på journaler (ADR 0014), med ifyllnad av befintliga rader. `LedgerJournal` har `currency`.
+- CI backar nu senaste migreringen med data i tabellerna och kör den igen. Det fångade att första versionen av 0003 inte klarade befintliga rader.
+- `.env` hade av misstag kommit med i #5. Borttagen ur git (bara lokala dev-värden).
 - ADR 0015 (föreslagen): node-postgres och ren SQL.
 - 26 databastester och 88 övriga tester.
 
