@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CALCULATION_MODEL, ClaimsService, DomainError, StoreConflictError, assess, sha256 } from '@petvold/claims-core';
+import { CALCULATION_MODEL, ClaimsService, DomainError, StoreConflictError, accounts, assess, sha256 } from '@petvold/claims-core';
 import {
   FixedClock,
   InMemoryClaimsStore,
@@ -483,7 +483,7 @@ test('a decision above the handler\'s limit becomes a proposal: nothing is decid
   assert.equal(r.proposal.payout, 1_216_500);
   assert.equal(r.proposal.proposerLimit, 1_000_000);
   assert.deepEqual(await service.getDecisions('clm_048213'), []);
-  assert.equal(store.dump().journals.length, 0);
+  assert.deepEqual(store.dump().journals.map((j) => j.sourceType), ['claim_reserve'], 'only the reserve is booked');
   assert.equal(store.dump().periods.length, 0);
   assert.deepEqual((await store.pendingEvents(10)).map((e) => e.event.type), ['claim.registered', 'claim.decision_proposed']);
 });
@@ -620,4 +620,45 @@ test('payout orders: only increases are ordered, for the difference', async () =
   const re = await service.reassess('clm_021877', 'reassessment-job', 'Retroactive cancellation');
   assert.equal(re?.payout, 0);
   assert.deepEqual(await orders(), [150_000], 'a decrease is not ordered');
+});
+
+// Reserve (roadmap M1) ---------------------------------------------------------------
+
+const reserveOf = (store: InMemoryClaimsStore, claimId: string) => store.getBalance(accounts.claimReserve('SEK', claimId));
+
+test('a claim that goes to a handler reserves its expected payout, and the decision releases it', async () => {
+  const { service, store } = setup();
+  await service.registerClaim(cruciateClaim());
+  assert.equal(await reserveOf(store, 'clm_048213'), -1_216_500, 'credit balance: SEK 12,165 reserved');
+  assertBalanced(store);
+  const d = await decideNow(service, 'clm_048213', { action: 'accept', decidedBy: HANDLER });
+  assert.equal(await reserveOf(store, 'clm_048213'), 0);
+  assert.equal(await store.getBalance(accounts.reserveExpense('SEK', 'clm_048213')), 0);
+  const release = store.dump().journals.find((j) => j.sourceType === 'claim_reserve' && j.sourceId === d.id);
+  assert.ok(release, 'the release refers to the decision');
+  assertBalanced(store);
+});
+
+test('a rejection also releases the reserve, and an automatic decision never has one', async () => {
+  const { service, store } = setup();
+  await service.registerClaim(cruciateClaim());
+  await decideNow(service, 'clm_048213', { action: 'reject', decidedBy: HANDLER, mayOverride: true, reasonCode: 'other', reason: 'Duplicate' });
+  assert.equal(await reserveOf(store, 'clm_048213'), 0);
+  await service.registerClaim(otitisClaim());
+  assert.ok(!store.dump().journals.some((j) => j.claimId === 'clm_021877' && j.sourceType === 'claim_reserve'));
+});
+
+test('no reserve when the assessment proposes rejection', async () => {
+  const { service, store } = setup();
+  await service.registerClaim(otitisClaim({ treatmentFrom: '2026-03-10', treatmentTo: '2026-03-10' })); // before the policy
+  assert.equal(store.dump().journals.length, 0);
+});
+
+test('the reserve stays while a proposal awaits approval, and the approval releases it', async () => {
+  const { service, store } = setup();
+  await service.registerClaim(cruciateClaim());
+  const { proposal } = await service.decide('clm_048213', { action: 'accept', decidedBy: HANDLER, decisionLimits: LOW });
+  assert.equal(await reserveOf(store, 'clm_048213'), -1_216_500);
+  await service.approveProposal('clm_048213', proposal!.id, { approvedBy: APPROVER });
+  assert.equal(await reserveOf(store, 'clm_048213'), 0);
 });

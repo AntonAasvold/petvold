@@ -40,10 +40,24 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   private outbox: Array<OutboxEntry & { publishedAt?: Timestamp }> = [];
   private outboxSeq = 0;
 
-  async saveClaim(claim: Claim, events: ClaimsEvent[]) {
+  async saveClaim(claim: Claim, events: ClaimsEvent[], journals: LedgerJournal[] = []) {
     if (this.claims.has(claim.id)) throw new StoreConflictError('claim_exists', `Claim ${claim.id} already exists`);
+    for (const j of journals) {
+      assertBalanced(j);
+      if (j.claimId !== claim.id || j.sourceType !== 'claim_reserve' || j.sourceId !== claim.id) {
+        throw new Error(`Journal ${j.id} does not reserve claim ${claim.id}`);
+      }
+    }
     this.claims.set(claim.id, structuredClone(claim));
+    this.journals.push(...structuredClone(journals));
     this.appendEvents(events);
+  }
+
+  async getBalance(account: string): Promise<MinorUnits> {
+    return this.journals
+      .flatMap((j) => j.lines)
+      .filter((l) => l.account === account)
+      .reduce((s, l) => s + l.amount, 0);
   }
 
   async getClaim(id: string) {
@@ -105,10 +119,7 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
       throw new Error('An approved decision must close its proposal');
     }
     if (evidence.decisionId !== decision.id) throw new Error(`Evidence for ${evidence.decisionId} given with decision ${decision.id}`);
-    for (const j of journals) {
-      const sum = j.lines.reduce((s, l) => s + l.amount, 0);
-      if (sum !== 0) throw new Error(`Journal ${j.id} does not balance (${sum})`);
-    }
+    for (const j of journals) assertBalanced(j);
     if (this.decisions.some((d) => d.claimId === decision.claimId && d.seq === decision.seq)) {
       throw new StoreConflictError('decision_exists', `Decision ${decision.claimId}#${decision.seq} already exists`);
     }
@@ -194,6 +205,11 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   dump() {
     return { decisions: this.decisions, journals: this.journals, periods: this.periods, outbox: this.outbox };
   }
+}
+
+function assertBalanced(j: LedgerJournal): void {
+  const sum = j.lines.reduce((s, l) => s + l.amount, 0);
+  if (sum !== 0) throw new Error(`Journal ${j.id} does not balance (${sum})`);
 }
 
 /**

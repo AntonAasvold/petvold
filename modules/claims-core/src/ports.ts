@@ -35,11 +35,14 @@ export interface RulesPort {
 /** The claims engine's own state. Postgres in production, in memory in tests. */
 export interface ClaimsStore {
   /**
-   * Stores the claim and writes `events` to the outbox in the same transaction.
-   * Throws StoreConflictError('claim_exists') if the id already exists; then
-   * nothing is stored and no event is written.
+   * Stores the claim and writes `events` to the outbox and `journals` (e.g. the
+   * reserve) to the ledger in the same transaction. Throws
+   * StoreConflictError('claim_exists') if the id already exists; then nothing is
+   * stored. A journal that does not balance is rejected with a plain error.
    */
-  saveClaim(claim: Claim, events: ClaimsEvent[]): Promise<void>;
+  saveClaim(claim: Claim, events: ClaimsEvent[], journals?: LedgerJournal[]): Promise<void>;
+  /** The balance of a ledger account: debits positive, credits negative. 0 for an unknown account. */
+  getBalance(account: string): Promise<MinorUnits>;
   getClaim(claimId: string): Promise<Claim | null>;
 
   /**

@@ -2,6 +2,29 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 20)
+
+**Gjort**
+- #25 och #26 mergade: attestkedjan och rollinställningen via API. ADR 0019 och 0020 är beslutade.
+- Reserv i ledgern. Det sista i M1.
+  - **Reserven bokas** när en skada går till handläggare: den förväntade ersättningen bokas i samma transaktion som skadan sparas. Bedömningen görs nu innan skadan sparas, vilket inte ändrar resultatet eftersom skadan aldrig räknas med i sin egen bedömning.
+  - **Beslutet löser upp reserven** i samma transaktion, både vid avslag och vid attest. Ett öppet förslag behåller den.
+  - **Ingen reserv** för automatiska beslut eller när förslaget är avslag.
+  - **Lagringen:** `saveClaim` tar journaler, och `getBalance(account)` läser ett kontos saldo. Nya konton är `claim_reserve` och `reserve_expense`.
+  - **Migration 0010:** journaler kan ha källan `claim_reserve`. En trigger kontrollerar att källan är ärendet eller ett beslut i det. Provad ner och upp igen.
+- Dokumentation: skadereglering och arkitektur (ledgern).
+- 209 tester och 69 databastester.
+
+**M1 är klar.**
+
+**Nästa steg**
+1. M2: produktkatalog och modulen `decisioning`, med regeluppsättningar i databasen, publicering med fyra ögon och simulering.
+2. Fyra ögon för ändringar av rollinställningen, om du vill ha det.
+
+**Öppet**
+- Reserven justeras inte när bedömningen ändras före beslutet.
+- Det finns ingen summering av öppna reserver. Den kommer med läsmodellen Insikt.
+
 ## 2026-11-14 (pass 19)
 
 **Gjort**

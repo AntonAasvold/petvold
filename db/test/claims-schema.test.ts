@@ -62,7 +62,7 @@ test('the migrations have been applied', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
   assert.deepEqual(
     rows.map((r) => r.version),
-    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009'],
+    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010'],
   );
 });
 
@@ -257,5 +257,17 @@ test('a proposal is closed once, only its closing fields change, and the approve
     await rejects(ret, ['prp_1', ' '], CHECK_VIOLATION);
     await db.query(ret, ['prp_1', 'Check the invoice']);
     await rejects(ret, ['prp_1', 'Again'], RAISE_EXCEPTION);
+  });
+});
+
+test('a reserve journal refers to its claim or to a decision on it; a decision journal only to a decision', async () => {
+  await inTx(async () => {
+    await seedDecision();
+    const insert = `insert into claims.journal (id, source_type, source_id, claim_id, currency) values ($1, $2, $3, 'clm_t1', 'SEK')`;
+    await db.query(insert, ['jnl_reserve', 'claim_reserve', 'clm_t1']);
+    await db.query(insert, ['jnl_release', 'claim_reserve', 'dec_t1']);
+    await rejects(insert, ['jnl_other', 'claim_reserve', 'dec_unknown'], RAISE_EXCEPTION);
+    await rejects(insert, ['jnl_claim', 'claim_decision', 'clm_t1'], RAISE_EXCEPTION);
+    await rejects(insert, ['jnl_kind', 'claim_guess', 'clm_t1'], CHECK_VIOLATION);
   });
 });
