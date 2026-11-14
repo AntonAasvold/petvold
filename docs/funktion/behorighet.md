@@ -21,6 +21,8 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `claims:decide` | Fatta beslut i ett ärende | `POST /v1/claims/{id}/decisions` |
 | `claims:override` | Besluta mot bedömningens förslag, med skälkod och motivering (ADR 0018) | Kontrolleras inom `POST /v1/claims/{id}/decisions` |
 | `claims:reassess` | Ompröva ett beslutat ärende | `POST /v1/claims/{id}/reassessments` |
+| `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/access/roles`, `.../versions` |
+| `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/access/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
 | `claims:request-review` | Begära mänsklig prövning av ett automatiskt beslut för kundens räkning (ADR 0018) | `POST /v1/claims/{id}/decisions/{seq}/review-requests` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
@@ -34,6 +36,7 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | --- | --- | --- | --- |
 | `handler` | Alla ovan utom `claims:approve`. Beslutar ensam upp till 25 000 SEK eller 2 500 EUR. | – | Skadehandläggare |
 | `approver` | `claims:read`, `claims:approve`, `limits:read`. Ingen gräns för attest. | – | Attestant |
+| `admin` | `access:read`, `access:manage` | – | Administratör för roller och gränser |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview` | klinik | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | – | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
 | `customer-channel` | `claims:read`, `claims:request-review` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
@@ -107,14 +110,42 @@ Inställningarna kontrolleras när Petvold startar. En okänd rättighet eller b
 
 *(Planerat: inställningen läses från installationens konfiguration i stället för koden.)*
 
+## Ändra roller och gränser via API
+
+Rollinställningen är konfiguration per installation. Den ändras via API:et, utan ny version av Petvold och utan omstart (ADR 0020). Ett administrativt gränssnitt kan bygga direkt på anropen.
+
+| Anrop | Rättighet | Gör |
+| --- | --- | --- |
+| `GET /v1/access/roles` | `access:read` | Visar gällande version: roller, rättigheter, bindningar och gränser |
+| `GET /v1/access/roles/versions` | `access:read` | Visar alla versioner, äldst först |
+| `POST /v1/access/roles/versions` | `access:manage` | Sparar en ny version av hela inställningen. Gäller direkt. |
+
+Så höjer en administratör handläggarnas gräns till 50 000 kr:
+
+1. Hämta gällande version med `GET /v1/access/roles`. Anta att den är version 3.
+2. Ändra `handler.decisionLimits.SEK` till `5000000` i `roles`.
+3. Skicka `POST /v1/access/roles/versions` med `{ "basedOnVersion": 3, "roles": { … }, "reason": "Nya gränser från 1 december" }`.
+
+Spärrar:
+- **Historiken sparas.** Varje version har `changedBy`, `changedAt` och en motivering, och ingen version ändras i efterhand. Det går därför att se vilken gräns som gällde när ett visst beslut fattades.
+- **Ingen ändrar sina egna roller** (`403`). Den som ändrar får inte röra en roll den själv har. En administratör kan alltså inte ge sig själv attesträtt, och den sista administratören kan inte låsa ute sig själv.
+- **Ändringar krockar inte.** Har någon annan sparat en version sedan `basedOnVersion` svarar Petvold `409`, och inget skrivs över.
+- **Samma validering som vid start** (`422`): okända rättigheter, bindningar eller valutor och negativa gränser stoppas. En motivering krävs.
+- **Standardrollen `admin`** har `access:read` och `access:manage`, men inga rättigheter i skadeärenden.
+
+Första gången Petvold startar skapas version 1 från standardrollerna.
+
+*Inte byggt än:* fyra ögon för ändringar av inställningen. I dag kan en administratör ändra andra rollers gränser ensam, men varje ändring spåras.
+
 ## Lokalt
 
-Dev-servern har fem tokens:
+Dev-servern har sex tokens:
 
 | Token | Roll | Omfång |
 | --- | --- | --- |
 | `dev-handler` | handläggare, beslutar ensam upp till 25 000 kr | alla marknader |
 | `dev-approver` | attestant | alla marknader |
+| `dev-admin` | administratör för roller och gränser | inga ärenden |
 | `dev-clinic` | klinik | SE, klinik `clinic_001` |
 | `dev-job` | omprövningsjobb | alla marknader |
 | `dev-customer` | kundkanal | SE, försäkringen `pol_bella` |

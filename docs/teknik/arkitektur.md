@@ -25,7 +25,8 @@ flowchart LR
 | `claims-core` | Domänen: regler, beräkning, tjänsten `ClaimsService`, portar, ledgerns kontonamn, reläet | `common` |
 | `claims-store-memory` | Lagring i minnet och exempeldata, för tester och snabb utveckling | `claims-core` |
 | `claims-store-postgres` | Lagring i Postgres med ren SQL (ADR 0015) och idempotensnycklar | `claims-core`, `pg` |
-| `claims-api` | HTTP-lagret: validering mot kontraktet, autentisering, idempotens, felöversättning, språk | `claims-core`, Hono |
+| `access` | Rollinställningen som versioner: tjänsten `AccessService`, porten `RoleConfigStore`, lagring i minnet och i Postgres (schemat `access`, ADR 0020) | `pg` |
+| `claims-api` | HTTP-lagret: validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, Hono |
 
 ## Portar och adaptrar
 
@@ -89,6 +90,13 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
   - attestanten är aldrig den som beslutade (check-constraints på både förslag och beslut)
   - förslaget stängs en gång, och bara stängningsfälten får ändras (trigger och kolumnrättigheter)
 - **Gränser.** De räknas ut i API-lagret (`amountLimitsOf` i `permissions.ts`) och skickas till tjänsten som `decisionLimits` och `approvalLimits`. Fyraögonsprincipen och gränskontrollen ligger i `claims-core`, så att de kan testas utan HTTP (ADR 0016).
+
+**Rollinställningen (ADR 0020):**
+- **Versioner.** Modulen `access` sparar hela rollinställningen som versioner i `access.role_config` (migration 0009). Den har en egen tjänsteroll, `access_service`, som bara får läsa och lägga till.
+- **Läses vid varje anrop.** API-lagret läser gällande version vid varje anrop (`AccessService.current()`), så en ändring gäller direkt.
+- **Validering.** Modulen känner inte till rättigheterna. `claims-api` skickar med sin validering (`assertRoleDefinitions`).
+- **Optimistisk låsning.** En ny version sparas bara om den är exakt nästa nummer. Två samtidiga ändringar ger en vinnare och en 409.
+- **Utan databas.** Utan `access` i `createApp` ligger inställningen i minnet, med `roles` som version 1.
 
 ## Ledgern
 

@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
 import type { Claim, ClaimsService, Clock } from '@petvold/claims-core';
 import { DomainError } from '@petvold/claims-core';
 import { formatErrors, openapiText, operationPermissions, validatorFor, type FieldError } from './contract.ts';
@@ -54,11 +55,16 @@ export interface AppDeps {
   auth: Authenticator;
   idempotency: IdempotencyStore;
   clock: Clock;
-  /** Role -> permissions and binding for this installation (ADR 0016). Defaults to DEFAULT_ROLES. */
+  /**
+   * The role settings, versioned and changeable through the API (ADR 0020).
+   * Omitted: kept in memory, starting from `roles`.
+   */
+  access?: AccessService<RoleDefinitions>;
+  /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
 }
 
-type Env = { Variables: { principal: Principal; scope: Scope } };
+type Env = { Variables: { principal: Principal; scope: Scope; roles: RoleDefinitions } };
 
 const PROBLEM = 'application/problem+json';
 
@@ -97,8 +103,15 @@ function send(c: Context, body: unknown, status = 200) {
  * handle idempotency, call the service and translate domain errors to problem+json.
  */
 export function createApp(d: AppDeps) {
-  const roles = d.roles ?? DEFAULT_ROLES;
-  assertRoleDefinitions(roles);
+  assertRoleDefinitions(d.roles ?? DEFAULT_ROLES);
+  const access =
+    d.access ??
+    new AccessService<RoleDefinitions>({
+      store: new InMemoryRoleConfigStore(),
+      clock: d.clock,
+      validate: assertRoleDefinitions,
+      defaults: d.roles ?? DEFAULT_ROLES,
+    });
   const contractPermissions = operationPermissions();
   const app = new Hono<Env>();
 
@@ -116,6 +129,9 @@ export function createApp(d: AppDeps) {
     // No matched operation: fall through to 404.
     const route = routePath(c, -1);
     if (route !== '/v1/*') {
+      // The settings in force now: a change through the API applies at once (ADR 0020).
+      const roles = (await access.current()).roles;
+      c.set('roles', roles);
       const permission = contractPermissions.get(operationKey(c.req.method, route));
       if (!isPermission(permission) || !permissionsOf(principal.roles, roles).has(permission)) {
         return problem(c, 403, 'Not permitted', isPermission(permission) ? `Requires the permission ${permission}` : undefined);
@@ -187,8 +203,8 @@ export function createApp(d: AppDeps) {
     const r = await readJson(c, 'DecideRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => {
-      const mayOverride = permissionsOf(p.roles, roles).has('claims:override');
-      const decisionLimits = amountLimitsOf(p.roles, roles, 'decide');
+      const mayOverride = permissionsOf(p.roles, c.get('roles')).has('claims:override');
+      const decisionLimits = amountLimitsOf(p.roles, c.get('roles'), 'decide');
       const result = await d.service.decide(c.req.param('claimId'), { ...r.body, decidedBy: p.subject, mayOverride, decisionLimits });
       // 201: decided. 202: above the handler's limit, proposed for approval (ADR 0019).
       return result.decision ? { status: 201, body: result.decision } : { status: 202, body: result.proposal };
@@ -202,7 +218,7 @@ export function createApp(d: AppDeps) {
     const r = await readJson(c, 'ApproveRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => {
-      const approvalLimits = amountLimitsOf(p.roles, roles, 'approve');
+      const approvalLimits = amountLimitsOf(p.roles, c.get('roles'), 'approve');
       const decision = await d.service.approveProposal(c.req.param('claimId'), c.req.param('proposalId'), { approvedBy: p.subject, approvalLimits });
       return { status: 201, body: decision };
     });
@@ -277,6 +293,26 @@ export function createApp(d: AppDeps) {
     return send(c, limits);
   });
 
+  app.get('/v1/access/roles', async (c) => send(c, await access.current()));
+
+  app.get('/v1/access/roles/versions', async (c) => send(c, { items: await access.versions() }));
+
+  app.post('/v1/access/roles/versions', async (c) => {
+    const p = c.get('principal');
+    const r = await readJson(c, 'ChangeRolesRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => {
+      const config = await access.change({
+        roles: r.body.roles,
+        basedOnVersion: r.body.basedOnVersion,
+        reason: r.body.reason,
+        changedBy: p.subject,
+        callerRoles: p.roles,
+      });
+      return { status: 201, body: config };
+    });
+  });
+
   // Every operation must have a valid permission in the contract, so a new
   // operation is closed until someone has decided who may call it.
   for (const op of implementedOperations(app)) {
@@ -286,6 +322,9 @@ export function createApp(d: AppDeps) {
   app.notFound((c) => problem(c, 404, 'The resource does not exist'));
 
   app.onError((err, c) => {
+    if (err instanceof AccessError) {
+      return problem(c, err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);
+    }
     if (err instanceof DomainError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
       return problem(c, status, err.message);

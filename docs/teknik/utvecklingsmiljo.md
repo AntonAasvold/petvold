@@ -25,7 +25,7 @@ npm run test:db        # databastester mot Postgres
 npm run dev            # API:et på http://localhost:8787, startar om vid ändringar
 ```
 
-`npm run dev` sparar ärenden, beslut, ledger, outbox och idempotensnycklar i Postgres (`petvold`) när `CLAIMS_DATABASE_URL` finns i `.env`. Data finns kvar mellan omstarter, och `npm run dev:reset` tömmer allt. Ta bort raden ur `.env` för att köra i minnet. Försäkringar och regler är fortfarande exempeldata i minnet (Bella) tills policy- och produktmodulerna finns.
+`npm run dev` sparar ärenden, beslut, ledger, outbox och idempotensnycklar i Postgres (`petvold`) när `CLAIMS_DATABASE_URL` finns i `.env`. Data finns kvar mellan omstarter, och `npm run dev:reset` tömmer allt. Ta bort raden ur `.env` för att köra i minnet. Rollinställningen sparas i Postgres när `ACCESS_DATABASE_URL` finns i `.env`. Försäkringar och regler är fortfarande exempeldata i minnet (Bella) tills policy- och produktmodulerna finns.
 
 Servern skriver ut vilken lagring den använder och loggar varje händelse som reläet publicerar.
 
@@ -59,5 +59,5 @@ Porten är 5432. Om den är upptagen: sätt `PETVOLD_PG_PORT` och ändra porten 
 ## Felsökning
 
 - **`dev:up` hänger:** `docker compose logs postgres`.
-- **Ändrat i `db/init/`:** init-skripten körs bara när databasen skapas. Kör `npm run dev:reset`.
+- **Ändrat i `db/init/`:** init-skripten körs bara när databasen skapas. Kör `npm run dev:reset`. För att behålla data kan du skapa en ny roll för hand i stället, till exempel `docker compose exec postgres psql -U petvold -c "create role access_service login password 'access_service'"`, och sedan köra `npm run db:migrate`.
 - **Fel Node-version:** `npm ci` varnar enligt `engines`. Kör `fnm use`.
