@@ -2,6 +2,22 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 11)
+
+**Gjort**
+- #12 mergad: valuta i kontonamnen för försäkringsbelopp.
+- ADR 0016 om behörighet, föreslagen: rättigheter per anrop i kontraktet (`x-permission`), roller översätts till rättigheter per installation, inget `system` som släpper igenom allt, omfång per marknad och klinik (404 utanför omfånget), beloppsgränser och fyraögonsprincip i kärnan.
+- CloudEvents och AsyncAPI väntar tills det finns en mottagare utanför Petvold (tillägg i ADR 0008, flyttat i roadmap). Bara Postgres: pollning nu, LISTEN/NOTIFY om det behövs, pg-boss för jobb.
+
+**Nästa steg**
+1. Anton beslutar om ADR 0016.
+2. Behörighet del 1: `x-permission` i kontraktet, kontroll i API-lagret, standardroller, lint-regel, ta bort `system`.
+3. Behörighet del 2: omfång per marknad och klinik, med migration för klinik-id.
+4. Kedjan reserv, beslutsförslag, beslut, attest och betalning, med beloppsgränser (behörighet del 3).
+
+**Öppet**
+- Läsningar och förhandsbedömning är oskyddade tills del 1 är klar. Spelar ingen roll lokalt, men måste vara klart före drift.
+
 ## 2026-11-14 (pass 10)
 
 **Gjort**

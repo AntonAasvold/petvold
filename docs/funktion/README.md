@@ -1,0 +1,24 @@
+# Översikt
+
+Petvold är en kärna för djurförsäkring (hund, katt och häst) för europeiska marknader. Den har inget eget gränssnitt för kunder eller handläggare. Allt sker via API, och försäkringsbolaget bygger sina egna gränssnitt eller kopplar in befintliga system.
+
+Petvold installeras en gång per försäkringsbolag (ADR 0010). Varje kund har sin egen databas, sina egna produkter och sin egen konfiguration.
+
+## Delar
+
+| Del | Vad den gör | Läge |
+| --- | --- | --- |
+| Skademotor | Tar emot skador, bedömer dem mot policyn och produktens regler, räknar ut ersättning, fattar eller föreslår beslut och bokför förbrukat försäkringsbelopp. | Byggd, se [Skadereglering](skadereglering.md) |
+| Produkt | Versionerade produkter med moment, självrisker, karenstider och regler för skador. | *(planerat, M2)* I dag finns reglerna som exempeldata, se [Produktkonfiguration](produktkonfiguration.md) |
+| Djur och parter | Djur, ägare, kliniker och deras roller. | *(planerat, M2)* |
+| Policy | Försäkringar med full historik: vad som gällde när, och vad som var känt när. | *(planerat, M3)* Skademotorn läser policyn via ett gränssnitt och kan kopplas till ett befintligt system. |
+| Pris och teckning | Premie och teckningsregler per produktversion. | *(planerat, M4)* |
+| Billing och betalningar | Premier in, ersättningar ut, via flera betaltjänster. | *(planerat, M5)* |
+
+## Grundprinciper
+
+- **Varje beslut går att förklara.** En bedömning listar varje regel som prövats, med utfall och skäl, och hela beräkningen steg för steg.
+- **Historiken ändras aldrig.** Beslut och bokföring läggs till, de skrivs aldrig över. En omprövning blir ett nytt beslut som bokför skillnaden.
+- **Belopp i heltal i minsta valutaenhet.** 150 000 betyder 1 500,00 kr. Varje objekt har en valuta, och valutor växlas aldrig (ADR 0014).
+- **Marknaden är alltid uttalad.** Samma motor bär olika marknaders regler, till exempel självrisk per period i Norden och självrisk per skada på andra håll.
+- **Texter på kundens språk.** Skälen i en bedömning är koder som översätts till svenska eller engelska efter anroparens språk.
