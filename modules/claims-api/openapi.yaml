@@ -44,6 +44,13 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ClaimInput' }
+            examples:
+              otit:
+                $ref: '#/components/examples/ClaimOtitAuto'
+              korsband:
+                $ref: '#/components/examples/ClaimKorsbandManual'
+              foreStart:
+                $ref: '#/components/examples/ClaimBeforePolicy'
       responses:
         '201':
           description: Registrerat
@@ -120,6 +127,11 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/DecideRequest' }
+            examples:
+              godkann:
+                $ref: '#/components/examples/DecideAccept'
+              avsla:
+                $ref: '#/components/examples/DecideReject'
       responses:
         '201':
           description: Beslut fattat
@@ -147,6 +159,9 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ReassessRequest' }
+            examples:
+              omprovning:
+                $ref: '#/components/examples/Reassess'
       responses:
         '201':
           description: Nytt beslut
@@ -169,6 +184,13 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ClaimInput' }
+            examples:
+              otit:
+                $ref: '#/components/examples/ClaimOtitAuto'
+              korsband:
+                $ref: '#/components/examples/ClaimKorsbandManual'
+              foreStart:
+                $ref: '#/components/examples/ClaimBeforePolicy'
       responses:
         '200':
           description: Bedömning
@@ -257,6 +279,86 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+
+  examples:
+    ClaimOtitAuto:
+      summary: Öroninflammation – regleras automatiskt
+      description: |
+        4 000 kr fakturerat. Alla regler gröna och under gränsen för automatik.
+        Väntat utfall: godkänt direkt, 1 500 kr i ersättning (2 000 kr fast
+        självrisk, 25 % rörlig). Byt `id` och `claimNo` för att skicka igen.
+      value:
+        id: clm_ex_otit
+        claimNo: EX-0001
+        policyId: pol_bella
+        animalId: ani_bella
+        market: SE
+        currency: SEK
+        channel: clinic_direct
+        treatmentFrom: '2026-11-11'
+        treatmentTo: '2026-11-11'
+        diagnosisCode: ORA-OTIT
+        lines:
+          - { id: l1, description: Undersökning, category: examination, amount: 65000 }
+          - { id: l2, description: Öronsköljning och läkemedel, category: medication, amount: 335000 }
+    ClaimKorsbandManual:
+      summary: Korsbandsskada – går till handläggare
+      description: |
+        18 640 kr fakturerat för en TPLO-operation. Bella har ett förbehåll i
+        samma diagnosgrupp och beloppet är över gränsen för automatik.
+        Väntat utfall: inget beslut, bedömningen föreslår delvis ersättning
+        (foder ersätts inte) och väntar på handläggare.
+      value:
+        id: clm_ex_korsband
+        claimNo: EX-0002
+        policyId: pol_bella
+        animalId: ani_bella
+        market: SE
+        currency: SEK
+        channel: clinic_direct
+        treatmentFrom: '2026-11-11'
+        treatmentTo: '2026-11-13'
+        diagnosisCode: ORT-KORSBAND-V
+        lines:
+          - { id: l1, description: Undersökning ortopedi, category: examination, amount: 85000 }
+          - { id: l2, description: Röntgen bakben, category: diagnostics, amount: 290000 }
+          - { id: l3, description: Sedering och anestesi, category: anaesthesia, amount: 124000 }
+          - { id: l4, description: Operation TPLO vänster, category: surgery, amount: 1240000 }
+          - { id: l5, description: Smärtlindring 10 dagar, category: medication, amount: 83000 }
+          - { id: l6, description: Specialfoder, category: food, amount: 42000 }
+    ClaimBeforePolicy:
+      summary: Behandling före försäkringsårets start – avslås
+      description: |
+        Behandlingsdatumet ligger före den policyversion som finns.
+        Väntat utfall: avslag föreslås eftersom ingen policy gällde på datumet.
+      value:
+        id: clm_ex_fore_start
+        claimNo: EX-0003
+        policyId: pol_bella
+        animalId: ani_bella
+        market: SE
+        currency: SEK
+        channel: customer
+        treatmentFrom: '2026-03-20'
+        treatmentTo: '2026-03-20'
+        diagnosisCode: GI-ENTERIT
+        lines:
+          - { id: l1, description: Undersökning, category: examination, amount: 80000 }
+    DecideAccept:
+      summary: Godkänn enligt förslaget
+      description: Lägg gärna till `expectedInputHash` från bedömningen för att skydda mot inaktuellt underlag.
+      value:
+        action: accept
+        reason: Förbehållet gäller höger bakben, skadan är på vänster.
+    DecideReject:
+      summary: Avslå
+      value:
+        action: reject
+        reason: Skadan omfattas av förbehållet.
+    Reassess:
+      summary: Ompröva efter ändring
+      value:
+        reason: Försäkringen har ändrats retroaktivt.
 
   schemas:
     Money:
