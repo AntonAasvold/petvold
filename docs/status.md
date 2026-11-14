@@ -2,6 +2,28 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 19)
+
+**Gjort**
+- #24 och #25 mergade: roadmap och attestkedjan. ADR 0019 och 0020 är beslutade.
+- Roller och beloppsgränser som versionerad konfiguration via API (ADR 0020).
+  - **Ny modul `access`:** `AccessService`, porten `RoleConfigStore`, lagring i minnet och i Postgres, och en gemensam testsvit.
+  - **Migration 0009:** schemat `access` och tjänsterollen `access_service`, med en tabell där versioner bara kan läggas till. Provad ner och upp igen.
+  - **API:** `GET /v1/access/roles`, `GET /v1/access/roles/versions` och `POST /v1/access/roles/versions`. Nya rättigheter `access:read` och `access:manage`, och standardrollen `admin`.
+  - **Spärrar:** ingen ändrar en roll den själv har (403), en ändring på en gammal version ger 409, och ogiltiga inställningar eller saknad motivering ger 422.
+  - **Gäller direkt.** API:et läser gällande version vid varje anrop. Testat: en administratör sänker gränsen och nästa beslut blir ett förslag.
+  - **Dev-servern** sparar rollinställningen i Postgres med `ACCESS_DATABASE_URL`. Ny token `dev-admin`.
+- Dokumentation: behörighet (ändra via API), arkitektur, utvecklingsmiljö, roadmap.
+- 202 tester och 65 databastester.
+
+**Nästa steg**
+1. Reserv i ledgern. Det slutför M1.
+2. Fyra ögon för ändringar av rollinställningen, om du vill ha det.
+
+**Öppet**
+- Lokalt behövs databasrollen `access_service`. Kör `npm run dev:reset` eller skapa rollen för hand, se utvecklingsmiljö.
+- Det finns inget administrativt gränssnitt. Petvold är headless, och API-sidan (`/docs`) kan användas tills vidare.
+
 ## 2026-11-14 (pass 18)
 
 **Gjort**

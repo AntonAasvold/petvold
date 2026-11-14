@@ -6,7 +6,8 @@
  * Without it everything lives in memory. Policies and rules are always the
  * in-memory sample data until the policy and product modules exist.
  *
- * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-clinic'
+ * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-admin'
+ * (roles and limits), 'dev-clinic'
  * (clinic), 'dev-job' (reassessment job), 'dev-customer' (customer channel). Roles map to
  * permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
@@ -17,7 +18,10 @@ import { serve } from '@hono/node-server';
 import { ClaimsService, eventClaimId, relayOutbox, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore } from '@petvold/claims-core';
 import { InMemoryClaimsStore, InMemoryPolicyPort, StaticRulesPort, fixtures } from '@petvold/claims-store-memory';
 import { createPool, PostgresClaimsStore, PostgresIdempotencyStore } from '@petvold/claims-store-postgres';
+import { AccessService, InMemoryRoleConfigStore, type RoleConfigStore } from '@petvold/access';
+import { PostgresRoleConfigStore } from '@petvold/access/postgres';
 import { createApp, InMemoryIdempotencyStore, type IdempotencyStore, type Principal } from './index.ts';
+import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './permissions.ts';
 import { docsPage } from './docs.ts';
 
 try {
@@ -59,6 +63,13 @@ if (databaseUrl) {
   storage = 'memory (data is lost on restart)';
 }
 
+// Role settings (ADR 0020): in Postgres with ACCESS_DATABASE_URL, else in memory.
+const accessUrl = process.env.ACCESS_DATABASE_URL;
+const roleStore: RoleConfigStore<RoleDefinitions> = accessUrl
+  ? new PostgresRoleConfigStore<RoleDefinitions>(createPool(accessUrl, { max: 2 }))
+  : new InMemoryRoleConfigStore<RoleDefinitions>();
+const access = new AccessService<RoleDefinitions>({ store: roleStore, clock, validate: assertRoleDefinitions, defaults: DEFAULT_ROLES });
+
 const service = new ClaimsService({
   policies: new InMemoryPolicyPort([{ snapshot: fixtures.bellaPolicy(), sysFrom: '2026-03-03T00:00:00Z' }]),
   rules: new StaticRulesPort({ [fixtures.PRODUCT]: fixtures.RULES_SE_DOG }, fixtures.RULES_SE_DOG),
@@ -78,6 +89,7 @@ setInterval(() => void relayOutbox(store, logSink, clock).catch((err) => console
 const tokens: Record<string, Principal> = {
   'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler'], markets: '*' },
   'dev-approver': { subject: 'attestant@example.test', roles: ['approver'], markets: '*' },
+  'dev-admin': { subject: 'admin@example.test', roles: ['admin'] },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
   // Acts for the customer who owns Bella's policy in the sample data.
@@ -88,6 +100,7 @@ const app = createApp({
   service,
   clock,
   idempotency,
+  access,
   auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) },
 });
 
@@ -103,6 +116,7 @@ serve({
 });
 console.log(`Claims engine listening on http://localhost:${port}`);
 console.log(`  Storage:   ${storage}`);
+console.log(`  Roles:     ${accessUrl ? 'Postgres, versioned (GET /v1/access/roles)' : 'memory, versioned (GET /v1/access/roles)'}`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);

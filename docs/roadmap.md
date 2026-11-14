@@ -24,7 +24,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Behörighet (ADR 0016): rättigheter i kontraktet, omfång per marknad och klinik
 - [x] Beslutsförslag, beslut och attest som kedja, med beloppsgränser och fyraögonsprincip (ADR 0019). Ett beslut som höjer ersättningen ger en utbetalningsorder (händelse). Själva betalningen kommer med betalningsmodulen i M5.
 - [ ] Reserv: bokas i ledgern när ärendet går till handläggare och löses upp när beslutet bokas.
-- [ ] Gränser och roller som konfiguration per installation, ändringsbara via API med historik
+- [x] Gränser och roller som konfiguration per installation, ändringsbara via API med historik (ADR 0020)
+- [ ] Fyra ögon för ändringar av rollinställningen
 
 ## Nästa
 

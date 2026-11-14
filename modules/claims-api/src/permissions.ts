@@ -24,6 +24,10 @@ export const PERMISSIONS = [
   'claims:request-review',
   'claims:preview',
   'limits:read',
+  /** Read the role settings and their history (ADR 0020). */
+  'access:read',
+  /** Change the role settings, except roles the caller holds (ADR 0020). */
+  'access:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -71,6 +75,8 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   approver: { permissions: ['claims:read', 'claims:approve', 'limits:read'] },
   clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview'], bindsTo: 'clinic' },
   'reassessment-job': { permissions: ['claims:read', 'claims:reassess'] },
+  /** Manages roles and limits. No permissions in claims. */
+  admin: { permissions: ['access:read', 'access:manage'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */
   'customer-channel': { permissions: ['claims:read', 'claims:request-review'], bindsTo: 'policies' },
 };

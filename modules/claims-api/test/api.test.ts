@@ -49,6 +49,7 @@ function setup(opts: { roles?: RoleDefinitions } = {}) {
     team: { subject: 'team@example.test', roles: ['claims-team'], markets: '*' },
     customer: { subject: 'customer-portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
     approver: { subject: 'attestant@example.test', roles: ['approver'], markets: ['SE', 'DE'] },
+    admin: { subject: 'admin@example.test', roles: ['admin'] },
   };
   const app = createApp({
     service,
@@ -575,4 +576,52 @@ test('the amount limit of several roles: only roles with the permission count, a
   };
   assert.deepEqual(amountLimitsOf(['a', 'b', 'c'], roles, 'decide'), { SEK: 300, EUR: 5 });
   assert.equal(amountLimitsOf(['a', 'd'], roles, 'decide'), null, 'a role without limits has no limit');
+});
+
+// Role settings through the API (ADR 0020) -------------------------------------------
+
+test('an admin lowers the handler limit through the API, and the next decision needs approval at once', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000601', body: input(cruciateClaim()) });
+  assert.equal((await call('GET', '/v1/access/roles')).status, 403, 'a handler cannot read the role settings');
+
+  const current = (await (await call('GET', '/v1/access/roles', { token: 'admin' })).json()) as any;
+  assertSchema('RoleConfig', current);
+  assert.equal(current.version, 1);
+  assert.equal(current.roles.handler.decisionLimits.SEK, 2_500_000);
+
+  const roles = { ...current.roles, handler: { ...current.roles.handler, decisionLimits: { SEK: 1_000_000, EUR: 100_000 } } };
+  const res = await call('POST', '/v1/access/roles/versions', {
+    token: 'admin',
+    key: 'key-00000602',
+    body: { basedOnVersion: 1, roles, reason: 'Lower limit for new handlers' },
+  });
+  assert.equal(res.status, 201);
+  const v2 = (await res.json()) as any;
+  assertSchema('RoleConfig', v2);
+  assert.equal(v2.version, 2);
+  assert.equal(v2.changedBy, 'admin@example.test');
+
+  const decided = await call('POST', '/v1/claims/clm_048213/decisions', { key: 'key-00000603', body: { action: 'accept' } });
+  assert.equal(decided.status, 202, 'SEK 12,165 is now above the limit');
+
+  const history = (await (await call('GET', '/v1/access/roles/versions', { token: 'admin' })).json()) as any;
+  assert.deepEqual(history.items.map((v: { version: number }) => v.version), [1, 2]);
+});
+
+test('role settings: an old version gives 409, own roles 403, an invalid set 422', async () => {
+  const { call } = setup();
+  const current = (await (await call('GET', '/v1/access/roles', { token: 'admin' })).json()) as any;
+  const change = (key: string, body: unknown) => call('POST', '/v1/access/roles/versions', { token: 'admin', key, body });
+
+  const ownRole = { ...current.roles, admin: { permissions: ['access:read', 'access:manage', 'claims:approve'] } };
+  assert.equal((await change('key-00000611', { basedOnVersion: 1, roles: ownRole, reason: 'More power' })).status, 403);
+
+  const bad = { ...current.roles, viewer: { permissions: ['claims:everything'] } };
+  assert.equal((await change('key-00000612', { basedOnVersion: 1, roles: bad, reason: 'Viewer' })).status, 422);
+
+  const viewer = { ...current.roles, viewer: { permissions: ['claims:read'] } };
+  assert.equal((await change('key-00000613', { basedOnVersion: 1, roles: viewer, reason: 'Viewer' })).status, 201);
+  assert.equal((await change('key-00000614', { basedOnVersion: 1, roles: viewer, reason: 'Again' })).status, 409);
+  assert.equal((await change('key-00000615', { basedOnVersion: 2, roles: viewer })).status, 422, 'a reason is required');
 });

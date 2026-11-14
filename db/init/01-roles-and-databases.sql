@@ -5,6 +5,7 @@
 -- One role per module (ADR 0001). Migrations run as the owner; the service logs
 -- in with its own role and gets only the grants the migrations give it.
 create role claims_service login password 'claims_service';
+create role access_service login password 'access_service';
 
 -- Separate database for tests, so tests never touch development data.
 create database petvold_test owner petvold;

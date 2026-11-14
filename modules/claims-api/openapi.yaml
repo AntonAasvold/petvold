@@ -34,6 +34,7 @@ tags:
   - name: decisions
   - name: reviews
   - name: approvals
+  - name: access
   - name: previews
   - name: limits
 
@@ -285,6 +286,81 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DecisionProposal' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/access/roles:
+    get:
+      tags: [access]
+      operationId: getRoles
+      x-permission: access:read
+      summary: The role settings in force
+      description: |
+        Requires the permission `access:read`.
+
+        Which permissions, binding and amount limits each role has in this
+        installation (ADR 0016, 0019, 0020). Changes apply at once.
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The current version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleConfig' }
+
+  /v1/access/roles/versions:
+    get:
+      tags: [access]
+      operationId: listRoleVersions
+      x-permission: access:read
+      summary: The history of the role settings
+      description: Requires the permission `access:read`. Every version, oldest first. Versions never change.
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: All versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RoleConfig' }
+    post:
+      tags: [access]
+      operationId: changeRoles
+      x-permission: access:manage
+      summary: Store a new version of the role settings
+      description: |
+        Requires the permission `access:manage`.
+
+        Replaces the whole role set with a new version (ADR 0020), e.g. to
+        raise a handler's decision limit. Refused when:
+        - `basedOnVersion` is not the current version: someone else changed
+          the settings in between (409)
+        - the change touches a role the caller holds: nobody raises their own
+          limits or removes their own access (403)
+        - a permission, binding, currency or limit is invalid, or the reason
+          is empty (422)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeRolesRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The new version, in force at once
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleConfig' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
@@ -906,6 +982,47 @@ components:
       additionalProperties: false
       required: [reason]
       properties:
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    AmountLimits:
+      type: object
+      description: Highest payout per currency in the smallest unit. A currency that is missing has the limit 0.
+      propertyNames: { pattern: '^[A-Z]{3}$' }
+      additionalProperties: { type: integer, minimum: 0 }
+
+    RoleDefinition:
+      type: object
+      additionalProperties: false
+      required: [permissions]
+      properties:
+        permissions:
+          type: array
+          items: { type: string, pattern: '^[a-z-]+:[a-z-]+$' }
+        bindsTo: { type: string, enum: [clinic, policies] }
+        decisionLimits: { $ref: '#/components/schemas/AmountLimits' }
+        approvalLimits: { $ref: '#/components/schemas/AmountLimits' }
+
+    RoleConfig:
+      type: object
+      required: [version, roles, changedBy, changedAt, reason]
+      properties:
+        version: { type: integer, minimum: 1 }
+        roles:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/RoleDefinition' }
+        changedBy: { type: string }
+        changedAt: { $ref: '#/components/schemas/DateTime' }
+        reason: { type: string }
+
+    ChangeRolesRequest:
+      type: object
+      additionalProperties: false
+      required: [basedOnVersion, roles, reason]
+      properties:
+        basedOnVersion: { type: integer, minimum: 1, description: The version the change was made from. }
+        roles:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/RoleDefinition' }
         reason: { type: string, minLength: 1, maxLength: 2000 }
 
     PayoutOrder:
