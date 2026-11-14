@@ -23,6 +23,7 @@ import {
   type DeductiblePeriod,
   type ReviewRequest,
   type DecisionProposal,
+  type LedgerJournal,
   type ISODate,
   type MinorUnits,
   type Timestamp,
@@ -67,6 +68,24 @@ async function insertEvents(db: pg.PoolClient, events: ClaimsEvent[]): Promise<v
   }
 }
 
+/** Writes journals and their lines within the caller's transaction. The database checks the balance at commit. */
+async function insertJournals(db: pg.PoolClient, journals: LedgerJournal[]): Promise<void> {
+  for (const j of journals) {
+    await db.query(
+      `insert into claims.journal (id, source_type, source_id, claim_id, currency, booked_at) values ($1, $2, $3, $4, $5, $6)`,
+      [j.id, j.sourceType, j.sourceId, j.claimId, j.currency, j.bookedAt],
+    );
+    for (const [i, l] of j.lines.entries()) {
+      await db.query(`insert into claims.journal_line (journal_id, line_no, account, amount_minor) values ($1, $2, $3, $4)`, [
+        j.id,
+        i + 1,
+        l.account,
+        l.amount,
+      ]);
+    }
+  }
+}
+
 // Postgres error codes (SQLSTATE).
 const UNIQUE_VIOLATION = '23505';
 const EXCLUSION_VIOLATION = '23P01';
@@ -76,7 +95,7 @@ type PgError = { code?: string; constraint?: string };
 export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
   constructor(private readonly pool: pg.Pool) {}
 
-  async saveClaim(claim: Claim, events: ClaimsEvent[]): Promise<void> {
+  async saveClaim(claim: Claim, events: ClaimsEvent[], journals: LedgerJournal[] = []): Promise<void> {
     await this.tx(async (db) => {
       await db.query(
         `insert into claims.claim (id, claim_no, policy_id, animal_id, market, currency, channel, treatment_from, treatment_to, diagnosis_code,
@@ -104,6 +123,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
           [claim.id, l.id, i + 1, l.description, l.category, l.diagnosisCode ?? null, l.amount, l.vat ?? null],
         );
       }
+      await insertJournals(db, journals);
       await insertEvents(db, events);
     }).catch((e: PgError) => {
       if (e.code === UNIQUE_VIOLATION && (e.constraint === 'claim_pkey' || e.constraint === 'claim_claim_no_key')) {
@@ -176,6 +196,14 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
           openedByClaimId: p.opened_by_claim_id,
         }
       : null;
+  }
+
+  async getBalance(account: string): Promise<MinorUnits> {
+    const { rows } = await this.pool.query(
+      `select coalesce(sum(amount_minor), 0)::bigint as balance from claims.journal_line where account = $1`,
+      [account],
+    );
+    return rows[0].balance;
   }
 
   async getConsumed(limit: LimitKey, excludeClaimId?: string): Promise<MinorUnits> {
@@ -276,20 +304,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
         `insert into claims.decision_evidence (decision_id, input, calculation_model, engine_version) values ($1, $2, $3, $4)`,
         [evidence.decisionId, JSON.stringify(evidence.input), evidence.calculationModel, evidence.engineVersion],
       );
-      for (const j of journals) {
-        await db.query(
-          `insert into claims.journal (id, source_type, source_id, claim_id, currency, booked_at) values ($1, $2, $3, $4, $5, $6)`,
-          [j.id, j.sourceType, j.sourceId, j.claimId, j.currency, j.bookedAt],
-        );
-        for (const [i, l] of j.lines.entries()) {
-          await db.query(`insert into claims.journal_line (journal_id, line_no, account, amount_minor) values ($1, $2, $3, $4)`, [
-            j.id,
-            i + 1,
-            l.account,
-            l.amount,
-          ]);
-        }
-      }
+      await insertJournals(db, journals);
       await db.query(`delete from claims.deductible_period where opened_by_claim_id = $1`, [d.claimId]);
       if (p) {
         await db.query(

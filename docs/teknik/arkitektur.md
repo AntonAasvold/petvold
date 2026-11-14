@@ -109,7 +109,18 @@ Varje beslut som ändrar ersättningen bokförs som en journal med fyra rader so
 | `claim_expense:SEK:clm_021877` | + 150 000 |
 | `claim_payable:SEK:clm_021877` | − 150 000 |
 
-Kontonamnen byggs bara i `claims-core/src/ledger.ts`. Förbrukat försäkringsbelopp är saldot på `limit_consumed` för nyckeln. En omprövning bokför bara skillnaden.
+**Reserv.** När ett ärende går till handläggare bokas den förväntade ersättningen som en reservjournal (`source_type = 'claim_reserve'`, källa = ärendet), i samma transaktion som ärendet sparas:
+
+| Konto | Belopp |
+| --- | ---: |
+| `reserve_expense:SEK:clm_048213` | + 1 216 500 |
+| `claim_reserve:SEK:clm_048213` | − 1 216 500 |
+
+Beslutet löser upp hela den öppna reserven med en motsatt journal (källa = beslutet), i samma transaktion som beslutet bokförs. Det gäller också vid avslag och attest. Ett öppet förslag behåller reserven.
+
+Kontonamnen byggs bara i `claims-core/src/ledger.ts`. Förbrukat försäkringsbelopp är saldot på `limit_consumed` för nyckeln. En omprövning bokför bara skillnaden. Ett kontos saldo läses med `getBalance(account)` i lagringsporten.
+
+Databasen kontrollerar källan (migration 0010). En beslutsjournal pekar alltid på ett beslut i samma ärende. En reservjournal pekar på ärendet eller på ett beslut i det.
 
 ## Händelser
 

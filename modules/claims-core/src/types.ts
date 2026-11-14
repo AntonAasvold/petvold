@@ -358,7 +358,12 @@ export interface LedgerLine {
 
 export interface LedgerJournal {
   id: string;
-  sourceType: 'claim_decision';
+  /**
+   * claim_decision: the decision's payout (sourceId = the decision).
+   * claim_reserve: a reserve set when the claim goes to a handler (sourceId = the
+   * claim) or released by a decision (sourceId = the decision).
+   */
+  sourceType: 'claim_decision' | 'claim_reserve';
   sourceId: string;
   claimId: string;
   /** All lines in the journal are in this currency (ADR 0014). */

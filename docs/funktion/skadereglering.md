@@ -116,7 +116,9 @@ Regler:
 
 **Utbetalningsorder.** Varje beslut som höjer ärendets ersättning skriver händelsen `claim.payout_ordered` med ökningen, valutan, försäkringen, kanalen och kliniken. En omprövning från 1 500 kr till 1 700 kr ger en order på 200 kr. En sänkning ger ingen order: återkrav är en öppen fråga. Betalningsmodulen (M5, ADR 0017) tar emot ordern och väljer mottagare, klinik eller kund.
 
-*Inte byggt än:* en reserv i ledgern medan ärendet ligger hos handläggare eller väntar på attest.
+**Reserv.** När en skada går till handläggare bokas den ersättning som bedömningen förväntar sig som en reserv i ledgern, i samma transaktion som skadan registreras. Korsbandsoperationen i exempel 2 reserverar alltså 12 165 kr. Reserven ligger kvar medan ärendet väntar på handläggare eller attest. Beslutet löser upp den i samma transaktion som det bokförs, oavsett om ersättningen beviljas eller skadan avslås. Automatiskt reglerade skador och skador som bedömningen föreslår att avslå får ingen reserv.
+
+*Inte byggt än:* reserven justeras inte om bedömningen ändras innan beslutet, och det finns ännu ingen summering av alla öppna reserver (den kommer med läsmodellen Insikt).
 
 ## Förklaring och mänsklig prövning
 

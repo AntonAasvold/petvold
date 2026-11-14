@@ -205,6 +205,22 @@ function reviewRequested(request: ReviewRequest): ClaimsEvent[] {
   return [{ type: 'claim.review_requested', occurredAt: request.requestedAt, request }];
 }
 
+/** The reserve journal the service books when a claim goes to a handler. A negative amount releases it. */
+function reserve(claimId: string, amount: number): LedgerJournal {
+  return {
+    id: `jrn_reserve_${claimId}`,
+    sourceType: 'claim_reserve',
+    sourceId: claimId,
+    claimId,
+    currency: 'SEK',
+    bookedAt: '2026-10-02T09:15:00.000Z',
+    lines: [
+      { account: accounts.reserveExpense('SEK', claimId), amount },
+      { account: accounts.claimReserve('SEK', claimId), amount: -amount },
+    ],
+  };
+}
+
 function decided(d: ClaimDecision): ClaimsEvent[] {
   return [{ type: 'claim.decided', occurredAt: d.decidedAt, decision: d }];
 }
@@ -252,6 +268,38 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       await save(store, claim('clm_b', { claimNo: 'S-b' }));
       assert.deepEqual(await store.getClaim('clm_a'), fromClinic);
       assert.equal(Object.hasOwn((await store.getClaim('clm_b'))!, 'clinicId'), false);
+    });
+
+    it('a claim can be stored with its reserve journal; balances are read per account', async (store) => {
+      const c = claim('clm_a');
+      await store.saveClaim(c, registered(c), [reserve('clm_a', 500_000)]);
+      assert.equal(await store.getBalance(accounts.claimReserve('SEK', 'clm_a')), -500_000);
+      assert.equal(await store.getBalance(accounts.reserveExpense('SEK', 'clm_a')), 500_000);
+      assert.equal(await store.getBalance('claim_reserve:SEK:clm_none'), 0);
+    });
+
+    it('a claim with an unbalanced reserve is not stored at all', async (store) => {
+      const c = claim('clm_a');
+      const bad = reserve('clm_a', 500_000);
+      bad.lines[1]!.amount = -400_000;
+      await assert.rejects(store.saveClaim(c, registered(c), [bad]));
+      assert.equal(await store.getClaim('clm_a'), null);
+      assert.equal(await store.getBalance(accounts.reserveExpense('SEK', 'clm_a')), 0);
+      assert.deepEqual(await pendingTypes(store), []);
+    });
+
+    it('a decision can release the reserve in the same commit', async (store) => {
+      const c = claim('clm_a');
+      await store.saveClaim(c, registered(c), [reserve('clm_a', 500_000)]);
+      const d = decision('clm_a', 1, 500_000, { decidedBy: 'handlaggare@example.test' });
+      const release: LedgerJournal = {
+        ...reserve('clm_a', -500_000),
+        id: `jrn_release_${d.id}`,
+        sourceId: d.id,
+        bookedAt: d.decidedAt,
+      };
+      await store.commitDecision(commit(d, [consumption(d, 500_000), release]));
+      assert.equal(await store.getBalance(accounts.claimReserve('SEK', 'clm_a')), 0);
     });
 
     it('an unknown claim gives null', async (store) => {

@@ -23,6 +23,10 @@ export const accounts = {
   limitAvailable: (k: LimitKey) => `limit_available:${limitSuffix(k)}`,
   claimExpense: (currency: CurrencyCode, claimId: string) => `claim_expense:${currency}:${claimId}`,
   claimPayable: (currency: CurrencyCode, claimId: string) => `claim_payable:${currency}:${claimId}`,
+  /** The expected payout of an undecided claim. Credit balance while the reserve is open. */
+  claimReserve: (currency: CurrencyCode, claimId: string) => `claim_reserve:${currency}:${claimId}`,
+  /** The cost side of the reserve. */
+  reserveExpense: (currency: CurrencyCode, claimId: string) => `reserve_expense:${currency}:${claimId}`,
 };
 
 function limitSuffix(k: LimitKey): string {

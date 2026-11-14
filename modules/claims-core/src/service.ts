@@ -167,9 +167,13 @@ export class ClaimsService {
     const existing = await this.d.store.getClaim(claim.id);
     if (existing) throw new DomainError('conflict', `Claim ${claim.id} already exists`);
 
-    await asConflict(this.d.store.saveClaim(claim, [{ type: 'claim.registered', occurredAt: this.d.clock.now(), claim }]));
+    // The claim is assessed before it is stored: the assessment never counts the
+    // claim itself, so the result is the same, and a reserve can be booked with it.
     const assessed = await this.assessInternal(claim, undefined, claim.id);
     const { assessment } = assessed;
+    const now = this.d.clock.now();
+    const reserve = assessment.mode === 'manual' ? this.reserveJournal(claim, assessment, now) : null;
+    await asConflict(this.d.store.saveClaim(claim, [{ type: 'claim.registered', occurredAt: now, claim }], reserve ? [reserve] : []));
     const decision =
       assessment.mode === 'auto'
         ? await this.commit(claim, assessed, assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept', 'auto', {
@@ -507,6 +511,24 @@ export class ClaimsService {
       });
     }
 
+    // The decision releases whatever reserve is open, in the same transaction.
+    const reserved = -(await this.d.store.getBalance(accounts.claimReserve(claim.currency, claim.id)));
+    if (reserved !== 0) {
+      const cur = claim.currency;
+      journals.push({
+        id: this.d.ids.next('jrn'),
+        sourceType: 'claim_reserve',
+        sourceId: decision.id,
+        claimId: claim.id,
+        currency: cur,
+        bookedAt: now,
+        lines: [
+          { account: accounts.claimReserve(cur, claim.id), amount: reserved },
+          { account: accounts.reserveExpense(cur, claim.id), amount: -reserved },
+        ],
+      });
+    }
+
     let deductiblePeriod: DeductiblePeriod | null = null;
     const calc = assessment.calculation;
     const scope = policy ? deductibleScope(claim, policy, assessment.diagnosisGroup) : null;
@@ -541,6 +563,28 @@ export class ClaimsService {
       }),
     );
     return decision;
+  }
+
+  /**
+   * The reserve for a claim that goes to a handler: the payout the assessment
+   * expects. None when the assessment proposes rejection.
+   */
+  private reserveJournal(claim: Claim, assessment: Assessment, at: Timestamp): LedgerJournal | null {
+    const amount = assessment.proposedOutcome === 'rejected' ? 0 : (assessment.calculation?.payout ?? 0);
+    if (amount <= 0) return null;
+    const cur = claim.currency;
+    return {
+      id: this.d.ids.next('jrn'),
+      sourceType: 'claim_reserve',
+      sourceId: claim.id,
+      claimId: claim.id,
+      currency: cur,
+      bookedAt: at,
+      lines: [
+        { account: accounts.reserveExpense(cur, claim.id), amount },
+        { account: accounts.claimReserve(cur, claim.id), amount: -amount },
+      ],
+    };
   }
 
   private async requireOpenProposal(claimId: string, proposalId: string): Promise<DecisionProposal> {
