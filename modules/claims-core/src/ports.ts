@@ -29,8 +29,12 @@ export interface RulesPort {
 
 /** The claims engine's own state. Postgres in production, in memory in tests. */
 export interface ClaimsStore {
-  /** Throws StoreConflictError('claim_exists') if the id already exists. */
-  saveClaim(claim: Claim): Promise<void>;
+  /**
+   * Stores the claim and writes `events` to the outbox in the same transaction.
+   * Throws StoreConflictError('claim_exists') if the id already exists; then
+   * nothing is stored and no event is written.
+   */
+  saveClaim(claim: Claim, events: ClaimsEvent[]): Promise<void>;
   getClaim(claimId: string): Promise<Claim | null>;
 
   /**
@@ -85,6 +89,8 @@ export interface DecisionCommit {
   decision: ClaimDecision;
   journals: LedgerJournal[];
   deductiblePeriod: DeductiblePeriod | null;
+  /** Written to the outbox in the same transaction as the decision (ADR 0008). */
+  events: ClaimsEvent[];
 }
 
 export interface Clock {
@@ -100,9 +106,27 @@ export type ClaimsEvent =
   | { type: 'claim.decided'; occurredAt: Timestamp; decision: ClaimDecision };
 
 /**
- * Outgoing events. In production they are written to an outbox in the same
- * database transaction as the change and published from there.
+ * Where the relay publishes events, e.g. a message broker or a webhook.
+ * Delivery is at least once: a consumer must tolerate duplicates.
  */
 export interface EventSink {
   publish(event: ClaimsEvent): Promise<void>;
+}
+
+/** An event in the outbox, waiting to be published. */
+export interface OutboxEntry {
+  /** Increasing per store; the order events were written in. */
+  id: string;
+  event: ClaimsEvent;
+}
+
+/**
+ * The outbox the store writes events to (ADR 0008). Read by the relay, which
+ * publishes the events and then marks them as published.
+ */
+export interface ClaimsOutbox {
+  /** Unpublished events, oldest first, at most `limit`. */
+  pendingEvents(limit: number): Promise<OutboxEntry[]>;
+  /** Marks the events as published. Unknown or already published ids are ignored. */
+  markPublished(ids: string[], at: Timestamp): Promise<void>;
 }

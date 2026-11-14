@@ -4,7 +4,7 @@
  * The API page is at /docs and example requests are in examples/claims.http.
  */
 import { serve } from '@hono/node-server';
-import { ClaimsService } from '@petvold/claims-core';
+import { ClaimsService, relayOutbox, type ClaimsEvent } from '@petvold/claims-core';
 import {
   InMemoryClaimsStore,
   InMemoryPolicyPort,
@@ -17,14 +17,21 @@ import { docsPage } from './docs.ts';
 
 const clock = { now: () => new Date().toISOString() };
 const policies = new InMemoryPolicyPort([{ snapshot: fixtures.bellaPolicy(), sysFrom: '2026-03-03T00:00:00Z' }]);
+const store = new InMemoryClaimsStore();
 const service = new ClaimsService({
   policies,
   rules: new StaticRulesPort({ [fixtures.PRODUCT]: fixtures.RULES_SE_DOG }, fixtures.RULES_SE_DOG),
-  store: new InMemoryClaimsStore(),
+  store,
   clock,
   ids: new SequentialIds(),
-  events: { publish: async (e) => console.log(`[event] ${e.type}`) },
 });
+
+// The relay publishes events from the outbox. Here it just logs them.
+const logSink = {
+  publish: async (e: ClaimsEvent) =>
+    console.log(`[event] ${e.type} ${e.type === 'claim.registered' ? e.claim.id : `${e.decision.claimId}#${e.decision.seq}`}`),
+};
+setInterval(() => void relayOutbox(store, logSink, clock).catch((err) => console.error('[relay]', err)), 1_000).unref();
 
 const tokens: Record<string, Principal> = {
   'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler', 'approver'] },

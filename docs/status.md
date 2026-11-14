@@ -2,6 +2,25 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 8)
+
+**Gjort**
+- #9 mergad: all kod på engelska.
+- Outbox (ADR 0008): `saveClaim` och `commitDecision` tar emot händelser och skriver dem till outboxen i samma transaktion. Tjänsten publicerar inte längre själv.
+- Ny port `ClaimsOutbox` (`pendingEvents`, `markPublished`) och `relayOutbox` i kärnan: publicerar i ordning, markerar efter leverans, stannar vid fel och fortsätter från samma händelse nästa gång.
+- Sviten utökad med 5 outbox-tester (händelser skrivs atomiskt, inga händelser vid fel, ordning, gräns, publicerade försvinner). Båda lagringarna klarar dem.
+- Dev-servern kör reläet varje sekund och loggar händelserna.
+- 97 tester och 31 databastester.
+
+**Nästa steg**
+1. Dev-servern på Postgres (`npm run dev` sparar data mellan omstarter).
+2. Valuta i kontonamnen `limit_*` (ADR 0014).
+3. ADR om behörighet.
+4. AsyncAPI för händelserna och CloudEvents-kuvert i reläet.
+
+**Öppet**
+- Bara ett relä per outbox åt gången. Flera samtidiga reläer kräver radlås (`for update skip locked`).
+
 ## 2026-11-14 (pass 7)
 
 **Gjort**

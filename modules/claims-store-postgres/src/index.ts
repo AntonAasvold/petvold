@@ -11,11 +11,15 @@ import {
   StoreConflictError,
   type Claim,
   type ClaimDecision,
+  type ClaimsEvent,
+  type ClaimsOutbox,
   type ClaimsStore,
+  type OutboxEntry,
   type DecisionCommit,
   type DeductiblePeriod,
   type ISODate,
   type MinorUnits,
+  type Timestamp,
 } from '@petvold/claims-core';
 
 // Types: dates as 'YYYY-MM-DD', bigint as numbers, timestamps as ISO strings.
@@ -45,16 +49,29 @@ export function createPool(connectionString: string, options: Omit<pg.PoolConfig
   return new pg.Pool({ connectionString, types, ...options });
 }
 
+/** Writes events to the outbox within the caller's transaction (ADR 0008). */
+async function insertEvents(db: pg.PoolClient, events: ClaimsEvent[]): Promise<void> {
+  for (const e of events) {
+    const aggregateId = e.type === 'claim.registered' ? e.claim.id : e.decision.claimId;
+    await db.query(`insert into claims.outbox (type, aggregate_id, payload, created_at) values ($1, $2, $3, $4)`, [
+      e.type,
+      aggregateId,
+      JSON.stringify(e),
+      e.occurredAt,
+    ]);
+  }
+}
+
 // Postgres error codes (SQLSTATE).
 const UNIQUE_VIOLATION = '23505';
 const EXCLUSION_VIOLATION = '23P01';
 
 type PgError = { code?: string; constraint?: string };
 
-export class PostgresClaimsStore implements ClaimsStore {
+export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
   constructor(private readonly pool: pg.Pool) {}
 
-  async saveClaim(claim: Claim): Promise<void> {
+  async saveClaim(claim: Claim, events: ClaimsEvent[]): Promise<void> {
     await this.tx(async (db) => {
       await db.query(
         `insert into claims.claim (id, claim_no, policy_id, animal_id, market, currency, channel, treatment_from, treatment_to, diagnosis_code, received_at)
@@ -80,6 +97,7 @@ export class PostgresClaimsStore implements ClaimsStore {
           [claim.id, l.id, i + 1, l.description, l.category, l.diagnosisCode ?? null, l.amount, l.vat ?? null],
         );
       }
+      await insertEvents(db, events);
     }).catch((e: PgError) => {
       if (e.code === UNIQUE_VIOLATION && (e.constraint === 'claim_pkey' || e.constraint === 'claim_claim_no_key')) {
         throw new StoreConflictError('claim_exists', `Claim ${claim.id} (${claim.claimNo}) already exists`);
@@ -180,7 +198,7 @@ export class PostgresClaimsStore implements ClaimsStore {
     }));
   }
 
-  async commitDecision({ decision: d, journals, deductiblePeriod: p }: DecisionCommit): Promise<void> {
+  async commitDecision({ decision: d, journals, deductiblePeriod: p, events }: DecisionCommit): Promise<void> {
     await this.tx(async (db) => {
       const a = d.assessment;
       await db.query(
@@ -226,6 +244,7 @@ export class PostgresClaimsStore implements ClaimsStore {
           [p.id, p.animalId, p.diagnosisGroup, p.validFrom, p.validTo, p.openedByClaimId],
         );
       }
+      await insertEvents(db, events);
     }).catch((e: PgError) => {
       if (e.code === UNIQUE_VIOLATION && (e.constraint === 'decision_claim_id_seq_key' || e.constraint === 'decision_pkey')) {
         throw new StoreConflictError('decision_exists', `Decision ${d.claimId}#${d.seq} already exists`);
@@ -235,6 +254,23 @@ export class PostgresClaimsStore implements ClaimsStore {
       }
       throw e;
     });
+  }
+
+  async pendingEvents(limit: number): Promise<OutboxEntry[]> {
+    const { rows } = await this.pool.query(
+      `select id::text as id, payload from claims.outbox where published_at is null order by id limit $1`,
+      [limit],
+    );
+    return rows.map((r) => ({ id: r.id, event: r.payload }));
+  }
+
+  async markPublished(ids: string[], at: Timestamp): Promise<void> {
+    const numeric = ids.filter((id) => /^\d+$/.test(id));
+    if (numeric.length === 0) return;
+    await this.pool.query(
+      `update claims.outbox set published_at = $2 where id = any($1::bigint[]) and published_at is null`,
+      [numeric, at],
+    );
   }
 
   /** Runs `fn` in a transaction. Errors roll everything back, including errors detected at commit. */
