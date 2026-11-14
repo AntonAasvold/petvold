@@ -9,10 +9,10 @@ import type {
   ISODate,
   LedgerJournal,
   MarketCode,
-  Ore,
+  MinorUnits,
   Timestamp,
 } from './types.ts';
-import { assertDate } from './util.ts';
+import { assertDate } from '@petvold/common';
 
 export type DomainErrorCode = 'not_found' | 'validation' | 'conflict';
 
@@ -46,9 +46,9 @@ export interface LimitsView {
   coverage: 'vet_care';
   policyYearStart: ISODate;
   policyYearEnd: ISODate;
-  annualLimit: Ore;
-  consumed: Ore;
-  remaining: Ore;
+  annualLimit: MinorUnits;
+  consumed: MinorUnits;
+  remaining: MinorUnits;
 }
 
 export interface ClaimsServiceDeps {

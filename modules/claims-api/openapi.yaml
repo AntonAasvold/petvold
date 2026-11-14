@@ -8,7 +8,7 @@ info:
     anrop mot schemana här, och kontraktstesterna validerar svaren.
 
     Konventioner:
-    - Alla belopp är heltal i öre (`Money`).
+    - Alla belopp är heltal i minsta valutaenhet (`Money`), valutan anges på objektet.
     - Datum är `YYYY-MM-DD`, tidpunkter ISO 8601 med tidszon.
     - Fel returneras som `application/problem+json` (RFC 9457).
     - Alla skapande POST-anrop kräver `Idempotency-Key`.
@@ -261,11 +261,11 @@ components:
   schemas:
     Money:
       type: integer
-      description: Belopp i öre.
+      description: Belopp i minsta valutaenhet (öre, cent …).
     NonNegativeMoney:
       type: integer
       minimum: 0
-      description: Belopp i öre, aldrig negativt.
+      description: Belopp i minsta valutaenhet, aldrig negativt.
     Market:
       type: string
       pattern: '^[A-Z]{2}$'
