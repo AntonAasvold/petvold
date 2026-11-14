@@ -1,0 +1,29 @@
+# Lokal miljö för Petvold. Kräver bara `docker compose` (OrbStack, Colima eller Docker Desktop).
+#
+# Samma Postgres-version och Debian-bas som CloudNativePG-imagen i drift
+# (ghcr.io/cloudnative-pg/postgresql:18.7-standard-trixie). Den imagen saknar
+# entrypoint utanför operatorn, så lokalt används den officiella imagen.
+# Uppgradera båda samtidigt.
+
+name: petvold
+
+services:
+  postgres:
+    image: postgres:18.7-trixie
+    environment:
+      POSTGRES_USER: petvold
+      POSTGRES_PASSWORD: petvold
+      POSTGRES_DB: petvold
+    ports:
+      - "127.0.0.1:${PETVOLD_PG_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U petvold -d petvold && psql -h 127.0.0.1 -U petvold -d petvold_test -c 'select 1' >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

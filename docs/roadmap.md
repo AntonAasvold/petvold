@@ -9,7 +9,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Arbetssätt, roadmap, ADR och CI
 - [x] Gemensam kärna i kod: `Money`, `Market`, `DateRange` (`modules/common`)
 - [ ] Gemensamma kontraktsdelar: `Money`, `Ref`, problem+json, sidindelning
-- [ ] Lokal miljö med Postgres (docker compose)
+- [x] Lokal miljö med Postgres (docker compose), dbmate och databastester i CI
 
 **M1 – Skademotorn på riktig lagring**
 - [ ] `ClaimsStore` mot Postgres med outbox i samma transaktion

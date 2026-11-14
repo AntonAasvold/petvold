@@ -1,3 +1,5 @@
+-- migrate:up
+
 -- Skademotorns eget schema. Exponeras inte via Supabases auto-API;
 -- bara skademotorns tjänstekonto har skrivrätt.
 -- Policydata ägs INTE här: den läses via PolicyPort från policykärnan.
@@ -136,3 +138,7 @@ revoke update, delete on claims.decision, claims.journal, claims.journal_line fr
 -- grant usage on schema claims to claims_service;
 -- grant select, insert on all tables in schema claims to claims_service;
 -- grant delete on claims.deductible_period to claims_service;  -- ersätts vid omprövning
+
+-- migrate:down
+
+drop schema claims cascade;

@@ -2,6 +2,26 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 3)
+
+**Gjort**
+- Utvecklingsmiljö (ADR 0013, beslutad, och `docs/utvecklingsmiljo.md`): `.node-version` (24), `compose.yaml` med Postgres 18.7, dbmate för migreringar, testdatabas och tjänsteroll `claims_service`.
+- Migration `0002_claims_grants.sql`: tjänsterollen får bara läsa och lägga till, plus ersätta självriskperioder och markera händelser som publicerade.
+- Databastester (`db/test/`, lager 6): balanserade journaler, inga överlappande perioder, historik går inte att ändra eller radera för tjänsterollen.
+- CI: samma Node-version som lokalt, och ett jobb som kör `npm run dev:up`, databastesterna och backning av migreringarna.
+- Verifierat lokalt med OrbStack: `dev:up` och alla databastester gröna.
+- ADR 0011–0013 beslutade. #2, #5 (ersätter #3) och #4 mergade till `main`.
+
+**Nästa steg**
+1. Gemensam testsvit för `ClaimsStore` (lager 4) och sedan `claims-store-postgres`.
+2. Gemensamma kontraktsdelar: `Money`, `Problem`, sidindelning och `Ref`.
+3. Biome för formatering och lint, som egen PR.
+
+**Öppet**
+- OrbStack är gratis bara för privat bruk. Köp licens eller byt till Colima när Petvold blir kommersiellt.
+- Postgres-versionen i `compose.yaml` och i driften hålls lika för hand. Överväg Renovate.
+- `Money` i ADR 0005 och i kontraktet skiljer sig åt (se pass 2).
+
 ## 2026-11-14 (pass 2)
 
 **Gjort**

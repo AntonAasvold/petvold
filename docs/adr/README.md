@@ -14,5 +14,6 @@
 | [0010](0010-en-installation-per-kund.md) | En installation per kund (silo) | Beslutad |
 | [0011](0011-gemensam-karna.md) | Gemensam kärna för värdetyper (`@petvold/common`) | Beslutad |
 | [0012](0012-teststrategi.md) | Teststrategi i lager med invarianter, scenarier och porttester | Beslutad |
+| [0013](0013-lokal-miljo-och-migreringar.md) | Lokal miljö med docker compose och migreringar med dbmate | Beslutad |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.
