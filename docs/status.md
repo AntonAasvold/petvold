@@ -2,6 +2,19 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 14)
+
+**Gjort**
+- Självriskperiod över förnyelse är en produktinställning: `deductible.periodEndsAtRenewal`.
+  - Standard är `false`: perioden fortsätter in i nästa försäkringsår. Det är oförändrat beteende, så beräkningsmodellen är fortfarande `vet-care.v1`.
+  - Med `true` slutar perioden när försäkringsåret slutar.
+  - Villkoren när perioden öppnas avgör när den slutar.
+- 3 nya tester över en förnyelse (fortsätter, slutar, kortas inte i onödan). Totalt 118 tester.
+- Produktkonfigurationen beskriver inställningen med ett räknat exempel.
+
+**Öppet**
+- Perioden är knuten till djuret, inte till ett oavbrutet skydd. Den bör sluta vid avslut, uppehåll eller ny ägare (M3).
+
 ## 2026-11-14 (pass 13)
 
 **Gjort**

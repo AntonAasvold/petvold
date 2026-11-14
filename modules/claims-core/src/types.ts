@@ -60,6 +60,14 @@ export interface DeductibleTerms {
   fixedPer: 'period' | 'claim' | 'policy_year';
   /** Required when fixedPer is 'period'. */
   periodDays?: number;
+  /**
+   * Only for fixedPer 'period'. false (default): a period runs its full length,
+   * also past the renewal into the next policy year, so one illness costs one
+   * fixed deductible. true: the period ends when the policy year ends, and a
+   * claim after the renewal is charged a new fixed deductible.
+   * The terms in force when the period opens decide its end.
+   */
+  periodEndsAtRenewal?: boolean;
   /** Variable deductible in basis points: 2500 = 25 %. */
   variableBp: number;
   /** Higher variable deductible from a given age; the highest applicable step wins. */

@@ -64,10 +64,12 @@ export function deductibleScope(
       return { diagnosisGroup: '*', validFrom: policy.policyYearStart, validTo: policy.policyYearEnd };
     case 'period': {
       if (!d.periodDays) throw new Error('The "period" deductible model requires periodDays');
+      const fullLength = addDays(claim.treatmentFrom, d.periodDays);
+      const endsAtRenewal = d.periodEndsAtRenewal === true && dateLt(policy.policyYearEnd, fullLength);
       return {
         diagnosisGroup: diagnosisGroup ?? `code:${claim.diagnosisCode}`,
         validFrom: claim.treatmentFrom,
-        validTo: addDays(claim.treatmentFrom, d.periodDays),
+        validTo: endsAtRenewal ? policy.policyYearEnd : fullLength,
       };
     }
   }

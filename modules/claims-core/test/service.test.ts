@@ -255,3 +255,61 @@ test('a deviation is recorded with its reason code, and following the proposal i
   assert.equal(auto.deviatesFromProposal, false);
   assert.equal(auto.reasonCode, undefined);
 });
+
+// Deductible period across the renewal ---------------------------------------------
+
+/** Bella's policy renewed on 1 April 2027 with the same terms, plus a setting for the deductible period. */
+function renewalSetup(periodEndsAtRenewal: boolean) {
+  const store = new InMemoryClaimsStore();
+  const terms = (v: ReturnType<typeof bellaPolicy>) => ({
+    ...v.vetCare!,
+    deductible: { ...v.vetCare!.deductible, periodEndsAtRenewal },
+  });
+  const year1 = bellaPolicy();
+  const year2 = bellaPolicy({
+    policyVersionId: 'pv_bella_2027',
+    validFrom: '2027-04-01',
+    validTo: '2028-04-01',
+    policyYearStart: '2027-04-01',
+    policyYearEnd: '2028-04-01',
+  });
+  const policies = new InMemoryPolicyPort([
+    { snapshot: { ...year1, vetCare: terms(year1) }, sysFrom: '2026-03-03T00:00:00Z' },
+    { snapshot: { ...year2, vetCare: terms(year2) }, sysFrom: '2027-02-15T00:00:00Z' },
+  ]);
+  const service = new ClaimsService({
+    policies,
+    rules: new StaticRulesPort({ [PRODUCT]: RULES_SE_DOG }, RULES_SE_DOG),
+    store,
+    clock: new FixedClock('2027-04-20T10:00:00Z'),
+    ids: new SequentialIds(),
+  });
+  return { service, store };
+}
+
+const beforeRenewal = () => otitisClaim({ id: 'clm_feb', claimNo: 'S-FEB', treatmentFrom: '2027-02-01', treatmentTo: '2027-02-01' });
+const afterRenewal = () => otitisClaim({ id: 'clm_apr', claimNo: 'S-APR', treatmentFrom: '2027-04-15', treatmentTo: '2027-04-15' });
+
+test('by default a deductible period continues past the renewal: one illness, one fixed deductible', async () => {
+  const { service, store } = renewalSetup(false);
+  await service.registerClaim(beforeRenewal());
+  assert.equal(store.dump().periods[0]!.validTo, '2027-06-06'); // 125 days
+  const r = await service.registerClaim(afterRenewal());
+  assert.equal(r.assessment.calculation!.deductibleFixed, 0);
+  assert.equal(r.decision!.payout, 300_000); // SEK 4,000 − 25 %
+});
+
+test('with periodEndsAtRenewal the period ends with the policy year, and a new fixed deductible is charged', async () => {
+  const { service, store } = renewalSetup(true);
+  await service.registerClaim(beforeRenewal());
+  assert.equal(store.dump().periods[0]!.validTo, '2027-04-01');
+  const r = await service.registerClaim(afterRenewal());
+  assert.equal(r.assessment.calculation!.deductibleFixed, 200_000);
+  assert.equal(r.decision!.payout, 150_000); // (SEK 4,000 − 2,000) − 25 %
+});
+
+test('periodEndsAtRenewal does not shorten a period that ends before the renewal', async () => {
+  const { service, store } = renewalSetup(true);
+  await service.registerClaim(otitisClaim()); // 4 June 2026 + 125 days
+  assert.equal(store.dump().periods[0]!.validTo, '2026-10-07');
+});
