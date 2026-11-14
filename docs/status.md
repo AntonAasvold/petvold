@@ -2,6 +2,17 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 4, i chatten)
+
+**Gjort**
+- Kravunderlag `docs/referensprodukt-hund.md`, byggt på publika villkor för en svensk hundförsäkring (veterinärvård i tre nivåer, liv och användbarhet, kull, flock). Ca 50 krav med läge och milstolpe.
+- Slutsats: arkitekturen bär produkten. Skademotorn klarar ungefär hälften i dag. Nytt behövs för startdatum på skadan, delbelopp, livstidsräknare, villkor som kräver obruten försäkring, fast ersättning för liv, samordning för dolda fel och konton på gruppnivå.
+- Roadmap: ny milstolpe M1b. Öppna frågan om gemensamt kullbelopp är besvarad: behövs (flock).
+
+**Nästa steg**
+1. Fortsätt enligt pass 3 (gemensam testsvit för `ClaimsStore`, sedan `claims-store-postgres`).
+2. Skriv ADR för de fyra designkonsekvenserna i referensprodukten innan M1b börjar.
+
 ## 2026-11-14 (pass 3)
 
 **Gjort**
