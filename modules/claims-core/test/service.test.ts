@@ -313,3 +313,12 @@ test('periodEndsAtRenewal does not shorten a period that ends before the renewal
   await service.registerClaim(otitisClaim()); // 4 June 2026 + 125 days
   assert.equal(store.dump().periods[0]!.validTo, '2026-10-07');
 });
+
+test('a stored decision can be replayed from its evidence and is identical', async () => {
+  const { service } = setup();
+  await service.registerClaim(otitisClaim());
+  const r = await service.replayDecision('clm_021877', 1);
+  assert.equal(r.status, 'identical');
+  assert.equal(r.calculationModel, CALCULATION_MODEL);
+  assert.equal(r.replayedWith.engineVersion, '0.1.0+test');
+});

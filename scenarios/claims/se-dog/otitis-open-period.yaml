@@ -1,0 +1,20 @@
+name: Second ear infection within the deductible period
+description: |
+  A period for the diagnosis group "ora" is already open, so no fixed
+  deductible is charged. Only the variable deductible of 25 %.
+given:
+  openDeductiblePeriod:
+    id: dp_earlier
+    animalId: ani_bella
+    diagnosisGroup: ora
+    validFrom: 2026-05-01
+    validTo: 2026-09-03
+    openedByClaimId: clm_earlier
+expect:
+  proposedOutcome: approved
+  mode: auto
+  calculation:
+    deductibleFixed: 0
+    deductibleVariable: 100000   # 25 % of SEK 4,000
+    payout: 300000               # SEK 3,000
+    opensDeductiblePeriod: false

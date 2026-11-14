@@ -1,0 +1,199 @@
+{
+  "scenario": "se-dog/cruciate-manual",
+  "calculationModel": "vet-care.v1",
+  "input": {
+    "claim": {
+      "id": "clm_048213",
+      "claimNo": "S-2026-048213",
+      "policyId": "pol_bella",
+      "animalId": "ani_bella",
+      "market": "SE",
+      "currency": "SEK",
+      "channel": "clinic_direct",
+      "treatmentFrom": "2026-11-11",
+      "treatmentTo": "2026-11-13",
+      "diagnosisCode": "ORT-KORSBAND-V",
+      "lines": [
+        {
+          "id": "l1",
+          "description": "Examination, orthopaedics",
+          "category": "examination",
+          "amount": 85000
+        },
+        {
+          "id": "l2",
+          "description": "X-ray hind legs, 4 images",
+          "category": "diagnostics",
+          "amount": 290000
+        },
+        {
+          "id": "l3",
+          "description": "Sedation and anaesthesia",
+          "category": "anaesthesia",
+          "amount": 124000
+        },
+        {
+          "id": "l4",
+          "description": "TPLO surgery, left",
+          "category": "surgery",
+          "amount": 1240000
+        },
+        {
+          "id": "l5",
+          "description": "Pain relief, 10 days",
+          "category": "medication",
+          "amount": 83000
+        },
+        {
+          "id": "l6",
+          "description": "Prescription food",
+          "category": "food",
+          "amount": 42000
+        }
+      ],
+      "receivedAt": "2026-06-04T09:00:00Z"
+    },
+    "policy": {
+      "policyId": "pol_bella",
+      "policyVersionId": "pv_bella_v4",
+      "market": "SE",
+      "currency": "SEK",
+      "animalId": "ani_bella",
+      "animalBirthDate": "2019-03-14",
+      "productVersion": "SE-HUND-VV-LIV@2026.2",
+      "status": "active",
+      "validFrom": "2026-04-01",
+      "validTo": "2027-04-01",
+      "inceptionDate": "2024-04-01",
+      "policyYearStart": "2026-04-01",
+      "policyYearEnd": "2027-04-01",
+      "vetCare": {
+        "code": "vet_care",
+        "annualLimit": 6000000,
+        "deductible": {
+          "fixed": 200000,
+          "fixedPer": "period",
+          "periodDays": 125,
+          "variableBp": 2500
+        },
+        "waitingPeriodDays": 30
+      },
+      "riders": [
+        {
+          "id": "rid_halta_hh",
+          "description": "Lameness, right hind leg",
+          "diagnosisCodes": [
+            "ORT-HALTA-HB-H"
+          ],
+          "validFrom": "2025-09-12"
+        }
+      ]
+    },
+    "rules": {
+      "rulesVersion": "SE-HUND-2026.2",
+      "market": "SE",
+      "vatReimbursable": true,
+      "nonReimbursableCategories": [
+        "food"
+      ],
+      "diagnosisGroups": {
+        "ORT-KORSBAND-V": "ortopedi-bakben",
+        "ORT-KORSBAND-H": "ortopedi-bakben",
+        "ORT-HALTA-HB-H": "ortopedi-bakben",
+        "ORA-OTIT": "ora",
+        "GI-ENTERIT": "mag-tarm"
+      },
+      "autoSettleMax": 1000000
+    },
+    "openDeductiblePeriod": null,
+    "consumedBefore": 0
+  },
+  "assessment": {
+    "claimId": "clm_048213",
+    "market": "SE",
+    "currency": "SEK",
+    "policyVersionId": "pv_bella_v4",
+    "productVersion": "SE-HUND-VV-LIV@2026.2",
+    "rulesVersion": "SE-HUND-2026.2",
+    "diagnosisGroup": "ortopedi-bakben",
+    "inputHash": "c082d54e63d70fa81bb8bc3d6d9521c6c2460860147203db484646e39f0d4700",
+    "rules": [
+      {
+        "code": "POLICY_FOUND",
+        "status": "pass",
+        "reason": "policy.found",
+        "params": {
+          "version": "pv_bella_v4",
+          "date": "2026-11-11"
+        }
+      },
+      {
+        "code": "MARKET_CURRENCY",
+        "status": "pass",
+        "reason": "market.ok",
+        "params": {
+          "market": "SE",
+          "currency": "SEK"
+        }
+      },
+      {
+        "code": "POLICY_ACTIVE",
+        "status": "pass",
+        "reason": "policy.active",
+        "params": {}
+      },
+      {
+        "code": "COVERAGE",
+        "status": "pass",
+        "reason": "coverage.ok",
+        "params": {
+          "coverage": "vet_care"
+        }
+      },
+      {
+        "code": "WAITING_PERIOD",
+        "status": "pass",
+        "reason": "waiting.passed",
+        "params": {}
+      },
+      {
+        "code": "DIAGNOSIS_KNOWN",
+        "status": "pass",
+        "reason": "diagnosis.known",
+        "params": {
+          "diagnosisGroup": "ortopedi-bakben"
+        }
+      },
+      {
+        "code": "RIDER",
+        "status": "review",
+        "reason": "rider.possible",
+        "params": {
+          "riderId": "rid_halta_hh",
+          "description": "Lameness, right hind leg",
+          "diagnosisGroup": "ortopedi-bakben"
+        }
+      }
+    ],
+    "calculation": {
+      "currency": "SEK",
+      "billed": 1864000,
+      "nonReimbursable": 42000,
+      "vatExcluded": 0,
+      "base": 1822000,
+      "opensDeductiblePeriod": true,
+      "deductibleFixed": 200000,
+      "deductibleVariableBp": 2500,
+      "deductibleVariable": 405500,
+      "payableBeforeLimit": 1216500,
+      "annualLimit": 6000000,
+      "consumedBefore": 0,
+      "remainingBefore": 6000000,
+      "payout": 1216500,
+      "customerShare": 647500,
+      "cappedByLimit": false
+    },
+    "proposedOutcome": "partial",
+    "mode": "manual"
+  }
+}

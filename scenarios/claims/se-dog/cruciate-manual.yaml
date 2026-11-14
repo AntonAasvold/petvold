@@ -1,0 +1,32 @@
+name: Cruciate ligament surgery goes to a handler
+description: |
+  SEK 18,640 billed, of which SEK 420 is food, which is never reimbursed.
+  Bella has a rider for lameness in the right hind leg, in the same diagnosis
+  group as the cruciate ligament, so a handler must judge whether they are
+  related. The payout is also above the auto-settle limit.
+given:
+  claim:
+    id: clm_048213
+    claimNo: S-2026-048213
+    treatmentFrom: 2026-11-11
+    treatmentTo: 2026-11-13
+    diagnosisCode: ORT-KORSBAND-V
+    lines:
+      - { id: l1, description: 'Examination, orthopaedics', category: examination, amount: 85000 }
+      - { id: l2, description: 'X-ray hind legs, 4 images', category: diagnostics, amount: 290000 }
+      - { id: l3, description: 'Sedation and anaesthesia', category: anaesthesia, amount: 124000 }
+      - { id: l4, description: 'TPLO surgery, left', category: surgery, amount: 1240000 }
+      - { id: l5, description: 'Pain relief, 10 days', category: medication, amount: 83000 }
+      - { id: l6, description: 'Prescription food', category: food, amount: 42000 }
+expect:
+  proposedOutcome: partial
+  mode: manual
+  calculation:
+    billed: 1864000              # SEK 18,640
+    nonReimbursable: 42000       # food
+    base: 1822000
+    deductibleFixed: 200000
+    deductibleVariable: 405500   # 25 % of SEK 16,220
+    payout: 1216500              # SEK 12,165
+  rules:
+    RIDER: review

@@ -1,0 +1,13 @@
+name: Treatment within the waiting period is rejected
+description: |
+  The policy was first taken out on 20 May 2026 with a 30-day waiting period.
+  The treatment on 4 June is within it.
+given:
+  policy:
+    validFrom: 2026-05-20
+    inceptionDate: 2026-05-20
+expect:
+  proposedOutcome: rejected
+  mode: manual
+  rules:
+    WAITING_PERIOD: fail

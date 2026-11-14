@@ -18,7 +18,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Gemensam testsvit för `ClaimsStore` (lager 4) och databastester (lager 6)
 - [x] Beviskedja per beslut (ADR 0018): underlag och motorns version sparas med beslutet
 - [x] Motivering krävs när beslutet avviker från förslaget
-- [ ] Omräkning av sparade beslut, och scenarier som data (lager 3) som räknas om i CI
+- [x] Omräkning av sparade beslut, och scenarier som data (lager 3) som räknas om i CI
 - [ ] Förklaring per beslut och begäran om mänsklig prövning
 - [x] Integrationstester mot Postgres
 - [ ] Behörighet (ADR 0016): rättigheter i kontraktet, omfång per marknad och klinik

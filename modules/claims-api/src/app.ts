@@ -157,6 +157,12 @@ export function createApp(d: AppDeps) {
     });
   });
 
+  app.post('/v1/claims/:claimId/decisions/:seq/replays', async (c) => {
+    const seq = Number(c.req.param('seq'));
+    if (!Number.isInteger(seq) || seq < 1) return problem(c, 422, 'seq must be a positive integer');
+    return send(c, await d.service.replayDecision(c.req.param('claimId'), seq));
+  });
+
   app.post('/v1/claims/:claimId/reassessments', async (c) => {
     const p = c.get('principal');
     const r = await readJson(c, 'ReassessRequest');

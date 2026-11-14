@@ -2,6 +2,28 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 15)
+
+**Gjort**
+- #19 och #20 mergade: roadmap för förnyelse och avslut, och självriskperiod över förnyelse som produktinställning.
+- Omräkning av sparade beslut (ADR 0018):
+  - `replay()` i kärnan, med `CALCULATION_MODELS` där gamla modeller behålls.
+  - Jämförelse fält för fält med JSON-pekare.
+  - Status `identical`, `different` eller `model_unavailable`, och en kontroll att underlaget fortfarande ger samma `inputHash`.
+  - API: `POST /v1/claims/{id}/decisions/{seq}/replays` (rättighet `claims:read`). Kontraktet ändrades först.
+- Scenarier som data (lager 3):
+  - 8 scenarier i `scenarios/claims/` (7 svenska och 1 EUR-exempel), med standardvärden i `product.yaml`.
+  - En fryst golden-fil per scenario, som räknas om i CI.
+  - `npm run scenarios:golden` skriver bara saknade golden-filer.
+  - Provat med ett inplanterat fel: bygget stoppades med exakta sökvägar och värden.
+- Dokumentation: testning (scenarier och golden-filer), skadereglering (omräkning) och arkitektur.
+- 142 tester.
+
+**Nästa steg**
+1. Förklaring per beslut och begäran om mänsklig prövning.
+2. Behörighet del 2: omfång per marknad och klinik.
+3. Attestkedjan med beloppsgränser och utbetalningsorder.
+
 ## 2026-11-14 (pass 14)
 
 **Gjort**

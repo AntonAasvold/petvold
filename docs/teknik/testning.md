@@ -8,12 +8,12 @@ Hur vi testar Petvold. Beslutet finns i ADR 0012. Ändra filen när något inte 
 | --- | --- | --- | --- |
 | 1. Enhetstester | Beräkningar, regler och gränsfall i ren domänkod | `modules/*/test/*.test.ts` | `node:test` |
 | 2. Egenskapstester | Invarianter som ska gälla för alla indata | `modules/*/test/*.property.test.ts` | fast-check |
-| 3. Scenariotester | Försäkringsfall som data, läsbara utan kod | `scenarios/<modul>/<marknad-produkt>/*.yaml` | egen körare (M1) |
+| 3. Scenariotester | Försäkringsfall som data, läsbara utan kod, och att sparade beslut går att räkna om | `scenarios/<modul>/<marknad-produkt>/*.yaml` | `claims-core/test/scenarios.test.ts` |
 | 4. Porttester | Att alla implementationer av en port beter sig lika | `modules/<modul>-core/test-suites/` | gemensam svit, t.ex. `claimsStoreSuite` |
 | 5. Kontraktstester | Att API och händelser följer OpenAPI/AsyncAPI | `modules/*-api/test/` | ajv, `lint:openapi` |
 | 6. Databastester | Att databasens regler håller: balans, inga överlapp, inga ändringar | `db/test/`, `modules/*/test-db/` | riktig Postgres, `npm run test:db` |
 
-Lager 3 byggs i M1. Lager 4 och 6 finns för skademotorn.
+Lager 3, 4 och 6 finns för skademotorn.
 
 ## Regler
 
@@ -22,6 +22,32 @@ Lager 3 byggs i M1. Lager 4 och 6 finns för skademotorn.
 - **Namnge testet efter regeln**, på engelska: `'open deductible period: no fixed deductible'`, inte `'test 3'`.
 - **Pengar i minsta enhet** i testdata. Skriv beloppet i klartext i en kommentar när det hjälper: `455_500, // 25 % av 18 220 kr`.
 - **Kontraktet är facit för API:et.** Varje svar i API-testerna valideras mot `openapi.yaml`.
+
+## Scenarier
+
+Scenarierna ligger i `scenarios/claims/<marknad-produkt>/`:
+
+- **`product.yaml`** har standardvärden: produktens regler, en policy och ett ärende.
+- **Varje annan `*.yaml` är ett scenario.** `given` slås ihop med standardvärdena: objekt nyckel för nyckel, och listor ersätts. `expect` säger vad bedömningen ska bli: förslag, läge, valda delar av beräkningen och regelutfall.
+
+```yaml
+name: The annual limit caps the payout
+given:
+  consumedBefore: 5900000
+expect:
+  proposedOutcome: partial
+  calculation:
+    payout: 100000               # SEK 1,000
+    cappedByLimit: true
+  rules:
+    LIMIT: info
+```
+
+**Golden-filer (ADR 0018).** Varje scenario har en fryst `<namn>.golden.json` med hela underlaget, hela bedömningen och beräkningsmodellen. Testet räknar om varje golden-fil med `replay()`, samma funktion som API:ets omräkning. En kodändring som ändrar resultatet för ett gammalt beslut stoppar bygget och visar exakt vilka värden som ändrats.
+
+- **Nytt scenario:** skriv YAML-filen, kör `npm run scenarios:golden` och granska den nya golden-filen i PR:en.
+- **Golden-filer skrivs aldrig över.** Ett ändrat scenario är ett nytt beslut: ge det ett nytt filnamn, eller radera golden-filen medvetet.
+- **Avsiktlig ändring av beräkningen:** lägg till en ny beräkningsmodell i `CALCULATION_MODELS` och behåll den gamla. Gamla golden-filer räknas då om med sin gamla modell.
 
 ## Egenskapstester
 

@@ -1,0 +1,16 @@
+name: The annual limit caps the payout
+description: |
+  SEK 59,000 of the SEK 60,000 annual limit is already consumed. The claim
+  would give SEK 1,500 but only SEK 1,000 remains.
+given:
+  consumedBefore: 5900000
+expect:
+  proposedOutcome: partial
+  mode: auto
+  calculation:
+    payableBeforeLimit: 150000
+    remainingBefore: 100000
+    payout: 100000               # SEK 1,000
+    cappedByLimit: true
+  rules:
+    LIMIT: info

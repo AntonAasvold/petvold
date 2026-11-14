@@ -176,6 +176,36 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/claims/{claimId}/decisions/{seq}/replays:
+    post:
+      tags: [decisions]
+      operationId: replayDecision
+      x-permission: claims:read
+      summary: Recalculate a stored decision from its evidence
+      description: |
+        Requires the permission `claims:read`.
+
+        Runs the decision's stored evidence (input, rules and calculation model)
+        through the engine again and compares the result with the stored
+        assessment (ADR 0018). Nothing is stored or booked, so no
+        `Idempotency-Key` is needed. `identical: true` proves the decision can
+        be reproduced exactly. Decisions made before evidence was stored give 404.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - name: seq
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The result of the recalculation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReplayResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v1/claims/{claimId}/reassessments:
     post:
       tags: [decisions]
@@ -609,6 +639,39 @@ components:
       type: string
       description: Why a handler decided against the assessment's proposal.
       enum: [pre_existing_condition, not_covered, insufficient_documentation, incorrect_invoice, other]
+
+    ReplayResult:
+      type: object
+      required: [decisionId, calculationModel, engineVersion, replayedWith, status, inputHashMatches, differences]
+      properties:
+        decisionId: { type: string }
+        calculationModel: { type: string, description: The calculation model stored with the decision. }
+        engineVersion: { type: string, description: The engine version that made the decision. }
+        replayedWith:
+          type: object
+          required: [engineVersion]
+          properties:
+            engineVersion: { type: string }
+        status:
+          type: string
+          enum: [identical, different, model_unavailable]
+          description: |
+            `identical`: the stored assessment is reproduced exactly.
+            `different`: the result differs; see `differences`.
+            `model_unavailable`: this engine no longer has the stored calculation model.
+        inputHashMatches:
+          type: boolean
+          description: The stored input still hashes to the decision's inputHash.
+        differences:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required: [path]
+            properties:
+              path: { type: string, description: 'JSON path in the assessment, e.g. /calculation/payout' }
+              stored: {}
+              replayed: {}
 
     RegisterClaimResult:
       type: object

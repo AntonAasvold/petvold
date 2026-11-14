@@ -18,6 +18,7 @@ import type {
 } from './types.ts';
 import { assertDate } from '@petvold/common';
 import { accounts, type LimitKey } from './ledger.ts';
+import { replay, type ReplayResult } from './replay.ts';
 
 
 export type DomainErrorCode = 'not_found' | 'validation' | 'conflict' | 'forbidden';
@@ -198,10 +199,20 @@ export class ClaimsService {
 
   /** The evidence for a decision (ADR 0018). */
   async getEvidence(claimId: string, seq: number): Promise<DecisionEvidence> {
+    return (await this.decisionWithEvidence(claimId, seq)).evidence;
+  }
+
+  /** Recalculates a stored decision from its evidence and compares (ADR 0018). Stores nothing. */
+  async replayDecision(claimId: string, seq: number): Promise<ReplayResult> {
+    const { decision, evidence } = await this.decisionWithEvidence(claimId, seq);
+    return replay(evidence, decision.assessment, this.d.engineVersion ?? 'unknown');
+  }
+
+  private async decisionWithEvidence(claimId: string, seq: number): Promise<{ decision: ClaimDecision; evidence: DecisionEvidence }> {
     const decision = (await this.getDecisions(claimId)).find((d) => d.seq === seq);
     const evidence = decision ? await this.d.store.getEvidence(decision.id) : null;
-    if (!evidence) throw new DomainError('not_found', `No evidence for decision ${claimId}#${seq}`);
-    return evidence;
+    if (!decision || !evidence) throw new DomainError('not_found', `No evidence for decision ${claimId}#${seq}`);
+    return { decision, evidence };
   }
 
   async getLimits(policyId: string, animalId: string, onDate: ISODate): Promise<LimitsView> {

@@ -1,0 +1,12 @@
+name: No policy in force on the treatment date
+description: |
+  No policy version applied on the treatment date, e.g. treatment before the
+  policy started. Rejected without a calculation.
+given:
+  policy: null
+expect:
+  proposedOutcome: rejected
+  mode: manual
+  calculation: null
+  rules:
+    POLICY_FOUND: fail

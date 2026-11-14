@@ -1,0 +1,67 @@
+# Sweden, dog, vet care (example product SE-HUND-VV-LIV@2026.2)
+# Made-up product terms for scenarios and tests. Not any real insurer's terms (ADR 0009).
+# Scenarios in this directory merge their `given` into these defaults.
+
+rules:
+  rulesVersion: SE-HUND-2026.2
+  market: SE
+  vatReimbursable: true
+  nonReimbursableCategories:
+    - food
+  diagnosisGroups:
+    ORT-KORSBAND-V: ortopedi-bakben
+    ORT-KORSBAND-H: ortopedi-bakben
+    ORT-HALTA-HB-H: ortopedi-bakben
+    ORA-OTIT: ora
+    GI-ENTERIT: mag-tarm
+  autoSettleMax: 1000000
+policy:
+  policyId: pol_bella
+  policyVersionId: pv_bella_v4
+  market: SE
+  currency: SEK
+  animalId: ani_bella
+  animalBirthDate: 2019-03-14
+  productVersion: SE-HUND-VV-LIV@2026.2
+  status: active
+  validFrom: 2026-04-01
+  validTo: 2027-04-01
+  inceptionDate: 2024-04-01
+  policyYearStart: 2026-04-01
+  policyYearEnd: 2027-04-01
+  vetCare:
+    code: vet_care
+    annualLimit: 6000000
+    deductible:
+      fixed: 200000
+      fixedPer: period
+      periodDays: 125
+      variableBp: 2500
+    waitingPeriodDays: 30
+  riders:
+    - id: rid_halta_hh
+      description: Lameness, right hind leg
+      diagnosisCodes:
+        - ORT-HALTA-HB-H
+      validFrom: 2025-09-12
+claim:
+  id: clm_021877
+  claimNo: S-2026-021877
+  policyId: pol_bella
+  animalId: ani_bella
+  market: SE
+  currency: SEK
+  channel: clinic_direct
+  treatmentFrom: 2026-06-04
+  treatmentTo: 2026-06-04
+  diagnosisCode: ORA-OTIT
+  lines:
+    - id: l1
+      description: Examination
+      category: examination
+      amount: 65000
+    - id: l2
+      description: Ear flush and medication
+      category: medication
+      amount: 335000
+  receivedAt: 2026-06-04T09:00:00Z

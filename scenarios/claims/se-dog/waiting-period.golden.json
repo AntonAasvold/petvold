@@ -1,0 +1,173 @@
+{
+  "scenario": "se-dog/waiting-period",
+  "calculationModel": "vet-care.v1",
+  "input": {
+    "claim": {
+      "id": "clm_021877",
+      "claimNo": "S-2026-021877",
+      "policyId": "pol_bella",
+      "animalId": "ani_bella",
+      "market": "SE",
+      "currency": "SEK",
+      "channel": "clinic_direct",
+      "treatmentFrom": "2026-06-04",
+      "treatmentTo": "2026-06-04",
+      "diagnosisCode": "ORA-OTIT",
+      "lines": [
+        {
+          "id": "l1",
+          "description": "Examination",
+          "category": "examination",
+          "amount": 65000
+        },
+        {
+          "id": "l2",
+          "description": "Ear flush and medication",
+          "category": "medication",
+          "amount": 335000
+        }
+      ],
+      "receivedAt": "2026-06-04T09:00:00Z"
+    },
+    "policy": {
+      "policyId": "pol_bella",
+      "policyVersionId": "pv_bella_v4",
+      "market": "SE",
+      "currency": "SEK",
+      "animalId": "ani_bella",
+      "animalBirthDate": "2019-03-14",
+      "productVersion": "SE-HUND-VV-LIV@2026.2",
+      "status": "active",
+      "validFrom": "2026-05-20",
+      "validTo": "2027-04-01",
+      "inceptionDate": "2026-05-20",
+      "policyYearStart": "2026-04-01",
+      "policyYearEnd": "2027-04-01",
+      "vetCare": {
+        "code": "vet_care",
+        "annualLimit": 6000000,
+        "deductible": {
+          "fixed": 200000,
+          "fixedPer": "period",
+          "periodDays": 125,
+          "variableBp": 2500
+        },
+        "waitingPeriodDays": 30
+      },
+      "riders": [
+        {
+          "id": "rid_halta_hh",
+          "description": "Lameness, right hind leg",
+          "diagnosisCodes": [
+            "ORT-HALTA-HB-H"
+          ],
+          "validFrom": "2025-09-12"
+        }
+      ]
+    },
+    "rules": {
+      "rulesVersion": "SE-HUND-2026.2",
+      "market": "SE",
+      "vatReimbursable": true,
+      "nonReimbursableCategories": [
+        "food"
+      ],
+      "diagnosisGroups": {
+        "ORT-KORSBAND-V": "ortopedi-bakben",
+        "ORT-KORSBAND-H": "ortopedi-bakben",
+        "ORT-HALTA-HB-H": "ortopedi-bakben",
+        "ORA-OTIT": "ora",
+        "GI-ENTERIT": "mag-tarm"
+      },
+      "autoSettleMax": 1000000
+    },
+    "openDeductiblePeriod": null,
+    "consumedBefore": 0
+  },
+  "assessment": {
+    "claimId": "clm_021877",
+    "market": "SE",
+    "currency": "SEK",
+    "policyVersionId": "pv_bella_v4",
+    "productVersion": "SE-HUND-VV-LIV@2026.2",
+    "rulesVersion": "SE-HUND-2026.2",
+    "diagnosisGroup": "ora",
+    "inputHash": "15b93b9f520ce2cc057372cbcba3340ff21819b0355c15afc71ba449225e4385",
+    "rules": [
+      {
+        "code": "POLICY_FOUND",
+        "status": "pass",
+        "reason": "policy.found",
+        "params": {
+          "version": "pv_bella_v4",
+          "date": "2026-06-04"
+        }
+      },
+      {
+        "code": "MARKET_CURRENCY",
+        "status": "pass",
+        "reason": "market.ok",
+        "params": {
+          "market": "SE",
+          "currency": "SEK"
+        }
+      },
+      {
+        "code": "POLICY_ACTIVE",
+        "status": "pass",
+        "reason": "policy.active",
+        "params": {}
+      },
+      {
+        "code": "COVERAGE",
+        "status": "pass",
+        "reason": "coverage.ok",
+        "params": {
+          "coverage": "vet_care"
+        }
+      },
+      {
+        "code": "WAITING_PERIOD",
+        "status": "fail",
+        "reason": "waiting.within",
+        "params": {
+          "endsOn": "2026-06-19"
+        }
+      },
+      {
+        "code": "DIAGNOSIS_KNOWN",
+        "status": "pass",
+        "reason": "diagnosis.known",
+        "params": {
+          "diagnosisGroup": "ora"
+        }
+      },
+      {
+        "code": "RIDER",
+        "status": "pass",
+        "reason": "rider.none",
+        "params": {}
+      }
+    ],
+    "calculation": {
+      "currency": "SEK",
+      "billed": 400000,
+      "nonReimbursable": 0,
+      "vatExcluded": 0,
+      "base": 400000,
+      "opensDeductiblePeriod": true,
+      "deductibleFixed": 200000,
+      "deductibleVariableBp": 2500,
+      "deductibleVariable": 50000,
+      "payableBeforeLimit": 150000,
+      "annualLimit": 6000000,
+      "consumedBefore": 0,
+      "remainingBefore": 6000000,
+      "payout": 150000,
+      "customerShare": 250000,
+      "cappedByLimit": false
+    },
+    "proposedOutcome": "rejected",
+    "mode": "manual"
+  }
+}
