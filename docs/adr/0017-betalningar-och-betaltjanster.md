@@ -70,8 +70,10 @@ interface PaymentProvider {
 - En ny betaltjänst är en ny adapter som klarar sviten. Domänen ändras inte.
 - Varje adapter måste översätta tjänstens status till tillståndsmaskinen. Det är där felen kommer att finnas, så sviten och testmiljöerna är viktiga.
 - Webhooks kräver att installationen kan ta emot anrop utifrån. Lokalt används `fake`-adaptern eller en tunnel.
-- Utbetalning av ersättning i M1 blir det första användningsfallet: beslut → reserv → attest → `payout`.
+- Utbetalning av ersättning blir det första användningsfallet: beslut → reserv → attest → `payout`.
 - Bokföring av betalningar (kundreskontra, bankkonto) hör till ledgern i M5. Betalningsmodulen skickar händelser, och ledgern bokför.
+
+**Tidplan:** betalintegrationerna väntar till M5 (beslut 2026-11-14). I M1 slutar skadekedjan med att ett attesterat beslut ger en utbetalningsorder som händelse. Betalningsmodulen tar emot den när den finns.
 
 **Införs i steg:**
 1. Kontrakt för betalnings-API:t, porten, tillståndsmaskinen och `fake`-adaptern med den gemensamma sviten.
@@ -90,7 +92,7 @@ interface PaymentProvider {
 ## Öppna frågor för beslut
 
 - Vilken adapter först: Stripe (bäst testmiljö), Swish (Sverige) eller open banking via en aggregator?
-- Ersättning till klinik eller kund, eller båda, i M1?
+- Ersättning till klinik eller kund, eller båda?
 - Ska Autogiro gå via bankfil direkt mot Bankgirot eller via en tjänsteleverantör?
 
 ## Källor

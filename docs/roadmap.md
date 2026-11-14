@@ -19,8 +19,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [ ] Scenarier som data (lager 3)
 - [x] Integrationstester mot Postgres
 - [ ] AsyncAPI för `claim.registered` och `claim.decided`
-- [ ] Betalningsmodul (ADR 0017): port mot betaltjänster, tillståndsmaskin, fake-adapter och första riktiga adaptern
-- [ ] Reserv, beslutsförslag, beslut, attest och betalning som kedja
+- [ ] Reserv, beslutsförslag, beslut och attest som kedja. Ett attesterat beslut ger en utbetalningsorder (händelse). Själva betalningen kommer med betalningsmodulen.
 
 ## Nästa
 
@@ -42,7 +41,18 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 
 ## Senare
 
-**M5 – Pengar**: Billing (premieplaner, fakturor, påminnelser), fler betaladaptrar (Autogiro, SEPA, open banking), ledger för premier, tillgodohavande, utebliven betalning.
+**M5 – Pengar**
+- Betalningsmodul (ADR 0017): porten `PaymentProvider`, tillståndsmaskin, fake-adapter och gemensam testsvit.
+- Betalintegrationer, en adapter per tjänst:
+  - Stripe (kort, sparat kort)
+  - Swish (betalning och utbetalning)
+  - Open banking (PSD2, betalningsinitiering)
+  - Autogiro (Bankgirot)
+  - SEPA Direct Debit
+  - Bankfil ISO 20022 (`pain.001`, `camt.054`)
+- Utbetalning av ersättning från skademotorn.
+- Billing: premieplaner, fakturor, påminnelser, tillgodohavande och utebliven betalning.
+- Ledger för premier och betalningar.
 
 **M6 – Stöd**: dokument, utskick med preferenser, ärenden, interaktionslogg, klinikintegration.
 
