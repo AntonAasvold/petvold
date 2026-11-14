@@ -86,7 +86,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - Licens: stängd, källkod tillgänglig eller öppen källkod?
 - Gemensamt försäkringsbelopp för en kull.
 - Överlåtelseregler per marknad.
-- Självriskperiod över förnyelse: ska en pågående period fortsätta in i nästa försäkringsår eller börja om? I dag fortsätter den, eftersom den är knuten till djuret.
+- Självriskperiod över förnyelse: konfigurerbart per produkt (`periodEndsAtRenewal`, standard är att perioden fortsätter). Kvar: perioden ska bara fortsätta så länge skyddet är oavbrutet, inte över avslut, uppehåll eller ny ägare.
 - Retroaktivt avslut när ersättning redan är betald för tiden efter avslutet: återkrav, avräkning mot premieåterbetalning eller avskrivning?
 - Premieåterbetalning vid avslut: per dag eller enligt produktens regel, och vid ånger?
 - Moln och klientlager.
