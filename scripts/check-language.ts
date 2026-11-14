@@ -16,7 +16,7 @@ const CODE = /(\.(ts|js|mjs|sql|ya?ml|http|json|sh)|^\.env\.example)$/;
 /** Files allowed to contain Swedish, and why. */
 const ALLOWED: Record<string, string> = {
   'scripts/check-language.ts': 'names the characters it looks for',
-  'modules/claims-api/src/messages.ts': 'Swedish message catalogue for users (sv)',
+  'modules/api/src/messages.ts': 'Swedish message catalogue for users (sv)',
   'db/migrations/0001_claims.sql': 'migration already applied; never edited',
   'db/migrations/0002_claims_grants.sql': 'migration already applied; never edited',
   'db/migrations/0003_claims_line_order_and_journal_currency.sql': 'migration already applied; never edited',
