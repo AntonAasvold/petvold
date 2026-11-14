@@ -18,8 +18,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Gemensam testsvit för `ClaimsStore` (lager 4) och databastester (lager 6)
 - [ ] Scenarier som data (lager 3)
 - [x] Integrationstester mot Postgres
-- [ ] AsyncAPI för `claim.registered` och `claim.decided`
-- [ ] Reserv, beslutsförslag, beslut, attest och betalning som kedja
+- [ ] Behörighet (ADR 0016): rättigheter i kontraktet, omfång per marknad och klinik
+- [ ] Reserv, beslutsförslag, beslut, attest och betalning som kedja, med beloppsgränser och fyraögonsprincip
 
 ## Nästa
 
@@ -44,6 +44,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 **M5 – Pengar**: Billing, betalningar, ledger för premier, tillgodohavande, utebliven betalning.
 
 **M6 – Stöd**: dokument, utskick med preferenser, ärenden, interaktionslogg, klinikintegration.
+
+**Händelser utåt**: CloudEvents-kuvert och AsyncAPI när det finns en mottagare utanför Petvold (ADR 0008).
 
 **M7 – Drift**: Kubernetes med CloudNativePG, observabilitet, säkerhetskopiering, DORA-anpassning.
 
