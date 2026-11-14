@@ -239,6 +239,8 @@ export interface LedgerJournal {
   sourceType: 'claim_decision';
   sourceId: string;
   claimId: string;
+  /** Alla rader i journalen är i denna valuta (ADR 0014). */
+  currency: CurrencyCode;
   bookedAt: Timestamp;
   lines: LedgerLine[];
 }

@@ -2,6 +2,23 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 6)
+
+**Gjort**
+- `modules/claims-store-postgres`: `PostgresClaimsStore` klarar alla 16 tester i den gemensamma sviten, ansluten som `claims_service`.
+- Tjänsten körd mot Postgres: automatisk reglering, handläggarbeslut, förbrukat belopp, omprövning och självriskperiod (3 tester).
+- Migration 0003: fakturaradernas ordning (`line_no`) och valuta på journaler (ADR 0014), med ifyllnad av befintliga rader. `LedgerJournal` har `currency`.
+- CI backar nu senaste migreringen med data i tabellerna och kör den igen. Det fångade att första versionen av 0003 inte klarade befintliga rader.
+- `.env` hade av misstag kommit med i #5. Borttagen ur git (bara lokala dev-värden).
+- ADR 0015 beslutad: node-postgres och ren SQL.
+- 26 databastester och 88 övriga tester.
+
+**Nästa steg**
+1. Outbox: händelser skrivs i samma transaktion som ärendet och beslutet.
+2. Dev-servern på Postgres (`npm run dev` sparar data mellan omstarter).
+3. Valuta i kontonamnen `limit_*` (ADR 0014).
+4. ADR om behörighet: rättigheter i kontraktet, roller per installation, egna ärenden för kliniker, beloppsgränser och fyra ögon.
+
 ## 2026-11-14 (pass 5)
 
 **Gjort**

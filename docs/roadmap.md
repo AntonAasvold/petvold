@@ -12,10 +12,11 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Lokal miljö med Postgres (docker compose), dbmate och databastester i CI
 
 **M1 – Skademotorn på riktig lagring**
-- [ ] `ClaimsStore` mot Postgres med outbox i samma transaktion
+- [x] `ClaimsStore` mot Postgres (klarar den gemensamma sviten)
+- [ ] Outbox i samma transaktion som beslutet
 - [x] Gemensam testsvit för `ClaimsStore` (lager 4) och databastester (lager 6)
 - [ ] Scenarier som data (lager 3)
-- [ ] Integrationstester mot Postgres
+- [x] Integrationstester mot Postgres
 - [ ] AsyncAPI för `claim.registered` och `claim.decided`
 - [ ] Reserv, beslutsförslag, beslut, attest och betalning som kedja
 

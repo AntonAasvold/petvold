@@ -89,6 +89,7 @@ function consumption(d: ClaimDecision, amount: number, animalId = 'ani_suite', y
     sourceType: 'claim_decision',
     sourceId: d.id,
     claimId: d.claimId,
+    currency: 'SEK',
     bookedAt: d.decidedAt,
     lines: [
       { account: `limit_consumed:${key}`, amount },

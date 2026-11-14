@@ -42,6 +42,7 @@ Dev-servern har exempeldata (Bella, labrador) och två tokens: `dev-handler` och
 | `common` | Värdetyper: pengar, valuta, marknad, datum och datumintervall. Inga beroenden. | inget |
 | `claims-core` | Domänen: bedömning, beräkning, beslut, ledger-poster. Ren TypeScript utan I/O, text eller ramverk. | common |
 | `claims-api` | HTTP enligt `openapi.yaml`: validering mot kontraktet, auth, idempotens, problem+json, språk. | core |
+| `claims-store-postgres` | `ClaimsStore` mot Postgres-schemat `claims`, med tjänsterollen `claims_service`. | core |
 | `claims-store-memory` | Lagring och policyport i minnet för tester och dev, plus exempeldata. | core |
 | `db/migrations` | Postgres-schemat `claims` för drift (Postgres via CloudNativePG). | – |
 
@@ -104,7 +105,7 @@ Databastesterna i `db/test/` kontrollerar just de reglerna mot riktig Postgres i
 
 ## Nästa steg
 
-- `claims-store-postgres`: `ClaimsStore` mot schemat ovan, med beslut, journaler, perioder och outbox i en transaktion.
+- Outbox i samma transaktion som beslutet, och dev-servern på Postgres.
 - `policy-adapter-*`: `PolicyPort` mot befintlig policykärna.
 - Regler som versionerade paket per marknad i stället för `StaticRulesPort`.
 - Klinikadapter för direktreglering och en dokumentmodul för beslutsbrev.

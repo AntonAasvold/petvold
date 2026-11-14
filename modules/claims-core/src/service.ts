@@ -230,6 +230,7 @@ export class ClaimsService {
         sourceType: 'claim_decision',
         sourceId: decision.id,
         claimId: claim.id,
+        currency: cur,
         bookedAt: now,
         lines: [
           { account: `limit_consumed:${limitKey}`, amount: diff },

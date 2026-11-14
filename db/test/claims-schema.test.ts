@@ -47,7 +47,7 @@ async function seedDecision(): Promise<void> {
 }
 
 async function journal(id: string, amounts: number[]): Promise<void> {
-  await db.query(`insert into claims.journal (id, source_type, source_id, claim_id) values ($1, 'claim_decision', 'dec_t1', 'clm_t1')`, [id]);
+  await db.query(`insert into claims.journal (id, source_type, source_id, claim_id, currency) values ($1, 'claim_decision', 'dec_t1', 'clm_t1', 'SEK')`, [id]);
   for (const [i, a] of amounts.entries()) {
     await db.query(`insert into claims.journal_line (journal_id, line_no, account, amount_minor) values ($1, $2, $3, $4)`, [id, i + 1, `acc${i}`, a]);
   }
@@ -57,7 +57,7 @@ test('migreringarna har körts', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
   assert.deepEqual(
     rows.map((r) => r.version),
-    ['0001', '0002'],
+    ['0001', '0002', '0003'],
   );
 });
 
