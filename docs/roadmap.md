@@ -21,7 +21,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Omräkning av sparade beslut, och scenarier som data (lager 3) som räknas om i CI
 - [x] Förklaring per beslut och begäran om mänsklig prövning
 - [x] Integrationstester mot Postgres
-- [ ] Behörighet (ADR 0016): rättigheter i kontraktet, omfång per marknad och klinik
+- [x] Behörighet (ADR 0016): rättigheter i kontraktet, omfång per marknad och klinik
 - [ ] Reserv, beslutsförslag, beslut och attest som kedja, med beloppsgränser och fyraögonsprincip. Reserven bokas i ledgern när ärendet går till handläggare och löses upp när beslutet bokas. Ett attesterat beslut ger en utbetalningsorder (händelse). Själva betalningen kommer med betalningsmodulen i M5.
 
 ## Nästa
