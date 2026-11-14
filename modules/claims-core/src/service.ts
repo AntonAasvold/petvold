@@ -1,5 +1,5 @@
 import { assess, deductibleScope, validateClaim } from './assess.ts';
-import { StoreConflictError, type ClaimsStore, type Clock, type EventSink, type IdGenerator, type PolicyPort, type RulesPort } from './ports.ts';
+import { StoreConflictError, type ClaimsEvent, type ClaimsStore, type Clock, type IdGenerator, type PolicyPort, type RulesPort } from './ports.ts';
 import type {
   Assessment,
   Claim,
@@ -57,7 +57,6 @@ export interface ClaimsServiceDeps {
   store: ClaimsStore;
   clock: Clock;
   ids: IdGenerator;
-  events?: EventSink;
 }
 
 const COVERAGE = 'vet_care';
@@ -89,8 +88,7 @@ export class ClaimsService {
     const existing = await this.d.store.getClaim(claim.id);
     if (existing) throw new DomainError('conflict', `Claim ${claim.id} already exists`);
 
-    await asConflict(this.d.store.saveClaim(claim));
-    await this.d.events?.publish({ type: 'claim.registered', occurredAt: this.d.clock.now(), claim });
+    await asConflict(this.d.store.saveClaim(claim, [{ type: 'claim.registered', occurredAt: this.d.clock.now(), claim }]));
     const assessment = await this.assessClaim(claim.id);
     const decision =
       assessment.mode === 'auto' ? await this.commit(claim, assessment, assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept', 'auto') : null;
@@ -248,8 +246,8 @@ export class ClaimsService {
       deductiblePeriod = { id: this.d.ids.next('dp'), animalId: claim.animalId, ...scope, openedByClaimId: claim.id };
     }
 
-    await asConflict(this.d.store.commitDecision({ decision, journals, deductiblePeriod }));
-    await this.d.events?.publish({ type: 'claim.decided', occurredAt: now, decision });
+    const events: ClaimsEvent[] = [{ type: 'claim.decided', occurredAt: now, decision }];
+    await asConflict(this.d.store.commitDecision({ decision, journals, deductiblePeriod, events }));
     return decision;
   }
 

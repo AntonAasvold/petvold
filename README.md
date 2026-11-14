@@ -52,7 +52,7 @@ Kärnan pratar med omvärlden via portar (`modules/claims-core/src/ports.ts`):
 - `PolicyPort`: policyn som den gällde ett datum (giltighetstid) och var känd vid en tidpunkt (registreringstid).
 - `RulesPort`: produktens skaderegler per produktversion.
 - `ClaimsStore`: ärenden, beslut, självriskperioder och ledger. `commitDecision` är atomisk.
-- `EventSink`: `claim.registered`, `claim.decided`. I drift en outbox i samma transaktion.
+- `ClaimsOutbox` och `EventSink`: lagringen skriver `claim.registered` och `claim.decided` till en outbox i samma transaktion som ändringen. `relayOutbox` publicerar dem i ordning till en `EventSink`, minst en gång (ADR 0008).
 - `Clock`, `IdGenerator`.
 
 ## API-first
@@ -106,7 +106,7 @@ Databastesterna i `db/test/` kontrollerar just de reglerna mot riktig Postgres i
 
 ## Nästa steg
 
-- Outbox i samma transaktion som beslutet, och dev-servern på Postgres.
+- Dev-servern på Postgres, så att data sparas mellan omstarter.
 - `policy-adapter-*`: `PolicyPort` mot befintlig policykärna.
 - Regler som versionerade paket per marknad i stället för `StaticRulesPort`.
 - Klinikadapter för direktreglering och en dokumentmodul för beslutsbrev.

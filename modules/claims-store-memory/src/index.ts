@@ -2,7 +2,10 @@ import { StoreConflictError } from '@petvold/claims-core';
 import type {
   Claim,
   ClaimDecision,
+  ClaimsEvent,
+  ClaimsOutbox,
   ClaimsStore,
+  OutboxEntry,
   DecisionCommit,
   DeductiblePeriod,
   ISODate,
@@ -22,15 +25,18 @@ import type {
  * and journals are append-only, and every journal must balance.
  * For tests and local development.
  */
-export class InMemoryClaimsStore implements ClaimsStore {
+export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   private claims = new Map<string, Claim>();
   private decisions: ClaimDecision[] = [];
   private journals: LedgerJournal[] = [];
   private periods: DeductiblePeriod[] = [];
+  private outbox: Array<OutboxEntry & { publishedAt?: Timestamp }> = [];
+  private outboxSeq = 0;
 
-  async saveClaim(claim: Claim) {
+  async saveClaim(claim: Claim, events: ClaimsEvent[]) {
     if (this.claims.has(claim.id)) throw new StoreConflictError('claim_exists', `Claim ${claim.id} already exists`);
     this.claims.set(claim.id, structuredClone(claim));
+    this.appendEvents(events);
   }
 
   async getClaim(id: string) {
@@ -67,7 +73,7 @@ export class InMemoryClaimsStore implements ClaimsStore {
   }
 
   /** Checks everything first and then changes, so an error never leaves half a decision behind. */
-  async commitDecision({ decision, journals, deductiblePeriod }: DecisionCommit) {
+  async commitDecision({ decision, journals, deductiblePeriod, events }: DecisionCommit) {
     if (!this.claims.has(decision.claimId)) throw new Error(`Claim ${decision.claimId} does not exist`);
     for (const j of journals) {
       const sum = j.lines.reduce((s, l) => s + l.amount, 0);
@@ -91,11 +97,27 @@ export class InMemoryClaimsStore implements ClaimsStore {
     this.journals.push(...structuredClone(journals));
     this.periods = remaining;
     if (deductiblePeriod) this.periods.push({ ...deductiblePeriod });
+    this.appendEvents(events);
+  }
+
+  async pendingEvents(limit: number): Promise<OutboxEntry[]> {
+    return this.outbox
+      .filter((e) => !e.publishedAt)
+      .slice(0, limit)
+      .map((e) => ({ id: e.id, event: structuredClone(e.event) }));
+  }
+
+  async markPublished(ids: string[], at: Timestamp): Promise<void> {
+    for (const e of this.outbox) if (ids.includes(e.id) && !e.publishedAt) e.publishedAt = at;
+  }
+
+  private appendEvents(events: ClaimsEvent[]) {
+    for (const event of events) this.outbox.push({ id: String(++this.outboxSeq), event: structuredClone(event) });
   }
 
   /** For tests and debugging only. */
   dump() {
-    return { decisions: this.decisions, journals: this.journals, periods: this.periods };
+    return { decisions: this.decisions, journals: this.journals, periods: this.periods, outbox: this.outbox };
   }
 }
 

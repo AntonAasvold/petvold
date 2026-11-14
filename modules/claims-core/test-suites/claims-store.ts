@@ -11,11 +11,14 @@
  */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { StoreConflictError, type ClaimsStore, type DecisionCommit } from '../src/ports.ts';
+import { StoreConflictError, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore, type DecisionCommit } from '../src/ports.ts';
 import type { Assessment, Claim, ClaimDecision, DeductiblePeriod, LedgerJournal } from '../src/types.ts';
 
+/** A store that also exposes its outbox, as every implementation must. */
+export type StoreWithOutbox = ClaimsStore & ClaimsOutbox;
+
 export interface StoreHarness {
-  store: ClaimsStore;
+  store: StoreWithOutbox;
   /** Runs after each test, e.g. to close a connection. */
   cleanup?: () => Promise<void>;
 }
@@ -104,9 +107,22 @@ function period(id: string, openedByClaimId: string, validFrom: string, validTo:
   return { id, animalId: 'ani_suite', diagnosisGroup: 'ora', validFrom, validTo, openedByClaimId, ...overrides };
 }
 
-function commit(d: ClaimDecision, journals: LedgerJournal[] = [], deductiblePeriod: DeductiblePeriod | null = null): DecisionCommit {
-  return { decision: d, journals, deductiblePeriod };
+function registered(c: Claim): ClaimsEvent[] {
+  return [{ type: 'claim.registered', occurredAt: c.receivedAt, claim: c }];
 }
+
+function decided(d: ClaimDecision): ClaimsEvent[] {
+  return [{ type: 'claim.decided', occurredAt: d.decidedAt, decision: d }];
+}
+
+/** Stores a claim the way the service does: with its registered event. */
+const save = (store: ClaimsStore, c: Claim): Promise<void> => store.saveClaim(c, registered(c));
+
+function commit(d: ClaimDecision, journals: LedgerJournal[] = [], deductiblePeriod: DeductiblePeriod | null = null): DecisionCommit {
+  return { decision: d, journals, deductiblePeriod, events: decided(d) };
+}
+
+const pendingTypes = async (store: ClaimsOutbox) => (await store.pendingEvents(100)).map((e) => e.event.type);
 
 const isConflict = (reason: StoreConflictError['reason']) => (e: unknown) =>
   e instanceof StoreConflictError && e.reason === reason;
@@ -118,7 +134,7 @@ const isConflict = (reason: StoreConflictError['reason']) => (e: unknown) =>
 export function claimsStoreSuite(name: string, factory: StoreFactory): void {
   describe(`ClaimsStore: ${name}`, () => {
     /** Runs a test against a new, empty store. */
-    const it = (title: string, fn: (store: ClaimsStore) => Promise<void>) =>
+    const it = (title: string, fn: (store: StoreWithOutbox) => Promise<void>) =>
       test(title, async () => {
         const h = await factory();
         try {
@@ -132,7 +148,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
 
     it('a stored claim is read back unchanged', async (store) => {
       const c = claim('clm_a');
-      await store.saveClaim(c);
+      await save(store, c);
       assert.deepEqual(await store.getClaim('clm_a'), c);
     });
 
@@ -141,13 +157,13 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
     });
 
     it('a claim with the same id cannot be stored twice', async (store) => {
-      await store.saveClaim(claim('clm_a'));
-      await assert.rejects(store.saveClaim(claim('clm_a', { diagnosisCode: 'GI-ENTERIT' })), isConflict('claim_exists'));
+      await save(store, claim('clm_a'));
+      await assert.rejects(save(store, claim('clm_a', { diagnosisCode: 'GI-ENTERIT' })), isConflict('claim_exists'));
       assert.equal((await store.getClaim('clm_a'))?.diagnosisCode, 'ORA-OTIT');
     });
 
     it('changes to a read object do not affect the store', async (store) => {
-      await store.saveClaim(claim('clm_a'));
+      await save(store, claim('clm_a'));
       const read = (await store.getClaim('clm_a'))!;
       read.lines[0]!.amount = 1;
       assert.equal((await store.getClaim('clm_a'))?.lines[0]?.amount, 65_000);
@@ -156,12 +172,12 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
     // Decisions ---------------------------------------------------------------
 
     it('a claim without decisions has an empty list', async (store) => {
-      await store.saveClaim(claim('clm_a'));
+      await save(store, claim('clm_a'));
       assert.deepEqual(await store.getDecisions('clm_a'), []);
     });
 
     it('decisions are read back unchanged and in order', async (store) => {
-      await store.saveClaim(claim('clm_a'));
+      await save(store, claim('clm_a'));
       const first = decision('clm_a', 1, 50_000);
       const second = decision('clm_a', 2, 30_000, { decidedBy: 'handlaggare@example.test', reason: 'Reassessment' });
       await store.commitDecision(commit(first, [consumption(first, 50_000)]));
@@ -170,7 +186,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
     });
 
     it('the same sequence number cannot be decided twice', async (store) => {
-      await store.saveClaim(claim('clm_a'));
+      await save(store, claim('clm_a'));
       const d = decision('clm_a', 1, 50_000);
       await store.commitDecision(commit(d, [consumption(d, 50_000)]));
       const again = decision('clm_a', 1, 70_000, { id: 'dec_annat' });
@@ -186,7 +202,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
     // Ledger ------------------------------------------------------------------
 
     it('an unbalanced journal is rejected and nothing is stored', async (store) => {
-      await store.saveClaim(claim('clm_a'));
+      await save(store, claim('clm_a'));
       const d = decision('clm_a', 1, 50_000);
       const bad = consumption(d, 50_000);
       bad.lines[1]!.amount = -49_999;
@@ -197,7 +213,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
     });
 
     it('the consumed limit is the sum of the claims\' journals for animal and policy year', async (store) => {
-      for (const id of ['clm_a', 'clm_b', 'clm_annat_djur', 'clm_annat_ar']) await store.saveClaim(claim(id));
+      for (const id of ['clm_a', 'clm_b', 'clm_annat_djur', 'clm_annat_ar']) await save(store, claim(id));
       const a1 = decision('clm_a', 1, 50_000);
       const a2 = decision('clm_a', 2, 30_000);
       const b = decision('clm_b', 1, 10_000);
@@ -218,7 +234,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
     // Deductible periods ----------------------------------------------------
 
     it('a deductible period applies from its first day to the day before its end date', async (store) => {
-      await store.saveClaim(claim('clm_a'));
+      await save(store, claim('clm_a'));
       const p = period('dp_a', 'clm_a', '2026-10-01', '2027-02-03');
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], p));
       assert.deepEqual(await store.findDeductiblePeriod('ani_suite', 'ora', '2026-10-01'), p);
@@ -228,21 +244,21 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
     });
 
     it('deductible periods apply only to the same animal and diagnosis group', async (store) => {
-      await store.saveClaim(claim('clm_a'));
+      await save(store, claim('clm_a'));
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], period('dp_a', 'clm_a', '2026-10-01', '2027-02-03')));
       assert.equal(await store.findDeductiblePeriod('ani_annat', 'ora', '2026-11-01'), null);
       assert.equal(await store.findDeductiblePeriod('ani_suite', 'mag-tarm', '2026-11-01'), null);
     });
 
     it('periods opened by the claim itself can be excluded', async (store) => {
-      await store.saveClaim(claim('clm_a'));
+      await save(store, claim('clm_a'));
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], period('dp_a', 'clm_a', '2026-10-01', '2027-02-03')));
       assert.equal(await store.findDeductiblePeriod('ani_suite', 'ora', '2026-11-01', 'clm_a'), null);
       assert.notEqual(await store.findDeductiblePeriod('ani_suite', 'ora', '2026-11-01', 'clm_annat'), null);
     });
 
     it('a new decision replaces the period the claim opened, and null removes it', async (store) => {
-      await store.saveClaim(claim('clm_a'));
+      await save(store, claim('clm_a'));
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], period('dp_1', 'clm_a', '2026-10-01', '2027-02-03')));
       const moved = period('dp_2', 'clm_a', '2026-10-05', '2027-02-07');
       await store.commitDecision(commit(decision('clm_a', 2, 0), [], moved));
@@ -254,8 +270,8 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
     });
 
     it('periods for the same animal and group must not overlap, and nothing is stored', async (store) => {
-      await store.saveClaim(claim('clm_a'));
-      await store.saveClaim(claim('clm_b'));
+      await save(store, claim('clm_a'));
+      await save(store, claim('clm_b'));
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], period('dp_a', 'clm_a', '2026-10-01', '2027-02-03')));
       const b = decision('clm_b', 1, 10_000);
       await assert.rejects(
@@ -267,12 +283,63 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
     });
 
     it('a period may start on the day another ends', async (store) => {
-      await store.saveClaim(claim('clm_a'));
-      await store.saveClaim(claim('clm_b'));
+      await save(store, claim('clm_a'));
+      await save(store, claim('clm_b'));
       await store.commitDecision(commit(decision('clm_a', 1, 0), [], period('dp_a', 'clm_a', '2026-10-01', '2027-02-03')));
       const next = period('dp_b', 'clm_b', '2027-02-03', '2027-06-08');
       await store.commitDecision(commit(decision('clm_b', 1, 0), [], next));
       assert.deepEqual(await store.findDeductiblePeriod('ani_suite', 'ora', '2027-02-03'), next);
+    });
+    // Outbox ------------------------------------------------------------------
+
+    it('a stored claim writes its event to the outbox', async (store) => {
+      const c = claim('clm_a');
+      await save(store, c);
+      const pending = await store.pendingEvents(10);
+      assert.equal(pending.length, 1);
+      assert.deepEqual(pending[0]!.event, registered(c)[0]);
+    });
+
+    it('a decision writes its event in the same transaction', async (store) => {
+      await save(store, claim('clm_a'));
+      const d = decision('clm_a', 1, 50_000);
+      await store.commitDecision(commit(d, [consumption(d, 50_000)]));
+      const pending = await store.pendingEvents(10);
+      assert.deepEqual(pending.map((e) => e.event.type), ['claim.registered', 'claim.decided']);
+      assert.deepEqual(pending[1]!.event, decided(d)[0]);
+    });
+
+    it('a rejected claim or decision writes no event', async (store) => {
+      await save(store, claim('clm_a'));
+      await assert.rejects(save(store, claim('clm_a')));
+      const d = decision('clm_a', 1, 50_000);
+      const bad = consumption(d, 50_000);
+      bad.lines[0]!.amount = 1;
+      await assert.rejects(store.commitDecision(commit(d, [bad])));
+      await save(store, claim('clm_b'));
+      await store.commitDecision(commit(decision('clm_b', 1, 0), [], period('dp_b', 'clm_b', '2026-10-01', '2027-02-03')));
+      const clash = decision('clm_a', 1, 0);
+      await assert.rejects(store.commitDecision(commit(clash, [], period('dp_a', 'clm_a', '2026-11-01', '2027-03-01'))));
+      assert.deepEqual(await pendingTypes(store), ['claim.registered', 'claim.registered', 'claim.decided']);
+    });
+
+    it('pending events come oldest first and respect the limit', async (store) => {
+      for (const id of ['clm_1', 'clm_2', 'clm_3']) await save(store, claim(id));
+      const two = await store.pendingEvents(2);
+      assert.deepEqual(
+        two.map((e) => (e.event.type === 'claim.registered' ? e.event.claim.id : '')),
+        ['clm_1', 'clm_2'],
+      );
+    });
+
+    it('published events are no longer pending', async (store) => {
+      for (const id of ['clm_1', 'clm_2']) await save(store, claim(id));
+      const [first] = await store.pendingEvents(1);
+      await store.markPublished([first!.id], '2026-10-03T08:00:00.000Z');
+      await store.markPublished([first!.id, 'unknown'], '2026-10-03T08:01:00.000Z');
+      const rest = await store.pendingEvents(10);
+      assert.equal(rest.length, 1);
+      assert.notEqual(rest[0]!.id, first!.id);
     });
   });
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ClaimsService, DomainError, StoreConflictError, type ClaimsEvent } from '@petvold/claims-core';
+import { ClaimsService, DomainError, StoreConflictError } from '@petvold/claims-core';
 import {
   FixedClock,
   InMemoryClaimsStore,
@@ -19,16 +19,14 @@ function setup() {
     { snapshot: eurPolicy(), sysFrom: '2025-12-01T00:00:00Z' },
   ]);
   const clock = new FixedClock('2026-11-13T14:00:00Z');
-  const events: ClaimsEvent[] = [];
   const service = new ClaimsService({
     policies,
     rules: new StaticRulesPort({ [PRODUCT]: RULES_SE_DOG, [PRODUCT_EUR]: RULES_EUR_EXAMPLE }, RULES_SE_DOG),
     store,
     clock,
     ids: new SequentialIds(),
-    events: { publish: async (e) => void events.push(e) },
   });
-  return { service, store, policies, clock, events };
+  return { service, store, policies, clock };
 }
 
 function assertBalanced(store: InMemoryClaimsStore) {
@@ -38,7 +36,7 @@ function assertBalanced(store: InMemoryClaimsStore) {
 }
 
 test('a small claim is settled automatically, booked and opens a deductible period', async () => {
-  const { service, store, events } = setup();
+  const { service, store } = setup();
   const r = await service.registerClaim(otitisClaim());
   assert.equal(r.assessment.mode, 'auto');
   assert.ok(r.decision);
@@ -46,7 +44,7 @@ test('a small claim is settled automatically, booked and opens a deductible peri
   assert.equal(r.decision.decidedBy, 'auto');
   assertBalanced(store);
   assert.equal(store.dump().periods.length, 1);
-  assert.deepEqual(events.map((e) => e.type), ['claim.registered', 'claim.decided']);
+  assert.deepEqual((await store.pendingEvents(10)).map((e) => e.event.type), ['claim.registered', 'claim.decided']);
 
   const limits = await service.getLimits('pol_bella', 'ani_bella', '2026-11-13');
   assert.equal(limits.consumed, 150_000);
@@ -177,6 +175,15 @@ test('EUR market through the whole flow: booked in EUR', async () => {
   assert.equal(store.dump().periods.length, 0);
   const second = await service.registerClaim(eurClaim({ id: 'clm_rex_2', claimNo: 'X-2' }));
   assert.equal(second.assessment.calculation!.deductibleFixed, 5_000);
+});
+
+test('a rejected decision leaves no event in the outbox', async () => {
+  const { service, store } = setup();
+  store.commitDecision = async () => {
+    throw new StoreConflictError('decision_exists', 'Decision clm_021877#1 already exists');
+  };
+  await assert.rejects(service.registerClaim(otitisClaim()));
+  assert.deepEqual((await store.pendingEvents(10)).map((e) => e.event.type), ['claim.registered']);
 });
 
 test('a clash in the store becomes conflict, not an internal error', async () => {
