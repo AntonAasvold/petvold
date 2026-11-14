@@ -9,11 +9,11 @@ Hur vi testar Petvold. Beslutet finns i ADR 0012. Ändra filen när något inte 
 | 1. Enhetstester | Beräkningar, regler och gränsfall i ren domänkod | `modules/*/test/*.test.ts` | `node:test` |
 | 2. Egenskapstester | Invarianter som ska gälla för alla indata | `modules/*/test/*.property.test.ts` | fast-check |
 | 3. Scenariotester | Försäkringsfall som data, läsbara utan kod | `scenarios/<modul>/<marknad-produkt>/*.yaml` | egen körare (M1) |
-| 4. Porttester | Att alla implementationer av en port beter sig lika | `modules/<modul>-core/test-suites/` | gemensam svit (M1) |
+| 4. Porttester | Att alla implementationer av en port beter sig lika | `modules/<modul>-core/test-suites/` | gemensam svit, t.ex. `claimsStoreSuite` |
 | 5. Kontraktstester | Att API och händelser följer OpenAPI/AsyncAPI | `modules/*-api/test/` | ajv, `lint:openapi` |
 | 6. Databastester | Att databasens regler håller: balans, inga överlapp, inga ändringar | `db/test/` | riktig Postgres (M1) |
 
-Lager 3, 4 och 6 byggs i M1, före `claims-store-postgres`.
+Lager 3 byggs i M1. Lager 4 och 6 finns för skademotorn.
 
 ## Regler
 

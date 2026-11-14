@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ClaimsService, DomainError, type ClaimsEvent } from '@petvold/claims-core';
+import { ClaimsService, DomainError, StoreConflictError, type ClaimsEvent } from '@petvold/claims-core';
 import {
   FixedClock,
   InMemoryClaimsStore,
@@ -177,4 +177,13 @@ test('EUR-marknad genom hela flödet: bokförs i EUR', async () => {
   assert.equal(store.dump().periods.length, 0);
   const second = await service.registerClaim(eurClaim({ id: 'clm_rex_2', claimNo: 'X-2' }));
   assert.equal(second.assessment.calculation!.deductibleFixed, 5_000);
+});
+
+test('en krock i lagringen blir conflict, inte internt fel', async () => {
+  // Simulerar att ett annat beslut hann före mellan bedömning och sparande.
+  const { service, store } = setup();
+  store.commitDecision = async () => {
+    throw new StoreConflictError('decision_exists', 'Beslut clm_021877#1 finns redan');
+  };
+  await assert.rejects(service.registerClaim(otitisClaim()), (e: unknown) => e instanceof DomainError && e.code === 'conflict');
 });

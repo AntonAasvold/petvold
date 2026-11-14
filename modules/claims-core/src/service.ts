@@ -1,5 +1,5 @@
 import { assess, deductibleScope, validateClaim } from './assess.ts';
-import type { ClaimsStore, Clock, EventSink, IdGenerator, PolicyPort, RulesPort } from './ports.ts';
+import { StoreConflictError, type ClaimsStore, type Clock, type EventSink, type IdGenerator, type PolicyPort, type RulesPort } from './ports.ts';
 import type {
   Assessment,
   Claim,
@@ -62,6 +62,19 @@ export interface ClaimsServiceDeps {
 
 const COVERAGE = 'vet_care';
 
+/**
+ * En krock i lagringen betyder att någon annan hann före, t.ex. två samtidiga
+ * beslut på samma ärende. Det blir 'conflict' (409), inte ett internt fel.
+ */
+async function asConflict<T>(op: Promise<T>): Promise<T> {
+  try {
+    return await op;
+  } catch (e) {
+    if (e instanceof StoreConflictError) throw new DomainError('conflict', e.message);
+    throw e;
+  }
+}
+
 /** Skademotorns applikationstjänst. Det enda HTTP-lagret pratar med. */
 export class ClaimsService {
   constructor(private readonly d: ClaimsServiceDeps) {}
@@ -76,7 +89,7 @@ export class ClaimsService {
     const existing = await this.d.store.getClaim(claim.id);
     if (existing) throw new DomainError('conflict', `Skadeärendet ${claim.id} finns redan`);
 
-    await this.d.store.saveClaim(claim);
+    await asConflict(this.d.store.saveClaim(claim));
     await this.d.events?.publish({ type: 'claim.registered', occurredAt: this.d.clock.now(), claim });
     const assessment = await this.assessClaim(claim.id);
     const decision =
@@ -234,7 +247,7 @@ export class ClaimsService {
       deductiblePeriod = { id: this.d.ids.next('dp'), animalId: claim.animalId, ...scope, openedByClaimId: claim.id };
     }
 
-    await this.d.store.commitDecision({ decision, journals, deductiblePeriod });
+    await asConflict(this.d.store.commitDecision({ decision, journals, deductiblePeriod }));
     await this.d.events?.publish({ type: 'claim.decided', occurredAt: now, decision });
     return decision;
   }

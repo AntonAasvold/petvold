@@ -2,6 +2,24 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 4)
+
+**Gjort**
+- Gemensam testsvit för `ClaimsStore` (`modules/claims-core/test-suites/claims-store.ts`, 16 tester). Porten säger nu exakt vad som gäller: allt eller inget vid beslut, beslut i löpnummerordning, halvöppna perioder, och `StoreConflictError` för dubbletter och överlapp.
+- Sviten hittade fyra skillnader mellan minneslagret och Postgres: dubblett av ärende skrevs över, fel feltyp vid dubblett av beslut, beslut för okänt ärende godtogs, och överlappande perioder godtogs. Alla rättade.
+- Tjänsten gör krockar i lagringen till `conflict` (409) i stället för internt fel.
+- ADR 0014 beslutad: belopp som heltal med valutan en gång per objekt. Ersätter 0005.
+- 85 tester totalt.
+
+**Nästa steg**
+1. `claims-store-postgres` som går igenom samma svit, med outbox i samma transaktion och valuta på journalerna (ADR 0014).
+2. ADR 0015 om behörighet: rättigheter i kontraktet, roller per installation, egna ärenden för kliniker, beloppsgränser och fyra ögon.
+3. Gemensamma kontraktsdelar och Biome.
+
+**Öppet**
+- OrbStack-licens när Petvold blir kommersiellt.
+- Postgres-versionen i `compose.yaml` och i driften hålls lika för hand.
+
 ## 2026-11-14 (pass 3)
 
 **Gjort**
@@ -20,7 +38,6 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 **Öppet**
 - OrbStack är gratis bara för privat bruk. Köp licens eller byt till Colima när Petvold blir kommersiellt.
 - Postgres-versionen i `compose.yaml` och i driften hålls lika för hand. Överväg Renovate.
-- `Money` i ADR 0005 och i kontraktet skiljer sig åt (se pass 2).
 
 ## 2026-11-14 (pass 2)
 

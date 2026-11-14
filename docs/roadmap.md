@@ -13,7 +13,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 
 **M1 – Skademotorn på riktig lagring**
 - [ ] `ClaimsStore` mot Postgres med outbox i samma transaktion
-- [ ] Teststrategi lager 3–6: scenarier som data, gemensam svit för `ClaimsStore`, databastester (ADR 0012)
+- [x] Gemensam testsvit för `ClaimsStore` (lager 4) och databastester (lager 6)
+- [ ] Scenarier som data (lager 3)
 - [ ] Integrationstester mot Postgres
 - [ ] AsyncAPI för `claim.registered` och `claim.decided`
 - [ ] Reserv, beslutsförslag, beslut, attest och betalning som kedja
