@@ -9,6 +9,7 @@ Första modulen är skademotorn. Policy, produkt, tariff, billing och ledger kom
 - [Arbetssätt](docs/arbetssatt.md) – roller, flöde och vad klart betyder
 - [Roadmap](docs/roadmap.md) – milstolpar fram till första sålda försäkringen
 - [Status](docs/status.md) – var vi är och nästa steg
+- [Utvecklingsmiljö](docs/utvecklingsmiljo.md) – kom igång lokalt
 - [Testning](docs/testning.md) – testlager och vad som krävs
 - [Beslut](docs/adr/README.md) – arkitekturbeslut (ADR)
 
@@ -18,12 +19,17 @@ Skademotorn äger skadan: regler, beräkning, självriskperioder, förbrukat fö
 Policydata äger den inte. Den läses via ett utbytbart gränssnitt, så motorn fungerar med befintlig kärna, Socotra eller en egen policykärna.
 
 ```
-npm install
+npm ci
+cp .env.example .env
+npm run dev:up         # Postgres och migreringar (kräver docker compose)
 npm test               # 68 tester: enhet, egenskaper, tjänst och kontrakt
+npm run test:db        # databasens regler mot Postgres
 npm run typecheck
 npm run lint:openapi   # kontrakt och implementation har exakt samma operationer
 npm run dev            # http://localhost:8787, kontraktet på /openapi.yaml
 ```
+
+Se [Utvecklingsmiljö](docs/utvecklingsmiljo.md) för detaljer.
 
 Dev-servern har exempeldata (Bella, labrador) och två tokens: `dev-handler` och `dev-clinic`.
 
@@ -92,7 +98,7 @@ Designexemplet (18 640 kr fakturerat ger 12 165 kr) är ett test i `claims-core/
 - självriskperioder för samma djur och grupp aldrig överlappar (exclusion constraint)
 - beslut och ledger inte kan ändras eller raderas (revoke)
 
-Migreringen är provkörd mot Postgres (PGlite) med just de kontrollerna.
+Databastesterna i `db/test/` kontrollerar just de reglerna mot riktig Postgres i CI. Tjänsterollen `claims_service` får bara läsa och lägga till (`0002_claims_grants.sql`).
 
 ## Nästa steg
 
