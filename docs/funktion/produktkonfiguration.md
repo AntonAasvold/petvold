@@ -2,7 +2,7 @@
 
 Vad en produkt och en policy styr i skaderegleringen, och hur det ställs in.
 
-> **Läge:** Produktkatalogen byggs i M2. Tills dess finns reglerna som exempeldata i koden (`modules/claims-store-memory/src/fixtures.ts`), och skademotorn läser dem via ett gränssnitt (`RulesPort`). Fälten nedan är de som motorn redan använder. Katalogen kommer att lagra dem, versionera dem och ge ett API för att ändra dem. Den här sidan uppdateras då.
+> **Läge:** Produktens skaderegler är versionerade regeluppsättningar i modulen `decisioning`. De ändras via API och publiceras med fyra ögon (se [Regeluppsättningar](#regeluppsättningar) nedan). Produktkatalogen, med produkter, villkorsalternativ och referensdata, byggs senare i M2. Tills den finns använder alla exempelprodukter regelserien `SE-HUND-VV`.
 
 Inställningarna ligger på två ställen:
 
@@ -94,8 +94,27 @@ Exempeldata innehåller också en påhittad EUR-marknad (Rex, en hund i `DE`), s
 | Rörlig självrisk | 25 % | 20 %, 30 % från 8 år |
 | Automatisk reglering upp till | 10 000 kr | 500 EUR |
 
+## Regeluppsättningar
+
+Produktens skaderegler (tabellen ovan) är en **regelserie**, till exempel `SE-HUND-VV`, med numrerade versioner (ADR 0021). Varje version har innehållet, beräkningsmodellen (`vet-care.v1`) och ett datum den gäller från.
+
+**Livscykel:**
+
+| Steg | Anrop | Rättighet | Gör |
+| --- | --- | --- | --- |
+| Utkast | `POST /v1/rule-sets/{serie}/versions` | `rules:write` | Skapar nästa version som utkast. Utkastet kan ändras med `PUT .../versions/{v}`. |
+| Granskning | `POST .../versions/{v}/submissions` | `rules:write` | Låser innehållet och räknar ut kontrollsumman. |
+| Tillbaka | `POST .../versions/{v}/returns` | `rules:publish` | Skickar tillbaka till utkast, med en motivering. |
+| Publicering | `POST .../versions/{v}/publications` | `rules:publish` | En annan person än den som skickade till granskning. Versionen ändras aldrig efter detta. |
+| Avveckling | `POST .../versions/{v}/retirements` | `rules:publish` | Används inte längre för nya bedömningar. Kräver en motivering. |
+
+**Vilken version en skada får:** den publicerade version som har det senaste `effectiveFrom` som inte ligger efter behandlingsdatumet. Utkast och avvecklade versioner används aldrig. Två publicerade versioner i samma serie kan inte gälla från samma datum. Saknas publicerade regler för behandlingsdatumet svarar skademotorn `409`.
+
+**Exempel:** version 1 gäller från 1 januari 2026 med `autoSettleMax` 10 000 kr. Version 2 gäller från 1 juni med 1 000 kr. En öroninflammation 4 juni på 1 500 kr bedöms då med version 2 och går till handläggare. Samma skada behandlad 30 maj hade bedömts med version 1 och beslutats automatiskt.
+
+**Spårbarhet:** bedömningen visar `rulesVersion` (till exempel `SE-HUND-VV@2`) och `rulesChecksum`. Hela regelinnehållet sparas i beslutets underlag, så ett gammalt beslut räknas om med exakt de regler det fattades med, även efter att versionen avvecklats.
+
 ## När katalogen finns *(planerat, M2)*
 
-- Produkter och regler versioneras. En ny version gäller nya och förnyade policyer från ett datum. Gamla beslut behåller sin version.
-- Ändringar görs via API och granskas innan de publiceras.
-- Referensdata (arter, raser, diagnoskoder, fakturakategorier) med översättningar.
+- Produkter och produktversioner med moment, villkorsalternativ och säljperiod. Produktversionen pekar på en regelserie.
+- Referensdata (arter, raser, kön, diagnoskoder, fakturakategorier) med översättningar.

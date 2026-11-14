@@ -2,6 +2,29 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 21)
+
+**Gjort**
+- #27 mergad: reserven. M1 är klar.
+- ADR 0021 (Föreslagen, PR #28): produktkatalog och regeluppsättningar. Roadmapen för M2 är uppdelad i ordning.
+- Regeluppsättningar i modulen `decisioning`. Den här PR:en bygger på #28.
+  - **Regelserier** med numrerade versioner: `draft → in_review → published → retired`. Publicering kräver fyra ögon, och en publicerad version ändras aldrig. Kontrollsumman räknas ut vid granskning.
+  - **Rätt version för en skada:** den publicerade med senaste `effectiveFrom` som inte ligger efter behandlingsdatumet. `rulesVersion` är `<serie>@<version>`, och `rulesChecksum` ingår i underlaget.
+  - **`RulesPort.getRules(productVersion, onDate)`** kan svara null, och då svarar skademotorn 409. En skada utan policy bedöms utan produktregler.
+  - **API:** 8 operationer under `/v1/rule-sets/{serie}/versions`. Nya rättigheter `rules:read`, `rules:write` och `rules:publish`, och nya roller `rules-author` och `rules-publisher`.
+  - **Migration 0011:** schemat `decisioning` och rollen `decisioning_service`. Databasen spärrar ändringar efter publicering, fyra ögon och dubbla datum. Provad ner och upp igen.
+  - **Dev-servern** läser regler från modulen. Första gången publiceras exempelreglerna som `SE-HUND-VV@1`. Nya tokens `dev-author` och `dev-publisher`.
+- Fynd: nya standardroller når inte en installation som redan har en sparad rollinställning. Det är dokumenterat, och en administratör lägger till dem via API:et. Lokalt är det gjort.
+- 222 tester och 75 databastester.
+
+**Nästa steg**
+1. Simulering av regelutkast mot sparade underlag.
+2. Produktkatalogen `catalog` med referensdata och produktversioner.
+
+**Öppet**
+- ADR 0021 väntar på ditt beslut.
+- Produktversion → regelserie är en funktion i installationen tills katalogen finns.
+
 ## 2026-11-14 (pass 20)
 
 **Gjort**

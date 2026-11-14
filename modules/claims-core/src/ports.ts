@@ -27,9 +27,10 @@ export interface PolicyPort {
   getPolicyAt(policyId: string, onDate: ISODate, knownAt?: Timestamp): Promise<PolicySnapshot | null>;
 }
 
-/** The product's claims rules per product version. */
+/** The product's claims rules (ADR 0021). Implemented by the decisioning module, or statically in tests. */
 export interface RulesPort {
-  getRules(productVersion: string): Promise<ClaimsRules>;
+  /** The rules in force for the product version on the treatment date, or null if none is published. */
+  getRules(productVersion: string, onDate: ISODate): Promise<ClaimsRules | null>;
 }
 
 /** The claims engine's own state. Postgres in production, in memory in tests. */

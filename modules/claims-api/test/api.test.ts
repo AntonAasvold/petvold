@@ -50,6 +50,8 @@ function setup(opts: { roles?: RoleDefinitions } = {}) {
     customer: { subject: 'customer-portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
     approver: { subject: 'attestant@example.test', roles: ['approver'], markets: ['SE', 'DE'] },
     admin: { subject: 'admin@example.test', roles: ['admin'] },
+    author: { subject: 'author@example.test', roles: ['rules-author'] },
+    publisher: { subject: 'publisher@example.test', roles: ['rules-publisher'] },
   };
   const app = createApp({
     service,
@@ -624,4 +626,44 @@ test('role settings: an old version gives 409, own roles 403, an invalid set 422
   assert.equal((await change('key-00000613', { basedOnVersion: 1, roles: viewer, reason: 'Viewer' })).status, 201);
   assert.equal((await change('key-00000614', { basedOnVersion: 1, roles: viewer, reason: 'Again' })).status, 409);
   assert.equal((await change('key-00000615', { basedOnVersion: 2, roles: viewer })).status, 422, 'a reason is required');
+});
+
+// Rule sets (ADR 0021) -------------------------------------------------------------------
+
+test('rule sets: an author drafts and submits, a publisher publishes; the steps follow the contract', async () => {
+  const { call, as } = setup();
+  const { rulesVersion: _v, ...content } = RULES_SE_DOG;
+  const draft = { content, calculationModel: 'vet-care.v1', effectiveFrom: '2026-01-01' };
+  const base = '/v1/rule-sets/SE-HUND-VV/versions';
+
+  assert.equal((await call('POST', base, { token: 'clinic', key: 'key-00000701', body: draft })).status, 403);
+  const created = await call('POST', base, { token: 'author', key: 'key-00000702', body: draft });
+  assert.equal(created.status, 201);
+  assertSchema('RuleSetVersion', await created.json());
+
+  const changed = await call('PUT', `${base}/1`, { token: 'author', body: { ...draft, content: { ...content, autoSettleMax: 500_000 } } });
+  assert.equal(changed.status, 200);
+  assert.equal(((await changed.json()) as any).content.autoSettleMax, 500_000);
+  assert.equal((await call('PUT', `${base}/1`, { token: 'author', body: { ...draft, calculationModel: 'nope' } })).status, 422);
+
+  const submitted = (await (await call('POST', `${base}/1/submissions`, { token: 'author', key: 'key-00000703', body: {} })).json()) as any;
+  assert.equal(submitted.status, 'in_review');
+  assert.match(submitted.checksum, /^[0-9a-f]{64}$/);
+  assert.equal((await call('POST', `${base}/1/publications`, { token: 'author', key: 'key-00000704', body: {} })).status, 403, 'authors cannot publish');
+
+  const both = as({ subject: 'author@example.test', roles: ['rules-author', 'rules-publisher'] });
+  const own = await both.call('POST', `${base}/1/publications`, { key: 'key-00000705', body: {} });
+  assert.equal(own.status, 403, 'four eyes');
+
+  const published = await call('POST', `${base}/1/publications`, { token: 'publisher', key: 'key-00000706', body: {} });
+  assert.equal(published.status, 200);
+  assertSchema('RuleSetVersion', await published.json());
+  assert.equal((await call('PUT', `${base}/1`, { token: 'author', body: draft })).status, 409, 'published versions never change');
+
+  const list = (await (await call('GET', base, { token: 'author' })).json()) as any;
+  assert.deepEqual(list.items.map((v: { status: string }) => v.status), ['published']);
+  assert.equal((await call('GET', `${base}/2`, { token: 'author' })).status, 404);
+  assert.equal((await call('POST', `${base}/1/retirements`, { token: 'publisher', key: 'key-00000707', body: {} })).status, 422, 'a reason is required');
+  const retired = (await (await call('POST', `${base}/1/retirements`, { token: 'publisher', key: 'key-00000708', body: { reason: 'Replaced' } })).json()) as any;
+  assert.equal(retired.status, 'retired');
 });

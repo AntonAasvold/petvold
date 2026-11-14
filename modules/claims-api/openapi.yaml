@@ -35,6 +35,7 @@ tags:
   - name: reviews
   - name: approvals
   - name: access
+  - name: rule-sets
   - name: previews
   - name: limits
 
@@ -364,6 +365,230 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/rule-sets/{series}/versions:
+    get:
+      tags: [rule-sets]
+      operationId: listRuleSetVersions
+      x-permission: rules:read
+      summary: The versions of a rule series
+      description: |
+        Requires the permission `rules:read`.
+
+        A rule series (e.g. `SE-HUND-VV`) holds a product's claims rules as
+        numbered versions (ADR 0018, 0021). Lifecycle: `draft` → `in_review` →
+        `published` → `retired`. The claims engine uses the published version
+        with the latest `effectiveFrom` not after the treatment date.
+      parameters:
+        - $ref: '#/components/parameters/Series'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: All versions, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RuleSetVersion' }
+    post:
+      tags: [rule-sets]
+      operationId: createRuleSetDraft
+      x-permission: rules:write
+      summary: Create a draft with the next version number
+      description: Requires the permission `rules:write`. The calculation model must be one the engine has.
+      parameters:
+        - $ref: '#/components/parameters/Series'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RuleSetDraft' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleSetVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/rule-sets/{series}/versions/{version}:
+    get:
+      tags: [rule-sets]
+      operationId: getRuleSetVersion
+      x-permission: rules:read
+      summary: One version of a rule series
+      description: Requires the permission `rules:read`.
+      parameters:
+        - $ref: '#/components/parameters/Series'
+        - $ref: '#/components/parameters/RuleSetVersionNo'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleSetVersion' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    put:
+      tags: [rule-sets]
+      operationId: updateRuleSetDraft
+      x-permission: rules:write
+      summary: Change a draft
+      description: Requires the permission `rules:write`. Only drafts can change (409 otherwise).
+      parameters:
+        - $ref: '#/components/parameters/Series'
+        - $ref: '#/components/parameters/RuleSetVersionNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RuleSetDraft' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The changed draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleSetVersion' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/rule-sets/{series}/versions/{version}/submissions:
+    post:
+      tags: [rule-sets]
+      operationId: submitRuleSet
+      x-permission: rules:write
+      summary: Submit a draft for review
+      description: |
+        Requires the permission `rules:write`.
+
+        Locks the content and computes its checksum.
+      parameters:
+        - $ref: '#/components/parameters/Series'
+        - $ref: '#/components/parameters/RuleSetVersionNo'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The version after the step
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleSetVersion' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/rule-sets/{series}/versions/{version}/returns:
+    post:
+      tags: [rule-sets]
+      operationId: returnRuleSet
+      x-permission: rules:publish
+      summary: Return a version in review to draft
+      description: |
+        Requires the permission `rules:publish`.
+
+        Needs a reason. The checksum is removed, and the draft can change again.
+      parameters:
+        - $ref: '#/components/parameters/Series'
+        - $ref: '#/components/parameters/RuleSetVersionNo'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The version after the step
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleSetVersion' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/rule-sets/{series}/versions/{version}/publications:
+    post:
+      tags: [rule-sets]
+      operationId: publishRuleSet
+      x-permission: rules:publish
+      summary: Publish a version in review
+      description: |
+        Requires the permission `rules:publish`.
+
+        Someone other than the submitter (403, four eyes). From `effectiveFrom`, new assessments use it. A published version never changes. Two published versions in a series cannot apply from the same date (409).
+      parameters:
+        - $ref: '#/components/parameters/Series'
+        - $ref: '#/components/parameters/RuleSetVersionNo'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The version after the step
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleSetVersion' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/rule-sets/{series}/versions/{version}/retirements:
+    post:
+      tags: [rule-sets]
+      operationId: retireRuleSet
+      x-permission: rules:publish
+      summary: Retire a published version
+      description: |
+        Requires the permission `rules:publish`.
+
+        Needs a reason. New assessments no longer use it; stored decisions keep their rules in their evidence.
+      parameters:
+        - $ref: '#/components/parameters/Series'
+        - $ref: '#/components/parameters/RuleSetVersionNo'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The version after the step
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleSetVersion' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/claims/{claimId}/decisions/{seq}/replays:
     post:
       tags: [decisions]
@@ -615,6 +840,17 @@ components:
       in: path
       required: true
       schema: { type: string }
+    Series:
+      name: series
+      in: path
+      required: true
+      description: The rule series, e.g. SE-HUND-VV.
+      schema: { type: string, pattern: '^[A-Z0-9][A-Z0-9-]{1,63}$' }
+    RuleSetVersionNo:
+      name: version
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
     ProposalId:
       name: proposalId
       in: path
@@ -1023,6 +1259,66 @@ components:
         roles:
           type: object
           additionalProperties: { $ref: '#/components/schemas/RoleDefinition' }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    RuleSetContent:
+      type: object
+      additionalProperties: false
+      required: [market, vatReimbursable, nonReimbursableCategories, diagnosisGroups, autoSettleMax]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        vatReimbursable: { type: boolean, description: Is VAT on vet invoices reimbursed? }
+        nonReimbursableCategories:
+          type: array
+          items: { type: string, minLength: 1 }
+        diagnosisGroups:
+          type: object
+          description: Diagnosis code -> diagnosis group.
+          additionalProperties: { type: string, minLength: 1 }
+        autoSettleMax:
+          $ref: '#/components/schemas/NonNegativeMoney'
+          description: Highest payout settled without a claims handler.
+
+    RuleSetDraft:
+      type: object
+      additionalProperties: false
+      required: [content, calculationModel, effectiveFrom]
+      properties:
+        content: { $ref: '#/components/schemas/RuleSetContent' }
+        calculationModel: { type: string, description: 'One of the engine''s calculation models, e.g. vet-care.v1.' }
+        effectiveFrom: { $ref: '#/components/schemas/Date' }
+
+    RuleSetVersion:
+      type: object
+      required: [series, version, status, content, calculationModel, effectiveFrom, revision, createdBy, createdAt]
+      properties:
+        series: { type: string }
+        version: { type: integer, minimum: 1 }
+        status: { type: string, enum: [draft, in_review, published, retired] }
+        content: { $ref: '#/components/schemas/RuleSetContent' }
+        calculationModel: { type: string }
+        effectiveFrom: { $ref: '#/components/schemas/Date' }
+        checksum: { type: string, description: sha256 over content, calculation model and effectiveFrom. Set from review on. }
+        revision: { type: integer, minimum: 1 }
+        createdBy: { type: string }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        submittedBy: { type: string }
+        submittedAt: { $ref: '#/components/schemas/DateTime' }
+        publishedBy: { type: string }
+        publishedAt: { $ref: '#/components/schemas/DateTime' }
+        retiredBy: { type: string }
+        retiredAt: { $ref: '#/components/schemas/DateTime' }
+        note: { type: string, description: Why the version was returned or retired. }
+
+    EmptyRequest:
+      type: object
+      additionalProperties: false
+
+    ReasonRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
         reason: { type: string, minLength: 1, maxLength: 2000 }
 
     PayoutOrder:

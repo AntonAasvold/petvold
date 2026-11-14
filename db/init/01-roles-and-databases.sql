@@ -6,6 +6,7 @@
 -- in with its own role and gets only the grants the migrations give it.
 create role claims_service login password 'claims_service';
 create role access_service login password 'access_service';
+create role decisioning_service login password 'decisioning_service';
 
 -- Separate database for tests, so tests never touch development data.
 create database petvold_test owner petvold;

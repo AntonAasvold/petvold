@@ -1,5 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
+import { DecisioningService, InMemoryRuleSetStore, RuleSetError } from '@petvold/decisioning';
+import { CALCULATION_MODELS } from '@petvold/claims-core';
 import type { Claim, ClaimsService, Clock } from '@petvold/claims-core';
 import { DomainError } from '@petvold/claims-core';
 import { formatErrors, openapiText, operationPermissions, validatorFor, type FieldError } from './contract.ts';
@@ -60,6 +62,8 @@ export interface AppDeps {
    * Omitted: kept in memory, starting from `roles`.
    */
   access?: AccessService<RoleDefinitions>;
+  /** Rule sets (ADR 0021). Omitted: kept in memory. Give the same instance to the claims engine's RulesPort. */
+  decisioning?: DecisioningService;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
 }
@@ -293,6 +297,50 @@ export function createApp(d: AppDeps) {
     return send(c, limits);
   });
 
+  const decisioning =
+    d.decisioning ?? new DecisioningService({ store: new InMemoryRuleSetStore(), clock: d.clock, calculationModels: Object.keys(CALCULATION_MODELS) });
+  const ruleSet = '/v1/rule-sets/:series/versions/:version';
+  const version = (c: Context) => parseSeq(c.req.param('version') ?? '');
+
+  app.get('/v1/rule-sets/:series/versions', async (c) => send(c, { items: await decisioning.list(c.req.param('series')) }));
+
+  app.post('/v1/rule-sets/:series/versions', async (c) => {
+    const r = await readJson(c, 'RuleSetDraft');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({
+      status: 201,
+      body: await decisioning.createDraft(c.req.param('series'), r.body, c.get('principal').subject),
+    }));
+  });
+
+  app.get(ruleSet, async (c) => {
+    const v = version(c);
+    if (!v) return problem(c, 422, 'version must be a positive integer');
+    return send(c, await decisioning.get(c.req.param('series'), v));
+  });
+
+  app.put(ruleSet, async (c) => {
+    const v = version(c);
+    if (!v) return problem(c, 422, 'version must be a positive integer');
+    const r = await readJson(c, 'RuleSetDraft');
+    if (!r.ok) return r.res;
+    return send(c, await decisioning.updateDraft(c.req.param('series'), v, r.body));
+  });
+
+  /** A lifecycle step: POST with an Idempotency-Key and a body following `schema`. */
+  const step = (path: string, schema: string, run: (series: string, v: number, by: string, body: any) => Promise<unknown>) =>
+    app.post(`${ruleSet}/${path}`, async (c) => {
+      const v = version(c);
+      if (!v) return problem(c, 422, 'version must be a positive integer');
+      const r = await readJson(c, schema);
+      if (!r.ok) return r.res;
+      return idempotent(c, r.body, async () => ({ status: 200, body: await run(c.req.param('series'), v, c.get('principal').subject, r.body) }));
+    });
+  step('submissions', 'EmptyRequest', (s, v, by) => decisioning.submit(s, v, by));
+  step('returns', 'ReasonRequest', (s, v, _by, b) => decisioning.returnToDraft(s, v, b.reason));
+  step('publications', 'EmptyRequest', (s, v, by) => decisioning.publish(s, v, by));
+  step('retirements', 'ReasonRequest', (s, v, by, b) => decisioning.retire(s, v, by, b.reason));
+
   app.get('/v1/access/roles', async (c) => send(c, await access.current()));
 
   app.get('/v1/access/roles/versions', async (c) => send(c, { items: await access.versions() }));
@@ -322,6 +370,10 @@ export function createApp(d: AppDeps) {
   app.notFound((c) => problem(c, 404, 'The resource does not exist'));
 
   app.onError((err, c) => {
+    if (err instanceof RuleSetError) {
+      const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
+      return problem(c, status, err.message);
+    }
     if (err instanceof AccessError) {
       return problem(c, err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);
     }
