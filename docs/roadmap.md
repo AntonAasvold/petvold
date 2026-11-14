@@ -51,6 +51,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
   - avslutsdatum bakåt i tiden (bitemporalt)
   - reversering av avslut
   - händelse `policy.cancelled`
+  - produktinställning för avslut under avtalstiden: tillåtet när som helst eller bara till förfallodagen (avtalet löper ut), uppsägningstid och premieåterbetalning
+  - avslut som alltid är tillåtna oavsett inställning, per marknad: ånger inom ångerfristen (distansavtal) och när försäkringsbehovet faller bort, till exempel när djuret dör eller säljs. Petvold validerar att en produkt inte stänger dem.
 - [ ] Skademotorn vid förnyelse och avslut: omprövning av skador efter ett retroaktivt avslut, och självriskperiod och försäkringsbelopp över termgränsen
 
 **M4 – Pris och teckning**
