@@ -6,6 +6,8 @@ export { relayOutbox } from './relay.ts';
 export { replay, diff, CALCULATION_MODELS } from './replay.ts';
 export type { ReplayResult, Difference } from './replay.ts';
 export { explainDecision } from './explain.ts';
+export { simulate } from './simulate.ts';
+export type { SimulationResult, SimulatedDecision, SimulationTotals } from './simulate.ts';
 export type { DecisionExplanation, ExplanationStep, ExplanationStepCode, ExplainContext, Reason } from './explain.ts';
 export { accounts } from './ledger.ts';
 export type { LimitKey } from './ledger.ts';

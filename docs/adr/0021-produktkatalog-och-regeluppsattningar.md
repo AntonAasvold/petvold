@@ -1,6 +1,6 @@
 # 0021. Produktkatalog och regeluppsättningar
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-14
 
 ## Sammanhang

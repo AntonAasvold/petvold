@@ -30,6 +30,8 @@ export const PERMISSIONS = [
   'rules:write',
   /** Publish, return or retire rule sets submitted by someone else (four eyes). */
   'rules:publish',
+  /** Run a rule set against stored decisions. Shows claim data within the caller's scope. */
+  'rules:simulate',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -82,9 +84,9 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview'], bindsTo: 'clinic' },
   'reassessment-job': { permissions: ['claims:read', 'claims:reassess'] },
   /** Writes rule set drafts and submits them for review. */
-  'rules-author': { permissions: ['rules:read', 'rules:write'] },
+  'rules-author': { permissions: ['rules:read', 'rules:write', 'rules:simulate'] },
   /** Reviews and publishes rule sets. */
-  'rules-publisher': { permissions: ['rules:read', 'rules:publish'] },
+  'rules-publisher': { permissions: ['rules:read', 'rules:publish', 'rules:simulate'] },
   /** Manages roles and limits. No permissions in claims. */
   admin: { permissions: ['access:read', 'access:manage'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */

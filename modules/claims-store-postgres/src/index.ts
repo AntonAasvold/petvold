@@ -86,6 +86,28 @@ async function insertJournals(db: pg.PoolClient, journals: LedgerJournal[]): Pro
   }
 }
 
+const DECISION_COLUMNS = `d.id, d.claim_id, d.seq, d.outcome, d.payout_minor, d.assessment, d.decided_by, d.decided_at, d.reason,
+  d.deviates_from_proposal, d.reason_code, d.automated, d.review_request_id, d.approved_by, d.proposal_id`;
+
+function toDecision(d: Record<string, any>): ClaimDecision {
+  return {
+    id: d.id,
+    claimId: d.claim_id,
+    seq: d.seq,
+    outcome: d.outcome,
+    payout: d.payout_minor,
+    assessment: d.assessment,
+    decidedBy: d.decided_by,
+    decidedAt: d.decided_at,
+    ...(d.reason !== null ? { reason: d.reason } : {}),
+    deviatesFromProposal: d.deviates_from_proposal,
+    ...(d.reason_code !== null ? { reasonCode: d.reason_code } : {}),
+    automated: d.automated,
+    ...(d.review_request_id !== null ? { reviewRequestId: d.review_request_id } : {}),
+    ...(d.approved_by !== null ? { approvedBy: d.approved_by, proposalId: d.proposal_id } : {}),
+  };
+}
+
 // Postgres error codes (SQLSTATE).
 const UNIQUE_VIOLATION = '23505';
 const EXCLUSION_VIOLATION = '23P01';
@@ -217,27 +239,24 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
   }
 
   async getDecisions(claimId: string): Promise<ClaimDecision[]> {
+    const { rows } = await this.pool.query(`select ${DECISION_COLUMNS} from claims.decision d where claim_id = $1 order by seq`, [claimId]);
+    return rows.map(toDecision);
+  }
+
+  async latestDecisionsWithEvidence(from: Timestamp, to: Timestamp, limit: number) {
     const { rows } = await this.pool.query(
-      `select id, claim_id, seq, outcome, payout_minor, assessment, decided_by, decided_at, reason,
-              deviates_from_proposal, reason_code, automated, review_request_id, approved_by, proposal_id
-       from claims.decision where claim_id = $1 order by seq`,
-      [claimId],
+      `select ${DECISION_COLUMNS}, e.input, e.calculation_model, e.engine_version
+       from claims.decision d
+       join claims.decision_evidence e on e.decision_id = d.id
+       where d.decided_at >= $1 and d.decided_at < $2
+         and d.seq = (select max(seq) from claims.decision x where x.claim_id = d.claim_id)
+       order by d.decided_at, d.id
+       limit $3`,
+      [from, to, limit],
     );
-    return rows.map((d) => ({
-      id: d.id,
-      claimId: d.claim_id,
-      seq: d.seq,
-      outcome: d.outcome,
-      payout: d.payout_minor,
-      assessment: d.assessment,
-      decidedBy: d.decided_by,
-      decidedAt: d.decided_at,
-      ...(d.reason !== null ? { reason: d.reason } : {}),
-      deviatesFromProposal: d.deviates_from_proposal,
-      ...(d.reason_code !== null ? { reasonCode: d.reason_code } : {}),
-      automated: d.automated,
-      ...(d.review_request_id !== null ? { reviewRequestId: d.review_request_id } : {}),
-      ...(d.approved_by !== null ? { approvedBy: d.approved_by, proposalId: d.proposal_id } : {}),
+    return rows.map((r) => ({
+      decision: toDecision(r),
+      evidence: { decisionId: r.id, input: r.input, calculationModel: r.calculation_model, engineVersion: r.engine_version },
     }));
   }
 

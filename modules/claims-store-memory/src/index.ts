@@ -93,6 +93,16 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
       .map((d) => structuredClone(d));
   }
 
+  async latestDecisionsWithEvidence(from: Timestamp, to: Timestamp, limit: number) {
+    const latest = new Map<string, ClaimDecision>();
+    for (const d of this.decisions) if ((latest.get(d.claimId)?.seq ?? 0) < d.seq) latest.set(d.claimId, d);
+    return [...latest.values()]
+      .filter((d) => d.decidedAt >= from && d.decidedAt < to && this.evidence.has(d.id))
+      .sort((a, b) => (a.decidedAt < b.decidedAt ? -1 : a.decidedAt > b.decidedAt ? 1 : a.id < b.id ? -1 : 1))
+      .slice(0, limit)
+      .map((d) => ({ decision: structuredClone(d), evidence: structuredClone(this.evidence.get(d.id)!) }));
+  }
+
   async getEvidence(decisionId: string) {
     const e = this.evidence.get(decisionId);
     return e ? structuredClone(e) : null;

@@ -24,6 +24,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `rules:read` | Läsa regeluppsättningar (ADR 0021) | `GET /v1/rule-sets/{serie}/versions`, `.../{v}` |
 | `rules:write` | Skapa och ändra utkast, skicka till granskning | `POST .../versions`, `PUT .../{v}`, `.../submissions` |
 | `rules:publish` | Publicera, skicka tillbaka eller avveckla. Aldrig den egna inskickade versionen. | `.../publications`, `.../returns`, `.../retirements` |
+| `rules:simulate` | Simulera en regelversion mot sparade beslut. Visar uppgifter ur ärenden inom anroparens omfång. | `.../simulations` |
 | `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/access/roles`, `.../versions` |
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/access/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
@@ -40,8 +41,8 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `handler` | Alla ovan utom `claims:approve`. Beslutar ensam upp till 25 000 SEK eller 2 500 EUR. | – | Skadehandläggare |
 | `approver` | `claims:read`, `claims:approve`, `limits:read`. Ingen gräns för attest. | – | Attestant |
 | `admin` | `access:read`, `access:manage` | – | Administratör för roller och gränser |
-| `rules-author` | `rules:read`, `rules:write` | – | Skriver regelutkast |
-| `rules-publisher` | `rules:read`, `rules:publish` | – | Granskar och publicerar regler |
+| `rules-author` | `rules:read`, `rules:write`, `rules:simulate` | – | Skriver regelutkast |
+| `rules-publisher` | `rules:read`, `rules:publish`, `rules:simulate` | – | Granskar och publicerar regler |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview` | klinik | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | – | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
 | `customer-channel` | `claims:read`, `claims:request-review` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
