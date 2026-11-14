@@ -7,6 +7,7 @@ import type {
   ClaimsStore,
   OutboxEntry,
   DecisionCommit,
+  DecisionEvidence,
   DeductiblePeriod,
   ISODate,
   LedgerJournal,
@@ -29,6 +30,7 @@ import type {
 export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   private claims = new Map<string, Claim>();
   private decisions: ClaimDecision[] = [];
+  private evidence = new Map<string, DecisionEvidence>();
   private journals: LedgerJournal[] = [];
   private periods: DeductiblePeriod[] = [];
   private outbox: Array<OutboxEntry & { publishedAt?: Timestamp }> = [];
@@ -73,9 +75,15 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
       .map((d) => structuredClone(d));
   }
 
+  async getEvidence(decisionId: string) {
+    const e = this.evidence.get(decisionId);
+    return e ? structuredClone(e) : null;
+  }
+
   /** Checks everything first and then changes, so an error never leaves half a decision behind. */
-  async commitDecision({ decision, journals, deductiblePeriod, events }: DecisionCommit) {
+  async commitDecision({ decision, journals, deductiblePeriod, evidence, events }: DecisionCommit) {
     if (!this.claims.has(decision.claimId)) throw new Error(`Claim ${decision.claimId} does not exist`);
+    if (evidence.decisionId !== decision.id) throw new Error(`Evidence for ${evidence.decisionId} given with decision ${decision.id}`);
     for (const j of journals) {
       const sum = j.lines.reduce((s, l) => s + l.amount, 0);
       if (sum !== 0) throw new Error(`Journal ${j.id} does not balance (${sum})`);
@@ -95,6 +103,7 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
       if (clash) throw new StoreConflictError('period_overlaps', `The deductible period clashes with ${clash.id}`);
     }
     this.decisions.push(structuredClone(decision));
+    this.evidence.set(decision.id, structuredClone(evidence));
     this.journals.push(...structuredClone(journals));
     this.periods = remaining;
     if (deductiblePeriod) this.periods.push({ ...deductiblePeriod });

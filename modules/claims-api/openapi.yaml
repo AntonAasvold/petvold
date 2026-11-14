@@ -141,7 +141,16 @@ paths:
       operationId: decideClaim
       x-permission: claims:decide
       summary: Make a claims handler decision
-      description: Requires the permission `claims:decide`.
+      description: |
+        Requires the permission `claims:decide`.
+
+        `accept` decides as the assessment proposes. `reject` against a proposal
+        to approve is a deviation (ADR 0018): it also requires the permission
+        `claims:override` (403 without it), and `reasonCode` and `reason` (422
+        without them). The decision records `deviatesFromProposal`.
+
+        Every decision stores its evidence: exactly the input the engine
+        assessed, the calculation model and the engine version.
       parameters:
         - $ref: '#/components/parameters/ClaimId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -401,9 +410,10 @@ components:
         action: accept
         reason: The rider covers the right hind leg; the injury is on the left.
     DecideReject:
-      summary: Reject
+      summary: Reject against the proposal (needs claims:override)
       value:
         action: reject
+        reasonCode: pre_existing_condition
         reason: The injury is covered by the rider.
     Reassess:
       summary: Reassess after a change
@@ -579,7 +589,7 @@ components:
 
     Decision:
       type: object
-      required: [id, claimId, seq, outcome, payout, assessment, decidedBy, decidedAt]
+      required: [id, claimId, seq, outcome, payout, assessment, decidedBy, decidedAt, deviatesFromProposal]
       properties:
         id: { type: string }
         claimId: { type: string }
@@ -590,6 +600,15 @@ components:
         decidedBy: { type: string }
         decidedAt: { $ref: '#/components/schemas/DateTime' }
         reason: { type: string }
+        deviatesFromProposal:
+          type: boolean
+          description: True if the handler decided against the assessment's proposal. Then `reasonCode` and `reason` are always set.
+        reasonCode: { $ref: '#/components/schemas/DeviationReasonCode' }
+
+    DeviationReasonCode:
+      type: string
+      description: Why a handler decided against the assessment's proposal.
+      enum: [pre_existing_condition, not_covered, insufficient_documentation, incorrect_invoice, other]
 
     RegisterClaimResult:
       type: object
@@ -609,6 +628,9 @@ components:
       properties:
         action: { type: string, enum: [accept, reject] }
         reason: { type: string, maxLength: 2000 }
+        reasonCode:
+          $ref: '#/components/schemas/DeviationReasonCode'
+          description: Required, with `reason`, when the decision goes against the proposal.
         expectedInputHash:
           type: string
           description: inputHash from the assessment the handler saw. Rejected with 409 if the basis has changed.

@@ -18,6 +18,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `claims:register` | Anmäla en skada | `POST /v1/claims` |
 | `claims:read` | Läsa ett ärende, dess bedömning och beslut | `GET /v1/claims/{id}`, `.../assessment`, `.../decisions` |
 | `claims:decide` | Fatta beslut i ett ärende | `POST /v1/claims/{id}/decisions` |
+| `claims:override` | Besluta mot bedömningens förslag, med skälkod och motivering (ADR 0018) | Kontrolleras inom `POST /v1/claims/{id}/decisions` |
 | `claims:reassess` | Ompröva ett beslutat ärende | `POST /v1/claims/{id}/reassessments` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
 | `limits:read` | Se förbrukat och återstående försäkringsbelopp | `GET /v1/policies/{p}/animals/{a}/limits` |
@@ -52,7 +53,6 @@ Inställningarna kontrolleras när Petvold startar. En okänd rättighet, till e
 
 - **Omfång** (behörighet del 2): en klinik ser bara ärenden den själv har skickat in, och en handläggare bara ärenden i sina marknader. Ett ärende utanför omfånget ger `404`. **Tills dess kan en klinik läsa alla ärenden.**
 - **Beloppsgränser och fyraögonsprincip** (behörighet del 3, med attestkedjan): beslut över en gräns kräver attest av någon annan.
-- **Avvikelse från förslaget** kräver rättigheten `claims:override` och en motivering (ADR 0018).
 
 ## Lokalt
 

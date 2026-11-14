@@ -1,5 +1,6 @@
 import type {
   ClaimDecision,
+  DecisionEvidence,
   ClaimsRules,
   DeductiblePeriod,
   ISODate,
@@ -59,15 +60,18 @@ export interface ClaimsStore {
 
   /** The claim's decisions in ascending sequence. Empty list if there are none. */
   getDecisions(claimId: string): Promise<ClaimDecision[]>;
+  /** The evidence stored with a decision, unchanged. null for unknown decisions and decisions made before evidence was stored. */
+  getEvidence(decisionId: string): Promise<DecisionEvidence | null>;
   /**
-   * Stores the decision, journals and changed deductible periods atomically
+   * Stores the decision, its evidence, journals and changed deductible periods atomically
    * (one database transaction in production). Periods the claim opened earlier
    * are replaced by `deductiblePeriod` (or removed if it is null).
    *
    * All or nothing: on error, nothing is stored. Throws StoreConflictError with
    * 'decision_exists' (same claim and sequence) or 'period_overlaps' (clash
    * with another claim's deductible period). A journal that does not balance
-   * or a decision for an unknown claim is rejected with a plain error.
+   * a decision for an unknown claim, or evidence for another decision is
+   * rejected with a plain error.
    */
   commitDecision(commit: DecisionCommit): Promise<void>;
 }
@@ -91,6 +95,8 @@ export interface DecisionCommit {
   decision: ClaimDecision;
   journals: LedgerJournal[];
   deductiblePeriod: DeductiblePeriod | null;
+  /** What the decision was based on (ADR 0018). `evidence.decisionId` must be `decision.id`. */
+  evidence: DecisionEvidence;
   /** Written to the outbox in the same transaction as the decision (ADR 0008). */
   events: ClaimsEvent[];
 }

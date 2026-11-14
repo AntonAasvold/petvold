@@ -10,6 +10,8 @@ export const PERMISSIONS = [
   'claims:register',
   'claims:read',
   'claims:decide',
+  /** Decide against the assessment's proposal (ADR 0018). Checked inside the decide operation. */
+  'claims:override',
   'claims:reassess',
   'claims:preview',
   'limits:read',
@@ -22,7 +24,7 @@ export type RolePermissions = Record<string, readonly Permission[]>;
 
 /** The default roles Petvold ships with, as a starting point for an installation. */
 export const DEFAULT_ROLES: RolePermissions = {
-  handler: ['claims:register', 'claims:read', 'claims:decide', 'claims:reassess', 'claims:preview', 'limits:read'],
+  handler: ['claims:register', 'claims:read', 'claims:decide', 'claims:override', 'claims:reassess', 'claims:preview', 'limits:read'],
   approver: ['claims:read', 'limits:read'],
   clinic: ['claims:register', 'claims:read', 'claims:preview'],
   'reassessment-job': ['claims:read', 'claims:reassess'],
