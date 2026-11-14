@@ -1,3 +1,4 @@
+import { StoreConflictError } from '@petvold/claims-core';
 import type {
   Claim,
   ClaimDecision,
@@ -28,6 +29,7 @@ export class InMemoryClaimsStore implements ClaimsStore {
   private periods: DeductiblePeriod[] = [];
 
   async saveClaim(claim: Claim) {
+    if (this.claims.has(claim.id)) throw new StoreConflictError('claim_exists', `Skadeärendet ${claim.id} finns redan`);
     this.claims.set(claim.id, structuredClone(claim));
   }
 
@@ -58,20 +60,36 @@ export class InMemoryClaimsStore implements ClaimsStore {
   }
 
   async getDecisions(claimId: string) {
-    return this.decisions.filter((d) => d.claimId === claimId).map((d) => structuredClone(d));
+    return this.decisions
+      .filter((d) => d.claimId === claimId)
+      .sort((a, b) => a.seq - b.seq)
+      .map((d) => structuredClone(d));
   }
 
+  /** Kontrollerar allt först och ändrar sedan, så att ett fel aldrig lämnar halva beslutet kvar. */
   async commitDecision({ decision, journals, deductiblePeriod }: DecisionCommit) {
+    if (!this.claims.has(decision.claimId)) throw new Error(`Skadeärendet ${decision.claimId} finns inte`);
     for (const j of journals) {
       const sum = j.lines.reduce((s, l) => s + l.amount, 0);
       if (sum !== 0) throw new Error(`Journal ${j.id} balanserar inte (${sum})`);
     }
     if (this.decisions.some((d) => d.claimId === decision.claimId && d.seq === decision.seq)) {
-      throw new Error(`Beslut ${decision.claimId}#${decision.seq} finns redan`);
+      throw new StoreConflictError('decision_exists', `Beslut ${decision.claimId}#${decision.seq} finns redan`);
+    }
+    const remaining = this.periods.filter((p) => p.openedByClaimId !== decision.claimId);
+    if (deductiblePeriod) {
+      const clash = remaining.find(
+        (p) =>
+          p.animalId === deductiblePeriod.animalId &&
+          p.diagnosisGroup === deductiblePeriod.diagnosisGroup &&
+          p.validFrom < deductiblePeriod.validTo &&
+          deductiblePeriod.validFrom < p.validTo,
+      );
+      if (clash) throw new StoreConflictError('period_overlaps', `Självriskperioden krockar med ${clash.id}`);
     }
     this.decisions.push(structuredClone(decision));
     this.journals.push(...structuredClone(journals));
-    this.periods = this.periods.filter((p) => p.openedByClaimId !== decision.claimId);
+    this.periods = remaining;
     if (deductiblePeriod) this.periods.push({ ...deductiblePeriod });
   }
 
