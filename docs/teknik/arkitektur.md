@@ -25,6 +25,7 @@ flowchart LR
 | `claims-core` | Domänen: regler, beräkning, tjänsten `ClaimsService`, portar, ledgerns kontonamn, reläet | `common` |
 | `claims-store-memory` | Lagring i minnet och exempeldata, för tester och snabb utveckling | `claims-core` |
 | `claims-store-postgres` | Lagring i Postgres med ren SQL (ADR 0015) och idempotensnycklar | `claims-core`, `pg` |
+| `decisioning` | Regeluppsättningar med livscykel: `DecisioningService`, porten `RuleSetStore`, lagring i minnet och i Postgres (schemat `decisioning`), och `DecisioningRulesPort` som skademotorn läser regler genom (ADR 0021) | `claims-core` (typer och kontrollsumma), `pg` |
 | `access` | Rollinställningen som versioner: tjänsten `AccessService`, porten `RoleConfigStore`, lagring i minnet och i Postgres (schemat `access`, ADR 0020) | `pg` |
 | `claims-api` | HTTP-lagret: validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, Hono |
 
@@ -90,6 +91,17 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
   - attestanten är aldrig den som beslutade (check-constraints på både förslag och beslut)
   - förslaget stängs en gång, och bara stängningsfälten får ändras (trigger och kolumnrättigheter)
 - **Gränser.** De räknas ut i API-lagret (`amountLimitsOf` i `permissions.ts`) och skickas till tjänsten som `decisionLimits` och `approvalLimits`. Fyraögonsprincipen och gränskontrollen ligger i `claims-core`, så att de kan testas utan HTTP (ADR 0016).
+
+**Regeluppsättningar (ADR 0021):**
+- **Tabell.** Versioner ligger i `decisioning.rule_set_version` (migration 0011), med tjänsterollen `decisioning_service`.
+- **Optimistisk låsning.** Varje ändring höjer `revision`, och en uppdatering kräver föregående revision.
+- **Databasen upprätthåller reglerna:**
+  - publicerade versioner kan bara avvecklas, och innehållet ändras aldrig efter publicering (trigger)
+  - en version i granskning är låst
+  - fyra ögon (check-constraint)
+  - en publicerad version per serie och datum (unikt partiellt index)
+- **Skademotorn** läser regler via `RulesPort.getRules(productVersion, treatmentDate)`. `DecisioningRulesPort` översätter produktversionen till en serie. Tills katalogen finns görs det med en funktion i installationen. Saknas regler svarar tjänsten `conflict`. En skada utan policy bedöms utan produktregler (`rulesVersion: 'none'`).
+- **Kontrollsumma.** `rulesChecksum` (sha256 över innehåll, beräkningsmodell och datum) följer med reglerna in i underlaget och därmed i `inputHash`.
 
 **Rollinställningen (ADR 0020):**
 - **Versioner.** Modulen `access` sparar hela rollinställningen som versioner i `access.role_config` (migration 0009). Den har en egen tjänsteroll, `access_service`, som bara får läsa och lägga till.

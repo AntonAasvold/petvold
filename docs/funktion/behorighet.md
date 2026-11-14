@@ -21,6 +21,9 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `claims:decide` | Fatta beslut i ett ärende | `POST /v1/claims/{id}/decisions` |
 | `claims:override` | Besluta mot bedömningens förslag, med skälkod och motivering (ADR 0018) | Kontrolleras inom `POST /v1/claims/{id}/decisions` |
 | `claims:reassess` | Ompröva ett beslutat ärende | `POST /v1/claims/{id}/reassessments` |
+| `rules:read` | Läsa regeluppsättningar (ADR 0021) | `GET /v1/rule-sets/{serie}/versions`, `.../{v}` |
+| `rules:write` | Skapa och ändra utkast, skicka till granskning | `POST .../versions`, `PUT .../{v}`, `.../submissions` |
+| `rules:publish` | Publicera, skicka tillbaka eller avveckla. Aldrig den egna inskickade versionen. | `.../publications`, `.../returns`, `.../retirements` |
 | `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/access/roles`, `.../versions` |
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/access/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
@@ -37,6 +40,8 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `handler` | Alla ovan utom `claims:approve`. Beslutar ensam upp till 25 000 SEK eller 2 500 EUR. | – | Skadehandläggare |
 | `approver` | `claims:read`, `claims:approve`, `limits:read`. Ingen gräns för attest. | – | Attestant |
 | `admin` | `access:read`, `access:manage` | – | Administratör för roller och gränser |
+| `rules-author` | `rules:read`, `rules:write` | – | Skriver regelutkast |
+| `rules-publisher` | `rules:read`, `rules:publish` | – | Granskar och publicerar regler |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview` | klinik | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | – | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
 | `customer-channel` | `claims:read`, `claims:request-review` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
@@ -133,19 +138,21 @@ Spärrar:
 - **Samma validering som vid start** (`422`): okända rättigheter, bindningar eller valutor och negativa gränser stoppas. En motivering krävs.
 - **Standardrollen `admin`** har `access:read` och `access:manage`, men inga rättigheter i skadeärenden.
 
-Första gången Petvold startar skapas version 1 från standardrollerna.
+Första gången Petvold startar skapas version 1 från standardrollerna. **Standardroller som tillkommer i en senare version av Petvold läggs inte till automatiskt** i en installation som redan har en sparad inställning. En administratör lägger till dem som en ny version. Det är medvetet: inställningen ändras bara av någon som tar ansvar för ändringen.
 
 *Inte byggt än:* fyra ögon för ändringar av inställningen. I dag kan en administratör ändra andra rollers gränser ensam, men varje ändring spåras.
 
 ## Lokalt
 
-Dev-servern har sex tokens:
+Dev-servern har åtta tokens:
 
 | Token | Roll | Omfång |
 | --- | --- | --- |
 | `dev-handler` | handläggare, beslutar ensam upp till 25 000 kr | alla marknader |
 | `dev-approver` | attestant | alla marknader |
 | `dev-admin` | administratör för roller och gränser | inga ärenden |
+| `dev-author` | skriver regelutkast | inga ärenden |
+| `dev-publisher` | publicerar regler | inga ärenden |
 | `dev-clinic` | klinik | SE, klinik `clinic_001` |
 | `dev-job` | omprövningsjobb | alla marknader |
 | `dev-customer` | kundkanal | SE, försäkringen `pol_bella` |

@@ -5,6 +5,7 @@ import type {
   AssessmentInput,
   Claim,
   ClaimDecision,
+  ClaimsRules,
   DeductiblePeriod,
   DeviationReasonCode,
   DecisionEvidence,
@@ -126,6 +127,18 @@ interface Motivation {
   reviewRequestId?: string;
   approvedBy?: string;
   proposalId?: string;
+}
+
+/** The rules for a claim without a policy: none of them are used, only the market is checked. */
+function noPolicyRules(claim: Claim): ClaimsRules {
+  return {
+    rulesVersion: 'none',
+    market: claim.market,
+    vatReimbursable: false,
+    nonReimbursableCategories: [],
+    diagnosisGroups: {},
+    autoSettleMax: 0,
+  };
 }
 
 /** Outcome and payout of a decision with this action on this assessment. */
@@ -437,7 +450,11 @@ export class ClaimsService {
 
   private async assessInternal(claim: Claim, knownAt: Timestamp | undefined, ownClaimId: string | undefined): Promise<Assessed> {
     const policy = await this.d.policies.getPolicyAt(claim.policyId, claim.treatmentFrom, knownAt);
-    const rules = await this.d.rules.getRules(policy?.productVersion ?? 'default');
+    // Without a policy the claim is rejected before any product rule is used.
+    const rules = policy ? await this.d.rules.getRules(policy.productVersion, claim.treatmentFrom) : noPolicyRules(claim);
+    if (!rules) {
+      throw new DomainError('conflict', `No published rules for ${policy!.productVersion} on ${claim.treatmentFrom}`);
+    }
     const group = rules.diagnosisGroups[claim.diagnosisCode] ?? null;
     const scope = policy ? deductibleScope(claim, policy, group) : null;
     const openDeductiblePeriod = scope

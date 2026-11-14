@@ -16,10 +16,13 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { serve } from '@hono/node-server';
 import { ClaimsService, eventClaimId, relayOutbox, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore } from '@petvold/claims-core';
-import { InMemoryClaimsStore, InMemoryPolicyPort, StaticRulesPort, fixtures } from '@petvold/claims-store-memory';
+import { InMemoryClaimsStore, InMemoryPolicyPort, fixtures } from '@petvold/claims-store-memory';
 import { createPool, PostgresClaimsStore, PostgresIdempotencyStore } from '@petvold/claims-store-postgres';
 import { AccessService, InMemoryRoleConfigStore, type RoleConfigStore } from '@petvold/access';
 import { PostgresRoleConfigStore } from '@petvold/access/postgres';
+import { DecisioningRulesPort, DecisioningService, InMemoryRuleSetStore, ruleSetChecksum, type RuleSetStore, type RuleSetVersion } from '@petvold/decisioning';
+import { PostgresRuleSetStore } from '@petvold/decisioning/postgres';
+import { CALCULATION_MODEL, CALCULATION_MODELS } from '@petvold/claims-core';
 import { createApp, InMemoryIdempotencyStore, type IdempotencyStore, type Principal } from './index.ts';
 import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './permissions.ts';
 import { docsPage } from './docs.ts';
@@ -70,9 +73,43 @@ const roleStore: RoleConfigStore<RoleDefinitions> = accessUrl
   : new InMemoryRoleConfigStore<RoleDefinitions>();
 const access = new AccessService<RoleDefinitions>({ store: roleStore, clock, validate: assertRoleDefinitions, defaults: DEFAULT_ROLES });
 
+// Rule sets (ADR 0021): in Postgres with DECISIONING_DATABASE_URL, else in memory.
+const decisioningUrl = process.env.DECISIONING_DATABASE_URL;
+const ruleStore: RuleSetStore = decisioningUrl ? new PostgresRuleSetStore(createPool(decisioningUrl, { max: 2 })) : new InMemoryRuleSetStore();
+const decisioning = new DecisioningService({ store: ruleStore, clock, calculationModels: Object.keys(CALCULATION_MODELS) });
+const SERIES = 'SE-HUND-VV';
+await seedRules(ruleStore);
+
+/**
+ * The first start publishes the sample rules as SE-HUND-VV@1, so the dev server
+ * can assess claims at once. An installation seed, not a review: in production
+ * the first version goes through draft, review and publication.
+ */
+async function seedRules(store: RuleSetStore): Promise<void> {
+  if ((await store.list(SERIES)).length > 0) return;
+  const { rulesVersion: _v, ...content } = fixtures.RULES_SE_DOG;
+  const now = clock.now();
+  const base = { series: SERIES, version: 1, content, calculationModel: CALCULATION_MODEL, effectiveFrom: '2026-01-01' };
+  const v: RuleSetVersion = {
+    ...base,
+    status: 'published',
+    checksum: ruleSetChecksum(base),
+    revision: 1,
+    createdBy: 'petvold-seed',
+    createdAt: now,
+    submittedBy: 'petvold-seed',
+    submittedAt: now,
+    publishedBy: 'petvold-install',
+    publishedAt: now,
+  };
+  await store.create({ ...v, status: 'draft', revision: 1 } as RuleSetVersion);
+  await store.update({ ...v, revision: 2 });
+}
+
 const service = new ClaimsService({
   policies: new InMemoryPolicyPort([{ snapshot: fixtures.bellaPolicy(), sysFrom: '2026-03-03T00:00:00Z' }]),
-  rules: new StaticRulesPort({ [fixtures.PRODUCT]: fixtures.RULES_SE_DOG }, fixtures.RULES_SE_DOG),
+  // Until the product catalog exists: every sample product uses the SE-HUND-VV series.
+  rules: new DecisioningRulesPort(decisioning, () => SERIES),
   store,
   clock,
   ids,
@@ -90,6 +127,8 @@ const tokens: Record<string, Principal> = {
   'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler'], markets: '*' },
   'dev-approver': { subject: 'attestant@example.test', roles: ['approver'], markets: '*' },
   'dev-admin': { subject: 'admin@example.test', roles: ['admin'] },
+  'dev-author': { subject: 'author@example.test', roles: ['rules-author'] },
+  'dev-publisher': { subject: 'publisher@example.test', roles: ['rules-publisher'] },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
   // Acts for the customer who owns Bella's policy in the sample data.
@@ -101,6 +140,7 @@ const app = createApp({
   clock,
   idempotency,
   access,
+  decisioning,
   auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) },
 });
 
@@ -116,7 +156,8 @@ serve({
 });
 console.log(`Claims engine listening on http://localhost:${port}`);
 console.log(`  Storage:   ${storage}`);
+console.log(`  Rules:     ${decisioningUrl ? 'Postgres' : 'memory'}, series ${SERIES} (GET /v1/rule-sets/${SERIES}/versions)`);
 console.log(`  Roles:     ${accessUrl ? 'Postgres, versioned (GET /v1/access/roles)' : 'memory, versioned (GET /v1/access/roles)'}`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);

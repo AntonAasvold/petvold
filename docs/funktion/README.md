@@ -9,7 +9,8 @@ Petvold installeras en gång per försäkringsbolag (ADR 0010). Varje kund har s
 | Del | Vad den gör | Läge |
 | --- | --- | --- |
 | Skademotor | Tar emot skador, bedömer dem mot policyn och produktens regler, räknar ut ersättning, fattar eller föreslår beslut och bokför förbrukat försäkringsbelopp. | Byggd, se [Skadereglering](skadereglering.md) |
-| Produkt | Versionerade produkter med moment, självrisker, karenstider och regler för skador. | *(planerat, M2)* I dag finns reglerna som exempeldata, se [Produktkonfiguration](produktkonfiguration.md) |
+| Regler | Produktens skaderegler som versionerade regeluppsättningar, publicerade med fyra ögon. | Byggd, se [Produktkonfiguration](produktkonfiguration.md#regeluppsättningar) |
+| Produkt | Versionerade produkter med moment, självrisker, karenstider och referensdata. | *(planerat, M2)* |
 | Djur och parter | Djur, ägare, kliniker och deras roller. | *(planerat, M2)* |
 | Policy | Försäkringar med full historik: vad som gällde när, och vad som var känt när. | *(planerat, M3)* Skademotorn läser policyn via ett gränssnitt och kan kopplas till ett befintligt system. |
 | Pris och teckning | Premie och teckningsregler per produktversion. | *(planerat, M4)* |

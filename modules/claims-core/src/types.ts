@@ -125,8 +125,10 @@ export interface PolicySnapshot {
 // ---------------------------------------------------------------------------
 
 export interface ClaimsRules {
-  /** e.g. 'SE-HUND-2026.2' */
+  /** e.g. 'SE-HUND-VV@3': the rule series and version (ADR 0021). */
   rulesVersion: string;
+  /** sha256 of the published rule set's content (ADR 0021). Omitted for rules that are not from the decisioning module. */
+  rulesChecksum?: string;
   market: MarketCode;
   /** Is VAT on vet invoices reimbursed? Varies between markets and customer types. */
   vatReimbursable: boolean;

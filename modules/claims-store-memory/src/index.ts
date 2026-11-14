@@ -254,7 +254,7 @@ export class InMemoryPolicyPort implements PolicyPort {
 
 export class StaticRulesPort implements RulesPort {
   constructor(private readonly byProduct: Record<string, ClaimsRules>, private readonly fallback: ClaimsRules) {}
-  async getRules(productVersion: string) {
+  async getRules(productVersion: string, _onDate: ISODate) {
     return this.byProduct[productVersion] ?? this.fallback;
   }
 }
