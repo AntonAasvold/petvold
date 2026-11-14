@@ -18,6 +18,7 @@ import {
   type ClaimsStore,
   type OutboxEntry,
   type DecisionCommit,
+  type DecisionEvidence,
   type DeductiblePeriod,
   type ISODate,
   type MinorUnits,
@@ -183,7 +184,8 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
 
   async getDecisions(claimId: string): Promise<ClaimDecision[]> {
     const { rows } = await this.pool.query(
-      `select id, claim_id, seq, outcome, payout_minor, assessment, decided_by, decided_at, reason
+      `select id, claim_id, seq, outcome, payout_minor, assessment, decided_by, decided_at, reason,
+              deviates_from_proposal, reason_code
        from claims.decision where claim_id = $1 order by seq`,
       [claimId],
     );
@@ -197,16 +199,31 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       decidedBy: d.decided_by,
       decidedAt: d.decided_at,
       ...(d.reason !== null ? { reason: d.reason } : {}),
+      deviatesFromProposal: d.deviates_from_proposal,
+      ...(d.reason_code !== null ? { reasonCode: d.reason_code } : {}),
     }));
   }
 
-  async commitDecision({ decision: d, journals, deductiblePeriod: p, events }: DecisionCommit): Promise<void> {
+  async getEvidence(decisionId: string): Promise<DecisionEvidence | null> {
+    const { rows } = await this.pool.query(
+      `select decision_id, input, calculation_model, engine_version from claims.decision_evidence where decision_id = $1`,
+      [decisionId],
+    );
+    const e = rows[0];
+    return e
+      ? { decisionId: e.decision_id, input: e.input, calculationModel: e.calculation_model, engineVersion: e.engine_version }
+      : null;
+  }
+
+  async commitDecision({ decision: d, journals, deductiblePeriod: p, evidence, events }: DecisionCommit): Promise<void> {
+    if (evidence.decisionId !== d.id) throw new Error(`Evidence for ${evidence.decisionId} given with decision ${d.id}`);
     await this.tx(async (db) => {
       const a = d.assessment;
       await db.query(
         `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash,
-                                      rules_version, product_version, policy_version_id, decided_by, decided_at, reason)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+                                      rules_version, product_version, policy_version_id, decided_by, decided_at, reason,
+                                      deviates_from_proposal, reason_code)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
         [
           d.id,
           d.claimId,
@@ -222,7 +239,13 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
           d.decidedBy,
           d.decidedAt,
           d.reason ?? null,
+          d.deviatesFromProposal,
+          d.reasonCode ?? null,
         ],
+      );
+      await db.query(
+        `insert into claims.decision_evidence (decision_id, input, calculation_model, engine_version) values ($1, $2, $3, $4)`,
+        [evidence.decisionId, JSON.stringify(evidence.input), evidence.calculationModel, evidence.engineVersion],
       );
       for (const j of journals) {
         await db.query(

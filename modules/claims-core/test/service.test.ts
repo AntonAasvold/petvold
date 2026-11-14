@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ClaimsService, DomainError, StoreConflictError } from '@petvold/claims-core';
+import { CALCULATION_MODEL, ClaimsService, DomainError, StoreConflictError, assess, sha256 } from '@petvold/claims-core';
 import {
   FixedClock,
   InMemoryClaimsStore,
@@ -25,6 +25,7 @@ function setup() {
     store,
     clock,
     ids: new SequentialIds(),
+    engineVersion: '0.1.0+test',
   });
   return { service, store, policies, clock };
 }
@@ -194,4 +195,63 @@ test('a clash in the store becomes conflict, not an internal error', async () =>
     throw new StoreConflictError('decision_exists', 'Decision clm_021877#1 already exists');
   };
   await assert.rejects(service.registerClaim(otitisClaim()), (e: unknown) => e instanceof DomainError && e.code === 'conflict');
+});
+
+// Evidence and deviations (ADR 0018) --------------------------------------------
+
+test('every decision stores its evidence, and the evidence reproduces the assessment exactly', async () => {
+  const { service, store } = setup();
+  const { decision } = await service.registerClaim(otitisClaim());
+  const evidence = await service.getEvidence('clm_021877', 1);
+  assert.equal(evidence.decisionId, decision!.id);
+  assert.equal(evidence.calculationModel, CALCULATION_MODEL);
+  assert.equal(evidence.engineVersion, '0.1.0+test');
+  assert.equal(sha256(evidence.input), decision!.assessment.inputHash);
+  assert.deepEqual(assess(evidence.input), decision!.assessment);
+  assert.deepEqual(await store.getEvidence(decision!.id), evidence);
+});
+
+test('an unknown decision has no evidence', async () => {
+  const { service } = setup();
+  await service.registerClaim(cruciateClaim());
+  await assert.rejects(service.getEvidence('clm_048213', 1), (e: unknown) => e instanceof DomainError && e.code === 'not_found');
+});
+
+test('rejecting against the proposal requires the right to override', async () => {
+  const { service } = setup();
+  await service.registerClaim(cruciateClaim());
+  await assert.rejects(
+    service.decide('clm_048213', { action: 'reject', decidedBy: 'h', reasonCode: 'pre_existing_condition', reason: 'Seen before' }),
+    (e: unknown) => e instanceof DomainError && e.code === 'forbidden',
+  );
+});
+
+test('rejecting against the proposal requires a reason code and a reason', async () => {
+  const { service } = setup();
+  await service.registerClaim(cruciateClaim());
+  for (const cmd of [{ reason: 'Seen before' }, { reasonCode: 'other' as const }, { reasonCode: 'other' as const, reason: '  ' }]) {
+    await assert.rejects(
+      service.decide('clm_048213', { action: 'reject', decidedBy: 'h', mayOverride: true, ...cmd }),
+      (e: unknown) => e instanceof DomainError && e.code === 'validation',
+    );
+  }
+});
+
+test('a deviation is recorded with its reason code, and following the proposal is not', async () => {
+  const { service } = setup();
+  await service.registerClaim(cruciateClaim());
+  const d = await service.decide('clm_048213', {
+    action: 'reject',
+    decidedBy: 'h',
+    mayOverride: true,
+    reasonCode: 'pre_existing_condition',
+    reason: 'Lameness in the same leg before the policy started',
+  });
+  assert.equal(d.outcome, 'rejected');
+  assert.equal(d.deviatesFromProposal, true);
+  assert.equal(d.reasonCode, 'pre_existing_condition');
+
+  const auto = (await service.registerClaim(otitisClaim())).decision!;
+  assert.equal(auto.deviatesFromProposal, false);
+  assert.equal(auto.reasonCode, undefined);
 });

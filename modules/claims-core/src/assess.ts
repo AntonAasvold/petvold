@@ -1,5 +1,6 @@
 import type {
   Assessment,
+  AssessmentInput,
   Calculation,
   Claim,
   ClaimsRules,
@@ -14,19 +15,12 @@ import type {
 import { addDays, applyBp, assertDate, assertMinorUnits, dateLt, dateLte } from '@petvold/common';
 import { sha256 } from './util.ts';
 
-/** Everything the assessment needs. Pure data in, pure data out: no calls, no clock, no text. */
-export interface AssessmentInput {
-  claim: Claim;
-  policy: PolicySnapshot | null;
-  rules: ClaimsRules;
-  /**
-   * The deductible period in force for the claim's scope (see deductibleScope),
-   * or null if there is none. Ignored when the deductible is charged per claim.
-   */
-  openDeductiblePeriod: DeductiblePeriod | null;
-  /** Limit consumed before this claim, for the same policy year. */
-  consumedBefore: MinorUnits;
-}
+/**
+ * The calculation model this code implements (ADR 0018). Stored with every
+ * decision. A change that alters results for stored decisions is a new model;
+ * old models stay so stored decisions can be recalculated.
+ */
+export const CALCULATION_MODEL = 'vet-care.v1';
 
 export function validateClaim(claim: Claim): void {
   assertDate(claim.treatmentFrom, 'treatmentFrom');

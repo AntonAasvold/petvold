@@ -34,6 +34,7 @@ async function rejects(sql: string, params: unknown[], code: string): Promise<vo
 const PERMISSION_DENIED = '42501';
 const EXCLUSION_VIOLATION = '23P01';
 const RAISE_EXCEPTION = 'P0001';
+const CHECK_VIOLATION = '23514';
 
 async function seedDecision(): Promise<void> {
   await db.query(
@@ -43,6 +44,10 @@ async function seedDecision(): Promise<void> {
   await db.query(
     `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version, decided_by)
      values ('dec_t1', 'clm_t1', 1, 'approved', 100000, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'auto')`,
+  );
+  await db.query(
+    `insert into claims.decision_evidence (decision_id, input, calculation_model, engine_version)
+     values ('dec_t1', '{}', 'vet-care.v1', '0.1.0+test')`,
   );
 }
 
@@ -57,7 +62,7 @@ test('the migrations have been applied', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
   assert.deepEqual(
     rows.map((r) => r.version),
-    ['0001', '0002', '0003', '0004'],
+    ['0001', '0002', '0003', '0004', '0005'],
   );
 });
 
@@ -123,5 +128,42 @@ test('the service role can only mark events as published', async () => {
     await db.query(`insert into claims.outbox (type, aggregate_id, payload) values ('claim.registered', 'clm_t1', '{}')`);
     await db.query(`update claims.outbox set published_at = now() where aggregate_id = 'clm_t1'`);
     await rejects(`update claims.outbox set payload = '{"x":1}' where aggregate_id = 'clm_t1'`, [], PERMISSION_DENIED);
+  });
+});
+
+// Evidence and deviations (ADR 0018) --------------------------------------------
+
+test('a decision without evidence is rejected at commit', async () => {
+  await inTx(async () => {
+    await seedDecision();
+    await db.query(
+      `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version, decided_by)
+       values ('dec_t2', 'clm_t1', 2, 'approved', 100000, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'auto')`,
+    );
+    await rejects('set constraints all immediate', [], RAISE_EXCEPTION);
+  });
+});
+
+test('the service role cannot change or delete evidence', async () => {
+  await inTx(async () => {
+    await seedDecision();
+    await db.query('set constraints all immediate');
+    await db.query('set local role claims_service');
+    await rejects(`update claims.decision_evidence set input = '{"x":1}' where decision_id = 'dec_t1'`, [], PERMISSION_DENIED);
+    await rejects(`delete from claims.decision_evidence where decision_id = 'dec_t1'`, [], PERMISSION_DENIED);
+  });
+});
+
+test('a deviation from the proposal needs a known reason code and a reason', async () => {
+  await inTx(async () => {
+    await seedDecision();
+    const insert = `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version,
+                                                 decided_by, reason, deviates_from_proposal, reason_code)
+                    values ($1, 'clm_t1', $2, 'rejected', 0, 'SEK', '{}', 'h', 'SE-HUND-2026.2', 'h1', $3, true, $4)`;
+    await rejects(insert, ['dec_d1', 2, null, 'other'], CHECK_VIOLATION);
+    await rejects(insert, ['dec_d2', 2, ' ', 'other'], CHECK_VIOLATION);
+    await rejects(insert, ['dec_d3', 2, 'Seen before', null], CHECK_VIOLATION);
+    await rejects(insert, ['dec_d4', 2, 'Seen before', 'made_up'], CHECK_VIOLATION);
+    await db.query(insert, ['dec_d5', 2, 'Seen before', 'pre_existing_condition']);
   });
 });

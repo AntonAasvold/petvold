@@ -151,7 +151,8 @@ export function createApp(d: AppDeps) {
     const r = await readJson(c, 'DecideRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => {
-      const decision = await d.service.decide(c.req.param('claimId'), { ...r.body, decidedBy: p.subject });
+      const mayOverride = permissionsOf(p.roles, roles).has('claims:override');
+      const decision = await d.service.decide(c.req.param('claimId'), { ...r.body, decidedBy: p.subject, mayOverride });
       return { status: 201, body: decision };
     });
   });
@@ -189,7 +190,7 @@ export function createApp(d: AppDeps) {
 
   app.onError((err, c) => {
     if (err instanceof DomainError) {
-      const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422;
+      const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
       return problem(c, status, err.message);
     }
     console.error(err);

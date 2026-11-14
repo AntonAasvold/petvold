@@ -2,6 +2,30 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 13)
+
+**Gjort**
+- #17 mergad: behörighet del 1.
+- ADR 0018 beslutad. Beviskedja per beslut:
+  - Med varje beslut sparas underlaget (`AssessmentInput`), beräkningsmodellen (`vet-care.v1`) och Petvolds version, i samma transaktion.
+  - Ny port `getEvidence`. Båda lagringarna klarar sviten med 4 nya tester.
+  - Migration 0005: tabellen `claims.decision_evidence`. En uppskjuten trigger kräver underlag för varje nytt beslut, och underlaget kan inte ändras. Provad ner och upp igen.
+  - Bevisat i test: underlaget ger samma `inputHash`, och `assess(underlag)` ger exakt den sparade bedömningen, i minnet och efter en tur genom Postgres.
+- Avvikelse från förslaget kräver rättigheten `claims:override` (403), skälkod och motivering (422). Beslutet märks `deviatesFromProposal`. Databasen har en check-constraint för samma regel.
+- Kontraktet, dokumentationen (skadereglering, behörighet, arkitektur) och dev-servern är uppdaterade. Dev-servern sparar git-commit som motorns version.
+- Provat mot dev-servern på Postgres: avslag mot förslaget utan motivering gav 422, med motivering 201, och underlaget finns i databasen.
+- 115 tester och 44 databastester.
+
+**Nästa steg**
+1. Omräkning av sparade beslut (`POST /v1/claims/{id}/decisions/{seq}/replays`), och scenarier som data som räknas om i CI.
+2. Förklaring per beslut och begäran om mänsklig prövning.
+3. Behörighet del 2: omfång per marknad och klinik.
+4. Attestkedjan med beloppsgränser och utbetalningsorder.
+
+**Öppet**
+- Beslut som fattades före migration 0005 har inget underlag. Det gäller bara testdata.
+- Underlaget innehåller personuppgifter. Gallring per installation kommer med driften.
+
 ## 2026-11-14 (pass 12)
 
 **Gjort**

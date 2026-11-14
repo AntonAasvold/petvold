@@ -211,6 +211,9 @@ export interface Assessment {
   inputHash: string;
 }
 
+/** Why a handler decided against the assessment's proposal. */
+export type DeviationReasonCode = 'pre_existing_condition' | 'not_covered' | 'insufficient_documentation' | 'incorrect_invoice' | 'other';
+
 export interface ClaimDecision {
   id: string;
   claimId: string;
@@ -222,6 +225,38 @@ export interface ClaimDecision {
   decidedBy: string;
   decidedAt: Timestamp;
   reason?: string;
+  /** True if the handler decided against the proposal. Then reasonCode and reason are set. */
+  deviatesFromProposal: boolean;
+  reasonCode?: DeviationReasonCode;
+}
+
+/** Everything the assessment needs. Pure data in, pure data out: no calls, no clock, no text. */
+export interface AssessmentInput {
+  claim: Claim;
+  policy: PolicySnapshot | null;
+  rules: ClaimsRules;
+  /**
+   * The deductible period in force for the claim's scope (see deductibleScope),
+   * or null if there is none. Ignored when the deductible is charged per claim.
+   */
+  openDeductiblePeriod: DeductiblePeriod | null;
+  /** Limit consumed before this claim, for the same policy year. */
+  consumedBefore: MinorUnits;
+}
+
+
+/**
+ * What a decision was based on (ADR 0018). Stored with the decision and never
+ * changed, so the decision can be proven and recalculated later.
+ */
+export interface DecisionEvidence {
+  decisionId: string;
+  /** Exactly what the engine assessed. sha256(input) equals the assessment's inputHash. */
+  input: AssessmentInput;
+  /** The calculation model that produced the result, e.g. 'vet-care.v1'. */
+  calculationModel: string;
+  /** Petvold's version and commit, e.g. '0.1.0+abc1234'. */
+  engineVersion: string;
 }
 
 // ---------------------------------------------------------------------------

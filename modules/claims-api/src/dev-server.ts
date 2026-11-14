@@ -11,6 +11,7 @@
  * The API page is at /docs and example requests are in examples/claims.http.
  */
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { serve } from '@hono/node-server';
 import { ClaimsService, relayOutbox, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore } from '@petvold/claims-core';
 import { InMemoryClaimsStore, InMemoryPolicyPort, StaticRulesPort, fixtures } from '@petvold/claims-store-memory';
@@ -25,6 +26,16 @@ try {
 }
 
 const clock = { now: () => new Date().toISOString() };
+
+/** Stored with every decision (ADR 0018). PETVOLD_VERSION in production, the git commit locally. */
+function engineVersion(): string {
+  if (process.env.PETVOLD_VERSION) return process.env.PETVOLD_VERSION;
+  try {
+    return `dev+${execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()}`;
+  } catch {
+    return 'dev+unknown';
+  }
+}
 /** Random ids, so ids never repeat across restarts of a persistent store. */
 const ids = { next: (prefix: string) => `${prefix}_${randomUUID().replaceAll('-', '')}` };
 
@@ -53,6 +64,7 @@ const service = new ClaimsService({
   store,
   clock,
   ids,
+  engineVersion: engineVersion(),
 });
 
 // The relay publishes events from the outbox. Here it just logs them.

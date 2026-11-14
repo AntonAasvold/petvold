@@ -6,7 +6,7 @@
 import { after, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import { ClaimsService } from '@petvold/claims-core';
+import { ClaimsService, assess, sha256 } from '@petvold/claims-core';
 import { FixedClock, InMemoryPolicyPort, SequentialIds, StaticRulesPort, fixtures } from '@petvold/claims-store-memory';
 import { createPool, PostgresClaimsStore } from '../src/index.ts';
 
@@ -18,7 +18,7 @@ after(async () => {
 });
 beforeEach(async () => {
   await owner.query(
-    `truncate claims.journal_line, claims.journal, claims.deductible_period, claims.decision,
+    `truncate claims.journal_line, claims.journal, claims.deductible_period, claims.decision_evidence, claims.decision,
               claims.claim_line, claims.claim, claims.outbox, claims.idempotency`,
   );
 });
@@ -71,4 +71,12 @@ test('the deductible period from the first claim is used by the next in the same
     otitisClaim({ id: 'clm_otit_2', claimNo: 'S-2', treatmentFrom: '2026-07-01', treatmentTo: '2026-07-01' }),
   );
   assert.equal(second.assessment.calculation?.deductibleFixed, 0);
+});
+
+test('evidence read back from Postgres reproduces the decision exactly (ADR 0018)', async () => {
+  const { service } = setup();
+  const { decision } = await service.registerClaim(otitisClaim());
+  const evidence = await service.getEvidence(otitisClaim().id, 1);
+  assert.equal(sha256(evidence.input), decision!.assessment.inputHash);
+  assert.deepEqual(assess(evidence.input), decision!.assessment);
 });

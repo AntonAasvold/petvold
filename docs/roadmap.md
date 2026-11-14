@@ -16,8 +16,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Outbox i samma transaktion som ärendet och beslutet, med relä
 - [x] Dev-servern på Postgres
 - [x] Gemensam testsvit för `ClaimsStore` (lager 4) och databastester (lager 6)
-- [ ] Beviskedja per beslut (ADR 0018): underlag och motorns version sparas med beslutet
-- [ ] Motivering krävs när beslutet avviker från förslaget
+- [x] Beviskedja per beslut (ADR 0018): underlag och motorns version sparas med beslutet
+- [x] Motivering krävs när beslutet avviker från förslaget
 - [ ] Omräkning av sparade beslut, och scenarier som data (lager 3) som räknas om i CI
 - [ ] Förklaring per beslut och begäran om mänsklig prövning
 - [x] Integrationstester mot Postgres

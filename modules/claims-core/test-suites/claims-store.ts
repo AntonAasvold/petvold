@@ -12,7 +12,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreConflictError, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore, type DecisionCommit } from '../src/ports.ts';
-import type { Assessment, Claim, ClaimDecision, CurrencyCode, DeductiblePeriod, LedgerJournal } from '../src/types.ts';
+import type { Assessment, Claim, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot } from '../src/types.ts';
 import { accounts, type LimitKey } from '../src/ledger.ts';
 
 /** A store that also exposes its outbox, as every implementation must. */
@@ -81,6 +81,55 @@ function decision(claimId: string, seq: number, payout: number, overrides: Parti
     assessment: assessment(claimId),
     decidedBy: 'auto',
     decidedAt: `2026-10-0${2 + seq}T10:00:00.000Z`,
+    deviatesFromProposal: false,
+    ...overrides,
+  };
+}
+
+const RULES: ClaimsRules = {
+  rulesVersion: 'SE-HUND-SUITE.1',
+  market: 'SE',
+  vatReimbursable: true,
+  nonReimbursableCategories: ['food'],
+  diagnosisGroups: { 'ORA-OTIT': 'ora' },
+  autoSettleMax: 1_000_000,
+};
+
+const POLICY: PolicySnapshot = {
+  policyId: 'pol_suite',
+  policyVersionId: 'pv_suite',
+  market: 'SE',
+  currency: 'SEK',
+  animalId: 'ani_suite',
+  animalBirthDate: '2019-03-14',
+  productVersion: 'SE-HUND-SUITE@1',
+  status: 'active',
+  validFrom: YEAR,
+  inceptionDate: '2024-04-01',
+  policyYearStart: YEAR,
+  policyYearEnd: '2027-04-01',
+  vetCare: {
+    code: 'vet_care',
+    annualLimit: 6_000_000,
+    deductible: { fixed: 200_000, fixedPer: 'period', periodDays: 125, variableBp: 2500, variableBpByAge: [{ fromAgeYears: 8, bp: 3500 }] },
+    waitingPeriodDays: 30,
+  },
+  riders: [{ id: 'rid_1', description: 'Lameness, right hind leg', diagnosisCodes: ['ORT-HALTA-HB-H'], validFrom: '2025-09-12' }],
+};
+
+/** Evidence as the service stores it: the full input, model and engine version. */
+function evidenceFor(d: ClaimDecision, overrides: Partial<DecisionEvidence> = {}): DecisionEvidence {
+  return {
+    decisionId: d.id,
+    input: {
+      claim: claim(d.claimId),
+      policy: POLICY,
+      rules: RULES,
+      openDeductiblePeriod: period(`dp_open_${d.id}`, 'clm_earlier', '2026-09-01', '2027-01-04'),
+      consumedBefore: 123_456,
+    },
+    calculationModel: 'vet-care.v1',
+    engineVersion: '0.1.0+suite',
     ...overrides,
   };
 }
@@ -124,7 +173,7 @@ function decided(d: ClaimDecision): ClaimsEvent[] {
 const save = (store: ClaimsStore, c: Claim): Promise<void> => store.saveClaim(c, registered(c));
 
 function commit(d: ClaimDecision, journals: LedgerJournal[] = [], deductiblePeriod: DeductiblePeriod | null = null): DecisionCommit {
-  return { decision: d, journals, deductiblePeriod, events: decided(d) };
+  return { decision: d, journals, deductiblePeriod, evidence: evidenceFor(d), events: decided(d) };
 }
 
 const pendingTypes = async (store: ClaimsOutbox) => (await store.pendingEvents(100)).map((e) => e.event.type);
@@ -200,6 +249,42 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.equal(await store.getConsumed(limit()), 50_000);
     });
 
+    it('a deviating decision keeps its reason code and reason', async (store) => {
+      await save(store, claim('clm_a'));
+      const d = decision('clm_a', 1, 0, {
+        outcome: 'rejected',
+        decidedBy: 'handlaggare@example.test',
+        deviatesFromProposal: true,
+        reasonCode: 'pre_existing_condition',
+        reason: 'Symptoms noted before the policy started',
+      });
+      await store.commitDecision(commit(d));
+      assert.deepEqual(await store.getDecisions('clm_a'), [d]);
+    });
+
+    // Evidence (ADR 0018) -------------------------------------------------------
+
+    it('the evidence is stored with the decision and read back unchanged', async (store) => {
+      await save(store, claim('clm_a'));
+      const d = decision('clm_a', 1, 50_000);
+      await store.commitDecision(commit(d, [consumption(d, 50_000)]));
+      assert.deepEqual(await store.getEvidence(d.id), evidenceFor(d));
+    });
+
+    it('unknown decisions have no evidence', async (store) => {
+      assert.equal(await store.getEvidence('dec_finns_inte'), null);
+    });
+
+    it('evidence for another decision is rejected and nothing is stored', async (store) => {
+      await save(store, claim('clm_a'));
+      const d = decision('clm_a', 1, 50_000);
+      const wrong = { ...commit(d, [consumption(d, 50_000)]), evidence: evidenceFor(decision('clm_a', 2, 0)) };
+      await assert.rejects(store.commitDecision(wrong));
+      assert.deepEqual(await store.getDecisions('clm_a'), []);
+      assert.equal(await store.getEvidence(d.id), null);
+      assert.equal(await store.getConsumed(limit()), 0);
+    });
+
     it('a decision requires a stored claim', async (store) => {
       await assert.rejects(store.commitDecision(commit(decision('clm_saknas', 1, 0))));
     });
@@ -213,6 +298,7 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       bad.lines[1]!.amount = -49_999;
       await assert.rejects(store.commitDecision(commit(d, [bad], period('dp_a', 'clm_a', '2026-10-01', '2027-02-03'))));
       assert.deepEqual(await store.getDecisions('clm_a'), []);
+      assert.equal(await store.getEvidence(d.id), null);
       assert.equal(await store.getConsumed(limit()), 0);
       assert.equal(await store.findDeductiblePeriod('ani_suite', 'ora', '2026-11-01'), null);
     });

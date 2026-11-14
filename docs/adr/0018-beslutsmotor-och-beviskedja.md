@@ -1,6 +1,6 @@
 # 0018. Beslutsmotor som egen modul, med beviskedja för varje beslut
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-14
 
 ## Sammanhang

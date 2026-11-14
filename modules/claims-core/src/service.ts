@@ -1,10 +1,13 @@
-import { assess, deductibleScope, validateClaim } from './assess.ts';
+import { CALCULATION_MODEL, assess, deductibleScope, validateClaim } from './assess.ts';
 import { StoreConflictError, type ClaimsEvent, type ClaimsStore, type Clock, type IdGenerator, type PolicyPort, type RulesPort } from './ports.ts';
 import type {
   Assessment,
+  AssessmentInput,
   Claim,
   ClaimDecision,
   DeductiblePeriod,
+  DeviationReasonCode,
+  DecisionEvidence,
   CurrencyCode,
   ISODate,
   LedgerJournal,
@@ -17,7 +20,7 @@ import { assertDate } from '@petvold/common';
 import { accounts, type LimitKey } from './ledger.ts';
 
 
-export type DomainErrorCode = 'not_found' | 'validation' | 'conflict';
+export type DomainErrorCode = 'not_found' | 'validation' | 'conflict' | 'forbidden';
 
 export class DomainError extends Error {
   constructor(
@@ -33,6 +36,10 @@ export interface DecideCommand {
   action: 'accept' | 'reject';
   decidedBy: string;
   reason?: string;
+  /** Required, with reason, when the decision goes against the proposal (ADR 0018). */
+  reasonCode?: DeviationReasonCode;
+  /** Whether the caller may decide against the proposal (permission claims:override). */
+  mayOverride?: boolean;
   /**
    * inputHash from the assessment the handler looked at. If the basis has
    * changed since then (new policy version, another claim decided), the
@@ -60,6 +67,21 @@ export interface ClaimsServiceDeps {
   store: ClaimsStore;
   clock: Clock;
   ids: IdGenerator;
+  /** Petvold's version and commit, stored with every decision (ADR 0018). */
+  engineVersion?: string;
+}
+
+/** An assessment together with exactly the input it was made from. */
+interface Assessed {
+  assessment: Assessment;
+  input: AssessmentInput;
+}
+
+/** How a decision relates to the proposal, and the motivation when it deviates. */
+interface Motivation {
+  reason?: string;
+  reasonCode?: DeviationReasonCode;
+  deviatesFromProposal: boolean;
 }
 
 const COVERAGE = 'vet_care';
@@ -96,16 +118,19 @@ export class ClaimsService {
     if (existing) throw new DomainError('conflict', `Claim ${claim.id} already exists`);
 
     await asConflict(this.d.store.saveClaim(claim, [{ type: 'claim.registered', occurredAt: this.d.clock.now(), claim }]));
-    const assessment = await this.assessClaim(claim.id);
+    const assessed = await this.assessInternal(claim, undefined, claim.id);
+    const { assessment } = assessed;
     const decision =
-      assessment.mode === 'auto' ? await this.commit(claim, assessment, assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept', 'auto') : null;
+      assessment.mode === 'auto'
+        ? await this.commit(claim, assessed, assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept', 'auto', { deviatesFromProposal: false })
+        : null;
     return { claim, assessment, decision };
   }
 
   /** Assesses an existing claim without storing anything. */
   async assessClaim(claimId: string, knownAt?: Timestamp): Promise<Assessment> {
     const claim = await this.requireClaim(claimId);
-    return this.assessInternal(claim, knownAt, claim.id);
+    return (await this.assessInternal(claim, knownAt, claim.id)).assessment;
   }
 
   /**
@@ -118,20 +143,34 @@ export class ClaimsService {
     } catch (e) {
       throw new DomainError('validation', (e as Error).message);
     }
-    return this.assessInternal(draft, undefined, undefined);
+    return (await this.assessInternal(draft, undefined, undefined)).assessment;
   }
 
   /** Claims handler decision. */
   async decide(claimId: string, cmd: DecideCommand): Promise<ClaimDecision> {
     const claim = await this.requireClaim(claimId);
-    const assessment = await this.assessInternal(claim, undefined, claim.id);
+    const assessed = await this.assessInternal(claim, undefined, claim.id);
+    const { assessment } = assessed;
     if (cmd.expectedInputHash && cmd.expectedInputHash !== assessment.inputHash) {
       throw new DomainError('conflict', 'The basis has changed since the assessment. Fetch a new assessment and try again.');
     }
     if (cmd.action === 'accept' && assessment.proposedOutcome === 'rejected') {
       throw new DomainError('validation', 'The assessment proposes rejection and cannot be accepted. Reject, or correct the basis.');
     }
-    return this.commit(claim, assessment, cmd.action, cmd.decidedBy, cmd.reason);
+    // Rejecting a proposal to approve is a deviation (ADR 0018): it needs the
+    // right to override and a motivation that can be followed up.
+    const deviates = cmd.action === 'reject' && assessment.proposedOutcome !== 'rejected';
+    if (deviates) {
+      if (!cmd.mayOverride) throw new DomainError('forbidden', 'Deciding against the proposal requires the permission claims:override');
+      if (!cmd.reasonCode || !cmd.reason?.trim()) {
+        throw new DomainError('validation', 'Deciding against the proposal requires reasonCode and reason');
+      }
+    }
+    return this.commit(claim, assessed, cmd.action, cmd.decidedBy, {
+      deviatesFromProposal: deviates,
+      ...(cmd.reason ? { reason: cmd.reason } : {}),
+      ...(deviates && cmd.reasonCode ? { reasonCode: cmd.reasonCode } : {}),
+    });
   }
 
   /**
@@ -142,11 +181,10 @@ export class ClaimsService {
     const claim = await this.requireClaim(claimId);
     const prev = await this.latestDecision(claimId);
     if (!prev) throw new DomainError('conflict', 'The claim has no decision to reassess');
-    const assessment = await this.assessInternal(claim, undefined, claim.id);
-    if (assessment.inputHash === prev.assessment.inputHash) return null;
-    const action = assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept';
-    const next = await this.commit(claim, assessment, action, decidedBy, reason);
-    return next;
+    const assessed = await this.assessInternal(claim, undefined, claim.id);
+    if (assessed.assessment.inputHash === prev.assessment.inputHash) return null;
+    const action = assessed.assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept';
+    return this.commit(claim, assessed, action, decidedBy, { reason, deviatesFromProposal: false });
   }
 
   async getClaim(claimId: string): Promise<Claim> {
@@ -156,6 +194,14 @@ export class ClaimsService {
   async getDecisions(claimId: string): Promise<ClaimDecision[]> {
     await this.requireClaim(claimId);
     return this.d.store.getDecisions(claimId);
+  }
+
+  /** The evidence for a decision (ADR 0018). */
+  async getEvidence(claimId: string, seq: number): Promise<DecisionEvidence> {
+    const decision = (await this.getDecisions(claimId)).find((d) => d.seq === seq);
+    const evidence = decision ? await this.d.store.getEvidence(decision.id) : null;
+    if (!evidence) throw new DomainError('not_found', `No evidence for decision ${claimId}#${seq}`);
+    return evidence;
   }
 
   async getLimits(policyId: string, animalId: string, onDate: ISODate): Promise<LimitsView> {
@@ -185,7 +231,7 @@ export class ClaimsService {
 
   // -------------------------------------------------------------------------
 
-  private async assessInternal(claim: Claim, knownAt: Timestamp | undefined, ownClaimId: string | undefined): Promise<Assessment> {
+  private async assessInternal(claim: Claim, knownAt: Timestamp | undefined, ownClaimId: string | undefined): Promise<Assessed> {
     const policy = await this.d.policies.getPolicyAt(claim.policyId, claim.treatmentFrom, knownAt);
     const rules = await this.d.rules.getRules(policy?.productVersion ?? 'default');
     const group = rules.diagnosisGroups[claim.diagnosisCode] ?? null;
@@ -196,15 +242,16 @@ export class ClaimsService {
     const consumedBefore = policy
       ? await this.d.store.getConsumed(limitKey(claim.animalId, policy), ownClaimId)
       : 0;
-    return assess({ claim, policy, rules, openDeductiblePeriod, consumedBefore });
+    const input: AssessmentInput = { claim, policy, rules, openDeductiblePeriod, consumedBefore };
+    return { assessment: assess(input), input };
   }
 
   private async commit(
     claim: Claim,
-    assessment: Assessment,
+    { assessment, input }: Assessed,
     action: 'accept' | 'reject',
     decidedBy: string,
-    reason?: string,
+    motivation: Motivation,
   ): Promise<ClaimDecision> {
     const prev = await this.latestDecision(claim.id);
     const now = this.d.clock.now();
@@ -220,7 +267,15 @@ export class ClaimsService {
       assessment,
       decidedBy,
       decidedAt: now,
-      ...(reason ? { reason } : {}),
+      ...(motivation.reason ? { reason: motivation.reason } : {}),
+      deviatesFromProposal: motivation.deviatesFromProposal,
+      ...(motivation.reasonCode ? { reasonCode: motivation.reasonCode } : {}),
+    };
+    const evidence: DecisionEvidence = {
+      decisionId: decision.id,
+      input,
+      calculationModel: CALCULATION_MODEL,
+      engineVersion: this.d.engineVersion ?? 'unknown',
     };
 
     const journals: LedgerJournal[] = [];
@@ -257,7 +312,7 @@ export class ClaimsService {
     }
 
     const events: ClaimsEvent[] = [{ type: 'claim.decided', occurredAt: now, decision }];
-    await asConflict(this.d.store.commitDecision({ decision, journals, deductiblePeriod, events }));
+    await asConflict(this.d.store.commitDecision({ decision, journals, deductiblePeriod, evidence, events }));
     return decision;
   }
 

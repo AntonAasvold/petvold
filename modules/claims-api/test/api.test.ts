@@ -214,6 +214,24 @@ test('an unknown path still gives 404, not 403', async () => {
   assert.equal((await call('GET', '/v1/nothing-here', { token: 'clinic' })).status, 404);
 });
 
+test('rejecting against the proposal: 403 without claims:override, 422 without motivation, 201 with both', async () => {
+  const { call } = setup({ roles: { ...DEFAULT_ROLES, 'claims-team': ['claims:read', 'claims:decide'] } });
+  await call('POST', '/v1/claims', { key: 'key-00000201', body: input(cruciateClaim()) });
+  const body = { action: 'reject', reasonCode: 'pre_existing_condition', reason: 'Lameness before the policy started' };
+
+  const forbidden = await call('POST', '/v1/claims/clm_048213/decisions', { token: 'team', key: 'key-00000202', body });
+  assert.equal(forbidden.status, 403);
+  const unmotivated = await call('POST', '/v1/claims/clm_048213/decisions', { key: 'key-00000203', body: { action: 'reject' } });
+  assert.equal(unmotivated.status, 422);
+
+  const ok = await call('POST', '/v1/claims/clm_048213/decisions', { key: 'key-00000204', body });
+  assert.equal(ok.status, 201);
+  const decision = (await ok.json()) as any;
+  assertSchema('Decision', decision);
+  assert.equal(decision.deviatesFromProposal, true);
+  assert.equal(decision.reasonCode, 'pre_existing_condition');
+});
+
 test('a stale inputHash gives 409', async () => {
   const { call } = setup();
   await call('POST', '/v1/claims', { key: 'key-00000007', body: input(cruciateClaim()) });
