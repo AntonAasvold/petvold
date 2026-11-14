@@ -1,6 +1,6 @@
 # 0010. En installation per kund (silo)
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-14
 
 ## Sammanhang
