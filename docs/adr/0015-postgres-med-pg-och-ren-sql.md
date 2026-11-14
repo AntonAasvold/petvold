@@ -1,6 +1,6 @@
 # 0015. Databasåtkomst med node-postgres och ren SQL
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-14
 
 ## Sammanhang

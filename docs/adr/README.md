@@ -16,6 +16,6 @@
 | [0012](0012-teststrategi.md) | Teststrategi i lager med invarianter, scenarier och porttester | Beslutad |
 | [0013](0013-lokal-miljo-och-migreringar.md) | Lokal miljö med docker compose och migreringar med dbmate | Beslutad |
 | [0014](0014-valuta-en-gang-per-objekt.md) | Belopp som heltal med valutan en gång per objekt (ersätter 0005) | Beslutad |
-| [0015](0015-postgres-med-pg-och-ren-sql.md) | Databasåtkomst med node-postgres och ren SQL | Föreslagen |
+| [0015](0015-postgres-med-pg-och-ren-sql.md) | Databasåtkomst med node-postgres och ren SQL | Beslutad |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.
