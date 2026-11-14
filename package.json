@@ -2,7 +2,9 @@
   "name": "petvold",
   "private": true,
   "type": "module",
-  "workspaces": ["modules/*"],
+  "workspaces": [
+    "modules/*"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
     "test": "node --import tsx --test \"modules/*/test/*.test.ts\"",
@@ -11,6 +13,7 @@
   },
   "devDependencies": {
     "@types/node": "^22",
+    "fast-check": "^4.10.2",
     "tsx": "^4",
     "typescript": "^5.9"
   }
