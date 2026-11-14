@@ -17,6 +17,8 @@
 | [0013](0013-lokal-miljo-och-migreringar.md) | Lokal miljö med docker compose och migreringar med dbmate | Beslutad |
 | [0014](0014-valuta-en-gang-per-objekt.md) | Belopp som heltal med valutan en gång per objekt (ersätter 0005) | Beslutad |
 | [0015](0015-postgres-med-pg-och-ren-sql.md) | Databasåtkomst med node-postgres och ren SQL | Beslutad |
+| [0016](0016-behorighet.md) | Behörighet: rättigheter i kontraktet, roller per installation och åtkomst till data | Föreslagen |
+| [0017](0017-betalningar-och-betaltjanster.md) | Betalningar via en port med en adapter per betaltjänst | Föreslagen |
 | [0018](0018-beslutsmotor-och-beviskedja.md) | Beslutsmotor som egen modul, med beviskedja för varje beslut | Föreslagen |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.

@@ -37,10 +37,11 @@ Petvold är ett privat projekt, skilt från anställning.
 ## Klart betyder
 
 - Kontraktet (OpenAPI/AsyncAPI) är uppdaterat först, koden sedan.
-- Tester täcker det nya, inklusive minst ett fel- eller gränsfall. En ny beräkning eller regel har minst en egenskap ([testning.md](testning.md)).
+- Tester täcker det nya, inklusive minst ett fel- eller gränsfall. En ny beräkning eller regel har minst en egenskap ([testning.md](teknik/testning.md)).
 - Pengar i minsta valutaenhet, datum som `ISODate`, marknad explicit.
 - Beslut går att styrka (ADR 0018): en ändring i bedömning eller beräkning får inte ändra resultatet för sparade beslut. En rättelse blir en ny beräkningsmodell, och gamla modeller tas inte bort.
 - Nya beslut har en ADR. Ändrade beslut får en ny ADR som ersätter den gamla.
+- Dokumentationen är uppdaterad i samma PR: [funktion](funktion/) för beteende och konfiguration, [teknik](teknik/) för hur det är byggt. Ny regel, beräkning eller inställning betyder ny text med exempel.
 - `docs/status.md` säger vad som ändrats och vad som är nästa steg.
 
 ## Beslut (ADR)
