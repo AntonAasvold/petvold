@@ -1,18 +1,13 @@
 /**
  * Domäntyper för skademotorn.
  *
- * Konventioner:
- * - Belopp är heltal i öre (minsta valutaenhet). Aldrig flyttal för pengar.
+ * Konventioner (se @petvold/common):
+ * - Belopp är heltal i minsta valutaenhet. Aldrig flyttal för pengar.
  * - Datum är ISO-datum 'YYYY-MM-DD' utan tid. Tidpunkter är ISO-tidsstämplar.
  */
+import type { CurrencyCode, ISODate, MarketCode, MinorUnits, Timestamp } from '@petvold/common';
 
-export type Ore = number;
-export type ISODate = string;
-export type Timestamp = string;
-/** ISO 3166-1 alpha-2, t.ex. 'SE', 'NO', 'DK', 'FI', 'DE', 'FR', 'GB'. */
-export type MarketCode = string;
-/** ISO 4217, t.ex. 'SEK', 'NOK', 'DKK', 'EUR', 'GBP'. */
-export type CurrencyCode = string;
+export type { CurrencyCode, ISODate, MarketCode, MinorUnits, Timestamp };
 
 // ---------------------------------------------------------------------------
 // Skadeärende
@@ -28,9 +23,9 @@ export interface ClaimLine {
   /** Diagnoskod för raden om den avviker från ärendets huvuddiagnos. */
   diagnosisCode?: string;
   /** Belopp inklusive moms, i ärendets valuta. */
-  amount: Ore;
+  amount: MinorUnits;
   /** Momsdelen av amount, om fakturan anger den. */
-  vat?: Ore;
+  vat?: MinorUnits;
 }
 
 export interface Claim {
@@ -61,7 +56,7 @@ export interface Claim {
  * plus rörlig självrisk som kan öka med djurets ålder.
  */
 export interface DeductibleTerms {
-  fixed: Ore;
+  fixed: MinorUnits;
   fixedPer: 'period' | 'claim' | 'policy_year';
   /** Krävs när fixedPer är 'period'. */
   periodDays?: number;
@@ -74,7 +69,7 @@ export interface DeductibleTerms {
 export interface VetCareTerms {
   code: 'vet_care';
   /** Försäkringsbelopp per försäkringsår. */
-  annualLimit: Ore;
+  annualLimit: MinorUnits;
   deductible: DeductibleTerms;
   /** Karenstid från försäkringens startdatum. */
   waitingPeriodDays: number;
@@ -130,7 +125,7 @@ export interface ClaimsRules {
   /** Diagnoskod -> diagnosgrupp. Styr självriskperioder och förbehållsmatchning. */
   diagnosisGroups: Record<string, string>;
   /** Högsta ersättning som får regleras utan handläggare. */
-  autoSettleMax: Ore;
+  autoSettleMax: MinorUnits;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,23 +173,23 @@ export interface RuleResult {
 }
 
 export interface Calculation {
-  billed: Ore;
-  nonReimbursable: Ore;
-  base: Ore;
+  billed: MinorUnits;
+  nonReimbursable: MinorUnits;
+  base: MinorUnits;
   currency: CurrencyCode;
-  vatExcluded: Ore;
+  vatExcluded: MinorUnits;
   /** true om ärendet tar ut fast självrisk och öppnar en ny period (för 'period' och 'policy_year'). */
   opensDeductiblePeriod: boolean;
   deductibleVariableBp: number;
-  deductibleFixed: Ore;
-  deductibleVariable: Ore;
-  payableBeforeLimit: Ore;
-  annualLimit: Ore;
-  consumedBefore: Ore;
-  remainingBefore: Ore;
-  payout: Ore;
+  deductibleFixed: MinorUnits;
+  deductibleVariable: MinorUnits;
+  payableBeforeLimit: MinorUnits;
+  annualLimit: MinorUnits;
+  consumedBefore: MinorUnits;
+  remainingBefore: MinorUnits;
+  payout: MinorUnits;
   /** Vad kunden betalar själv av det fakturerade beloppet. */
-  customerShare: Ore;
+  customerShare: MinorUnits;
   cappedByLimit: boolean;
 }
 
@@ -222,7 +217,7 @@ export interface ClaimDecision {
   /** 1, 2, 3 … – en ny rad per beslut eller omprövning, aldrig uppdatering. */
   seq: number;
   outcome: Outcome;
-  payout: Ore;
+  payout: MinorUnits;
   assessment: Assessment;
   decidedBy: string;
   decidedAt: Timestamp;
@@ -236,7 +231,7 @@ export interface ClaimDecision {
 export interface LedgerLine {
   account: string;
   /** + debet, − kredit. Varje journal summerar till noll. */
-  amount: Ore;
+  amount: MinorUnits;
 }
 
 export interface LedgerJournal {

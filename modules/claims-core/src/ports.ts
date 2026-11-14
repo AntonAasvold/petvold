@@ -4,7 +4,7 @@ import type {
   DeductiblePeriod,
   ISODate,
   LedgerJournal,
-  Ore,
+  MinorUnits,
   PolicySnapshot,
   Timestamp,
   Claim,
@@ -48,7 +48,7 @@ export interface ClaimsStore {
    * Förbrukat försäkringsbelopp för djur, moment och försäkringsår, enligt ledgern.
    * Ärendets eget tidigare förbrukade belopp exkluderas vid omprövning.
    */
-  getConsumed(animalId: string, coverage: string, policyYearStart: ISODate, excludeClaimId?: string): Promise<Ore>;
+  getConsumed(animalId: string, coverage: string, policyYearStart: ISODate, excludeClaimId?: string): Promise<MinorUnits>;
 
   getDecisions(claimId: string): Promise<ClaimDecision[]>;
   /**

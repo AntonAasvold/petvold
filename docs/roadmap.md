@@ -7,7 +7,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 **M0 – Grund**
 - [x] Skademotorn med kontrakt, tester och Postgres-schema
 - [x] Arbetssätt, roadmap, ADR och CI
-- [ ] Gemensamt schemabibliotek: `Money`, `Market`, `DateRange`, `Ref`, problem+json, sidindelning
+- [x] Gemensam kärna i kod: `Money`, `Market`, `DateRange` (`modules/common`)
+- [ ] Gemensamma kontraktsdelar: `Money`, `Ref`, problem+json, sidindelning
 - [ ] Lokal miljö med Postgres (docker compose)
 
 **M1 – Skademotorn på riktig lagring**

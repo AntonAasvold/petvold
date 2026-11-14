@@ -18,7 +18,7 @@ Policydata äger den inte. Den läses via ett utbytbart gränssnitt, så motorn 
 
 ```
 npm install
-npm test               # 43 tester: domän, tjänst och kontrakt
+npm test               # 55 tester: värdetyper, domän, tjänst och kontrakt
 npm run typecheck
 npm run lint:openapi   # kontrakt och implementation har exakt samma operationer
 npm run dev            # http://localhost:8787, kontraktet på /openapi.yaml
@@ -30,7 +30,8 @@ Dev-servern har exempeldata (Bella, labrador) och två tokens: `dev-handler` och
 
 | Modul | Ansvar | Beror på |
 | --- | --- | --- |
-| `claims-core` | Domänen: bedömning, beräkning, beslut, ledger-poster. Ren TypeScript utan I/O, text eller ramverk. | inget |
+| `common` | Värdetyper: pengar, valuta, marknad, datum och datumintervall. Inga beroenden. | inget |
+| `claims-core` | Domänen: bedömning, beräkning, beslut, ledger-poster. Ren TypeScript utan I/O, text eller ramverk. | common |
 | `claims-api` | HTTP enligt `openapi.yaml`: validering mot kontraktet, auth, idempotens, problem+json, språk. | core |
 | `claims-store-memory` | Lagring och policyport i minnet för tester och dev, plus exempeldata. | core |
 | `db/migrations` | Postgres-schemat `claims` för drift (Postgres via CloudNativePG). | – |

@@ -6,7 +6,7 @@ import type {
   DeductiblePeriod,
   ISODate,
   LedgerJournal,
-  Ore,
+  MinorUnits,
   PolicyPort,
   PolicySnapshot,
   RulesPort,
@@ -48,7 +48,7 @@ export class InMemoryClaimsStore implements ClaimsStore {
     return hit ? { ...hit } : null;
   }
 
-  async getConsumed(animalId: string, coverage: string, policyYearStart: ISODate, excludeClaimId?: string): Promise<Ore> {
+  async getConsumed(animalId: string, coverage: string, policyYearStart: ISODate, excludeClaimId?: string): Promise<MinorUnits> {
     const account = `limit_consumed:${animalId}:${coverage}:${policyYearStart}`;
     return this.journals
       .filter((j) => j.claimId !== excludeClaimId)

@@ -6,12 +6,13 @@ import type {
   DeductiblePeriod,
   ISODate,
   Outcome,
-  Ore,
+  MinorUnits,
   PolicySnapshot,
   RuleResult,
   VetCareTerms,
 } from './types.ts';
-import { addDays, applyBp, assertDate, assertOre, dateLt, dateLte, sha256 } from './util.ts';
+import { addDays, applyBp, assertDate, assertMinorUnits, dateLt, dateLte } from '@petvold/common';
+import { sha256 } from './util.ts';
 
 /** Allt bedömningen behöver. Ren data in, ren data ut: inga anrop, ingen klocka, ingen text. */
 export interface AssessmentInput {
@@ -24,7 +25,7 @@ export interface AssessmentInput {
    */
   openDeductiblePeriod: DeductiblePeriod | null;
   /** Förbrukat försäkringsbelopp innan detta ärende, för samma försäkringsår. */
-  consumedBefore: Ore;
+  consumedBefore: MinorUnits;
 }
 
 export function validateClaim(claim: Claim): void {
@@ -35,10 +36,10 @@ export function validateClaim(claim: Claim): void {
   if (!/^[A-Z]{3}$/.test(claim.currency)) throw new Error(`currency: ogiltig valutakod '${claim.currency}'`);
   if (claim.lines.length === 0) throw new Error('Skadeärendet saknar fakturarader');
   for (const l of claim.lines) {
-    assertOre(l.amount, `lines[${l.id}].amount`);
+    assertMinorUnits(l.amount, `lines[${l.id}].amount`);
     if (l.amount < 0) throw new Error(`lines[${l.id}].amount får inte vara negativt`);
     if (l.vat !== undefined) {
-      assertOre(l.vat, `lines[${l.id}].vat`);
+      assertMinorUnits(l.vat, `lines[${l.id}].vat`);
       if (l.vat < 0 || l.vat > l.amount) throw new Error(`lines[${l.id}].vat måste ligga mellan 0 och amount`);
     }
   }
@@ -202,7 +203,7 @@ export function calculate(
   terms: VetCareTerms,
   rules: ClaimsRules,
   openPeriod: DeductiblePeriod | null,
-  consumedBefore: Ore,
+  consumedBefore: MinorUnits,
 ): Calculation {
   const nonReimb = new Set(rules.nonReimbursableCategories);
   const billed = claim.lines.reduce((s, l) => s + l.amount, 0);
