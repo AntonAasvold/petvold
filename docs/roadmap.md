@@ -36,6 +36,24 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [ ] Bitemporala versioner, term, transaktionslivscykel
 - [ ] Ändring, reversering och ändring i fel ordning
 - [ ] PolicyGroup och överlåtelse
+- [ ] ADR om policyns livscykel: tecknande, ändring, förnyelse, avslut och överlåtelse, med legala ramar per marknad (försäkringsavtalslagen, regler för distansavtal) och källor
+- [ ] Förnyelse:
+  - förnyelsekörning före förfallodagen
+  - ny term med vald produktversion
+  - nytt pris och prövning (åldersgränser, nya undantag)
+  - avisering till kunden
+  - händelse `policy.renewed`
+- [ ] Avslut:
+  - kundens uppsägning
+  - ånger inom ångerfristen
+  - bolagets uppsägning vid utebliven betalning
+  - djuret dött eller sålt
+  - avslutsdatum bakåt i tiden (bitemporalt)
+  - reversering av avslut
+  - händelse `policy.cancelled`
+  - produktinställning för avslut under avtalstiden: tillåtet när som helst eller bara till förfallodagen (avtalet löper ut), uppsägningstid och premieåterbetalning
+  - avslut som alltid är tillåtna oavsett inställning, per marknad: ånger inom ångerfristen (distansavtal) och när försäkringsbehovet faller bort, till exempel när djuret dör eller säljs. Petvold validerar att en produkt inte stänger dem.
+- [ ] Skademotorn vid förnyelse och avslut: omprövning av skador efter ett retroaktivt avslut, och självriskperiod och försäkringsbelopp över termgränsen
 
 **M4 – Pris och teckning**
 - [ ] Tariff som rena funktioner per produktversion
@@ -46,6 +64,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 ## Senare
 
 **M5 – Pengar**
+- Premieåterbetalning vid avslut och ny premieplan vid förnyelse.
 - Betalningsmodul (ADR 0017): porten `PaymentProvider`, tillståndsmaskin, fake-adapter och gemensam testsvit.
 - Betalintegrationer, en adapter per tjänst:
   - Stripe (kort, sparat kort)
@@ -69,4 +88,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - Licens: stängd, källkod tillgänglig eller öppen källkod?
 - Gemensamt försäkringsbelopp för en kull.
 - Överlåtelseregler per marknad.
+- Självriskperiod över förnyelse: konfigurerbart per produkt (`periodEndsAtRenewal`, standard är att perioden fortsätter). Kvar: perioden ska bara fortsätta så länge skyddet är oavbrutet, inte över avslut, uppehåll eller ny ägare.
+- Retroaktivt avslut när ersättning redan är betald för tiden efter avslutet: återkrav, avräkning mot premieåterbetalning eller avskrivning?
+- Premieåterbetalning vid avslut: per dag eller enligt produktens regel, och vid ånger?
 - Moln och klientlager.

@@ -22,6 +22,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 3. Behörighet del 2: omfång per marknad och klinik.
 4. Attestkedjan med beloppsgränser och utbetalningsorder.
 
+**Tillägg i samma pass**
+- #18 mergad.
+- Roadmap: förnyelse och avslut som egna punkter i M3, en ADR om policyns livscykel, och tre nya öppna frågor:
+  - självriskperiod över förnyelse
+  - retroaktivt avslut efter utbetalning
+  - premieåterbetalning
+
 **Öppet**
 - Beslut som fattades före migration 0005 har inget underlag. Det gäller bara testdata.
 - Underlaget innehåller personuppgifter. Gallring per installation kommer med driften.
