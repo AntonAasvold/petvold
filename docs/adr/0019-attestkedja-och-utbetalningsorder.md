@@ -1,6 +1,6 @@
 # 0019. Attestkedja: beslutsförslag, attest och utbetalningsorder
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-14
 
 ## Sammanhang

@@ -1,6 +1,6 @@
 # 0020. Roller och beloppsgränser som versionerad konfiguration via API
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-14
 
 ## Sammanhang
