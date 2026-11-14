@@ -33,6 +33,7 @@ Versioneras med produkten, till exempel `SE-HUND-2026.2`. Ett beslut sparar vilk
 | `deductible.fixed` | Fast självrisk | 200 000 (2 000 kr) |
 | `deductible.fixedPer` | När den fasta självrisken tas ut, se nedan | `period` |
 | `deductible.periodDays` | Periodens längd, när `fixedPer` är `period` | 125 dagar |
+| `deductible.periodEndsAtRenewal` | Slutar perioden när försäkringsåret slutar? Se nedan. | `false` (standard) |
 | `deductible.variableBp` | Rörlig självrisk i baspunkter (2500 = 25 %) | 2500 |
 | `deductible.variableBpByAge` | Högre rörlig självrisk från en viss ålder | *(inte satt för Bella)* |
 
@@ -43,6 +44,26 @@ Versioneras med produkten, till exempel `SE-HUND-2026.2`. Ett beslut sparar vilk
 | `period` | En gång per period och diagnosgrupp. Perioden börjar på första behandlingsdagen. | Norden |
 | `claim` | På varje skada | Flera andra europeiska marknader |
 | `policy_year` | En gång per försäkringsår, oavsett diagnos | Vissa produkter |
+
+### Självriskperiod över förnyelse
+
+En period kan vara öppen när försäkringen förnyas. Inställningen `periodEndsAtRenewal` avgör vad som händer då.
+
+Exempel: Bella behandlas för öroninflammation 1 februari 2027, och en period öppnas till 6 juni. Försäkringen förnyas 1 april. 15 april kommer hon tillbaka med samma diagnos, och fakturan är på 4 000 kr.
+
+| | `false` (standard): perioden fortsätter | `true`: perioden slutar vid förnyelsen |
+| --- | ---: | ---: |
+| Perioden gäller till | 6 juni 2027 | 1 april 2027 |
+| Fast självrisk 15 april | 0 kr | 2 000 kr |
+| Rörlig självrisk 25 % | 1 000 kr | 500 kr |
+| **Ersättning** | **3 000 kr** | **1 500 kr** |
+
+- **Standard är att perioden fortsätter.** En sjukdom ger en fast självrisk, oavsett när förnyelsen sker.
+- **Villkoren när perioden öppnas avgör när den slutar.** Om inställningen eller den fasta självrisken ändras vid förnyelsen påverkas bara nya perioder.
+- **Den rörliga självrisken räknas alltid per skada** med de villkor som gäller på behandlingsdagen.
+- **Försäkringsbeloppet börjar alltid om** vid förnyelsen, oavsett inställningen.
+
+*(Planerat, M3: perioden ska bara fortsätta så länge skyddet är oavbrutet, alltså genom förnyelser men inte över ett avslut, ett uppehåll eller en ny ägare. I dag är perioden knuten till djuret.)*
 
 ### Rörlig självrisk efter ålder
 
