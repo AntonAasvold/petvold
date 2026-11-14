@@ -1,6 +1,6 @@
 # 0005. Pengar som heltal i minsta valutaenhet
 
-- Status: Beslutad
+- Status: Ersatt av [0014](0014-valuta-en-gang-per-objekt.md)
 - Datum: 2026-11-14
 
 ## Sammanhang

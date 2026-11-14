@@ -1,8 +1,8 @@
 # 0014. Belopp som heltal med valutan en gång per objekt
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-14
-- Ersätter: 0005, om den beslutas
+- Ersätter: 0005
 
 ## Sammanhang
 
