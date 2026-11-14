@@ -2,6 +2,17 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 5)
+
+**Gjort**
+- API-sida på `/docs` i dev-servern (Scalar 1.76.4, genererad från kontraktet, `dev-handler` förifylld).
+- Exempel i kontraktet: öroninflammation (automatisk), korsbandsskada (till handläggare), behandling före start (avslag), plus beslut och omprövning. Tester kontrollerar att exemplen följer schemat och ger beskrivet utfall.
+- `examples/claims.http` med hela flödet och felfall, och REST Client som föreslaget VS Code-tillägg.
+- ADR 0014 beslutad. #6 och #7 mergade.
+
+**Nästa steg**
+- Se pass 4: `claims-store-postgres` först.
+
 ## 2026-11-14 (pass 4)
 
 **Gjort**

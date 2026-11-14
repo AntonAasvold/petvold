@@ -1,6 +1,7 @@
 /**
  * Lokal utvecklingsserver med data i minnet och exempeldata för Bella.
  * Tokens: 'dev-handler' (handläggare), 'dev-clinic' (klinik).
+ * API-sidan finns på /docs och exempelanrop i examples/claims.http.
  */
 import { serve } from '@hono/node-server';
 import { ClaimsService } from '@petvold/claims-core';
@@ -12,6 +13,7 @@ import {
   fixtures,
 } from '@petvold/claims-store-memory';
 import { createApp, InMemoryIdempotencyStore, type Principal } from './index.ts';
+import { docsPage } from './docs.ts';
 
 const clock = { now: () => new Date().toISOString() };
 const policies = new InMemoryPolicyPort([{ snapshot: fixtures.bellaPolicy(), sysFrom: '2026-03-03T00:00:00Z' }]);
@@ -37,5 +39,16 @@ const app = createApp({
 });
 
 const port = Number(process.env.PORT ?? 8787);
-serve({ fetch: app.fetch, port });
-console.log(`Skademotor lyssnar på http://localhost:${port} – kontrakt på /openapi.yaml`);
+const docs = docsPage({ specUrl: '/openapi.yaml', defaultToken: 'dev-handler' });
+
+serve({
+  port,
+  fetch: (req) =>
+    new URL(req.url).pathname === '/docs'
+      ? new Response(docs, { headers: { 'content-type': 'text/html; charset=utf-8' } })
+      : app.fetch(req),
+});
+console.log(`Skademotor lyssnar på http://localhost:${port}`);
+console.log(`  API-sida:  http://localhost:${port}/docs`);
+console.log(`  Kontrakt:  http://localhost:${port}/openapi.yaml`);
+console.log(`  Tokens:    dev-handler (handläggare), dev-clinic (klinik)`);

@@ -33,6 +33,8 @@ Se [Utvecklingsmiljö](docs/utvecklingsmiljo.md) för detaljer.
 
 Dev-servern har exempeldata (Bella, labrador) och två tokens: `dev-handler` och `dev-clinic`.
 
+**Testa själv:** öppna http://localhost:8787/docs för en klickbar API-sida med färdiga exempel, eller [`examples/claims.http`](examples/claims.http) i VS Code (tillägget REST Client) för hela flödet från förhandsbesked till beslut och omprövning.
+
 ## Moduler
 
 | Modul | Ansvar | Beror på |

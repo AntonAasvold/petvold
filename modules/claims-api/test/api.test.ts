@@ -17,8 +17,10 @@ import {
   validatorFor,
   messageKeys,
   supportedLocales,
+  openapi,
   type Principal,
 } from '@petvold/claims-api';
+import { docsPage, SCALAR_VERSION } from '../src/docs.ts';
 
 const { bellaPolicy, cruciateClaim, otitisClaim, eurPolicy, eurClaim, RULES_SE_DOG, RULES_EUR_EXAMPLE, PRODUCT, PRODUCT_EUR } = fixtures;
 
@@ -201,4 +203,61 @@ test('kontraktet serveras', async () => {
   const res = await app.request('/openapi.yaml');
   assert.equal(res.status, 200);
   assert.match(await res.text(), /^openapi: 3\.1\.0/);
+});
+
+// Exempel i kontraktet ---------------------------------------------------------
+// Exemplen visas på /docs och används i examples/*.http. De ska följa
+// kontraktet och ge det utfall som deras beskrivning lovar.
+
+type Example = { value: unknown };
+const doc = openapi as unknown as {
+  paths: Record<string, Record<string, { requestBody?: { content: Record<string, { schema: { $ref: string }; examples?: Record<string, { $ref: string }> }> } }>>;
+  components: { examples: Record<string, Example> };
+};
+const exampleValue = (ref: string) => doc.components.examples[ref.split('/').pop()!]!.value;
+
+test('alla exempel i kontraktet följer sitt schema', () => {
+  let checked = 0;
+  for (const [path, item] of Object.entries(doc.paths)) {
+    for (const [method, op] of Object.entries(item)) {
+      for (const media of Object.values(op.requestBody?.content ?? {})) {
+        const schema = media.schema.$ref.split('/').pop()!;
+        for (const [name, ex] of Object.entries(media.examples ?? {})) {
+          const v = validatorFor(schema);
+          assert.ok(v(exampleValue(ex.$ref)), `${method.toUpperCase()} ${path} exempel '${name}': ${JSON.stringify(v.errors)}`);
+          checked++;
+        }
+      }
+    }
+  }
+  assert.ok(checked >= 9, `förväntade minst 9 exempel, hittade ${checked}`);
+});
+
+test('exemplen ger det utfall de beskriver', async () => {
+  const { call } = setup();
+  const register = async (name: string) => {
+    const res = await call('POST', '/v1/claims', { token: 'clinic', key: `exempel-${name}`, body: exampleValue(`#/components/examples/${name}`) });
+    assert.equal(res.status, 201, name);
+    return (await res.json()) as { assessment: { mode: string; proposedOutcome: string }; decision: { outcome: string; payout: number } | null };
+  };
+
+  const otit = await register('ClaimOtitAuto');
+  assert.equal(otit.decision?.outcome, 'approved');
+  assert.equal(otit.decision?.payout, 150_000);
+
+  const korsband = await register('ClaimKorsbandManual');
+  assert.equal(korsband.decision, null);
+  assert.equal(korsband.assessment.mode, 'manual');
+  assert.equal(korsband.assessment.proposedOutcome, 'partial');
+
+  const beforePolicy = await register('ClaimBeforePolicy');
+  assert.equal(beforePolicy.assessment.proposedOutcome, 'rejected');
+});
+
+test('API-sidan pekar på kontraktet och har en låst Scalar-version', () => {
+  const html = docsPage({ specUrl: '/openapi.yaml', defaultToken: 'dev-handler' });
+  assert.match(html, /"url":"\/openapi\.yaml"/);
+  assert.match(html, /"token":"dev-handler"/);
+  assert.match(html, new RegExp(`@scalar/api-reference@${SCALAR_VERSION.replace(/\./g, '\\.')}"`));
+  assert.match(SCALAR_VERSION, /^\d+\.\d+\.\d+$/);
 });

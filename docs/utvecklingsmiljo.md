@@ -27,6 +27,13 @@ npm run dev            # API:et på http://localhost:8787, startar om vid ändri
 
 `npm run dev` använder fortfarande minneslagret och exempeldata. Den använder Postgres först när `claims-store-postgres` finns.
 
+## Testa API:et för hand
+
+- **API-sidan:** http://localhost:8787/docs. Den genereras från `openapi.yaml` med Scalar. Token `dev-handler` är förifylld, och varje anrop har färdiga exempel (öroninflammation, korsbandsskada, behandling före försäkringens start).
+- **Exempelanrop:** `examples/claims.http` i VS Code med tillägget REST Client (föreslås när du öppnar repot). Filen går igenom hela flödet: förhandsbesked, automatisk reglering, handläggarbeslut med `inputHash`, försäkringsbelopp, omprövning och felfall.
+
+Exemplen finns i kontraktet (`components/examples`). Testerna kontrollerar att de följer schemat och ger det utfall som beskrivs.
+
 ## Kommandon
 
 | Kommando | Gör |
