@@ -6,11 +6,16 @@ Första modulen är skademotorn. Policy, produkt, tariff, billing och ledger kom
 
 ## Dokumentation
 
+All dokumentation samlas i [docs/](docs/README.md): funktion (hur systemet fungerar och konfigureras) och teknik (hur det är byggt).
+
+- [Skadereglering](docs/funktion/skadereglering.md) – regler, beräkning och beslut med exempel
+- [Produktkonfiguration](docs/funktion/produktkonfiguration.md) – vad produkt och policy styr
+- [Arkitektur](docs/teknik/arkitektur.md) – moduler, portar, lagring och händelser
 - [Arbetssätt](docs/arbetssatt.md) – roller, flöde och vad klart betyder
 - [Roadmap](docs/roadmap.md) – milstolpar fram till första sålda försäkringen
 - [Status](docs/status.md) – var vi är och nästa steg
-- [Utvecklingsmiljö](docs/utvecklingsmiljo.md) – kom igång lokalt
-- [Testning](docs/testning.md) – testlager och vad som krävs
+- [Utvecklingsmiljö](docs/teknik/utvecklingsmiljo.md) – kom igång lokalt
+- [Testning](docs/teknik/testning.md) – testlager och vad som krävs
 - [Beslut](docs/adr/README.md) – arkitekturbeslut (ADR)
 
 ## Skademotorn
@@ -22,7 +27,7 @@ Policydata äger den inte. Den läses via ett utbytbart gränssnitt, så motorn 
 npm ci
 cp .env.example .env
 npm run dev:up         # Postgres och migreringar (kräver docker compose)
-npm test               # 68 tester: enhet, egenskaper, tjänst och kontrakt
+npm test               # enhet, egenskaper, tjänst och kontrakt
 npm run test:db        # databasens regler mot Postgres
 npm run typecheck
 npm run lint:openapi   # kontrakt och implementation har exakt samma operationer
@@ -30,7 +35,7 @@ npm run lint:lang      # koden är på engelska
 npm run dev            # http://localhost:8787, kontraktet på /openapi.yaml
 ```
 
-Se [Utvecklingsmiljö](docs/utvecklingsmiljo.md) för detaljer.
+Se [Utvecklingsmiljö](docs/teknik/utvecklingsmiljo.md) för detaljer.
 
 Dev-servern har exempeldata (Bella, labrador) och två tokens: `dev-handler` och `dev-clinic`.
 
