@@ -13,5 +13,6 @@
 | [0009](0009-rent-ursprung.md) | Rent ursprung för kod och underlag | Beslutad |
 | [0010](0010-en-installation-per-kund.md) | En installation per kund (silo) | Beslutad |
 | [0011](0011-gemensam-karna.md) | Gemensam kärna för värdetyper (`@petvold/common`) | Föreslagen |
+| [0012](0012-teststrategi.md) | Teststrategi i lager med invarianter, scenarier och porttester | Föreslagen |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.
