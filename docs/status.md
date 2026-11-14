@@ -9,12 +9,12 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - Migration `0002_claims_grants.sql`: tjänsterollen får bara läsa och lägga till, plus ersätta självriskperioder och markera händelser som publicerade.
 - Databastester (`db/test/`, lager 6): balanserade journaler, inga överlappande perioder, historik går inte att ändra eller radera för tjänsterollen.
 - CI: samma Node-version som lokalt, och ett jobb som kör `npm run dev:up`, databastesterna och backning av migreringarna.
+- Verifierat lokalt med OrbStack: `dev:up` och alla databastester gröna.
 
 **Nästa steg**
-1. Installera OrbStack och köra `npm run dev:up` lokalt (Anton).
-2. Gemensam testsvit för `ClaimsStore` (lager 4) och sedan `claims-store-postgres`.
-3. Gemensamma kontraktsdelar: `Money`, `Problem`, sidindelning och `Ref`.
-4. Biome för formatering och lint, som egen PR.
+1. Gemensam testsvit för `ClaimsStore` (lager 4) och sedan `claims-store-postgres`.
+2. Gemensamma kontraktsdelar: `Money`, `Problem`, sidindelning och `Ref`.
+3. Biome för formatering och lint, som egen PR.
 
 **Öppet**
 - OrbStack är gratis bara för privat bruk. Köp licens eller byt till Colima när Petvold blir kommersiellt.
