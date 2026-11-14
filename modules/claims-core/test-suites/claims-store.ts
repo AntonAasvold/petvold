@@ -224,6 +224,14 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.deepEqual(await store.getClaim('clm_a'), c);
     });
 
+    it('the submitting clinic is read back, and a claim without one has none', async (store) => {
+      const fromClinic = claim('clm_a', { channel: 'clinic_direct', clinicId: 'clinic_001' });
+      await save(store, fromClinic);
+      await save(store, claim('clm_b', { claimNo: 'S-b' }));
+      assert.deepEqual(await store.getClaim('clm_a'), fromClinic);
+      assert.equal(Object.hasOwn((await store.getClaim('clm_b'))!, 'clinicId'), false);
+    });
+
     it('an unknown claim gives null', async (store) => {
       assert.equal(await store.getClaim('clm_finns_inte'), null);
     });

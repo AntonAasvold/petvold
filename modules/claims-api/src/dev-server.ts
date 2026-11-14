@@ -76,10 +76,11 @@ const logSink = {
 setInterval(() => void relayOutbox(store, logSink, clock).catch((err) => console.error('[relay]', err)), 1_000).unref();
 
 const tokens: Record<string, Principal> = {
-  'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler', 'approver'] },
-  'dev-clinic': { subject: 'klinik-001', roles: ['clinic'] },
-  'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'] },
-  'dev-customer': { subject: 'customer-portal', roles: ['customer-channel'] },
+  'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler', 'approver'], markets: '*' },
+  'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
+  'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
+  // Acts for the customer who owns Bella's policy in the sample data.
+  'dev-customer': { subject: 'customer-portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
 };
 
 const app = createApp({

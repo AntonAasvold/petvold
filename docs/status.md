@@ -2,6 +2,27 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 17)
+
+**Gjort**
+- #22 mergad: förklaring och mänsklig prövning.
+- Behörighet del 2: omfång (ADR 0016).
+  - **Omfånget** kommer från tokenen: `markets` (lista eller `"*"`), `clinicId` och `policyIds`. Utan `markets` ser anroparen ingenting.
+  - **Roller binds** med `bindsTo: 'clinic' | 'policies'`. Rollinställningen har nu formen `{ permissions, bindsTo? }`, och okända bindningar stoppar starten. `clinic` är bunden till klinik och `customer-channel` till försäkringar.
+  - **Saknas attributet** som rollen kräver i tokenen blir svaret 403. Omfånget blir aldrig bredare.
+  - **Ärenden utanför omfånget** ger 404 med samma svar som ett ärende som inte finns. Det gäller alla anrop under `/v1/claims/{id}` via en gemensam middleware.
+  - **Anmälan och förhandsbesked** utanför omfånget ger 403. Försäkringsbelopp utanför omfånget ger 404, och kliniker kan inte slå upp försäkringsbelopp per försäkrings-id.
+  - **Klinik-id** sparas på ärendet från tokenen (`clinicId`, migration 0007) och kan inte anges i anropet.
+- Kontraktet beskriver omfånget. Dokumentationen är uppdaterad: behörighet med tabeller och arkitektur. Dev-tokens har omfång.
+- 170 tester och 54 databastester.
+
+**Nästa steg**
+1. Attestkedjan med beloppsgränser per roll och valuta, fyra ögon och en händelse för utbetalningsorder (behörighet del 3). Det slutför M1.
+
+**Öppet**
+- Rollinställningen ges fortfarande i koden (`createApp`). Den bör komma från installationens konfiguration.
+- Hur tokenens attribut översätts (namn på claims i JWT) bestäms när en riktig identitetstjänst kopplas in.
+
 ## 2026-11-14 (pass 16)
 
 **Gjort**
