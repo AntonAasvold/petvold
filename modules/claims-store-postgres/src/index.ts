@@ -1,10 +1,10 @@
 /**
- * ClaimsStore mot Postgres-schemat `claims` (db/migrations).
+ * ClaimsStore against the Postgres schema `claims` (db/migrations).
  *
- * Ska anslutas med tjänsterollen `claims_service`, som bara får läsa och lägga
- * till. Databasen upprätthåller själv balans, icke-överlapp och oföränderlig
- * historik. Den här koden översätter databasfel till portens fel.
- * Beteendet bevisas av den gemensamma sviten i @petvold/claims-core.
+ * Connect with the service role `claims_service`, which may only read and
+ * insert. The database itself enforces balance, non-overlap and immutable
+ * history. This code translates database errors into the port's errors.
+ * The behaviour is proven by the shared suite in @petvold/claims-core.
  */
 import pg from 'pg';
 import {
@@ -18,8 +18,8 @@ import {
   type MinorUnits,
 } from '@petvold/claims-core';
 
-// Typer: datum som 'YYYY-MM-DD', bigint som tal, tidsstämplar som ISO-sträng.
-// Utan detta gör pg om date till Date i lokal tidszon, och bigint till sträng.
+// Types: dates as 'YYYY-MM-DD', bigint as numbers, timestamps as ISO strings.
+// Without this, pg turns date into a Date in the local time zone, and bigint into a string.
 const DATE = 1082;
 const INT8 = 20;
 const NUMERIC = 1700;
@@ -27,7 +27,7 @@ const TIMESTAMPTZ = 1184;
 
 function toSafeInt(v: string): number {
   const n = Number(v);
-  if (!Number.isSafeInteger(n)) throw new Error(`Belopp utanför säkert heltalsintervall: ${v}`);
+  if (!Number.isSafeInteger(n)) throw new Error(`Amount outside the safe integer range: ${v}`);
   return n;
 }
 
@@ -40,12 +40,12 @@ const types = {
   },
 } as pg.CustomTypesConfig;
 
-/** Skapar en pool med Petvolds typtolkning. Anroparen äger poolen och stänger den. */
+/** Creates a pool with Petvold's type parsing. The caller owns the pool and closes it. */
 export function createPool(connectionString: string, options: Omit<pg.PoolConfig, 'connectionString' | 'types'> = {}): pg.Pool {
   return new pg.Pool({ connectionString, types, ...options });
 }
 
-// Postgres felkoder (SQLSTATE).
+// Postgres error codes (SQLSTATE).
 const UNIQUE_VIOLATION = '23505';
 const EXCLUSION_VIOLATION = '23P01';
 
@@ -82,7 +82,7 @@ export class PostgresClaimsStore implements ClaimsStore {
       }
     }).catch((e: PgError) => {
       if (e.code === UNIQUE_VIOLATION && (e.constraint === 'claim_pkey' || e.constraint === 'claim_claim_no_key')) {
-        throw new StoreConflictError('claim_exists', `Skadeärendet ${claim.id} (${claim.claimNo}) finns redan`);
+        throw new StoreConflictError('claim_exists', `Claim ${claim.id} (${claim.claimNo}) already exists`);
       }
       throw e;
     });
@@ -228,16 +228,16 @@ export class PostgresClaimsStore implements ClaimsStore {
       }
     }).catch((e: PgError) => {
       if (e.code === UNIQUE_VIOLATION && (e.constraint === 'decision_claim_id_seq_key' || e.constraint === 'decision_pkey')) {
-        throw new StoreConflictError('decision_exists', `Beslut ${d.claimId}#${d.seq} finns redan`);
+        throw new StoreConflictError('decision_exists', `Decision ${d.claimId}#${d.seq} already exists`);
       }
       if (e.code === EXCLUSION_VIOLATION) {
-        throw new StoreConflictError('period_overlaps', `Självriskperioden för ${d.claimId} krockar med en annan period`);
+        throw new StoreConflictError('period_overlaps', `The deductible period for ${d.claimId} clashes with another period`);
       }
       throw e;
     });
   }
 
-  /** Kör `fn` i en transaktion. Fel rullar tillbaka allt, även fel som upptäcks vid commit. */
+  /** Runs `fn` in a transaction. Errors roll everything back, including errors detected at commit. */
   private async tx(fn: (db: pg.PoolClient) => Promise<void>): Promise<void> {
     const db = await this.pool.connect();
     try {

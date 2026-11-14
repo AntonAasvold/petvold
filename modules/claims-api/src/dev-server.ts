@@ -1,7 +1,7 @@
 /**
- * Lokal utvecklingsserver med data i minnet och exempeldata för Bella.
- * Tokens: 'dev-handler' (handläggare), 'dev-clinic' (klinik).
- * API-sidan finns på /docs och exempelanrop i examples/claims.http.
+ * Local development server with in-memory data and sample data for Bella.
+ * Tokens: 'dev-handler' (claims handler), 'dev-clinic' (clinic).
+ * The API page is at /docs and example requests are in examples/claims.http.
  */
 import { serve } from '@hono/node-server';
 import { ClaimsService } from '@petvold/claims-core';
@@ -48,7 +48,7 @@ serve({
       ? new Response(docs, { headers: { 'content-type': 'text/html; charset=utf-8' } })
       : app.fetch(req),
 });
-console.log(`Skademotor lyssnar på http://localhost:${port}`);
-console.log(`  API-sida:  http://localhost:${port}/docs`);
-console.log(`  Kontrakt:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (handläggare), dev-clinic (klinik)`);
+console.log(`Claims engine listening on http://localhost:${port}`);
+console.log(`  API page:  http://localhost:${port}/docs`);
+console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-clinic (clinic)`);

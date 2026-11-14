@@ -26,6 +26,7 @@ npm test               # 68 tester: enhet, egenskaper, tjänst och kontrakt
 npm run test:db        # databasens regler mot Postgres
 npm run typecheck
 npm run lint:openapi   # kontrakt och implementation har exakt samma operationer
+npm run lint:lang      # koden är på engelska
 npm run dev            # http://localhost:8787, kontraktet på /openapi.yaml
 ```
 

@@ -1,20 +1,20 @@
-# Exempelanrop mot skademotorn. Starta först dev-servern: npm run dev
+# Example requests for the claims engine. Start the dev server first: npm run dev
 #
-# Fungerar i VS Code med tillägget REST Client (humao.rest-client):
-# klicka på "Send Request" ovanför varje anrop. Svaret från ett namngivet
-# anrop (# @name) går att använda i senare anrop.
+# Works in VS Code with the REST Client extension (humao.rest-client):
+# click "Send Request" above each request. The response of a named request
+# (# @name) can be used in later requests.
 #
-# Varje körning skapar nya ärenden med slumpade id:n, så filen kan köras
-# om och om igen utan att starta om servern. Data finns bara i minnet.
+# Each run creates new claims with random ids, so the file can be run again
+# and again without restarting the server. Data lives in memory only.
 #
-# Samma exempel finns på http://localhost:8787/docs.
+# The same examples are on http://localhost:8787/docs.
 
 @base = http://localhost:8787
 @handler = dev-handler
 @clinic = dev-clinic
 
 ###############################################################################
-# 1. Förhandsbesked i klinikens kassa. Sparar ingenting.
+# 1. Pre-approval at the clinic's checkout. Stores nothing.
 ###############################################################################
 
 POST {{base}}/v1/claim-previews
@@ -34,15 +34,15 @@ Accept-Language: sv
   "treatmentTo": "2026-11-11",
   "diagnosisCode": "ORA-OTIT",
   "lines": [
-    { "id": "l1", "description": "Undersökning", "category": "examination", "amount": 65000 },
-    { "id": "l2", "description": "Öronsköljning och läkemedel", "category": "medication", "amount": 335000 }
+    { "id": "l1", "description": "Examination", "category": "examination", "amount": 65000 },
+    { "id": "l2", "description": "Ear flush and medication", "category": "medication", "amount": 335000 }
   ]
 }
 
 ###############################################################################
-# 2. Öroninflammation: regleras automatiskt.
-#    Väntat: decision.outcome = approved, payout = 150000 (1 500 kr).
-#    Nästa öronärende inom 125 dagar får ingen fast självrisk.
+# 2. Ear infection: settled automatically.
+#    Expected: decision.outcome = approved, payout = 150000 (SEK 1,500).
+#    The next ear claim within 125 days has no fixed deductible.
 ###############################################################################
 
 # @name otit
@@ -64,15 +64,15 @@ Accept-Language: sv
   "treatmentTo": "2026-11-11",
   "diagnosisCode": "ORA-OTIT",
   "lines": [
-    { "id": "l1", "description": "Undersökning", "category": "examination", "amount": 65000 },
-    { "id": "l2", "description": "Öronsköljning och läkemedel", "category": "medication", "amount": 335000 }
+    { "id": "l1", "description": "Examination", "category": "examination", "amount": 65000 },
+    { "id": "l2", "description": "Ear flush and medication", "category": "medication", "amount": 335000 }
   ]
 }
 
 ###############################################################################
-# 3. Korsbandsskada: går till handläggare.
-#    Väntat: decision = null, assessment.mode = manual. RIDER = review
-#    (förbehåll i samma diagnosgrupp) och beloppet är över gränsen för automatik.
+# 3. Cruciate ligament injury: goes to a claims handler.
+#    Expected: decision = null, assessment.mode = manual. RIDER = review
+#    (rider in the same diagnosis group) and the amount is above the auto-settle limit.
 ###############################################################################
 
 # @name korsband
@@ -94,17 +94,17 @@ Accept-Language: sv
   "treatmentTo": "2026-11-13",
   "diagnosisCode": "ORT-KORSBAND-V",
   "lines": [
-    { "id": "l1", "description": "Undersökning ortopedi", "category": "examination", "amount": 85000 },
-    { "id": "l2", "description": "Röntgen bakben", "category": "diagnostics", "amount": 290000 },
-    { "id": "l3", "description": "Sedering och anestesi", "category": "anaesthesia", "amount": 124000 },
-    { "id": "l4", "description": "Operation TPLO vänster", "category": "surgery", "amount": 1240000 },
-    { "id": "l5", "description": "Smärtlindring 10 dagar", "category": "medication", "amount": 83000 },
-    { "id": "l6", "description": "Specialfoder", "category": "food", "amount": 42000 }
+    { "id": "l1", "description": "Examination orthopaedics", "category": "examination", "amount": 85000 },
+    { "id": "l2", "description": "X-ray hind legs", "category": "diagnostics", "amount": 290000 },
+    { "id": "l3", "description": "Sedation and anaesthesia", "category": "anaesthesia", "amount": 124000 },
+    { "id": "l4", "description": "TPLO surgery left", "category": "surgery", "amount": 1240000 },
+    { "id": "l5", "description": "Pain relief 10 days", "category": "medication", "amount": 83000 },
+    { "id": "l6", "description": "Prescription food", "category": "food", "amount": 42000 }
   ]
 }
 
 ###############################################################################
-# 4. Handläggaren tittar på bedömningen.
+# 4. The claims handler looks at the assessment.
 ###############################################################################
 
 # @name bedomning
@@ -113,8 +113,8 @@ Authorization: Bearer {{handler}}
 Accept-Language: sv
 
 ###############################################################################
-# 5. Handläggaren godkänner, med inputHash från bedömningen ovan.
-#    Ändras underlaget innan beslutet blir svaret 409.
+# 5. The claims handler accepts, with inputHash from the assessment above.
+#    If the basis changes before the decision, the response is 409.
 ###############################################################################
 
 POST {{base}}/v1/claims/{{korsband.response.body.claim.id}}/decisions
@@ -124,30 +124,30 @@ Idempotency-Key: {{$guid}}
 
 {
   "action": "accept",
-  "reason": "Förbehållet gäller höger bakben, skadan är på vänster.",
+  "reason": "The rider covers the right hind leg; the injury is on the left.",
   "expectedInputHash": "{{bedomning.response.body.inputHash}}"
 }
 
 ###############################################################################
-# 6. Alla beslut för ärendet, äldst först.
+# 6. All decisions for the claim, oldest first.
 ###############################################################################
 
 GET {{base}}/v1/claims/{{korsband.response.body.claim.id}}/decisions
 Authorization: Bearer {{handler}}
 
 ###############################################################################
-# 7. Försäkringsbelopp: förbrukat och kvar för Bella i år.
+# 7. Annual limit: consumed and remaining for Bella this year.
 ###############################################################################
 
 GET {{base}}/v1/policies/pol_bella/animals/ani_bella/limits?onDate=2026-11-11
 Authorization: Bearer {{handler}}
 
 ###############################################################################
-# 8. Omprövning, t.ex. efter en retroaktiv ändring av försäkringen.
-#    Har underlaget ändrats blir det ett nytt beslut, och ledgern bokar bara
-#    skillnaden. Efter steg 5 har korsbandsbeslutet förbrukat mer av
-#    försäkringsbeloppet, så du får 201 med samma ersättning (skillnad 0 kr).
-#    Kör samma omprövning igen: nu är underlaget oförändrat och svaret 204.
+# 8. Reassessment, e.g. after a retroactive change to the policy.
+#    If the basis has changed, a new decision is made and the ledger books only
+#    the difference. After step 5 the cruciate decision has consumed more of the
+#    annual limit, so you get 201 with the same payout (difference SEK 0).
+#    Run the same reassessment again: the basis is now unchanged and the response is 204.
 ###############################################################################
 
 POST {{base}}/v1/claims/{{otit.response.body.claim.id}}/reassessments
@@ -155,13 +155,13 @@ Authorization: Bearer {{handler}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
 
-{ "reason": "Försäkringen har ändrats retroaktivt." }
+{ "reason": "The policy has been changed retroactively." }
 
 ###############################################################################
-# Felfall
+# Error cases
 ###############################################################################
 
-### Behandling före försäkringsårets start: avslag föreslås (POLICY_FOUND = fail).
+### Treatment before the policy year starts: rejection is proposed (POLICY_FOUND = fail).
 POST {{base}}/v1/claim-previews
 Authorization: Bearer {{clinic}}
 Content-Type: application/json
@@ -178,10 +178,10 @@ Accept-Language: sv
   "treatmentFrom": "2026-03-20",
   "treatmentTo": "2026-03-20",
   "diagnosisCode": "GI-ENTERIT",
-  "lines": [{ "id": "l1", "description": "Undersökning", "category": "examination", "amount": 80000 }]
+  "lines": [{ "id": "l1", "description": "Examination", "category": "examination", "amount": 80000 }]
 }
 
-### Kliniken får inte fatta beslut: 403.
+### A clinic may not make decisions: 403.
 POST {{base}}/v1/claims/{{korsband.response.body.claim.id}}/decisions
 Authorization: Bearer {{clinic}}
 Content-Type: application/json
@@ -189,23 +189,23 @@ Idempotency-Key: {{$guid}}
 
 { "action": "accept" }
 
-### Utan Idempotency-Key: 422.
+### Without Idempotency-Key: 422.
 POST {{base}}/v1/claims/{{korsband.response.body.claim.id}}/decisions
 Authorization: Bearer {{handler}}
 Content-Type: application/json
 
 { "action": "accept" }
 
-### Fält som inte finns i kontraktet: 422 med fältfel.
+### Fields not in the contract: 422 with field errors.
 POST {{base}}/v1/claim-previews
 Authorization: Bearer {{clinic}}
 Content-Type: application/json
 
-{ "id": "x", "okäntFält": true }
+{ "id": "x", "unknownField": true }
 
-### Okänt ärende: 404.
-GET {{base}}/v1/claims/clm_finns_inte
+### Unknown claim: 404.
+GET {{base}}/v1/claims/clm_does_not_exist
 Authorization: Bearer {{handler}}
 
-### Utan token: 401.
-GET {{base}}/v1/claims/clm_finns_inte
+### Without a token: 401.
+GET {{base}}/v1/claims/clm_does_not_exist

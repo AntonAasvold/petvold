@@ -60,7 +60,7 @@ function setup() {
   return { app, call };
 }
 
-/** Ärende utan receivedAt, som klienter skickar det. */
+/** Claim without receivedAt, as clients send it. */
 function input(c: ReturnType<typeof cruciateClaim>) {
   const { receivedAt: _r, ...rest } = c;
   return rest;
@@ -71,17 +71,17 @@ function assertSchema(name: string, body: unknown) {
   assert.ok(v(body), `${name}: ${JSON.stringify(v.errors, null, 2)}`);
 }
 
-test('kontraktet och implementationen innehåller exakt samma operationer', () => {
+test('the contract and the implementation have exactly the same operations', () => {
   const { app } = setup();
   assert.deepEqual(new Set(implementedOperations(app)), new Set(contractOperations()));
 });
 
-test('alla språk har texter för samma regelnycklar', () => {
+test('every language has texts for the same rule keys', () => {
   const [first, ...rest] = supportedLocales;
   for (const l of rest) assert.deepEqual(messageKeys(l).sort(), messageKeys(first!).sort());
 });
 
-test('utan token: 401 som problem+json', async () => {
+test('without a token: 401 as problem+json', async () => {
   const { call } = setup();
   const res = await call('GET', '/v1/claims/x', { token: '' });
   assert.equal(res.status, 401);
@@ -89,7 +89,7 @@ test('utan token: 401 som problem+json', async () => {
   assertSchema('Problem', await res.json());
 });
 
-test('begäran som bryter mot kontraktet ger 422 med fältfel', async () => {
+test('a request that breaks the contract gives 422 with field errors', async () => {
   const { call } = setup();
   const res = await call('POST', '/v1/claims', { key: 'key-00000001', body: { ...input(otitisClaim()), market: 'sverige', extra: 1 } });
   assert.equal(res.status, 422);
@@ -98,13 +98,13 @@ test('begäran som bryter mot kontraktet ger 422 med fältfel', async () => {
   assert.ok(body.errors.some((e) => e.message.includes("'extra'")));
 });
 
-test('Idempotency-Key krävs för skapande anrop', async () => {
+test('Idempotency-Key is required for creating calls', async () => {
   const { call } = setup();
   const res = await call('POST', '/v1/claims', { body: input(otitisClaim()) });
   assert.equal(res.status, 422);
 });
 
-test('registrera: 201 enligt kontraktet, och samma nyckel ger samma svar', async () => {
+test('register: 201 per the contract, and the same key gives the same response', async () => {
   const { call } = setup();
   const res = await call('POST', '/v1/claims', { key: 'key-00000002', body: input(otitisClaim()) });
   assert.equal(res.status, 201);
@@ -120,7 +120,7 @@ test('registrera: 201 enligt kontraktet, och samma nyckel ger samma svar', async
   assert.equal(misuse.status, 422);
 });
 
-test('handläggarflöde: bedömning, beslut med inputHash, beslutslista', async () => {
+test('handler flow: assessment, decision with inputHash, list of decisions', async () => {
   const { call } = setup();
   await call('POST', '/v1/claims', { key: 'key-00000003', body: input(cruciateClaim()), token: 'clinic' });
 
@@ -131,11 +131,13 @@ test('handläggarflöde: bedömning, beslut med inputHash, beslutslista', async 
   assert.equal(assessment.mode, 'manual');
   const rider = assessment.rules.find((r: any) => r.code === 'RIDER');
   assert.equal(rider.reason, 'rider.possible');
-  assert.match(rider.message, /Möjlig koppling till förbehåll: Hälta, höger bakben/);
+  // Swedish text from the sv catalogue, with the rider's description filled in.
+  assert.match(rider.message, /Lameness, right hind leg/);
+  assert.doesNotMatch(rider.message, /Possibly related/);
 
   const dRes = await call('POST', '/v1/claims/clm_048213/decisions', {
     key: 'key-00000004',
-    body: { action: 'accept', reason: 'Vänster ben, ej kopplat', expectedInputHash: assessment.inputHash },
+    body: { action: 'accept', reason: 'Left leg, not related', expectedInputHash: assessment.inputHash },
   });
   assert.equal(dRes.status, 201);
   const decision = (await dRes.json()) as any;
@@ -147,22 +149,22 @@ test('handläggarflöde: bedömning, beslut med inputHash, beslutslista', async 
   assert.equal(list.items.length, 1);
 });
 
-test('klinik får inte fatta beslut', async () => {
+test('a clinic may not make decisions', async () => {
   const { call } = setup();
   await call('POST', '/v1/claims', { key: 'key-00000005', body: input(cruciateClaim()), token: 'clinic' });
   const res = await call('POST', '/v1/claims/clm_048213/decisions', { token: 'clinic', key: 'key-00000006', body: { action: 'accept' } });
   assert.equal(res.status, 403);
 });
 
-test('inaktuell inputHash ger 409', async () => {
+test('a stale inputHash gives 409', async () => {
   const { call } = setup();
   await call('POST', '/v1/claims', { key: 'key-00000007', body: input(cruciateClaim()) });
-  const res = await call('POST', '/v1/claims/clm_048213/decisions', { key: 'key-00000008', body: { action: 'accept', expectedInputHash: 'gammal' } });
+  const res = await call('POST', '/v1/claims/clm_048213/decisions', { key: 'key-00000008', body: { action: 'accept', expectedInputHash: 'stale' } });
   assert.equal(res.status, 409);
   assertSchema('Problem', await res.json());
 });
 
-test('förhandsbesked för kliniken på engelska, med belopp formaterat i rätt valuta', async () => {
+test('pre-approval for the clinic in English, with amounts formatted in the right currency', async () => {
   const { call } = setup();
   const res = await call('POST', '/v1/claim-previews', {
     token: 'clinic',
@@ -176,7 +178,7 @@ test('förhandsbesked för kliniken på engelska, med belopp formaterat i rätt 
   assert.match(a.rules.find((r: any) => r.code === 'RIDER').message, /Possibly related to exclusion/);
 });
 
-test('EUR-ärende: belopp och texter följer marknaden', async () => {
+test('EUR claim: amounts and texts follow the market', async () => {
   const { call } = setup();
   const res = await call('POST', '/v1/claims', { key: 'key-00000009', body: input(eurClaim()), lang: 'en' });
   const body = (await res.json()) as any;
@@ -191,23 +193,23 @@ test('EUR-ärende: belopp och texter följer marknaden', async () => {
   assert.equal(limits.remaining, 500_000 - 17_500);
 });
 
-test('okänt ärende ger 404 som problem+json', async () => {
+test('an unknown claim gives 404 as problem+json', async () => {
   const { call } = setup();
-  const res = await call('GET', '/v1/claims/finns-inte');
+  const res = await call('GET', '/v1/claims/does-not-exist');
   assert.equal(res.status, 404);
   assertSchema('Problem', await res.json());
 });
 
-test('kontraktet serveras', async () => {
+test('the contract is served', async () => {
   const { app } = setup();
   const res = await app.request('/openapi.yaml');
   assert.equal(res.status, 200);
   assert.match(await res.text(), /^openapi: 3\.1\.0/);
 });
 
-// Exempel i kontraktet ---------------------------------------------------------
-// Exemplen visas på /docs och används i examples/*.http. De ska följa
-// kontraktet och ge det utfall som deras beskrivning lovar.
+// Examples in the contract ---------------------------------------------------
+// The examples are shown on /docs and used in examples/*.http. They must
+// follow the contract and give the outcome their description promises.
 
 type Example = { value: unknown };
 const doc = openapi as unknown as {
@@ -216,7 +218,7 @@ const doc = openapi as unknown as {
 };
 const exampleValue = (ref: string) => doc.components.examples[ref.split('/').pop()!]!.value;
 
-test('alla exempel i kontraktet följer sitt schema', () => {
+test('every example in the contract follows its schema', () => {
   let checked = 0;
   for (const [path, item] of Object.entries(doc.paths)) {
     for (const [method, op] of Object.entries(item)) {
@@ -224,19 +226,19 @@ test('alla exempel i kontraktet följer sitt schema', () => {
         const schema = media.schema.$ref.split('/').pop()!;
         for (const [name, ex] of Object.entries(media.examples ?? {})) {
           const v = validatorFor(schema);
-          assert.ok(v(exampleValue(ex.$ref)), `${method.toUpperCase()} ${path} exempel '${name}': ${JSON.stringify(v.errors)}`);
+          assert.ok(v(exampleValue(ex.$ref)), `${method.toUpperCase()} ${path} example '${name}': ${JSON.stringify(v.errors)}`);
           checked++;
         }
       }
     }
   }
-  assert.ok(checked >= 9, `förväntade minst 9 exempel, hittade ${checked}`);
+  assert.ok(checked >= 9, `expected at least 9 examples, found ${checked}`);
 });
 
-test('exemplen ger det utfall de beskriver', async () => {
+test('the examples give the outcome they describe', async () => {
   const { call } = setup();
   const register = async (name: string) => {
-    const res = await call('POST', '/v1/claims', { token: 'clinic', key: `exempel-${name}`, body: exampleValue(`#/components/examples/${name}`) });
+    const res = await call('POST', '/v1/claims', { token: 'clinic', key: `example-${name}`, body: exampleValue(`#/components/examples/${name}`) });
     assert.equal(res.status, 201, name);
     return (await res.json()) as { assessment: { mode: string; proposedOutcome: string }; decision: { outcome: string; payout: number } | null };
   };
@@ -254,7 +256,7 @@ test('exemplen ger det utfall de beskriver', async () => {
   assert.equal(beforePolicy.assessment.proposedOutcome, 'rejected');
 });
 
-test('API-sidan pekar på kontraktet och har en låst Scalar-version', () => {
+test('the API page points to the contract and pins the Scalar version', () => {
   const html = docsPage({ specUrl: '/openapi.yaml', defaultToken: 'dev-handler' });
   assert.match(html, /"url":"\/openapi\.yaml"/);
   assert.match(html, /"token":"dev-handler"/);

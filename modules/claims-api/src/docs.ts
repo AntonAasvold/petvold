@@ -1,16 +1,16 @@
 /**
- * Klickbar API-sida för utveckling, genererad från kontraktet med Scalar.
- * Serveras bara av dev-servern: sidan hämtar Scalar från ett CDN, och det vill
- * vi inte i en kunds driftmiljö.
+ * Clickable API page for development, generated from the contract with Scalar.
+ * Served only by the dev server: the page loads Scalar from a CDN, which we
+ * do not want in a customer's production environment.
  */
 
-/** Låst version, uppdateras medvetet. */
+/** Pinned version, updated deliberately. */
 export const SCALAR_VERSION = '1.76.4';
 
 export interface DocsOptions {
-  /** Var kontraktet finns, t.ex. '/openapi.yaml'. */
+  /** Where the contract is served, e.g. '/openapi.yaml'. */
   specUrl: string;
-  /** Token som fylls i från början, t.ex. 'dev-handler'. */
+  /** Token prefilled on the page, e.g. 'dev-handler'. */
   defaultToken?: string;
 }
 

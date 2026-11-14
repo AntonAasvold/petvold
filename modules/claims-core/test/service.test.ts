@@ -33,11 +33,11 @@ function setup() {
 
 function assertBalanced(store: InMemoryClaimsStore) {
   for (const j of store.dump().journals) {
-    assert.equal(j.lines.reduce((s, l) => s + l.amount, 0), 0, `journal ${j.id} balanserar inte`);
+    assert.equal(j.lines.reduce((s, l) => s + l.amount, 0), 0, `journal ${j.id} does not balance`);
   }
 }
 
-test('liten skada regleras automatiskt, bokförs och öppnar självriskperiod', async () => {
+test('a small claim is settled automatically, booked and opens a deductible period', async () => {
   const { service, store, events } = setup();
   const r = await service.registerClaim(otitisClaim());
   assert.equal(r.assessment.mode, 'auto');
@@ -54,17 +54,17 @@ test('liten skada regleras automatiskt, bokförs och öppnar självriskperiod', 
   assert.equal(limits.currency, 'SEK');
 });
 
-test('andra skadan i samma diagnosgrupp inom självriskperioden får ingen fast självrisk', async () => {
+test('a second claim in the same diagnosis group within the period has no fixed deductible', async () => {
   const { service } = setup();
   await service.registerClaim(otitisClaim());
   const second = await service.registerClaim(
     otitisClaim({ id: 'clm_2', claimNo: 'S-2', treatmentFrom: '2026-07-01', treatmentTo: '2026-07-01' }),
   );
   assert.equal(second.assessment.calculation!.deductibleFixed, 0);
-  assert.equal(second.assessment.calculation!.payout, 300_000); // 4 000 kr − 25 %
+  assert.equal(second.assessment.calculation!.payout, 300_000); // SEK 4,000 − 25 %
 });
 
-test('designexemplet går till handläggare och beslutas med expectedInputHash', async () => {
+test('the design example goes to a handler and is decided with expectedInputHash', async () => {
   const { service, store } = setup();
   const r = await service.registerClaim(cruciateClaim());
   assert.equal(r.decision, null);
@@ -73,30 +73,30 @@ test('designexemplet går till handläggare och beslutas med expectedInputHash',
   const d = await service.decide('clm_048213', {
     action: 'accept',
     decidedBy: 'handlaggare@example.test',
-    reason: 'Korsband vänster, ingen koppling till förbehållet',
+    reason: 'Left cruciate ligament, no link to the rider',
     expectedInputHash: r.assessment.inputHash,
   });
   assert.equal(d.outcome, 'partial');
-  assert.equal(d.payout, 1_216_500); // 12 165 kr, som i designen
+  assert.equal(d.payout, 1_216_500); // SEK 12,165, as in the design
   assertBalanced(store);
 });
 
-test('beslut på inaktuellt underlag avvisas', async () => {
+test('a decision on a stale basis is rejected', async () => {
   const { service } = setup();
   const r = await service.registerClaim(cruciateClaim());
-  await service.registerClaim(otitisClaim()); // ändrar förbrukat belopp
+  await service.registerClaim(otitisClaim()); // changes the consumed limit
   await assert.rejects(
     service.decide('clm_048213', { action: 'accept', decidedBy: 'h', expectedInputHash: r.assessment.inputHash }),
     (e: unknown) => e instanceof DomainError && e.code === 'conflict',
   );
 });
 
-test('retroaktiv policyändring: omprövning bokar bara skillnaden, och knownAt visar gamla bilden', async () => {
+test('retroactive policy change: reassessment books only the difference, and knownAt shows the old picture', async () => {
   const { service, store, policies, clock } = setup();
-  await service.registerClaim(otitisClaim()); // 1 500 kr
+  await service.registerClaim(otitisClaim()); // SEK 1,500
   assert.equal((await service.getLimits('pol_bella', 'ani_bella', '2026-06-04')).consumed, 150_000);
 
-  // Den 20 juni registreras en ändring som gäller från 1 april: lägre rörlig självrisk.
+  // On 20 June a change is recorded that applies from 1 April: a lower variable deductible.
   policies.supersede('pv_bella_v4', '2026-06-20T10:00:00Z');
   policies.add({
     snapshot: bellaPolicy({
@@ -110,34 +110,34 @@ test('retroaktiv policyändring: omprövning bokar bara skillnaden, och knownAt 
   const before = await service.assessClaim('clm_021877', '2026-06-10T00:00:00Z');
   assert.equal(before.policyVersionId, 'pv_bella_v4');
 
-  const d = await service.reassess('clm_021877', 'system', 'Retroaktiv ändring av självrisk');
+  const d = await service.reassess('clm_021877', 'system', 'Retroactive change of deductible');
   assert.ok(d);
   assert.equal(d.seq, 2);
-  assert.equal(d.payout, 170_000); // 2 000 kr − 15 %
+  assert.equal(d.payout, 170_000); // SEK 2,000 − 15 %
   assert.equal(d.assessment.policyVersionId, 'pv_bella_v5');
 
   const journals = store.dump().journals;
   assert.equal(journals.length, 2);
-  assert.equal(journals[1]!.lines[0]!.amount, 20_000); // bara skillnaden
+  assert.equal(journals[1]!.lines[0]!.amount, 20_000); // only the difference
   assertBalanced(store);
   assert.equal((await service.getLimits('pol_bella', 'ani_bella', '2026-06-04')).consumed, 170_000);
 
-  // Ingen ändring i underlaget => inget nytt beslut
+  // No change in the basis => no new decision
   assert.equal(await service.reassess('clm_021877', 'system', 'igen'), null);
 });
 
-test('avslag vid omprövning återför hela beloppet och stänger självriskperioden', async () => {
+test('rejection on reassessment reverses the full amount and closes the deductible period', async () => {
   const { service, store, policies } = setup();
   await service.registerClaim(otitisClaim());
   policies.supersede('pv_bella_v4', '2026-06-20T10:00:00Z');
   policies.add({
     snapshot: bellaPolicy({
       policyVersionId: 'pv_bella_v5',
-      riders: [{ id: 'r2', description: 'Öron', diagnosisCodes: ['ORA-OTIT'], validFrom: '2026-01-01' }],
+      riders: [{ id: 'r2', description: 'Ears', diagnosisCodes: ['ORA-OTIT'], validFrom: '2026-01-01' }],
     }),
     sysFrom: '2026-06-20T10:00:00Z',
   });
-  const d = await service.reassess('clm_021877', 'system', 'Förbehåll registrerat retroaktivt');
+  const d = await service.reassess('clm_021877', 'system', 'Rider recorded retroactively');
   assert.equal(d!.outcome, 'rejected');
   assert.equal(d!.payout, 0);
   assert.equal((await service.getLimits('pol_bella', 'ani_bella', '2026-06-04')).consumed, 0);
@@ -145,22 +145,22 @@ test('avslag vid omprövning återför hela beloppet och stänger självriskperi
   assertBalanced(store);
 });
 
-test('förslag om avslag kan inte godkännas', async () => {
+test('a proposed rejection cannot be accepted', async () => {
   const { service } = setup();
   await service.registerClaim(cruciateClaim({ id: 'c_x', claimNo: 'X', diagnosisCode: 'ORT-HALTA-HB-H' }));
   await assert.rejects(service.decide('c_x', { action: 'accept', decidedBy: 'h' }), (e: unknown) => e instanceof DomainError && e.code === 'validation');
-  const d = await service.decide('c_x', { action: 'reject', decidedBy: 'h', reason: 'Förbehåll' });
+  const d = await service.decide('c_x', { action: 'reject', decidedBy: 'h', reason: 'Rider' });
   assert.equal(d.outcome, 'rejected');
   assert.equal(d.payout, 0);
 });
 
-test('samma ärende kan inte registreras två gånger', async () => {
+test('the same claim cannot be registered twice', async () => {
   const { service } = setup();
   await service.registerClaim(otitisClaim());
   await assert.rejects(service.registerClaim(otitisClaim()), (e: unknown) => e instanceof DomainError && e.code === 'conflict');
 });
 
-test('förhandsbesked sparar och reserverar ingenting', async () => {
+test('a pre-approval stores and reserves nothing', async () => {
   const { service, store } = setup();
   const a = await service.preview(otitisClaim());
   assert.equal(a.calculation!.payout, 150_000);
@@ -168,22 +168,22 @@ test('förhandsbesked sparar och reserverar ingenting', async () => {
   assert.equal(store.dump().periods.length, 0);
 });
 
-test('EUR-marknad genom hela flödet: bokförs i EUR', async () => {
+test('EUR market through the whole flow: booked in EUR', async () => {
   const { service, store } = setup();
   const r = await service.registerClaim(eurClaim());
   assert.equal(r.decision!.payout, 17_500);
   assert.ok(store.dump().journals[0]!.lines.some((l) => l.account.startsWith('claim_payable:EUR:')));
-  // Självrisk per skada: ingen period sparas
+  // Deductible per claim: no period is stored
   assert.equal(store.dump().periods.length, 0);
   const second = await service.registerClaim(eurClaim({ id: 'clm_rex_2', claimNo: 'X-2' }));
   assert.equal(second.assessment.calculation!.deductibleFixed, 5_000);
 });
 
-test('en krock i lagringen blir conflict, inte internt fel', async () => {
-  // Simulerar att ett annat beslut hann före mellan bedömning och sparande.
+test('a clash in the store becomes conflict, not an internal error', async () => {
+  // Simulates another decision getting in between assessment and storing.
   const { service, store } = setup();
   store.commitDecision = async () => {
-    throw new StoreConflictError('decision_exists', 'Beslut clm_021877#1 finns redan');
+    throw new StoreConflictError('decision_exists', 'Decision clm_021877#1 already exists');
   };
   await assert.rejects(service.registerClaim(otitisClaim()), (e: unknown) => e instanceof DomainError && e.code === 'conflict');
 });

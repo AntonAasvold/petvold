@@ -2,6 +2,25 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 7)
+
+**Gjort**
+- ADR 0015 beslutad, #8 mergad.
+- Regel: all kod på engelska, inklusive kommentarer, felmeddelanden, loggar, testnamn, SQL, konfiguration, kontrakt och exempeldata (`CLAUDE.md`, `docs/arbetssatt.md`). Dokumentation och commits fortsätter på svenska.
+- `npm run lint:lang` i CI: stoppar å, ä och ö i koden. Undantag: den svenska språkkatalogen och körda migreringar.
+- All befintlig kod översatt: kärnan, API:et, kontraktet med exempel, lagringarna, testerna, `examples/claims.http`, `compose.yaml`, CI och `db/init` (bytt namn till `01-roles-and-databases.sql`). Problem-texterna i API:et är nu på engelska.
+- Exempeldata (Bella, fakturarader) på engelska.
+
+**Nästa steg**
+1. Outbox: händelser skrivs i samma transaktion som ärendet och beslutet.
+2. Dev-servern på Postgres.
+3. Valuta i kontonamnen `limit_*` (ADR 0014).
+4. ADR om behörighet.
+
+**Öppet**
+- Migreringarna 0001–0003 har kommentarer på svenska. De ändras inte eftersom de redan körts.
+- Kontrollen hittar inte svenska utan å, ä eller ö. Granskning fångar resten.
+
 ## 2026-11-14 (pass 6)
 
 **Gjort**

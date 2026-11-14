@@ -11,16 +11,19 @@ Petvold är en headless kärna för djurförsäkring (hund, katt, häst) för eu
 ## Regler
 
 - Rent ursprung (ADR 0009): använd aldrig material från någon arbetsgivare. Bara publika källor och egna idéer. Ange källor.
-- Pengar som heltal i minsta enhet med valuta (ADR 0005). Marknad explicit.
+- Pengar som heltal i minsta enhet med valutan en gång per objekt (ADR 0014). Marknad explicit.
 - Moduler läser aldrig varandras tabeller (ADR 0001).
 - Domänkod i `*-core` är ren: ingen I/O, inget ramverk, ingen text för användare.
-- Kod på engelska, dokumentation och commits på svenska.
+- **All kod på engelska**: identifierare, kommentarer, felmeddelanden, loggar, testnamn, SQL, konfiguration, kontrakt (OpenAPI/AsyncAPI) och exempeldata. Undantag: den svenska språkkatalogen i `messages.ts` och migreringar som redan körts. `npm run lint:lang` kontrollerar det i CI.
+- Dokumentation (`docs/`, README, ADR), PR-beskrivningar och commit-meddelanden på svenska.
 
 ## Kommandon
 
 ```
 npm test
+npm run test:db        # kräver npm run dev:up
 npm run typecheck
 npm run lint:openapi
+npm run lint:lang
 npm run dev
 ```

@@ -31,7 +31,7 @@ Petvold är ett privat projekt, skilt från anställning.
 1. **Issue** beskriver behovet och vad som gör det klart. Etikett: `modul:<namn>` och `typ:feature|bug|chore|adr`.
 2. **Branch** från `main`: `feat/<kort-namn>`, `fix/<kort-namn>`, `docs/<kort-namn>`.
 3. **Pull request** med mallen. Små PR:er, en sak i taget.
-4. **CI grönt**: typkontroll, tester, kontraktslint.
+4. **CI grönt**: typkontroll, tester, databastester, kontraktslint och språkkontroll.
 5. **Granskning** och squash-merge.
 
 ## Klart betyder
@@ -48,8 +48,8 @@ Allt som är svårt att ändra senare – modulgränser, datamodell, kontraktsko
 
 ## Språk och namn
 
-- Kod, API:er, händelser och databas på engelska.
-- Dokumentation, ADR och commit-meddelanden på svenska.
+- All kod på engelska: identifierare, kommentarer, felmeddelanden, loggar, testnamn, SQL, konfiguration, kontrakt och exempeldata. Undantag: språkkataloger för användare (t.ex. den svenska i `messages.ts`) och migreringar som redan körts. `npm run lint:lang` stoppar svenska tecken i koden.
+- Dokumentation, ADR, PR-beskrivningar och commit-meddelanden på svenska.
 - Id-prefix per typ: `pol_`, `clm_`, `ani_`, `pty_` …
 
 ## Versioner

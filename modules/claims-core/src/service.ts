@@ -26,14 +26,14 @@ export class DomainError extends Error {
 }
 
 export interface DecideCommand {
-  /** accept = fatta beslut enligt bedömningens förslag; reject = avslå. */
+  /** accept = decide as the assessment proposes; reject = reject the claim. */
   action: 'accept' | 'reject';
   decidedBy: string;
   reason?: string;
   /**
-   * inputHash från bedömningen handläggaren tittade på. Har underlaget
-   * ändrats sedan dess (ny policyversion, annat ärende fått beslut) avvisas
-   * beslutet med 'conflict' i stället för att fattas på inaktuell data.
+   * inputHash from the assessment the handler looked at. If the basis has
+   * changed since then (new policy version, another claim decided), the
+   * decision is rejected with 'conflict' instead of being made on stale data.
    */
   expectedInputHash?: string;
 }
@@ -63,8 +63,8 @@ export interface ClaimsServiceDeps {
 const COVERAGE = 'vet_care';
 
 /**
- * En krock i lagringen betyder att någon annan hann före, t.ex. två samtidiga
- * beslut på samma ärende. Det blir 'conflict' (409), inte ett internt fel.
+ * A clash in the store means someone else got there first, e.g. two concurrent
+ * decisions on the same claim. It becomes 'conflict' (409), not an internal error.
  */
 async function asConflict<T>(op: Promise<T>): Promise<T> {
   try {
@@ -75,11 +75,11 @@ async function asConflict<T>(op: Promise<T>): Promise<T> {
   }
 }
 
-/** Skademotorns applikationstjänst. Det enda HTTP-lagret pratar med. */
+/** The claims engine's application service. The only thing the HTTP layer talks to. */
 export class ClaimsService {
   constructor(private readonly d: ClaimsServiceDeps) {}
 
-  /** Registrerar ett ärende, bedömer det och reglerar automatiskt om reglerna tillåter. */
+  /** Registers a claim, assesses it and settles it automatically if the rules allow. */
   async registerClaim(claim: Claim): Promise<{ claim: Claim; assessment: Assessment; decision: ClaimDecision | null }> {
     try {
       validateClaim(claim);
@@ -87,7 +87,7 @@ export class ClaimsService {
       throw new DomainError('validation', (e as Error).message);
     }
     const existing = await this.d.store.getClaim(claim.id);
-    if (existing) throw new DomainError('conflict', `Skadeärendet ${claim.id} finns redan`);
+    if (existing) throw new DomainError('conflict', `Claim ${claim.id} already exists`);
 
     await asConflict(this.d.store.saveClaim(claim));
     await this.d.events?.publish({ type: 'claim.registered', occurredAt: this.d.clock.now(), claim });
@@ -97,15 +97,15 @@ export class ClaimsService {
     return { claim, assessment, decision };
   }
 
-  /** Bedömer ett befintligt ärende utan att spara något. */
+  /** Assesses an existing claim without storing anything. */
   async assessClaim(claimId: string, knownAt?: Timestamp): Promise<Assessment> {
     const claim = await this.requireClaim(claimId);
     return this.assessInternal(claim, knownAt, claim.id);
   }
 
   /**
-   * Förhandsbesked, t.ex. i klinikens kassa. Ärendet sparas inte och inga
-   * självriskperioder eller belopp reserveras.
+   * Pre-approval, e.g. at the clinic's checkout. The claim is not stored and
+   * no deductible periods or amounts are reserved.
    */
   async preview(draft: Claim): Promise<Assessment> {
     try {
@@ -116,27 +116,27 @@ export class ClaimsService {
     return this.assessInternal(draft, undefined, undefined);
   }
 
-  /** Handläggarbeslut. */
+  /** Claims handler decision. */
   async decide(claimId: string, cmd: DecideCommand): Promise<ClaimDecision> {
     const claim = await this.requireClaim(claimId);
     const assessment = await this.assessInternal(claim, undefined, claim.id);
     if (cmd.expectedInputHash && cmd.expectedInputHash !== assessment.inputHash) {
-      throw new DomainError('conflict', 'Underlaget har ändrats sedan bedömningen. Hämta en ny bedömning och försök igen.');
+      throw new DomainError('conflict', 'The basis has changed since the assessment. Fetch a new assessment and try again.');
     }
     if (cmd.action === 'accept' && assessment.proposedOutcome === 'rejected') {
-      throw new DomainError('validation', 'Bedömningen föreslår avslag och kan inte godkännas. Avslå eller åtgärda underlaget.');
+      throw new DomainError('validation', 'The assessment proposes rejection and cannot be accepted. Reject, or correct the basis.');
     }
     return this.commit(claim, assessment, cmd.action, cmd.decidedBy, cmd.reason);
   }
 
   /**
-   * Omprövning, t.ex. efter en retroaktiv policyändring. Skapar ett nytt beslut
-   * om utfallet ändrats; ledgern bokar bara skillnaden.
+   * Reassessment, e.g. after a retroactive policy change. Creates a new decision
+   * if the basis has changed; the ledger books only the difference.
    */
   async reassess(claimId: string, decidedBy: string, reason: string): Promise<ClaimDecision | null> {
     const claim = await this.requireClaim(claimId);
     const prev = await this.latestDecision(claimId);
-    if (!prev) throw new DomainError('conflict', 'Ärendet har inget beslut att ompröva');
+    if (!prev) throw new DomainError('conflict', 'The claim has no decision to reassess');
     const assessment = await this.assessInternal(claim, undefined, claim.id);
     if (assessment.inputHash === prev.assessment.inputHash) return null;
     const action = assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept';
@@ -161,7 +161,7 @@ export class ClaimsService {
     }
     const policy = await this.d.policies.getPolicyAt(policyId, onDate);
     if (!policy || policy.animalId !== animalId || !policy.vetCare) {
-      throw new DomainError('not_found', 'Ingen gällande veterinärvårdsförsäkring för djuret på datumet');
+      throw new DomainError('not_found', 'No vet care cover in force for the animal on that date');
     }
     const consumed = await this.d.store.getConsumed(animalId, COVERAGE, policy.policyYearStart);
     return {
@@ -222,7 +222,7 @@ export class ClaimsService {
     const diff = payout - (prev?.payout ?? 0);
     const policy = await this.d.policies.getPolicyAt(claim.policyId, claim.treatmentFrom);
     if (diff !== 0) {
-      if (!policy) throw new DomainError('conflict', 'Policyn kunde inte läsas vid bokföring');
+      if (!policy) throw new DomainError('conflict', 'The policy could not be read when booking');
       const limitKey = `${claim.animalId}:${COVERAGE}:${policy.policyYearStart}`;
       const cur = claim.currency;
       journals.push({
@@ -260,7 +260,7 @@ export class ClaimsService {
 
   private async requireClaim(claimId: string): Promise<Claim> {
     const claim = await this.d.store.getClaim(claimId);
-    if (!claim) throw new DomainError('not_found', `Skadeärendet ${claimId} finns inte`);
+    if (!claim) throw new DomainError('not_found', `Claim ${claimId} does not exist`);
     return claim;
   }
 }

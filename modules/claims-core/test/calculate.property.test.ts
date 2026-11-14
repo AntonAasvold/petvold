@@ -1,6 +1,6 @@
 /**
- * Egenskapstester för ersättningsberäkningen. Varje egenskap ska gälla för
- * alla fakturor, självriskmodeller, försäkringsbelopp och åldrar.
+ * Property tests for the payout calculation. Every property must hold for
+ * all invoices, deductible models, annual limits and ages.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -61,7 +61,7 @@ function run(i: Input) {
   return calculate(claim, policy, i.terms, rules, period, i.consumedBefore);
 }
 
-test('egenskap: ersättning och kundens andel summerar till fakturerat', () => {
+test('property: payout and customer share sum to the billed amount', () => {
   fc.assert(
     fc.property(input, (i) => {
       const c = run(i);
@@ -70,19 +70,19 @@ test('egenskap: ersättning och kundens andel summerar till fakturerat', () => {
   );
 });
 
-test('egenskap: beloppen krymper steg för steg och blir aldrig negativa', () => {
+test('property: amounts shrink step by step and never go negative', () => {
   fc.assert(
     fc.property(input, (i) => {
       const c = run(i);
-      assert.ok(c.billed >= c.base, 'underlag ≤ fakturerat');
-      assert.ok(c.base >= c.payableBeforeLimit, 'före tak ≤ underlag');
-      assert.ok(c.payableBeforeLimit >= c.payout, 'ersättning ≤ före tak');
+      assert.ok(c.billed >= c.base, 'base ≤ billed');
+      assert.ok(c.base >= c.payableBeforeLimit, 'before limit ≤ base');
+      assert.ok(c.payableBeforeLimit >= c.payout, 'payout ≤ before limit');
       assert.ok(c.payout >= 0 && c.base >= 0 && c.deductibleVariable >= 0);
     }),
   );
 });
 
-test('egenskap: ersättningen överstiger aldrig återstående försäkringsbelopp', () => {
+test('property: the payout never exceeds the remaining annual limit', () => {
   fc.assert(
     fc.property(input, (i) => {
       const c = run(i);
@@ -92,7 +92,7 @@ test('egenskap: ersättningen överstiger aldrig återstående försäkringsbelo
   );
 });
 
-test('egenskap: fast självrisk tas högst en gång och aldrig inom öppen period', () => {
+test('property: the fixed deductible is charged at most once and never within an open period', () => {
   fc.assert(
     fc.property(input, (i) => {
       const c = run(i);
@@ -102,7 +102,7 @@ test('egenskap: fast självrisk tas högst en gång och aldrig inom öppen perio
   );
 });
 
-test('egenskap: mer förbrukat belopp ger aldrig högre ersättning', () => {
+test('property: more consumed limit never gives a higher payout', () => {
   fc.assert(
     fc.property(input, fc.integer({ min: 0, max: 5_000_000 }), (i, extra) => {
       assert.ok(run({ ...i, consumedBefore: i.consumedBefore + extra }).payout <= run(i).payout);
@@ -110,10 +110,10 @@ test('egenskap: mer förbrukat belopp ger aldrig högre ersättning', () => {
   );
 });
 
-test('egenskap: en rad som inte ersätts ändrar inte ersättningen', () => {
+test('property: a non-reimbursable line does not change the payout', () => {
   fc.assert(
     fc.property(input, fc.integer({ min: 0, max: 1_000_000 }), (i, food) => {
-      const withFood = { ...i, lines: [...i.lines, { id: 'x', description: 'foder', category: 'food', amount: food }] };
+      const withFood = { ...i, lines: [...i.lines, { id: 'x', description: 'food', category: 'food', amount: food }] };
       assert.equal(run(withFood).payout, run(i).payout);
     }),
   );

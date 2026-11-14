@@ -1,7 +1,7 @@
 /**
- * Skademotorns tjänst mot Postgres: samma flöden som i minnet, men med
- * beslut, ledger och perioder i databasen. Kontrollerar att det som sparas
- * går att räkna vidare på (omprövning, förbrukat belopp).
+ * The claims service against Postgres: the same flows as in memory, but with
+ * decisions, ledger and periods in the database. Checks that what is stored
+ * can be calculated on further (reassessment, consumed limit).
  */
 import { after, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,7 +37,7 @@ function setup() {
   return { service, policies };
 }
 
-test('automatisk reglering bokförs i balanserade journaler med valuta', async () => {
+test('automatic settlement is booked in balanced journals with a currency', async () => {
   const { service } = setup();
   const r = await service.registerClaim(otitisClaim());
   assert.equal(r.decision?.payout, 150_000);
@@ -47,7 +47,7 @@ test('automatisk reglering bokförs i balanserade journaler med valuta', async (
   assert.deepEqual(rows, [{ currency: 'SEK', balance: 0 }]);
 });
 
-test('handläggarbeslut, förbrukat belopp och omprövning utan ändring', async () => {
+test('handler decision, consumed limit and reassessment without change', async () => {
   const { service } = setup();
   await service.registerClaim(otitisClaim());
   const reg = await service.registerClaim(cruciateClaim());
@@ -60,11 +60,11 @@ test('handläggarbeslut, förbrukat belopp och omprövning utan ändring', async
   const limits = await service.getLimits('pol_bella', 'ani_bella', '2026-11-11');
   assert.equal(limits.consumed, 150_000 + d.payout);
 
-  // Underlaget är oförändrat sedan beslutet: ingen ny omprövning.
+  // The basis is unchanged since the decision: no new reassessment.
   assert.equal(await service.reassess(cruciateClaim().id, 'h1', 'kontroll'), null);
 });
 
-test('självriskperioden från första ärendet används av nästa i samma grupp', async () => {
+test('the deductible period from the first claim is used by the next in the same group', async () => {
   const { service } = setup();
   await service.registerClaim(otitisClaim());
   const second = await service.registerClaim(

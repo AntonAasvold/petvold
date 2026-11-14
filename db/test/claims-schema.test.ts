@@ -1,20 +1,20 @@
 /**
- * Databastester (lager 6, ADR 0012): reglerna som Postgres själv upprätthåller
- * i schemat `claims`. Körs mot TEST_DATABASE_URL efter `npm run dev:up`.
- * Varje test körs i en transaktion som rullas tillbaka.
+ * Database tests (layer 6, ADR 0012): the rules Postgres itself enforces in
+ * the schema `claims`. Run against TEST_DATABASE_URL after `npm run dev:up`.
+ * Every test runs in a transaction that is rolled back.
  */
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 
 const url = process.env.TEST_DATABASE_URL;
-if (!url) throw new Error('TEST_DATABASE_URL saknas. Kopiera .env.example till .env och kör npm run dev:up.');
+if (!url) throw new Error('TEST_DATABASE_URL is missing. Copy .env.example to .env and run npm run dev:up.');
 
 const db = new pg.Client({ connectionString: url });
 before(() => db.connect());
 after(() => db.end());
 
-/** Kör `fn` i en transaktion som alltid rullas tillbaka. */
+/** Runs `fn` in a transaction that is always rolled back. */
 async function inTx(fn: () => Promise<void>): Promise<void> {
   await db.query('begin');
   try {
@@ -24,7 +24,7 @@ async function inTx(fn: () => Promise<void>): Promise<void> {
   }
 }
 
-/** Fångar ett förväntat databasfel i en savepoint, så att transaktionen kan fortsätta. */
+/** Catches an expected database error in a savepoint, so the transaction can continue. */
 async function rejects(sql: string, params: unknown[], code: string): Promise<void> {
   await db.query('savepoint s');
   await assert.rejects(db.query(sql, params), (e: { code?: string }) => e.code === code);
@@ -53,7 +53,7 @@ async function journal(id: string, amounts: number[]): Promise<void> {
   }
 }
 
-test('migreringarna har körts', async () => {
+test('the migrations have been applied', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
   assert.deepEqual(
     rows.map((r) => r.version),
@@ -61,7 +61,7 @@ test('migreringarna har körts', async () => {
   );
 });
 
-test('en journal som balanserar godtas', async () => {
+test('a balanced journal is accepted', async () => {
   await inTx(async () => {
     await seedDecision();
     await journal('jnl_ok', [100000, -100000]);
@@ -69,7 +69,7 @@ test('en journal som balanserar godtas', async () => {
   });
 });
 
-test('en journal som inte balanserar avvisas', async () => {
+test('an unbalanced journal is rejected', async () => {
   await inTx(async () => {
     await seedDecision();
     await journal('jnl_bad', [100000, -99999]);
@@ -77,19 +77,19 @@ test('en journal som inte balanserar avvisas', async () => {
   });
 });
 
-test('självriskperioder för samma djur och grupp får inte överlappa', async () => {
+test('deductible periods for the same animal and group must not overlap', async () => {
   await inTx(async () => {
     await seedDecision();
     const insert = `insert into claims.deductible_period (id, animal_id, diagnosis_group, valid, opened_by_claim_id)
                     values ($1, 'ani_t', 'ora', $2::daterange, 'clm_t1')`;
     await db.query(insert, ['dp1', '[2026-10-01,2027-02-03)']);
     await rejects(insert, ['dp2', '[2027-02-02,2027-06-01)'], EXCLUSION_VIOLATION);
-    // Halvöppna intervall: en period som börjar där den förra slutar är tillåten.
+    // Half-open ranges: a period starting where the previous one ends is allowed.
     await db.query(insert, ['dp3', '[2027-02-03,2027-06-08)']);
   });
 });
 
-test('tjänstekontot kan inte ändra eller radera beslut och ledger', async () => {
+test('the service role cannot change or delete decisions and ledger', async () => {
   await inTx(async () => {
     await seedDecision();
     await journal('jnl_r', [500, -500]);
@@ -103,7 +103,7 @@ test('tjänstekontot kan inte ändra eller radera beslut och ledger', async () =
   });
 });
 
-test('tjänstekontot kan läsa, lägga till och ersätta självriskperioder', async () => {
+test('the service role can read, insert and replace deductible periods', async () => {
   await inTx(async () => {
     await db.query('set local role claims_service');
     await seedDecision();
@@ -117,7 +117,7 @@ test('tjänstekontot kan läsa, lägga till och ersätta självriskperioder', as
   });
 });
 
-test('tjänstekontot kan bara markera händelser som publicerade', async () => {
+test('the service role can only mark events as published', async () => {
   await inTx(async () => {
     await db.query('set local role claims_service');
     await db.query(`insert into claims.outbox (type, aggregate_id, payload) values ('claim.registered', 'clm_t1', '{}')`);

@@ -1,8 +1,8 @@
 import type { Claim, ClaimsRules, PolicySnapshot } from '@petvold/claims-core';
 
 /**
- * Exempeldata som speglar designen: Bella, labrador, med förbehåll för
- * hälta höger bakben. Diagnoskoderna är platshållare, inte riktiga VeNom-koder.
+ * Sample data mirroring the design: Bella, a labrador, with a rider for
+ * lameness in the right hind leg. Diagnosis codes are placeholders, not real VeNom codes.
  */
 
 export const RULES_SE_DOG: ClaimsRules = {
@@ -17,7 +17,7 @@ export const RULES_SE_DOG: ClaimsRules = {
     'ORA-OTIT': 'ora',
     'GI-ENTERIT': 'mag-tarm',
   },
-  autoSettleMax: 1_000_000, // 10 000 kr
+  autoSettleMax: 1_000_000, // SEK 10,000
 };
 
 export const PRODUCT = 'SE-HUND-VV-LIV@2026.2';
@@ -46,7 +46,7 @@ export function bellaPolicy(overrides: Partial<PolicySnapshot> = {}): PolicySnap
     riders: [
       {
         id: 'rid_halta_hh',
-        description: 'Hälta, höger bakben',
+        description: 'Lameness, right hind leg',
         diagnosisCodes: ['ORT-HALTA-HB-H'],
         validFrom: '2025-09-12',
       },
@@ -55,7 +55,7 @@ export function bellaPolicy(overrides: Partial<PolicySnapshot> = {}): PolicySnap
   };
 }
 
-/** Korsbandsoperationen från designen: 18 640 kr fakturerat. */
+/** The cruciate ligament surgery from the design: SEK 18,640 billed. */
 export function cruciateClaim(overrides: Partial<Claim> = {}): Claim {
   return {
     id: 'clm_048213',
@@ -70,18 +70,18 @@ export function cruciateClaim(overrides: Partial<Claim> = {}): Claim {
     diagnosisCode: 'ORT-KORSBAND-V',
     receivedAt: '2026-11-13T13:32:00Z',
     lines: [
-      { id: 'l1', description: 'Undersökning, ortopedi', category: 'examination', amount: 85_000 },
-      { id: 'l2', description: 'Röntgen bakben, 4 bilder', category: 'diagnostics', amount: 290_000 },
-      { id: 'l3', description: 'Sedering och anestesi', category: 'anaesthesia', amount: 124_000 },
-      { id: 'l4', description: 'Operation TPLO, vänster', category: 'surgery', amount: 1_240_000 },
-      { id: 'l5', description: 'Smärtlindring, 10 dagar', category: 'medication', amount: 83_000 },
-      { id: 'l6', description: 'Specialfoder', category: 'food', amount: 42_000 },
+      { id: 'l1', description: 'Examination, orthopaedics', category: 'examination', amount: 85_000 },
+      { id: 'l2', description: 'X-ray hind legs, 4 images', category: 'diagnostics', amount: 290_000 },
+      { id: 'l3', description: 'Sedation and anaesthesia', category: 'anaesthesia', amount: 124_000 },
+      { id: 'l4', description: 'TPLO surgery, left', category: 'surgery', amount: 1_240_000 },
+      { id: 'l5', description: 'Pain relief, 10 days', category: 'medication', amount: 83_000 },
+      { id: 'l6', description: 'Prescription food', category: 'food', amount: 42_000 },
     ],
     ...overrides,
   };
 }
 
-/** En liten öroninflammation som regleras automatiskt. */
+/** A small ear infection that is settled automatically. */
 export function otitisClaim(overrides: Partial<Claim> = {}): Claim {
   return {
     id: 'clm_021877',
@@ -96,16 +96,16 @@ export function otitisClaim(overrides: Partial<Claim> = {}): Claim {
     diagnosisCode: 'ORA-OTIT',
     receivedAt: '2026-06-04T09:00:00Z',
     lines: [
-      { id: 'l1', description: 'Undersökning', category: 'examination', amount: 65_000 },
-      { id: 'l2', description: 'Öronsköljning och läkemedel', category: 'medication', amount: 335_000 },
+      { id: 'l1', description: 'Examination', category: 'examination', amount: 65_000 },
+      { id: 'l2', description: 'Ear flush and medication', category: 'medication', amount: 335_000 },
     ],
     ...overrides,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Exempel på en annan marknad, för att visa att samma motor bär andra modeller.
-// Påhittade villkor, inte en beskrivning av någon verklig marknad eller produkt.
+// Example of another market, showing that the same engine carries other models.
+// Made-up terms, not a description of any real market or product.
 // ---------------------------------------------------------------------------
 
 export const PRODUCT_EUR = 'XX-DOG-EXAMPLE@2026.1';
@@ -119,7 +119,7 @@ export const RULES_EUR_EXAMPLE: ClaimsRules = {
   autoSettleMax: 50_000, // 500 EUR
 };
 
-/** Självrisk per skada, rörlig självrisk som ökar från 8 års ålder, moms ersätts inte. */
+/** Deductible per claim, variable deductible rising from age 8, VAT not reimbursed. */
 export function eurPolicy(overrides: Partial<PolicySnapshot> = {}): PolicySnapshot {
   return {
     policyId: 'pol_rex',

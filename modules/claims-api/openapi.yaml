@@ -1,22 +1,22 @@
 openapi: 3.1.0
 info:
-  title: Skademotor – Claims API
+  title: Petvold – Claims API
   version: 0.1.0
-  summary: Headless skadereglering för djurförsäkring.
+  summary: Headless claims handling for pet insurance.
   description: |
-    Kontraktet är källan till sanning. Servern validerar inkommande
-    anrop mot schemana här, och kontraktstesterna validerar svaren.
+    The contract is the source of truth. The server validates incoming
+    requests against the schemas here, and the contract tests validate the responses.
 
-    Konventioner:
-    - Alla belopp är heltal i minsta valutaenhet (`Money`), valutan anges på objektet.
-    - Datum är `YYYY-MM-DD`, tidpunkter ISO 8601 med tidszon.
-    - Fel returneras som `application/problem+json` (RFC 9457).
-    - Alla skapande POST-anrop kräver `Idempotency-Key`.
-    - Marknad (ISO 3166-1) och valuta (ISO 4217) finns på alla ärenden.
-      Belopp växlas aldrig: ett ärende har samma valuta som försäkringen.
-    - Regelutfall har en stabil `reason` och `params`. Texten i `message`
-      är en bekvämlighet på det språk som begärs med `Accept-Language`
-      (sv, en; standard en).
+    Conventions:
+    - All amounts are integers in the smallest currency unit (`Money`); the currency is on the object.
+    - Dates are `YYYY-MM-DD`, points in time ISO 8601 with time zone.
+    - Errors are returned as `application/problem+json` (RFC 9457).
+    - All creating POST requests require `Idempotency-Key`.
+    - Market (ISO 3166-1) and currency (ISO 4217) are on every claim.
+      Amounts are never converted: a claim has the same currency as the policy.
+    - Rule outcomes have a stable `reason` and `params`. The text in `message`
+      is a convenience in the language requested with `Accept-Language`
+      (sv, en; default en).
 servers:
   - url: http://localhost:8787
 security:
@@ -32,11 +32,11 @@ paths:
     post:
       tags: [claims]
       operationId: registerClaim
-      summary: Registrera ett skadeärende
+      summary: Register a claim
       description: |
-        Ärendet bedöms direkt. Om alla regler är gröna och beloppet ligger
-        under gränsen för automatisk reglering fattas beslutet automatiskt
-        och returneras i `decision`.
+        The claim is assessed immediately. If every rule is green and the amount
+        is below the auto-settle limit, the decision is made automatically
+        and returned in `decision`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -53,7 +53,7 @@ paths:
                 $ref: '#/components/examples/ClaimBeforePolicy'
       responses:
         '201':
-          description: Registrerat
+          description: Registered
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RegisterClaimResult' }
@@ -68,7 +68,7 @@ paths:
         - $ref: '#/components/parameters/ClaimId'
       responses:
         '200':
-          description: Skadeärendet
+          description: The claim
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Claim' }
@@ -78,10 +78,10 @@ paths:
     get:
       tags: [claims]
       operationId: assessClaim
-      summary: Aktuell bedömning, utan att spara något
+      summary: Current assessment, without storing anything
       description: |
-        `knownAt` gör bedömningen mot policyn så som den var känd vid en
-        viss tidpunkt (registreringstid). Utelämnad = nu.
+        `knownAt` assesses against the policy as it was known at a given
+        point in time (system time). Omitted = now.
       parameters:
         - $ref: '#/components/parameters/ClaimId'
         - name: knownAt
@@ -90,7 +90,7 @@ paths:
           schema: { type: string, format: date-time }
       responses:
         '200':
-          description: Bedömning
+          description: Assessment
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Assessment' }
@@ -104,7 +104,7 @@ paths:
         - $ref: '#/components/parameters/ClaimId'
       responses:
         '200':
-          description: Alla beslut i ordning, äldst först
+          description: All decisions in order, oldest first
           content:
             application/json:
               schema:
@@ -118,7 +118,7 @@ paths:
     post:
       tags: [decisions]
       operationId: decideClaim
-      summary: Fatta handläggarbeslut
+      summary: Make a claims handler decision
       parameters:
         - $ref: '#/components/parameters/ClaimId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -134,7 +134,7 @@ paths:
                 $ref: '#/components/examples/DecideReject'
       responses:
         '201':
-          description: Beslut fattat
+          description: Decision made
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Decision' }
@@ -146,11 +146,11 @@ paths:
     post:
       tags: [decisions]
       operationId: reassessClaim
-      summary: Ompröva ett beslutat ärende
+      summary: Reassess a decided claim
       description: |
-        Bedömer om ärendet mot aktuellt underlag, t.ex. efter en retroaktiv
-        policyändring. Har utfallet ändrats skapas ett nytt beslut och
-        ledgern bokar skillnaden. 204 om inget ändrats.
+        Reassesses the claim against the current basis, e.g. after a retroactive
+        policy change. If the basis has changed, a new decision is created and
+        the ledger books the difference. 204 if nothing changed.
       parameters:
         - $ref: '#/components/parameters/ClaimId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -164,12 +164,12 @@ paths:
                 $ref: '#/components/examples/Reassess'
       responses:
         '201':
-          description: Nytt beslut
+          description: New decision
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Decision' }
         '204':
-          description: Underlaget oförändrat, inget nytt beslut
+          description: Basis unchanged, no new decision
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
 
@@ -177,8 +177,8 @@ paths:
     post:
       tags: [previews]
       operationId: previewClaim
-      summary: Förhandsbesked, t.ex. i klinikens kassa
-      description: Bedömer ett utkast utan att spara eller reservera något.
+      summary: Pre-approval, e.g. at the clinic's checkout
+      description: Assesses a draft without storing or reserving anything.
       requestBody:
         required: true
         content:
@@ -193,7 +193,7 @@ paths:
                 $ref: '#/components/examples/ClaimBeforePolicy'
       responses:
         '200':
-          description: Bedömning
+          description: Assessment
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Assessment' }
@@ -203,7 +203,7 @@ paths:
     get:
       tags: [limits]
       operationId: getLimits
-      summary: Förbrukat och återstående försäkringsbelopp
+      summary: Consumed and remaining annual limit
       parameters:
         - name: policyId
           in: path
@@ -219,7 +219,7 @@ paths:
           schema: { $ref: '#/components/schemas/Date' }
       responses:
         '200':
-          description: Belopp för försäkringsåret som datumet faller i
+          description: Amounts for the policy year the date falls in
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Limits' }
@@ -234,7 +234,7 @@ webhooks:
           application/json:
             schema: { $ref: '#/components/schemas/ClaimRegisteredEvent' }
       responses:
-        '2XX': { description: Mottaget }
+        '2XX': { description: Received }
   claim.decided:
     post:
       requestBody:
@@ -242,7 +242,7 @@ webhooks:
           application/json:
             schema: { $ref: '#/components/schemas/ClaimDecidedEvent' }
       responses:
-        '2XX': { description: Mottaget }
+        '2XX': { description: Received }
 
 components:
   securitySchemes:
@@ -265,28 +265,28 @@ components:
 
   responses:
     NotFound:
-      description: Finns inte
+      description: Not found
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
-      description: Konflikt med aktuellt tillstånd
+      description: Conflict with the current state
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Unprocessable:
-      description: Ogiltig begäran
+      description: Invalid request
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
 
   examples:
     ClaimOtitAuto:
-      summary: Öroninflammation – regleras automatiskt
+      summary: Ear infection – settled automatically
       description: |
-        4 000 kr fakturerat. Alla regler gröna och under gränsen för automatik.
-        Väntat utfall: godkänt direkt, 1 500 kr i ersättning (2 000 kr fast
-        självrisk, 25 % rörlig). Byt `id` och `claimNo` för att skicka igen.
+        SEK 4,000 billed. Every rule green and below the auto-settle limit.
+        Expected outcome: approved immediately, SEK 1,500 payout (SEK 2,000 fixed
+        deductible, 25 % variable). Change `id` and `claimNo` to send it again.
       value:
         id: clm_ex_otit
         claimNo: EX-0001
@@ -299,15 +299,15 @@ components:
         treatmentTo: '2026-11-11'
         diagnosisCode: ORA-OTIT
         lines:
-          - { id: l1, description: Undersökning, category: examination, amount: 65000 }
-          - { id: l2, description: Öronsköljning och läkemedel, category: medication, amount: 335000 }
+          - { id: l1, description: Examination, category: examination, amount: 65000 }
+          - { id: l2, description: Ear flush and medication, category: medication, amount: 335000 }
     ClaimKorsbandManual:
-      summary: Korsbandsskada – går till handläggare
+      summary: Cruciate ligament injury – goes to a handler
       description: |
-        18 640 kr fakturerat för en TPLO-operation. Bella har ett förbehåll i
-        samma diagnosgrupp och beloppet är över gränsen för automatik.
-        Väntat utfall: inget beslut, bedömningen föreslår delvis ersättning
-        (foder ersätts inte) och väntar på handläggare.
+        SEK 18,640 billed for TPLO surgery. Bella has a rider in the same
+        diagnosis group and the amount is above the auto-settle limit.
+        Expected outcome: no decision; the assessment proposes a partial payout
+        (food is not reimbursed) and waits for a handler.
       value:
         id: clm_ex_korsband
         claimNo: EX-0002
@@ -320,17 +320,17 @@ components:
         treatmentTo: '2026-11-13'
         diagnosisCode: ORT-KORSBAND-V
         lines:
-          - { id: l1, description: Undersökning ortopedi, category: examination, amount: 85000 }
-          - { id: l2, description: Röntgen bakben, category: diagnostics, amount: 290000 }
-          - { id: l3, description: Sedering och anestesi, category: anaesthesia, amount: 124000 }
-          - { id: l4, description: Operation TPLO vänster, category: surgery, amount: 1240000 }
-          - { id: l5, description: Smärtlindring 10 dagar, category: medication, amount: 83000 }
-          - { id: l6, description: Specialfoder, category: food, amount: 42000 }
+          - { id: l1, description: Examination orthopaedics, category: examination, amount: 85000 }
+          - { id: l2, description: X-ray hind legs, category: diagnostics, amount: 290000 }
+          - { id: l3, description: Sedation and anaesthesia, category: anaesthesia, amount: 124000 }
+          - { id: l4, description: TPLO surgery left, category: surgery, amount: 1240000 }
+          - { id: l5, description: Pain relief 10 days, category: medication, amount: 83000 }
+          - { id: l6, description: Prescription food, category: food, amount: 42000 }
     ClaimBeforePolicy:
-      summary: Behandling före försäkringsårets start – avslås
+      summary: Treatment before the policy year starts – rejected
       description: |
-        Behandlingsdatumet ligger före den policyversion som finns.
-        Väntat utfall: avslag föreslås eftersom ingen policy gällde på datumet.
+        The treatment date is before the policy version that exists.
+        Expected outcome: rejection is proposed because no policy applied on that date.
       value:
         id: clm_ex_fore_start
         claimNo: EX-0003
@@ -343,39 +343,39 @@ components:
         treatmentTo: '2026-03-20'
         diagnosisCode: GI-ENTERIT
         lines:
-          - { id: l1, description: Undersökning, category: examination, amount: 80000 }
+          - { id: l1, description: Examination, category: examination, amount: 80000 }
     DecideAccept:
-      summary: Godkänn enligt förslaget
-      description: Lägg gärna till `expectedInputHash` från bedömningen för att skydda mot inaktuellt underlag.
+      summary: Accept as proposed
+      description: Add `expectedInputHash` from the assessment to guard against a stale basis.
       value:
         action: accept
-        reason: Förbehållet gäller höger bakben, skadan är på vänster.
+        reason: The rider covers the right hind leg; the injury is on the left.
     DecideReject:
-      summary: Avslå
+      summary: Reject
       value:
         action: reject
-        reason: Skadan omfattas av förbehållet.
+        reason: The injury is covered by the rider.
     Reassess:
-      summary: Ompröva efter ändring
+      summary: Reassess after a change
       value:
-        reason: Försäkringen har ändrats retroaktivt.
+        reason: The policy has been changed retroactively.
 
   schemas:
     Money:
       type: integer
-      description: Belopp i minsta valutaenhet (öre, cent …).
+      description: Amount in the smallest currency unit (cents, pence …).
     NonNegativeMoney:
       type: integer
       minimum: 0
-      description: Belopp i minsta valutaenhet, aldrig negativt.
+      description: Amount in the smallest currency unit, never negative.
     Market:
       type: string
       pattern: '^[A-Z]{2}$'
-      description: ISO 3166-1 alpha-2, t.ex. SE, NO, DK, FI, DE.
+      description: ISO 3166-1 alpha-2, e.g. SE, NO, DK, FI, DE.
     Currency:
       type: string
       pattern: '^[A-Z]{3}$'
-      description: ISO 4217, t.ex. SEK, NOK, DKK, EUR.
+      description: ISO 4217, e.g. SEK, NOK, DKK, EUR.
     Date:
       type: string
       pattern: '^\d{4}-\d{2}-\d{2}$'
@@ -393,14 +393,14 @@ components:
         description: { type: string, minLength: 1 }
         category:
           type: string
-          description: Kategori enligt produktens skaderegler, t.ex. examination, surgery, food.
+          description: Category per the product's claims rules, e.g. examination, surgery, food.
         diagnosisCode: { type: string }
         amount:
           $ref: '#/components/schemas/NonNegativeMoney'
-          description: Belopp inklusive moms.
+          description: Amount including VAT.
         vat:
           $ref: '#/components/schemas/NonNegativeMoney'
-          description: Momsdelen av amount, om fakturan anger den.
+          description: The VAT part of amount, if the invoice states it.
 
     ClaimFields:
       type: object
@@ -422,7 +422,7 @@ components:
           items: { $ref: '#/components/schemas/ClaimLine' }
 
     ClaimInput:
-      description: Det klienten skickar. receivedAt sätts av servern.
+      description: What the client sends. receivedAt is set by the server.
       allOf:
         - $ref: '#/components/schemas/ClaimFields'
       unevaluatedProperties: false
@@ -446,14 +446,14 @@ components:
         status: { type: string, enum: [pass, fail, review, info] }
         reason:
           type: string
-          description: Stabil nyckel, t.ex. rider.possible. Använd den för logik och egna översättningar.
+          description: Stable key, e.g. rider.possible. Use it for logic and your own translations.
         params:
           type: object
           additionalProperties:
             type: [string, number]
         message:
           type: string
-          description: Text på språket från Accept-Language.
+          description: Text in the language from Accept-Language.
 
     Calculation:
       type: object
@@ -480,13 +480,13 @@ components:
         nonReimbursable: { $ref: '#/components/schemas/Money' }
         vatExcluded:
           $ref: '#/components/schemas/Money'
-          description: Moms som inte ersätts på marknaden.
+          description: VAT that is not reimbursed in the market.
         base: { $ref: '#/components/schemas/Money' }
         opensDeductiblePeriod: { type: boolean }
         deductibleFixed: { $ref: '#/components/schemas/Money' }
         deductibleVariableBp:
           type: integer
-          description: Rörlig självrisk i baspunkter (2500 = 25 %), efter åldersjustering.
+          description: Variable deductible in basis points (2500 = 25 %), after age adjustment.
         deductibleVariable: { $ref: '#/components/schemas/Money' }
         payableBeforeLimit: { $ref: '#/components/schemas/Money' }
         annualLimit: { $ref: '#/components/schemas/Money' }
@@ -517,11 +517,11 @@ components:
         mode:
           type: string
           enum: [auto, manual]
-          description: auto = får regleras utan handläggare.
+          description: auto = may be settled without a claims handler.
         diagnosisGroup: { type: [string, 'null'] }
         inputHash:
           type: string
-          description: Hash av allt underlag. Skicka med som expectedInputHash vid beslut.
+          description: Hash of the whole basis. Send it as expectedInputHash when deciding.
 
     Outcome:
       type: string
@@ -561,7 +561,7 @@ components:
         reason: { type: string, maxLength: 2000 }
         expectedInputHash:
           type: string
-          description: inputHash från bedömningen handläggaren såg. Avvisas med 409 om underlaget ändrats.
+          description: inputHash from the assessment the handler saw. Rejected with 409 if the basis has changed.
 
     ReassessRequest:
       type: object

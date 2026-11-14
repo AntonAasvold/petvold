@@ -1,9 +1,9 @@
-/** Kalenderdatum 'YYYY-MM-DD' utan tid och tidszon. */
+/** Calendar date 'YYYY-MM-DD' without time or time zone. */
 export type ISODate = string;
-/** ISO 8601-tidsstämpel med tidszon. */
+/** ISO 8601 timestamp with time zone. */
 export type Timestamp = string;
 
-/** Halvöppet datumintervall [from, to). Utan `to` gäller det tills vidare. */
+/** Half-open date range [from, to). Without `to` it is open-ended. */
 export interface DateRange {
   from: ISODate;
   to?: ISODate;
@@ -11,7 +11,7 @@ export interface DateRange {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Sant bara för datum som finns i kalendern: '2026-02-30' är inte ett datum. */
+/** True only for dates that exist in the calendar: '2026-02-30' is not a date. */
 export function isISODate(d: string): d is ISODate {
   if (!DATE_RE.test(d)) return false;
   const t = Date.parse(`${d}T00:00:00Z`);
@@ -19,16 +19,16 @@ export function isISODate(d: string): d is ISODate {
 }
 
 export function assertDate(d: ISODate, field: string): void {
-  if (!isISODate(d)) throw new Error(`${field}: ogiltigt datum '${d}', förväntar YYYY-MM-DD`);
+  if (!isISODate(d)) throw new Error(`${field}: invalid date '${d}', expected YYYY-MM-DD`);
 }
 
-/** Lägger till dagar på ett ISO-datum, i UTC så att tidszoner inte flyttar dagen. */
+/** Adds days to an ISO date, in UTC so that time zones never shift the day. */
 export function addDays(d: ISODate, days: number): ISODate {
   const t = Date.parse(`${d}T00:00:00Z`) + days * 86_400_000;
   return new Date(t).toISOString().slice(0, 10);
 }
 
-/** ISO-datum jämförs korrekt som strängar. */
+/** ISO dates compare correctly as strings. */
 export const dateLt = (a: ISODate, b: ISODate) => a < b;
 export const dateLte = (a: ISODate, b: ISODate) => a <= b;
 
@@ -36,7 +36,7 @@ export function assertDateRange(r: DateRange, field: string): void {
   assertDate(r.from, `${field}.from`);
   if (r.to !== undefined) {
     assertDate(r.to, `${field}.to`);
-    if (!dateLt(r.from, r.to)) throw new Error(`${field}: from (${r.from}) måste vara före to (${r.to})`);
+    if (!dateLt(r.from, r.to)) throw new Error(`${field}: from (${r.from}) must be before to (${r.to})`);
   }
 }
 
