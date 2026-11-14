@@ -25,7 +25,9 @@ npm run test:db        # databastester mot Postgres
 npm run dev            # API:et på http://localhost:8787, startar om vid ändringar
 ```
 
-`npm run dev` använder fortfarande minneslagret och exempeldata. Den använder Postgres först när `claims-store-postgres` finns.
+`npm run dev` sparar ärenden, beslut, ledger, outbox och idempotensnycklar i Postgres (`petvold`) när `CLAIMS_DATABASE_URL` finns i `.env`. Data finns kvar mellan omstarter, och `npm run dev:reset` tömmer allt. Ta bort raden ur `.env` för att köra i minnet. Försäkringar och regler är fortfarande exempeldata i minnet (Bella) tills policy- och produktmodulerna finns.
+
+Servern skriver ut vilken lagring den använder och loggar varje händelse som reläet publicerar.
 
 ## Testa API:et för hand
 
