@@ -3,11 +3,26 @@ import type { Claim, ClaimsService, Clock } from '@petvold/claims-core';
 import { DomainError } from '@petvold/claims-core';
 import { formatErrors, openapiText, operationPermissions, validatorFor, type FieldError } from './contract.ts';
 import { routePath } from 'hono/route';
-import { assertRolePermissions, DEFAULT_ROLES, isPermission, permissionsOf, type RolePermissions } from './permissions.ts';
+import {
+  assertRoleDefinitions,
+  coversClaim,
+  coversPolicy,
+  DEFAULT_ROLES,
+  isPermission,
+  permissionsOf,
+  scopeOf,
+  type RoleDefinitions,
+  type Scope,
+  type ScopeAttributes,
+} from './permissions.ts';
 import { localizeDeep, localizeExplanation, pickLocale } from './messages.ts';
 
-/** Who is calling. Comes from a JWT in production (e.g. the insurer's identity provider, or OAuth for clinics). */
-export interface Principal {
+/**
+ * Who is calling. Comes from a JWT in production (e.g. the insurer's identity
+ * provider, or OAuth for clinics). The scope attributes (markets, clinicId,
+ * policyIds) limit which claims the caller may see (ADR 0016).
+ */
+export interface Principal extends ScopeAttributes {
   subject: string;
   /** Role names from the token. Mapped to permissions with the installation's `roles`. */
   roles: string[];
@@ -38,11 +53,11 @@ export interface AppDeps {
   auth: Authenticator;
   idempotency: IdempotencyStore;
   clock: Clock;
-  /** Role -> permissions for this installation (ADR 0016). Defaults to DEFAULT_ROLES. */
-  roles?: RolePermissions;
+  /** Role -> permissions and binding for this installation (ADR 0016). Defaults to DEFAULT_ROLES. */
+  roles?: RoleDefinitions;
 }
 
-type Env = { Variables: { principal: Principal } };
+type Env = { Variables: { principal: Principal; scope: Scope } };
 
 const PROBLEM = 'application/problem+json';
 
@@ -82,7 +97,7 @@ function send(c: Context, body: unknown, status = 200) {
  */
 export function createApp(d: AppDeps) {
   const roles = d.roles ?? DEFAULT_ROLES;
-  assertRolePermissions(roles);
+  assertRoleDefinitions(roles);
   const contractPermissions = operationPermissions();
   const app = new Hono<Env>();
 
@@ -104,6 +119,24 @@ export function createApp(d: AppDeps) {
       if (!isPermission(permission) || !permissionsOf(principal.roles, roles).has(permission)) {
         return problem(c, 403, 'Not permitted', isPermission(permission) ? `Requires the permission ${permission}` : undefined);
       }
+      const scope = scopeOf(principal.roles, principal, roles);
+      if ('error' in scope) return problem(c, 403, 'Not permitted', scope.error);
+      c.set('scope', scope);
+    }
+    await next();
+  });
+
+  // A claim outside the caller's scope answers exactly like a claim that does
+  // not exist, so its existence is not revealed (ADR 0016, OWASP API1).
+  app.use('/v1/claims/:claimId/*', async (c, next) => {
+    const scope = c.get('scope');
+    if (scope) {
+      const id = c.req.param('claimId');
+      const claim = await d.service.getClaim(id).catch((e: unknown) => {
+        if (e instanceof DomainError && e.code === 'not_found') return null;
+        throw e;
+      });
+      if (claim && !coversClaim(scope, claim)) return problem(c, 404, `Claim ${id} does not exist`);
     }
     await next();
   });
@@ -129,8 +162,10 @@ export function createApp(d: AppDeps) {
   app.post('/v1/claims', async (c) => {
     const r = await readJson(c, 'ClaimInput');
     if (!r.ok) return r.res;
+    const scope = c.get('scope');
+    if (!coversPolicy(scope, r.body.market, r.body.policyId)) return problem(c, 403, 'Not permitted', 'The claim is outside the caller\'s scope');
     return idempotent(c, r.body, async () => {
-      const claim: Claim = { ...r.body, receivedAt: d.clock.now() };
+      const claim: Claim = { ...r.body, ...(scope.clinicId ? { clinicId: scope.clinicId } : {}), receivedAt: d.clock.now() };
       const result = await d.service.registerClaim(claim);
       return { status: 201, body: result };
     });
@@ -198,14 +233,22 @@ export function createApp(d: AppDeps) {
   app.post('/v1/claim-previews', async (c) => {
     const r = await readJson(c, 'ClaimInput');
     if (!r.ok) return r.res;
-    const draft: Claim = { ...r.body, receivedAt: d.clock.now() };
+    const scope = c.get('scope');
+    if (!coversPolicy(scope, r.body.market, r.body.policyId)) return problem(c, 403, 'Not permitted', 'The claim is outside the caller\'s scope');
+    const draft: Claim = { ...r.body, ...(scope.clinicId ? { clinicId: scope.clinicId } : {}), receivedAt: d.clock.now() };
     return send(c, await d.service.preview(draft));
   });
 
   app.get('/v1/policies/:policyId/animals/:animalId/limits', async (c) => {
     const onDate = c.req.query('onDate');
     if (!onDate) return problem(c, 422, 'onDate is required');
-    return send(c, await d.service.getLimits(c.req.param('policyId'), c.req.param('animalId'), onDate));
+    // A clinic is not tied to policies, so it cannot look up limits by policy id.
+    const scope = c.get('scope');
+    const notFound = () => problem(c, 404, 'No vet care cover in force for the animal on that date');
+    if (scope.clinicId || (scope.policyIds && !scope.policyIds.has(c.req.param('policyId')))) return notFound();
+    const limits = await d.service.getLimits(c.req.param('policyId'), c.req.param('animalId'), onDate);
+    if (!coversPolicy(scope, limits.market, limits.policyId)) return notFound();
+    return send(c, limits);
   });
 
   // Every operation must have a valid permission in the contract, so a new

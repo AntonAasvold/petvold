@@ -78,8 +78,9 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
   async saveClaim(claim: Claim, events: ClaimsEvent[]): Promise<void> {
     await this.tx(async (db) => {
       await db.query(
-        `insert into claims.claim (id, claim_no, policy_id, animal_id, market, currency, channel, treatment_from, treatment_to, diagnosis_code, received_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        `insert into claims.claim (id, claim_no, policy_id, animal_id, market, currency, channel, treatment_from, treatment_to, diagnosis_code,
+                                   received_at, clinic_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           claim.id,
           claim.claimNo,
@@ -92,6 +93,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
           claim.treatmentTo,
           claim.diagnosisCode,
           claim.receivedAt,
+          claim.clinicId ?? null,
         ],
       );
       for (const [i, l] of claim.lines.entries()) {
@@ -112,7 +114,8 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
 
   async getClaim(claimId: string): Promise<Claim | null> {
     const { rows } = await this.pool.query(
-      `select id, claim_no, policy_id, animal_id, market, currency, channel, treatment_from, treatment_to, diagnosis_code, received_at
+      `select id, claim_no, policy_id, animal_id, market, currency, channel, treatment_from, treatment_to, diagnosis_code, received_at,
+              clinic_id
        from claims.claim where id = $1`,
       [claimId],
     );
@@ -131,6 +134,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       market: c.market,
       currency: c.currency,
       channel: c.channel,
+      ...(c.clinic_id !== null ? { clinicId: c.clinic_id } : {}),
       treatmentFrom: c.treatment_from,
       treatmentTo: c.treatment_to,
       diagnosisCode: c.diagnosis_code,

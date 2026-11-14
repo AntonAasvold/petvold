@@ -22,13 +22,13 @@ import {
   isPermission,
   DEFAULT_ROLES,
   type Principal,
-  type RolePermissions,
+  type RoleDefinitions,
 } from '@petvold/claims-api';
 import { docsPage, SCALAR_VERSION } from '../src/docs.ts';
 
 const { bellaPolicy, cruciateClaim, otitisClaim, eurPolicy, eurClaim, RULES_SE_DOG, RULES_EUR_EXAMPLE, PRODUCT, PRODUCT_EUR } = fixtures;
 
-function setup(opts: { roles?: RolePermissions } = {}) {
+function setup(opts: { roles?: RoleDefinitions } = {}) {
   const clock = new FixedClock('2026-11-13T14:00:00Z');
   const service = new ClaimsService({
     policies: new InMemoryPolicyPort([
@@ -41,12 +41,12 @@ function setup(opts: { roles?: RolePermissions } = {}) {
     ids: new SequentialIds(),
   });
   const tokens: Record<string, Principal> = {
-    handler: { subject: 'handlaggare@example.test', roles: ['handler', 'approver'] },
-    clinic: { subject: 'klinik-001', roles: ['clinic'] },
-    system: { subject: 'batch', roles: ['system'] },
-    job: { subject: 'reassessment-job', roles: ['reassessment-job'] },
-    team: { subject: 'team@example.test', roles: ['claims-team'] },
-    customer: { subject: 'customer-portal', roles: ['customer-channel'] },
+    handler: { subject: 'handlaggare@example.test', roles: ['handler', 'approver'], markets: ['SE', 'DE'] },
+    clinic: { subject: 'klinik-001', roles: ['clinic'], markets: ['SE', 'DE'], clinicId: 'clinic_001' },
+    system: { subject: 'batch', roles: ['system'], markets: '*' },
+    job: { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
+    team: { subject: 'team@example.test', roles: ['claims-team'], markets: '*' },
+    customer: { subject: 'customer-portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
   };
   const app = createApp({
     service,
@@ -66,7 +66,13 @@ function setup(opts: { roles?: RolePermissions } = {}) {
       },
       ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
     });
-  return { app, call };
+  /** A caller with its own principal, against the same app and data. */
+  const as = (principal: Principal) => {
+    const token = `tok-${Object.keys(tokens).length}`;
+    tokens[token] = principal;
+    return { call: (method: string, path: string, o: Parameters<typeof call>[2] = {}) => call(method, path, { ...o, token }) };
+  };
+  return { app, call, as };
 }
 
 /** Claim without receivedAt, as clients send it. */
@@ -193,7 +199,7 @@ test('the reassessment job may reassess but not decide', async () => {
 });
 
 test('an installation maps its own role names to permissions', async () => {
-  const { call } = setup({ roles: { ...DEFAULT_ROLES, 'claims-team': ['claims:read'] } });
+  const { call } = setup({ roles: { ...DEFAULT_ROLES, 'claims-team': { permissions: ['claims:read'] } } });
   await call('POST', '/v1/claims', { key: 'key-00000105', body: input(otitisClaim()) });
   assert.equal((await call('GET', '/v1/claims/clm_021877', { token: 'team' })).status, 200);
   const dec = await call('POST', '/v1/claims/clm_021877/decisions', { token: 'team', key: 'key-00000106', body: { action: 'reject' } });
@@ -201,7 +207,79 @@ test('an installation maps its own role names to permissions', async () => {
 });
 
 test('roles with an unknown permission are rejected at start-up', () => {
-  assert.throws(() => setup({ roles: { handler: ['claims:everything' as never] } }), /unknown permission 'claims:everything'/);
+  assert.throws(() => setup({ roles: { handler: { permissions: ['claims:everything' as never] } } }), /unknown permission 'claims:everything'/);
+  assert.throws(() => setup({ roles: { clinic: { permissions: [], bindsTo: 'vet' as never } } }), /unknown binding 'vet'/);
+  assert.throws(() => setup({ roles: { handler: ['claims:read'] as never } }), /no permissions list/);
+});
+
+// Scope (ADR 0016, part 2) --------------------------------------------------------
+
+test('a clinic sees only the claims it submitted; others answer exactly like a missing claim', async () => {
+  const { call } = setup();
+  const own = await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000401', body: input(otitisClaim()) });
+  assert.equal(own.status, 201);
+  assert.equal(((await own.json()) as any).claim.clinicId, 'clinic_001', 'the clinic id comes from the token');
+  await call('POST', '/v1/claims', { key: 'key-00000402', body: input(cruciateClaim()) }); // by a handler
+
+  assert.equal((await call('GET', '/v1/claims/clm_021877', { token: 'clinic' })).status, 200);
+  const hidden = await call('GET', '/v1/claims/clm_048213', { token: 'clinic' });
+  const missing = await call('GET', '/v1/claims/clm_none', { token: 'clinic' });
+  assert.equal(hidden.status, 404);
+  assert.equal(missing.status, 404);
+  const strip = (b: any) => ({ ...b, title: b.title.replace(/clm_\w+/, 'X') });
+  assert.deepEqual(strip(await hidden.json()), strip(await missing.json()));
+  assert.equal((await call('GET', '/v1/claims/clm_048213/decisions', { token: 'clinic' })).status, 404);
+  assert.equal((await call('GET', '/v1/claims/clm_048213/assessment', { token: 'clinic' })).status, 404);
+});
+
+test('a clinic cannot set another clinic id in the body', async () => {
+  const { call } = setup();
+  const res = await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000411', body: { ...input(otitisClaim()), clinicId: 'clinic_999' } });
+  assert.equal(res.status, 422);
+});
+
+test('a token without the clinic id its role requires is refused', async () => {
+  const { as } = setup();
+  const res = await as({ subject: 'k2', roles: ['clinic'], markets: ['SE'] }).call('GET', '/v1/claims/clm_021877');
+  assert.equal(res.status, 403);
+  assert.match(((await res.json()) as any).detail, /clinic id/);
+});
+
+test('a handler sees only claims in its markets, and cannot register outside them', async () => {
+  const { call, as } = setup();
+  await call('POST', '/v1/claims', { key: 'key-00000421', body: input(eurClaim()) }); // DE
+  const se = as({ subject: 'h-se', roles: ['handler'], markets: ['SE'] });
+  assert.equal((await se.call('GET', `/v1/claims/${eurClaim().id}`)).status, 404);
+  assert.equal((await call('GET', `/v1/claims/${eurClaim().id}`)).status, 200);
+  const outside = await se.call('POST', '/v1/claims', { key: 'key-00000422', body: { ...input(eurClaim()), id: 'clm_de2', claimNo: 'DE-2' } });
+  assert.equal(outside.status, 403);
+});
+
+test('a caller without markets sees nothing', async () => {
+  const { call, as } = setup();
+  await call('POST', '/v1/claims', { key: 'key-00000431', body: input(otitisClaim()) });
+  const none = as({ subject: 'h0', roles: ['handler'] });
+  assert.equal((await none.call('GET', '/v1/claims/clm_021877')).status, 404);
+});
+
+test('the customer channel sees only claims on the customer\'s policies, and limits only for them', async () => {
+  const { call, as } = setup();
+  await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000441', body: input(otitisClaim()) }); // pol_bella
+  assert.equal((await call('GET', '/v1/claims/clm_021877', { token: 'customer' })).status, 200);
+  const other = as({ subject: 'portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_other'] });
+  assert.equal((await other.call('GET', '/v1/claims/clm_021877')).status, 404);
+  assert.equal((await other.call('POST', '/v1/claims/clm_021877/decisions/1/review-requests', { key: 'key-00000442', body: {} })).status, 404);
+  assert.equal((await other.call('GET', '/v1/claims/clm_021877/decisions/1/explanation')).status, 404);
+});
+
+test('limits: within the markets for a handler, never by policy id for a clinic', async () => {
+  const roles = { ...DEFAULT_ROLES, clinic: { ...DEFAULT_ROLES.clinic!, permissions: [...DEFAULT_ROLES.clinic!.permissions, 'limits:read' as const] } };
+  const { call, as } = setup({ roles });
+  const path = '/v1/policies/pol_bella/animals/ani_bella/limits?onDate=2026-11-13';
+  assert.equal((await call('GET', path)).status, 200);
+  assert.equal((await call('GET', path, { token: 'clinic' })).status, 404);
+  const de = as({ subject: 'h-de', roles: ['handler'], markets: ['DE'] });
+  assert.equal((await de.call('GET', path)).status, 404);
 });
 
 test('every operation in the contract names a known permission', () => {
@@ -216,7 +294,7 @@ test('an unknown path still gives 404, not 403', async () => {
 });
 
 test('rejecting against the proposal: 403 without claims:override, 422 without motivation, 201 with both', async () => {
-  const { call } = setup({ roles: { ...DEFAULT_ROLES, 'claims-team': ['claims:read', 'claims:decide'] } });
+  const { call } = setup({ roles: { ...DEFAULT_ROLES, 'claims-team': { permissions: ['claims:read', 'claims:decide'] } } });
   await call('POST', '/v1/claims', { key: 'key-00000201', body: input(cruciateClaim()) });
   const body = { action: 'reject', reasonCode: 'pre_existing_condition', reason: 'Lameness before the policy started' };
 
@@ -416,4 +494,12 @@ test('the API page points to the contract and pins the Scalar version', () => {
   assert.match(html, /"token":"dev-handler"/);
   assert.match(html, new RegExp(`@scalar/api-reference@${SCALAR_VERSION.replace(/\./g, '\\.')}"`));
   assert.match(SCALAR_VERSION, /^\d+\.\d+\.\d+$/);
+});
+
+test('a claim registered by a clinic follows the contract, with its clinic id', async () => {
+  const { call } = setup();
+  const res = await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000451', body: input(otitisClaim()) });
+  const body = (await res.json()) as any;
+  assertSchema('RegisterClaimResult', body);
+  assertSchema('Claim', (await (await call('GET', '/v1/claims/clm_021877', { token: 'clinic' })).json()) as any);
 });

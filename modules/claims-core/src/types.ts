@@ -36,6 +36,8 @@ export interface Claim {
   market: MarketCode;
   currency: CurrencyCode;
   channel: ClaimChannel;
+  /** The clinic that submitted the claim, taken from the caller's token (ADR 0016). Never from the request body. */
+  clinicId?: string;
   treatmentFrom: ISODate;
   treatmentTo: ISODate;
   /** Main diagnosis for the claim. */
