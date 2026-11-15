@@ -39,7 +39,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Uppslagning av djur för kliniker, styrd per djur (ADR 0025)
 - [ ] Kullar i djurregistret
 - [x] Parter (ADR 0026): personer och organisationer, personnummer som aldrig visas, och historik. Roller ägs av modulen som har relationen.
-- [ ] Djurregistret kontrollerar att ägaren finns som part
+- [x] Djurregistret kontrollerar att ägaren finns som part, i djurets marknad
 - [ ] Gallring och anonymisering av personuppgifter (GDPR artikel 17)
 
 **M3 – Policy**

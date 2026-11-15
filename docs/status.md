@@ -20,6 +20,11 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Migration 0017:** schemat `parties` och rollen `parties_service`. Provad ner och upp igen.
   - **Dev-servern** registrerar Bellas ägare `pty_owner001`. `dev-registrar` får även rollen `party-registrar`. Lokal rollinställning är version 6.
 - 281 tester och 95 databastester.
+- #37 mergad.
+- Djurregistret kontrollerar ägaren (ADR 0026, punkt 8), PR #38:
+  - **Ägaren måste finnas och höra till djurets marknad** vid registrering och ägarbyte. Annars blir svaret `422`, med samma svar för en part som saknas och en part i en annan marknad.
+  - **Porten `PartyPort`** i `animals`, som `PartyService.marketOf` uppfyller. API-lagret och dev-servern kopplar ihop dem.
+- 282 tester och 95 databastester.
 - #31 mergad: simulering och rättningen av outboxens ordning.
 - Referensdata i den nya modulen `catalog` (ADR 0022, Beslutad):
   - **Arter, raser och kön** med koder som aldrig ändras och etiketter per språk. `label` följer `Accept-Language`.
@@ -55,8 +60,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Djurregistret kontrollerar att ägaren finns som part.
-2. Kullar i djurregistret.
+1. Kullar i djurregistret, eller ADR om gallring och anonymisering (GDPR artikel 17).
 
 **Öppet**
 - ADR 0025 och 0026 väntar på ditt beslut.

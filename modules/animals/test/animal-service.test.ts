@@ -108,6 +108,23 @@ test('a lookup finds only animals open for lookup, and shows no owners or histor
   await rejects(s.register(input({ identifiers: [], allowLookup: 'yes' as never }), by), 'validation', /allowLookup/);
 });
 
+test('with a party port, the owner must exist in the animal\'s market', async () => {
+  const markets: Record<string, string> = { pty_anna: 'SE', pty_bo: 'SE', pty_dag: 'DE' };
+  let n = 0;
+  const s = new AnimalService({
+    store: new InMemoryAnimalStore(),
+    references: { get: async (kind, code) => refs[`${kind}:${code}`] ?? null },
+    parties: { marketOf: async (id) => markets[id] ?? null },
+    clock: { now: () => '2026-11-15T10:00:00.000Z' },
+    ids: { next: (p) => `${p}_${++n}` },
+  });
+  await rejects(s.register(input({ owner: { partyId: 'pty_nobody', from: '2024-05-01' } }), by), 'validation', /does not exist in market SE/);
+  await rejects(s.register(input({ owner: { partyId: 'pty_dag', from: '2024-05-01' } }), by), 'validation', /does not exist in market SE/);
+  const a = await s.register(input(), by);
+  await rejects(s.transfer(a.id, { partyId: 'pty_dag', from: '2026-06-01' }, by), 'validation', /does not exist/);
+  assert.equal((await s.transfer(a.id, { partyId: 'pty_bo', from: '2026-06-01' }, by)).ownerships.length, 2);
+});
+
 test('invalid registrations are refused', async () => {
   const s = setup();
   await rejects(s.register(input({ market: 'se' }), by), 'validation', /market/);

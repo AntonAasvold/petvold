@@ -22,7 +22,7 @@ Registret håller ordning på de försäkrade djuren: vad djuret är, hur det id
 - **Historik.** Varje ändring av uppgifterna blir en ny revision med vem, när och varför. `GET .../revisions` visar alla.
 - **Id-nummer är unika.** Ett chipnummer kan bara höra till ett djur. Chipnummer har 15 siffror. Mellanslag och bindestreck tas bort, så `752 098 100 000 001` och `752098100000001` är samma nummer.
 - **Ägarskap har giltighetstid.** Ett ägarbyte från 1 juni avslutar det gällande ägarskapet 1 juni, och den nya ägaren gäller från samma dag. Det blir aldrig glapp eller överlapp.
-- **Ägare är parter**, till exempel `pty_owner001`. Partmodulen, som ska hålla personer och organisationer, är inte byggd än.
+- **Ägare är [parter](parter.md)**, till exempel `pty_owner001`. Ägaren måste finnas och höra till samma marknad som djuret, både vid registrering och vid ägarbyte (ADR 0026).
 
 ## Anrop
 
@@ -86,9 +86,10 @@ Om Rex är stängd, inte finns eller finns i en annan marknad blir svaret `{ "it
 | Dödsdatum i framtiden eller före födelsedatumet | `422` |
 | Ny ägare samma dag som eller före den gällande, eller efter dödsdatumet | `422` |
 | Samma ägare igen | `409` |
+| Ägaren finns inte, eller hör till en annan marknad | `422` |
 
 ## Lokalt
 
 Dev-servern registrerar Bella (`ani_bella`, labrador, chip `752098100000001`, ägare `pty_owner001`, öppen för uppslagning) första gången. Token `dev-clinic` kan slå upp henne. Token `dev-registrar` får registrera och ändra djur i Sverige.
 
-*Inte byggt än:* en logg över vem som slagit upp ett djur, kullar, händelser vid ägarbyte och dödsfall (M3), och kontroll av att parten finns (partmodulen).
+*Inte byggt än:* en logg över vem som slagit upp ett djur, kullar, händelser vid ägarbyte och dödsfall (M3), och en ägare som flyttar till ett annat land.
