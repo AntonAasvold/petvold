@@ -112,4 +112,8 @@ Båda valparna ägs av kenneln från 1 september. Om båda föräldrarna är bea
 
 Dev-servern registrerar Bella (`ani_bella`, labrador, chip `752098100000001`, ägare `pty_owner001`, öppen för uppslagning) första gången. Token `dev-clinic` kan slå upp henne. Token `dev-registrar` får registrera och ändra djur i Sverige.
 
-*Inte byggt än:* en logg över vem som slagit upp ett djur, att lägga till ett djur i en kull i efterhand, händelser vid ägarbyte och dödsfall (M3), och en ägare som flyttar till ett annat land.
+## Händelser
+
+Ett ägarbyte ger händelsen `animal.ownership_changed`, med förra och nya ägaren och dagen. En rättelse som sätter ett nytt dödsdatum ger `animal.died`. Händelserna skrivs i samma transaktion som ändringen (ADR 0008). Policymodulen gör om dem till förslag om överlåtelse och avslut (se [Policyer](policyer.md#när-djuret-säljs-eller-dör)).
+
+*Inte byggt än:* en logg över vem som slagit upp ett djur, att lägga till ett djur i en kull i efterhand, och en ägare som flyttar till ett annat land.

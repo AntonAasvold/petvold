@@ -32,6 +32,14 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #48 mergad.
+- Överlåtelse och dödsfall (ADR 0029), PR #49:
+  - **Djurregistret har en outbox** med `animal.ownership_changed` och `animal.died` (migration 0024).
+  - **Policymodulen gör om händelserna till förslag** (migration 0025), en gång per händelse. Dev-servern lämnar dem vidare varje sekund.
+  - **Överlåtelse:** samma policy byter försäkringstagare från försäljningsdagen när den nya ägaren har godkänt villkoren (kanal och referens sparas). Premien för resten av termen flyttas. Ett avböjt förslag, eller ett som inte godkänns i tid (`transferAcceptanceDays`), avslutar policyn från försäljningsdagen.
+  - **Dödsfall:** ett godkänt förslag avslutar policyn från dödsdagen, och ett avböjt ändrar inget.
+  - **API:** fem operationer under `/v1/policy-proposals` och `/v1/proposal-expiry-runs`.
+- 328 tester och 107 databastester.
 - #47 mergad.
 - Förnyelse av policyer (ADR 0029), PR #48:
   - **Förnyelsekörning** (`POST /v1/renewal-runs`, med provkörning) inom produktens `renewalLeadDays`. Den använder produktversionen som säljs på förnyelsedagen och samma val och premie, tills M4. Avslut till termens slut stoppar den.
@@ -123,7 +131,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Överlåtelse vid försäljning: händelser från djurregistret, förslag till byte av försäkringstagare, godkännande och avslut om det inte godkänns.
+1. Skademotorn lyssnar på `policy.version_superseded` och omprövar skador efter ett avslut bakåt i tiden, eller policygrupper för kullar och hushåll.
 
 **Öppet**
 - Skademotorn omprövar inte skador automatiskt när en policy avslutas bakåt i tiden. Händelsen `policy.version_superseded` finns, men ingen lyssnar på den än.

@@ -1,7 +1,7 @@
 /** Shared PolicyStore tests, run against every implementation. */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PolicyConflictError, type Policy, type PolicyEvent, type PolicyStore, type PolicyTransaction, type PolicyVersion, type Term } from '../src/index.ts';
+import { PolicyConflictError, type Policy, type PolicyEvent, type PolicyStore, type PolicyTransaction, type PolicyVersion, type Proposal, type Term } from '../src/index.ts';
 
 export type PolicyStoreFactory = () => Promise<{ store: PolicyStore; cleanup?: () => Promise<void> }>;
 
@@ -135,6 +135,52 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
       assert.deepEqual((await store.transactions('pol_t1')).at(-1), tx);
       assert.deepEqual(await store.endingBetween('2027-11-01', '2027-12-31'), []);
       assert.deepEqual(await store.endingBetween('2028-11-01', '2028-12-31'), ['pol_t1']);
+    });
+
+    it('proposals are stored once per source event, and decided once, with or without a change', async (store) => {
+      const t = issued();
+      await store.issue(t.policy, t.term, t.version, t.transaction, []);
+      const pr: Proposal = {
+        id: 'ppr_1',
+        policyId: 'pol_t1',
+        market: 'SE',
+        kind: 'transfer',
+        sourceEventId: 'aev_1',
+        details: { fromPartyId: 'pty_anna', toPartyId: 'pty_bo', from: '2027-06-01' },
+        deadline: '2027-07-01',
+        createdAt: at,
+      };
+      assert.equal(await store.addProposal(pr), true);
+      assert.equal(await store.addProposal({ ...pr, id: 'ppr_2' }), false);
+      assert.deepEqual(await store.getProposal('ppr_1'), pr);
+      const death: Proposal = { id: 'ppr_3', policyId: 'pol_t1', market: 'SE', kind: 'cancel-death', sourceEventId: 'aev_3', details: { deceasedOn: '2027-03-01' }, createdAt: at };
+      await store.addProposal(death);
+      assert.deepEqual((await store.listProposals({ pending: true })).map((p) => p.id), ['ppr_1', 'ppr_3']);
+
+      const rejected = { outcome: 'rejected' as const, reason: 'Wrong animal', decidedBy: 'cs', decidedAt: at };
+      await store.decideProposal('ppr_3', rejected);
+      await assert.rejects(store.decideProposal('ppr_3', rejected), PolicyConflictError);
+
+      const later = '2027-06-10T10:00:00.000Z';
+      const tx: PolicyTransaction = {
+        id: 'ptx_x1',
+        policyId: 'pol_t1',
+        type: 'transfer',
+        steps: [{ step: 'issued', at: later }],
+        requestedBy: 'cs',
+        requestedAt: later,
+        supersedes: ['pv_t1'],
+        transfer: { fromPartyId: 'pty_anna', toPartyId: 'pty_bo', from: '2027-06-01', acceptance: { channel: 'web', acceptedAt: later }, premium: { amount: 1, currency: 'SEK' } },
+      };
+      const before: PolicyVersion = { ...t.version, id: 'pv_x1', validTo: '2027-06-01', sysFrom: later, transactionId: 'ptx_x1' };
+      const afterV: PolicyVersion = { ...t.version, id: 'pv_x2', validFrom: '2027-06-01', policyholderPartyId: 'pty_bo', sysFrom: later, transactionId: 'ptx_x1' };
+      const accepted = { outcome: 'accepted' as const, acceptance: { channel: 'web', acceptedAt: later }, transactionId: 'ptx_x1', decidedBy: 'cs', decidedAt: later };
+      await store.apply('pol_t1', ['pv_t1'], [before, afterV], tx, [], [], { proposalId: 'ppr_1', decision: accepted });
+      assert.deepEqual((await store.getProposal('ppr_1'))!.decision, accepted);
+      assert.deepEqual((await store.listProposals({ policyId: 'pol_t1', pending: false })).map((p) => p.id), ['ppr_1', 'ppr_3']);
+      assert.deepEqual((await store.transactions('pol_t1')).at(-1), tx);
+      assert.deepEqual(await store.findByPolicyholder('pty_bo'), ['pol_t1']);
+      assert.equal(await store.getProposal('ppr_none'), null);
     });
 
     it('an animal is never insured twice for the same day', async (store) => {

@@ -12,16 +12,22 @@ const refs: Record<string, { active: boolean; parent?: string }> = {
   'sex:female': { active: true },
 };
 
+const stores = new WeakMap<AnimalService, InMemoryAnimalStore>();
 function setup() {
   let n = 0;
-  return new AnimalService({
-    store: new InMemoryAnimalStore(),
+  const animalStore = new InMemoryAnimalStore();
+  const service = new AnimalService({
+    store: animalStore,
     references: { get: async (kind, code) => refs[`${kind}:${code}`] ?? null },
     clock: { now: () => '2026-11-15T10:00:00.000Z' },
     ids: { next: (p) => `${p}_${++n}` },
   });
+  stores.set(service, animalStore);
+  return service;
 }
 const by = 'registrar@example.test';
+/** The store behind a service from setup(), for reading its outbox. */
+const store = (s: AnimalService) => stores.get(s)!;
 const input = (o: Partial<RegisterInput> = {}): RegisterInput => ({
   market: 'SE',
   species: 'dog',
@@ -85,11 +91,20 @@ test('a change of owner ends the previous ownership the same day', async () => {
   assert.equal(ownerOn(t.ownerships, '2026-06-01')!.partyId, 'pty_bo');
   assert.equal(ownerOn(t.ownerships, '2024-04-30'), null);
   assert.deepEqual(await s.activityOf('pty_anna'), { lastDate: '2026-06-01' });
+  const [sale] = await store(s).pendingEvents(10);
+  assert.deepEqual([sale?.type, sale?.animalId, sale?.data], ['animal.ownership_changed', a.id, { market: 'SE', fromPartyId: 'pty_anna', toPartyId: 'pty_bo', from: '2026-06-01', reason: 'Sold' }]);
   assert.deepEqual(await s.activityOf('pty_bo'), { ongoing: true });
   assert.equal(await s.activityOf('pty_none'), null);
   const base = { sex: 'male', neutered: false, name: 'Rex', birthDate: '2024-03-01', breed: 'dog-beagle', allowLookup: false };
   await s.correct(a.id, { ...base, deceasedOn: '2026-11-01', basedOnRevision: 1, reason: 'Died' }, by);
   await rejects(s.transfer(a.id, { partyId: 'pty_cy', from: '2026-11-02' }, by), 'validation', /died/);
+  const events = await store(s).pendingEvents(10);
+  assert.deepEqual(events.map((e) => [e.type, e.data.deceasedOn ?? null]), [['animal.ownership_changed', null], ['animal.died', '2026-11-01']]);
+  // A correction that does not change the death writes no event.
+  await s.correct(a.id, { ...base, deceasedOn: '2026-11-01', name: 'Rexy', basedOnRevision: 2, reason: 'Name' }, by);
+  assert.equal((await store(s).pendingEvents(10)).length, 2);
+  await store(s).markPublished([events[0]!.id], '2026-11-15T11:00:00.000Z');
+  assert.deepEqual((await store(s).pendingEvents(10)).map((e) => e.type), ['animal.died']);
 });
 
 test('a lookup finds only animals open for lookup, and shows no owners or history', async () => {

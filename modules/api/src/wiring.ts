@@ -28,6 +28,7 @@ export function productPort(products: ProductService): ProductPort {
         midTermCancellation: settings.midTermCancellation,
         termMonths: settings.termMonths,
         renewalLeadDays: settings.renewalLeadDays,
+        transferAcceptanceDays: settings.transferAcceptanceDays,
         vetCareTermsFor: (choice) => ({ ...vetCareTermsFor(v, choice), deductibleOption: choice.deductible ?? v.content.vetCare.defaultDeductible }),
       };
     },

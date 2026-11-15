@@ -49,9 +49,9 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Avslut enligt marknadsprofil och produktinställning, med premie tillbaka, återkallelse och händelser (ADR 0029)
 - [x] Förnyelse: körning inom produktens framförhållning, termlängd per produkt, lista för beslut, och förnyelse för hand (ADR 0029)
 - [ ] Ändring
-- [ ] Förslag till avslut och överlåtelse från djurregistrets händelser
 - [ ] Ändring, reversering och ändring i fel ordning
-- [ ] PolicyGroup och överlåtelse
+- [x] Överlåtelse vid försäljning och förslag till avslut vid dödsfall, från djurregistrets händelser (ADR 0029)
+- [ ] PolicyGroup
 - [ ] Policyer och skador rapporterar partens relationer till gallringen (`ActivitySource`, ADR 0028)
 - [x] ADR om policyns livscykel: tecknande, ändring, förnyelse, avslut och överlåtelse, med legala ramar per marknad (ADR 0029)
 - [ ] Förnyelse:

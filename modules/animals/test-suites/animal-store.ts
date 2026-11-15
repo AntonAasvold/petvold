@@ -106,7 +106,11 @@ export function animalStoreSuite(name: string, factory: AnimalStoreFactory): voi
     it('a transfer closes the open ownership the day the new one starts', async (store) => {
       await store.register(animal(), [], owner());
       const next = owner({ seq: 2, partyId: 'pty_bo', validFrom: '2026-06-01', reason: 'Sold' });
-      await store.transfer('ani_rex', 1, next);
+      const event = { id: 'aev_1', type: 'animal.ownership_changed' as const, animalId: 'ani_rex', occurredAt: at, data: { toPartyId: 'pty_bo', from: '2026-06-01' } };
+      await store.transfer('ani_rex', 1, next, [event]);
+      assert.deepEqual(await store.pendingEvents(10), [event]);
+      await store.markPublished(['aev_1'], at);
+      assert.deepEqual(await store.pendingEvents(10), []);
       await assert.rejects(store.transfer('ani_rex', 1, owner({ seq: 3, partyId: 'pty_cy', validFrom: '2026-07-01' })), AnimalConflictError);
       assert.deepEqual((await store.get('ani_rex'))!.ownerships, [owner({ validTo: '2026-06-01' }), next]);
       assert.deepEqual(await store.findByOwner('pty_anna', '2026-05-31'), ['ani_rex']);
