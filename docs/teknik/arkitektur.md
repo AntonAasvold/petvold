@@ -159,7 +159,7 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
   - Begränsning beräknas från `restrict_until` i avslagen.
 - **Gallring (ADR 0028, migration 0020):**
   - `RetentionService` i `parties/src/retention.ts` har lagringstiderna som versioner i `parties.retention_settings`. Version 1 skapas från `DEFAULT_RETENTION` första gången den läses.
-  - Andra moduler rapporterar relationer via `ActivitySource.activityOf(partyId)`: pågående, ett slutdatum eller ingen. `AnimalService.activityOf` har samma form, och installationen kopplar ihop dem.
+  - Andra moduler rapporterar relationer via `ActivitySource.activityOf(partyId)`: pågående, ett slutdatum eller ingen. Källorna är `AnimalService.activityOf`, `PolicyService.activityOf` och `claimsActivity(policies, claims)` i `api/src/wiring.ts`. Den sista går igenom `PolicyService.holderPeriods(partyId)` och frågar `ClaimsService.claimActivity(policyId, från, till)` om skador med behandling under perioden. Skademotorn känner inte till parter.
   - `run` går igenom `PartyService.partyIds()` och skapar en begäran för varje part där `addYears(sista relation, år) < i dag`.
   - `reapplyErasures(pool)` i `postgres.ts` och skriptet `npm run erasures:reapply` kör `parties.anonymize` igen för varje godkänt beslut. `PartyService.marketOf` svarar `null` för begränsade och anonymiserade parter, så att djurregistret inte kan peka nya ägarskap på dem.
 

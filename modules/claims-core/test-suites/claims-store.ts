@@ -505,6 +505,21 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.deepEqual(await store.latestDecisionsWithEvidence('2026-10-03T10:00:00.000Z', '2026-10-03T10:00:00.000Z', 10), []);
     });
 
+    it('claim activity on a policy for retention: open until decided, open again during a review', async (store) => {
+      assert.deepEqual(await store.claimActivity('pol_suite', '2026-01-01', '2027-01-01'), { open: false });
+      await save(store, claim('clm_a')); // treated 2026-10-01, received 2026-10-02
+      assert.deepEqual(await store.claimActivity('pol_suite', '2026-01-01', '2027-01-01'), { open: true, lastAt: '2026-10-02T09:15:00.000Z' });
+      const d = decision('clm_a', 1, 50_000); // decided 2026-10-03
+      await store.commitDecision(commit(d));
+      assert.deepEqual(await store.claimActivity('pol_suite', '2026-01-01', '2027-01-01'), { open: false, lastAt: d.decidedAt });
+      // Treated outside the period, or on another policy: not counted.
+      assert.deepEqual(await store.claimActivity('pol_suite', '2026-10-02', '2027-01-01'), { open: false });
+      assert.deepEqual(await store.claimActivity('pol_other', '2026-01-01', '2027-01-01'), { open: false });
+      const req = reviewRequest(d);
+      await store.saveReviewRequest(req, reviewRequested(req));
+      assert.equal((await store.claimActivity('pol_suite', '2026-01-01', '2027-01-01')).open, true);
+    });
+
     it('claims whose latest decision was made on given policy versions', async (store) => {
       await save(store, claim('clm_a'));
       await save(store, claim('clm_b', { claimNo: 'S-b' }));

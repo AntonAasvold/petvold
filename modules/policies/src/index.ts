@@ -1075,6 +1075,13 @@ export class PolicyService implements PolicyPort {
     return this.get(policyId);
   }
 
+  /** The periods the party held a policy, as known now: for retention, to find the party's claims (ADR 0028). */
+  async holderPeriods(partyId: string): Promise<{ policyId: string; from: ISODate; to: ISODate }[]> {
+    return (await this.findByPolicyholder(partyId)).flatMap((p) =>
+      p.versions.filter((v) => v.policyholderPartyId === partyId).map((v) => ({ policyId: p.id, from: v.validFrom, to: v.validTo })),
+    );
+  }
+
   /**
    * For retention (ADR 0028), as an ActivitySource: ongoing while the party is
    * the policyholder of a version that has not ended, else the end of the last one.

@@ -366,6 +366,8 @@ test('a sale becomes a transfer proposal; accepted, the policy changes policyhol
   assert.deepEqual([tx.type, tx.transfer?.premium, tx.transfer?.acceptance.channel], ['transfer', { amount: 183_000, currency: 'SEK' }, 'web']);
   assert.equal((await s.getPolicyAt(p.id, '2027-03-01'))?.inceptionDate, '2026-12-01'); // the waiting period does not restart
   assert.deepEqual((await s.findByPolicyholder('pty_bo')).map((x) => x.id), [p.id]);
+  assert.deepEqual(await s.holderPeriods('pty_anna'), [{ policyId: p.id, from: '2026-12-01', to: '2027-06-01' }]);
+  assert.deepEqual(await s.holderPeriods('pty_bo'), [{ policyId: p.id, from: '2027-06-01', to: '2027-12-01' }]);
   assert.ok((await store.pendingEvents(100)).some((e) => e.type === 'policy.transferred'));
 });
 

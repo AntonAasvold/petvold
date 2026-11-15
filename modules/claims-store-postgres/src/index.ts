@@ -260,6 +260,23 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
     }));
   }
 
+  async claimActivity(policyId: string, from: string, to: string): Promise<{ open: boolean; lastAt?: Timestamp }> {
+    const { rows } = await this.pool.query(
+      `select
+         coalesce(bool_or(
+           not exists (select 1 from claims.decision d where d.claim_id = c.id)
+           or exists (select 1 from claims.review_request r where r.claim_id = c.id and r.closed_at is null)
+           or exists (select 1 from claims.decision_proposal p where p.claim_id = c.id and p.status = 'open')
+         ), false) as open,
+         max(greatest(c.received_at, (select max(decided_at) from claims.decision d where d.claim_id = c.id))) as last_at
+       from claims.claim c
+       where c.policy_id = $1 and c.treatment_from >= $2 and c.treatment_from < $3`,
+      [policyId, from, to],
+    );
+    const r = rows[0];
+    return { open: r.open, ...(r.last_at === null ? {} : { lastAt: new Date(r.last_at).toISOString() }) };
+  }
+
   async claimsDecidedOnPolicyVersions(policyVersionIds: string[]): Promise<string[]> {
     const { rows } = await this.pool.query(
       `select d.claim_id from claims.decision d

@@ -27,7 +27,7 @@ import { InMemoryPartyStore, InMemoryRetentionStore, PartyService, RetentionServ
 import { PostgresPartyStore, PostgresRetentionStore } from '@petvold/parties/postgres';
 import { InMemoryPolicyStore, PolicyService, type PolicyStore } from '@petvold/policies';
 import { PostgresPolicyStore } from '@petvold/policies/postgres';
-import { animalPort, productPort } from './wiring.ts';
+import { animalPort, claimsActivity, productPort } from './wiring.ts';
 import {
   CatalogService,
   InMemoryProductStore,
@@ -310,6 +310,8 @@ const retention = new RetentionService({
   sources: [
     { name: 'animals', activityOf: (id) => animals.activityOf(id) },
     { name: 'policies', activityOf: (id) => policies.activityOf(id) },
+    // The claims engine is created further down; look it up when the run asks.
+    { name: 'claims', activityOf: (id) => claimsActivity(policies, service).activityOf(id) },
   ],
   clock,
 });

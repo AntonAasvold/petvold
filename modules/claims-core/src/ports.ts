@@ -74,6 +74,12 @@ export interface ClaimsStore {
    * [from, to) and has evidence, with that evidence. Oldest first, at most `limit`.
    */
   latestDecisionsWithEvidence(from: Timestamp, to: Timestamp, limit: number): Promise<Array<{ decision: ClaimDecision; evidence: DecisionEvidence }>>;
+  /**
+   * For retention (ADR 0028): the claims on the policy treated in [from, to).
+   * open: any of them has no decision yet, an open review request or an open
+   * decision proposal. lastAt: the latest a claim was received or decided.
+   */
+  claimActivity(policyId: string, from: ISODate, to: ISODate): Promise<{ open: boolean; lastAt?: Timestamp }>;
   /** Claims whose latest decision was made on one of the policy versions, e.g. ones that were just superseded. */
   claimsDecidedOnPolicyVersions(policyVersionIds: string[]): Promise<string[]>;
   /**
