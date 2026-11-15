@@ -119,6 +119,8 @@ export interface AnimalStore {
   findByIdentifier(type: IdentifierType, value: string): Promise<string | null>;
   /** Animals the party owns on the date. */
   findByOwner(partyId: string, onDate: ISODate): Promise<string[]>;
+  /** Every ownership the party has or had, of any animal. */
+  ownershipsOfParty(partyId: string): Promise<Ownership[]>;
   /** Stores a new animal with its first revision, identifiers and owner, all or nothing. */
   register(animal: Animal, identifiers: AnimalIdentifier[], owner: Ownership): Promise<void>;
   /** Throws AnimalConflictError unless it is the next revision. */
@@ -296,6 +298,18 @@ export class AnimalService {
   /** Finds an animal by identifier for a lookup: only if it is open for lookup, and only as a summary (ADR 0025). */
   async lookup(input: IdentifierInput): Promise<AnimalSummary[]> {
     return (await this.findByIdentifier(input)).filter((a) => a.allowLookup).map(summaryOf);
+  }
+
+  /**
+   * When the party last owned an animal, for retention (ADR 0028): ongoing if it
+   * owns one today or later, else the day the last ownership ended, else null.
+   * Fits ActivitySource in the module `parties`.
+   */
+  async activityOf(partyId: string): Promise<{ ongoing: true } | { lastDate: ISODate } | null> {
+    const owned = await this.d.store.ownershipsOfParty(partyId);
+    if (owned.some((o) => !o.validTo)) return { ongoing: true };
+    const last = owned.map((o) => o.validTo!).sort().at(-1);
+    return last ? { lastDate: last } : null;
   }
 
   /** Animals the party owns today. */
@@ -585,6 +599,10 @@ export class InMemoryAnimalStore implements AnimalStore {
 
   async findByIdentifier(type: IdentifierType, value: string) {
     return this.identifiers.get(`${type}:${value}`)?.animalId ?? null;
+  }
+
+  async ownershipsOfParty(partyId: string) {
+    return structuredClone(this.owners.filter((o) => o.partyId === partyId).map(({ animalId: _a, ...o }) => o));
   }
 
   async findByOwner(partyId: string, onDate: ISODate) {

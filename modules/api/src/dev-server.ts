@@ -8,7 +8,7 @@
  * products come from their modules, seeded on the first start.
  *
  * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-admin'
- * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals and parties), 'dev-privacy' and 'dev-privacy-2' (erasure), 'dev-clinic'
+ * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals and parties), 'dev-privacy' and 'dev-privacy-2' (erasure), 'dev-retention-job' (retention run), 'dev-clinic'
  * (clinic), 'dev-job' (reassessment job), 'dev-customer' (customer channel). Roles map to
  * permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
@@ -23,8 +23,8 @@ import { AccessService, InMemoryRoleConfigStore, type RoleConfigStore } from '@p
 import { PostgresRoleConfigStore } from '@petvold/access/postgres';
 import { DecisioningRulesPort, DecisioningService, InMemoryRuleSetStore, ruleSetChecksum, type RuleSetStore, type RuleSetVersion } from '@petvold/decisioning';
 import { PostgresRuleSetStore } from '@petvold/decisioning/postgres';
-import { InMemoryPartyStore, PartyService, type PartyStore } from '@petvold/parties';
-import { PostgresPartyStore } from '@petvold/parties/postgres';
+import { InMemoryPartyStore, InMemoryRetentionStore, PartyService, RetentionService, type PartyStore } from '@petvold/parties';
+import { PostgresPartyStore, PostgresRetentionStore } from '@petvold/parties/postgres';
 import {
   CatalogService,
   InMemoryProductStore,
@@ -220,6 +220,14 @@ async function seedAnimals(): Promise<void> {
   );
 }
 
+// Retention (ADR 0028): settings in Postgres with the parties, activity from the animal register.
+const retention = new RetentionService({
+  parties,
+  settings: partiesUrl ? new PostgresRetentionStore(createPool(partiesUrl, { max: 1 })) : new InMemoryRetentionStore(),
+  sources: [{ name: 'animals', activityOf: (id) => animals.activityOf(id) }],
+  clock,
+});
+
 const service = new ClaimsService({
   policies: new InMemoryPolicyPort([{ snapshot: fixtures.bellaPolicy(), sysFrom: '2026-03-03T00:00:00Z' }]),
   // The product version on the policy points at its rule series (ADR 0023).
@@ -249,6 +257,7 @@ const tokens: Record<string, Principal> = {
   // Two privacy officers, since anonymization needs four eyes (ADR 0028).
   'dev-privacy': { subject: 'privacy-a@example.test', roles: ['privacy-officer'], markets: ['SE'] },
   'dev-privacy-2': { subject: 'privacy-b@example.test', roles: ['privacy-officer'], markets: ['SE'] },
+  'dev-retention-job': { subject: 'retention-job', roles: ['retention-job'], markets: '*' },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
   // Acts for the customer who owns Bella's policy in the sample data.
@@ -265,6 +274,7 @@ const app = createApp({
   products,
   animals,
   parties,
+  retention,
   auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) },
 });
 
@@ -288,4 +298,4 @@ console.log(`  Products:  ${catalogUrl ? 'Postgres' : 'memory'} (GET /v1/product
 console.log(`  Roles:     ${accessUrl ? 'Postgres, versioned (GET /v1/access/roles)' : 'memory, versioned (GET /v1/access/roles)'}`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-catalog and dev-catalog-publisher (reference data and products), dev-registrar (animals and parties), dev-privacy and dev-privacy-2 (erasure), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-catalog and dev-catalog-publisher (reference data and products), dev-registrar (animals and parties), dev-privacy and dev-privacy-2 (erasure), dev-retention-job (retention run), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);

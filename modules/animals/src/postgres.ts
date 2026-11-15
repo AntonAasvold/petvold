@@ -45,15 +45,7 @@ export class PostgresAnimalStore implements AnimalStore {
       ...toAnimal(rows[0]),
       ...(litter.rows[0] ? { litterId: litter.rows[0].litter_id } : {}),
       identifiers: ids.rows.map((r) => ({ type: r.type, value: r.value, addedBy: r.added_by, addedAt: iso(r.added_at) })),
-      ownerships: owners.rows.map((r) => ({
-        seq: r.seq,
-        partyId: r.party_id,
-        validFrom: r.valid_from,
-        ...(r.valid_to === null ? {} : { validTo: r.valid_to }),
-        recordedBy: r.recorded_by,
-        recordedAt: iso(r.recorded_at),
-        ...(r.reason === null ? {} : { reason: r.reason }),
-      })),
+      ownerships: owners.rows.map(toOwnership),
     };
   }
 
@@ -74,6 +66,15 @@ export class PostgresAnimalStore implements AnimalStore {
       [partyId, onDate],
     );
     return rows.map((r) => r.animal_id);
+  }
+
+  async ownershipsOfParty(partyId: string): Promise<Ownership[]> {
+    const { rows } = await this.pool.query(
+      `select seq, party_id, valid_from::text as valid_from, valid_to::text as valid_to, recorded_by, recorded_at, reason
+       from animals.ownership where party_id = $1 order by animal_id, seq`,
+      [partyId],
+    );
+    return rows.map(toOwnership);
   }
 
   async register(animal: Animal, identifiers: AnimalIdentifier[], owner: Ownership): Promise<void> {
@@ -233,6 +234,18 @@ function conflict(message: string) {
 }
 
 const iso = (d: Date | string) => new Date(d).toISOString();
+
+function toOwnership(r: Record<string, any>): Ownership {
+  return {
+    seq: r.seq,
+    partyId: r.party_id,
+    validFrom: r.valid_from,
+    ...(r.valid_to === null ? {} : { validTo: r.valid_to }),
+    recordedBy: r.recorded_by,
+    recordedAt: iso(r.recorded_at),
+    ...(r.reason === null ? {} : { reason: r.reason }),
+  };
+}
 
 function toAnimal(r: Record<string, any>): Animal {
   return {

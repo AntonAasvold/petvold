@@ -87,6 +87,8 @@ export function partyStoreSuite(name: string, factory: PartyStoreFactory): void 
       await store.register(person(), [personalNumber()]);
       const moved = person({ revision: 2, reason: 'Moved to Example Road 2', changedAt: '2026-11-16T10:00:00.000Z' });
       await store.appendRevision(moved);
+      await store.register(organization(), []);
+      assert.deepEqual(await store.partyIds(), ['pty_anna', 'pty_kennel']);
       await store.addErasureRequest(request);
       await assert.rejects(store.addErasureRequest({ ...request, id: 'era_2' }), PartyConflictError);
       assert.deepEqual(await store.listErasureRequests({ pending: true }), [request]);
@@ -97,6 +99,7 @@ export function partyStoreSuite(name: string, factory: PartyStoreFactory): void 
       assert.deepEqual(await store.revisions('pty_anna'), [anonymize(person()), anonymize(moved)]);
       assert.deepEqual(await store.get('pty_anna'), { ...anonymize(moved), identifiers: [] });
       assert.equal(await store.findByIdentifier('personal-number', 'SE', '209901011230'), null);
+      assert.deepEqual(await store.partyIds(), ['pty_kennel']);
       assert.deepEqual(await store.getErasureRequest('era_1'), { ...request, decision });
       assert.deepEqual(await store.listErasureRequests({ pending: true }), []);
       assert.deepEqual((await store.listErasureRequests({ partyId: 'pty_anna' })).map((r) => r.id), ['era_1']);

@@ -71,11 +71,35 @@ Motiveringarna får inte innehålla personuppgifter. De sparas för att visa vad
 
 **Exempel:** Anna ber om att bli raderad. `dev-privacy` registrerar begäran, och `dev-privacy-2` ser att Anna inte har några försäkringar eller skador kvar och godkänner. `GET /v1/parties/{id}` visar sedan bara `"anonymized": true`, id, sort och marknad.
 
+## Lagringstid och gallring (ADR 0028)
+
+**Lagringstiden** anges per marknad som ett antal hela år efter partens sista relation. Petvold föreslår tio år för Sverige, eftersom den som vill ha försäkringsersättning har tio år på sig att väcka talan (försäkringsavtalslagen 7 kap. 4 §). Det täcker också bokföringslagens sju år. Försäkringsbolaget ansvarar för värdena. En marknad utan regel gallras aldrig automatiskt.
+
+| Anrop | Rättighet | Gör |
+| --- | --- | --- |
+| `GET /v1/retention-settings` | `parties:privacy` | Gällande lagringstider |
+| `GET /v1/retention-settings/versions` | `parties:privacy` | Alla versioner |
+| `POST /v1/retention-settings/versions` | `parties:erase` | Ny version med `basedOnVersion`, `markets` och `reason` |
+| `POST /v1/retention-runs` | `parties:retention` | Gallringskörning. Med `"dryRun": true` visas bara vilka parter som skulle beröras. |
+
+**Sista relationen** är det senaste av:
+- när parten själv senast ändrades
+- när partens senaste ägarskap av ett djur slutade
+
+Om parten äger ett djur i dag, eller har en annan pågående relation, gallras den inte. Policymodulen (M3) kommer att rapportera försäkringar och skador på samma sätt.
+
+**Gallringskörningen** går igenom alla parter i anroparens marknader. För varje part vars lagringstid har gått ut skapas en begäran om anonymisering med `basis: retention-expired`. En dataskyddsansvarig godkänner eller avslår varje begäran, precis som när någon själv har bett om radering. Körningen är tänkt att schemaläggas med rollen `retention-job`, till exempel en gång i veckan.
+
+**Exempel:** Anna sålde sin sista hund 1 juni 2015. Med tio år går lagringstiden ut 1 juni 2025. Nästa körning skapar en begäran, och `dev-privacy` godkänner den.
+
+**Efter en återställning från säkerhetskopia** körs `npm run erasures:reapply` innan systemet öppnas. Det kör alla godkända anonymiseringar igen, i ordning, och går att köra flera gånger.
+
 ## Vem ser vad
 
 - `party-registrar` registrerar och ändrar, till exempel kundservice.
 - `handler`, `approver` och `animal-registrar` kan läsa.
-- `privacy-officer` registrerar, godkänner och avslår begäranden om radering och ser begränsade parter. Det krävs två personer för att anonymisera.
+- `privacy-officer` registrerar, godkänner och avslår begäranden om radering, ser begränsade parter, ändrar lagringstider och kan köra gallring. Det krävs två personer för att anonymisera.
+- `retention-job` får bara köra gallringen.
 - Alla ser bara parter i sina egna marknader. En part i en annan marknad ger `404`.
 - Roller som är bundna till klinik eller försäkringar ser inga parter.
 
@@ -95,6 +119,6 @@ Motiveringarna får inte innehålla personuppgifter. De sparas för att visa vad
 
 ## Lokalt
 
-Dev-servern registrerar Bellas ägare `pty_owner001` (Anna Example) utan personnummer. Tokens `dev-privacy` och `dev-privacy-2` är två dataskyddsansvariga, så att fyra ögon går att prova. Token `dev-registrar` får registrera och ändra parter i Sverige. Testerna använder personnummer födda 2099, som ingen levande person kan ha.
+Dev-servern registrerar Bellas ägare `pty_owner001` (Anna Example) utan personnummer. Tokens `dev-privacy` och `dev-privacy-2` är två dataskyddsansvariga, så att fyra ögon går att prova. `dev-retention-job` kör gallringen. Token `dev-registrar` får registrera och ändra parter i Sverige. Testerna använder personnummer födda 2099, som ingen levande person kan ha.
 
-*Inte byggt än:* kundens åtkomst till sin egen part, kontaktpersoner för organisationer, lagringstider per marknad och automatisk gallring (ADR 0028, nästa steg), och att köra anonymiseringarna igen efter en återställning.
+*Inte byggt än:* kundens åtkomst till sin egen part, kontaktpersoner för organisationer, och relationer från policyer och skador i gallringen (M3).

@@ -9,6 +9,8 @@ import type pg from 'pg';
 import {
   PartyConflictError,
   PartyIdentifierTakenError,
+  type RetentionSettings,
+  type RetentionStore,
   type ErasureDecision,
   type ErasureRequest,
   type Party,
@@ -44,6 +46,11 @@ export class PostgresPartyStore implements PartyStore {
       ...(until === null ? {} : { restrictedUntil: until }),
       identifiers: ids.rows.map((r) => ({ type: r.type, country: r.country, value: r.value, addedBy: r.added_by, addedAt: iso(r.added_at) })),
     };
+  }
+
+  async partyIds(): Promise<string[]> {
+    const { rows } = await this.pool.query(`select distinct party_id from parties.party_revision where not anonymized order by party_id`);
+    return rows.map((r) => r.party_id);
   }
 
   async revisions(id: string): Promise<Party[]> {
@@ -238,4 +245,48 @@ function toParty(r: Record<string, any>): Party {
     ...(r.reason === null ? {} : { reason: r.reason }),
     ...(r.anonymized ? { anonymized: true as const } : {}),
   };
+}
+
+/** Retention settings as versions in parties.retention_settings (migration 0020). */
+export class PostgresRetentionStore implements RetentionStore {
+  constructor(private readonly pool: pg.Pool) {}
+
+  async current(): Promise<RetentionSettings | null> {
+    const { rows } = await this.pool.query(`select * from parties.retention_settings order by version desc limit 1`);
+    return rows[0] ? toSettings(rows[0]) : null;
+  }
+
+  async versions(): Promise<RetentionSettings[]> {
+    const { rows } = await this.pool.query(`select * from parties.retention_settings order by version`);
+    return rows.map(toSettings);
+  }
+
+  async append(s: RetentionSettings): Promise<void> {
+    const res = await this.pool
+      .query(
+        `insert into parties.retention_settings (version, markets, changed_by, changed_at, reason)
+         select $1, $2, $3, $4, $5
+         where $1 = coalesce((select max(version) from parties.retention_settings), 0) + 1`,
+        [s.version, JSON.stringify(s.markets), s.changedBy, s.changedAt, s.reason],
+      )
+      .catch(conflict(`Retention settings version ${s.version} exists`));
+    if (res.rowCount !== 1) throw new PartyConflictError(`Retention settings version ${s.version} is not the next`);
+  }
+}
+
+function toSettings(r: Record<string, any>): RetentionSettings {
+  return { version: r.version, markets: r.markets, changedBy: r.changed_by, changedAt: iso(r.changed_at), reason: r.reason };
+}
+
+/**
+ * After a restore from backup: runs every approved anonymization again, oldest
+ * first (ADR 0028). Safe to run more than once. Returns the parties anonymized.
+ */
+export async function reapplyErasures(pool: pg.Pool): Promise<string[]> {
+  const { rows } = await pool.query(
+    `select r.party_id from parties.erasure_request r join parties.erasure_decision d using (request_id)
+     where d.outcome = 'approved' order by d.decided_at, r.request_id`,
+  );
+  for (const r of rows) await pool.query(`select parties.anonymize($1)`, [r.party_id]);
+  return rows.map((r) => r.party_id);
 }

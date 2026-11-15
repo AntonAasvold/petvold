@@ -2,7 +2,16 @@ import { Hono, type Context } from 'hono';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
 import { DecisioningService, InMemoryRuleSetStore, RuleSetError, toClaimsRules } from '@petvold/decisioning';
 import { AnimalError, AnimalService, IDENTIFIER_TYPES, InMemoryAnimalStore, type AnimalRecord, type IdentifierType } from '@petvold/animals';
-import { InMemoryPartyStore, PartyError, PartyService, publicView, type ErasureRequest, type PartyRecord } from '@petvold/parties';
+import {
+  InMemoryPartyStore,
+  InMemoryRetentionStore,
+  PartyError,
+  PartyService,
+  RetentionService,
+  publicView,
+  type ErasureRequest,
+  type PartyRecord,
+} from '@petvold/parties';
 import {
   CatalogError,
   CatalogService,
@@ -90,6 +99,11 @@ export interface AppDeps {
   animals?: AnimalService;
   /** Parties: persons and organizations (ADR 0026). Omitted: kept in memory. */
   parties?: PartyService;
+  /**
+   * Retention settings and runs (ADR 0028). Omitted: settings in memory, with the
+   * animal register as the only source of activity.
+   */
+  retention?: RetentionService;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
 }
@@ -674,6 +688,28 @@ export function createApp(d: AppDeps) {
     const r = await readJson(c, 'ErasureRejectionInput');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => ({ status: 201, body: await parties.rejectErasure(e.id, r.body, c.get('principal').subject) }));
+  });
+
+  // Retention (ADR 0028). Activity comes from the animal register; the policy module adds its own (M3).
+  const retention =
+    d.retention ??
+    new RetentionService({ parties, settings: new InMemoryRetentionStore(), sources: [{ name: 'animals', activityOf: (id) => animals.activityOf(id) }], clock: d.clock });
+
+  app.get('/v1/retention-settings', async (c) => send(c, await retention.current()));
+
+  app.get('/v1/retention-settings/versions', async (c) => send(c, { items: await retention.versions() }));
+
+  app.post('/v1/retention-settings/versions', async (c) => {
+    const r = await readJson(c, 'ChangeRetentionRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await retention.change(r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/retention-runs', async (c) => {
+    const r = await readJson(c, 'RetentionRunRequest');
+    if (!r.ok) return r.res;
+    const scope = c.get('scope');
+    return send(c, await retention.run({ dryRun: r.body.dryRun ?? false, markets: scope.markets }, c.get('principal').subject));
   });
 
   app.get('/v1/parties/:partyId/revisions', async (c) => send(c, { items: await parties.revisions((await visibleParty(c)).id) }));
