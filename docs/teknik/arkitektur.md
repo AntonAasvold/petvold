@@ -29,8 +29,9 @@ flowchart LR
 | `catalog` | Produktkatalogen: referensdata (`CatalogService`, porten `ReferenceDataStore`, ADR 0022) och produktversioner (`ProductService`, porten `ProductStore`, `vetCareTermsFor`, ADR 0023), lagring i minnet och i Postgres (schemat `catalog`), och `labelFor` som väljer etikett efter språk | `claims-core` (typer och kontrollsumma), `pg` |
 | `animals` | Djurregistret: `AnimalService`, porten `AnimalStore`, lagring i minnet och i Postgres (schemat `animals`), `ownerOn` och `normalizeIdentifier` (ADR 0024). Läser referensdata via porten `ReferencePort` och parter via porten `PartyPort`. | `pg` |
 | `parties` | Parter: `PartyService`, porten `PartyStore`, lagring i minnet och i Postgres (schemat `parties`), `normalizePartyIdentifier` med kontroll av svenska nummer, och `publicView` som maskerar personnummer (ADR 0026) | `pg` |
+| `policies` | Policyer: `PolicyService` (också skademotorns `PolicyPort`), porten `PolicyStore`, lagring i minnet och i Postgres (schemat `policies`), `MARKET_PROFILES` och `toSnapshot` (ADR 0029). Läser produkter, djur och parter via portar. | `claims-core` (typer), `pg` |
 | `access` | Rollinställningen som versioner: tjänsten `AccessService`, porten `RoleConfigStore`, lagring i minnet och i Postgres (schemat `access`, ADR 0020) | `pg` |
-| `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, `catalog`, `animals`, `parties`, Hono |
+| `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, `catalog`, `animals`, `parties`, `policies`, Hono |
 
 ## Portar och adaptrar
 
@@ -161,6 +162,16 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
   - Andra moduler rapporterar relationer via `ActivitySource.activityOf(partyId)`: pågående, ett slutdatum eller ingen. `AnimalService.activityOf` har samma form, och installationen kopplar ihop dem.
   - `run` går igenom `PartyService.partyIds()` och skapar en begäran för varje part där `addYears(sista relation, år) < i dag`.
   - `reapplyErasures(pool)` i `postgres.ts` och skriptet `npm run erasures:reapply` kör `parties.anonymize` igen för varje godkänt beslut. `PartyService.marketOf` svarar `null` för begränsade och anonymiserade parter, så att djurregistret inte kan peka nya ägarskap på dem.
+
+**Policyer (ADR 0006, 0029):**
+- **Tabeller** (migration 0021):
+  - `policies.policy`, `policies.term` och `policies.policy_transaction` får bara läsas och läggas till.
+  - `policies.policy_version` är bitemporal. Tjänsterollen får bara sätta `sys_to`, en gång, och en trigger stoppar allt annat.
+- **Två exclusion constraints** gäller för det som är känt nu (`sys_to is null`). En policy har aldrig två versioner för samma dag, och ett djur har aldrig två aktiva policyer för samma dag. `animal_id` kopieras därför till versionen.
+- **Portar** (ADR 0001): `ProductPort`, `AnimalPort` och `PartyPort`. Adaptrarna `productPort` och `animalPort` i `api/src/wiring.ts` kopplar dem till `ProductService` och `AnimalService`, och `PartyService` passar direkt.
+- **Marknadsprofilen** `MARKET_PROFILES` i koden har lagreglerna med källor. Än så länge finns bara längsta termen för Sverige.
+- **Skademotorn** får `PolicyService` som `PolicyPort`. `getPolicyAt(policyId, onDate, knownAt)` hittar versionen, termen och djurets födelsedatum och bygger en `PolicySnapshot` med `toSnapshot`.
+- **Gallringen** får `PolicyService.activityOf` som `ActivitySource`.
 
 **Rollinställningen (ADR 0020):**
 - **Versioner.** Modulen `access` sparar hela rollinställningen som versioner i `access.role_config` (migration 0009). Den har en egen tjänsteroll, `access_service`, som bara får läsa och lägga till.

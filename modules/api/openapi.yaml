@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Petvold API
   version: 0.1.0
-  summary: Headless core for pet insurance – claims, rule sets, products, reference data, animals, parties and access.
+  summary: Headless core for pet insurance – claims, rule sets, products, reference data, animals, parties, policies and access.
   description: |
     The contract is the source of truth. The server validates incoming
     requests against the schemas here, and the contract tests validate the responses.
@@ -40,6 +40,7 @@ tags:
   - name: products
   - name: animals
   - name: parties
+  - name: policies
   - name: previews
   - name: limits
 
@@ -1142,6 +1143,131 @@ paths:
               schema: { $ref: '#/components/schemas/RetentionRunResult' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/policies:
+    post:
+      tags: [policies]
+      operationId: issuePolicy
+      x-permission: policies:write
+      summary: Issue a policy for an animal
+      description: |
+        Requires the permission `policies:write` (ADR 0029). The animal and the
+        policyholder must exist in the market, and the product version must be
+        on sale on the start date and cover the animal's species. A policy never
+        starts before the day it is issued, and an animal has one policy at a
+        time (`409`). The first term is one year. Until the tariff exists, the
+        caller gives the premium for the term.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IssuePolicyRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The policy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyRecord' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    get:
+      tags: [policies]
+      operationId: findPolicies
+      x-permission: policies:read
+      summary: Policies for an animal or a policyholder
+      description: Requires the permission `policies:read`. Give exactly one filter. Only policies in the caller's scope are returned.
+      parameters:
+        - { name: animalId, in: query, schema: { type: string } }
+        - { name: policyholderPartyId, in: query, schema: { type: string } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The policies
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PolicyRecord' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/policies/{policyId}:
+    get:
+      tags: [policies]
+      operationId: getPolicy
+      x-permission: policies:read
+      summary: A policy with its terms and current versions
+      description: Requires the permission `policies:read`. A policy outside the caller's scope answers 404.
+      parameters:
+        - $ref: '#/components/parameters/PolicyIdPath'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The policy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyRecord' }
+
+  /v1/policies/{policyId}/history:
+    get:
+      tags: [policies]
+      operationId: getPolicyHistory
+      x-permission: policies:read
+      summary: Every version, superseded ones too, and every transaction
+      description: |
+        Requires the permission `policies:read`. Shows what applied on each day
+        and when it became known (ADR 0006).
+      parameters:
+        - $ref: '#/components/parameters/PolicyIdPath'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The history
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions, transactions]
+                properties:
+                  versions: { type: array, items: { $ref: '#/components/schemas/PolicyVersion' } }
+                  transactions: { type: array, items: { $ref: '#/components/schemas/PolicyTransaction' } }
+
+  /v1/policies/{policyId}/snapshot:
+    get:
+      tags: [policies]
+      operationId: getPolicySnapshot
+      x-permission: policies:read
+      summary: The policy as the claims engine sees it on a date
+      description: |
+        Requires the permission `policies:read`. The version in force on `date`,
+        as known at `knownAt` (omitted: now), with the term's product version,
+        vet care terms and policy year. `404` if no version applies.
+      parameters:
+        - $ref: '#/components/parameters/PolicyIdPath'
+        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+        - { name: knownAt, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicySnapshot' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/litters:
     post:
       tags: [animals]
@@ -1967,6 +2093,11 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: '^era_[A-Za-z0-9]+$' }
+    PolicyIdPath:
+      name: policyId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
     PartyId:
       name: partyId
       in: path
@@ -2725,6 +2856,115 @@ components:
                   masked: { type: boolean }
                   addedBy: { type: string }
                   addedAt: { $ref: '#/components/schemas/DateTime' }
+
+    IssuePolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [market, animalId, policyholderPartyId, productVersion, startDate, premium]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        animalId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
+        policyholderPartyId: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' }
+        productVersion: { type: string, description: 'e.g. SE-HUND-VV-LIV@2026.2' }
+        startDate: { $ref: '#/components/schemas/Date' }
+        vetCare:
+          type: object
+          additionalProperties: false
+          description: The customer's choices. Omitted ones get the product's defaults.
+          properties:
+            annualLimit: { $ref: '#/components/schemas/NonNegativeMoney' }
+            deductible: { type: string, description: A deductible option code from the product. }
+        premium:
+          type: object
+          additionalProperties: false
+          required: [amount, currency]
+          description: The premium for the whole term. Given by the caller until the tariff exists (M4).
+          properties:
+            amount: { $ref: '#/components/schemas/NonNegativeMoney' }
+            currency: { $ref: '#/components/schemas/Currency' }
+
+    PolicyTerm:
+      type: object
+      required: [policyId, termNo, startDate, endDate, productVersion, currency, vetCare, deductibleOption, premium, riders, transactionId]
+      properties:
+        policyId: { type: string }
+        termNo: { type: integer, minimum: 1 }
+        startDate: { $ref: '#/components/schemas/Date' }
+        endDate: { $ref: '#/components/schemas/Date', description: Exclusive. }
+        productVersion: { type: string }
+        currency: { $ref: '#/components/schemas/Currency' }
+        vetCare: { $ref: '#/components/schemas/VetCareTerms' }
+        deductibleOption: { type: string }
+        premium: { $ref: '#/components/schemas/NonNegativeMoney' }
+        riders: { type: array, items: { type: object } }
+        transactionId: { type: string }
+
+    PolicyVersion:
+      type: object
+      required: [id, policyId, validFrom, validTo, sysFrom, policyholderPartyId, status, termNo, transactionId]
+      properties:
+        id: { type: string }
+        policyId: { type: string }
+        validFrom: { $ref: '#/components/schemas/Date' }
+        validTo: { $ref: '#/components/schemas/Date', description: Exclusive. }
+        sysFrom: { $ref: '#/components/schemas/DateTime', description: When the version became known. }
+        sysTo: { $ref: '#/components/schemas/DateTime', description: When it was superseded. }
+        policyholderPartyId: { type: string }
+        status: { type: string, enum: [active, cancelled] }
+        termNo: { type: integer }
+        transactionId: { type: string }
+
+    PolicyTransaction:
+      type: object
+      required: [id, policyId, type, steps, requestedBy, requestedAt]
+      properties:
+        id: { type: string }
+        policyId: { type: string }
+        type: { type: string, enum: [issue] }
+        steps:
+          type: array
+          items:
+            type: object
+            required: [step, at]
+            properties:
+              step: { type: string, enum: [draft, priced, underwritten, issued] }
+              at: { $ref: '#/components/schemas/DateTime' }
+              note: { type: string }
+        requestedBy: { type: string }
+        requestedAt: { $ref: '#/components/schemas/DateTime' }
+
+    PolicyRecord:
+      type: object
+      required: [id, market, animalId, inceptionDate, createdBy, createdAt, terms, versions]
+      properties:
+        id: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        animalId: { type: string }
+        inceptionDate: { $ref: '#/components/schemas/Date', description: The waiting period counts from it. }
+        createdBy: { type: string }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        terms: { type: array, items: { $ref: '#/components/schemas/PolicyTerm' } }
+        versions: { type: array, description: What is known now, by validity., items: { $ref: '#/components/schemas/PolicyVersion' } }
+
+    PolicySnapshot:
+      type: object
+      required: [policyId, policyVersionId, market, currency, animalId, animalBirthDate, productVersion, status, validFrom, inceptionDate, policyYearStart, policyYearEnd, riders]
+      properties:
+        policyId: { type: string }
+        policyVersionId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        animalId: { type: string }
+        animalBirthDate: { $ref: '#/components/schemas/Date' }
+        productVersion: { type: string }
+        status: { type: string, enum: [active, cancelled] }
+        validFrom: { $ref: '#/components/schemas/Date' }
+        validTo: { $ref: '#/components/schemas/Date' }
+        inceptionDate: { $ref: '#/components/schemas/Date' }
+        policyYearStart: { $ref: '#/components/schemas/Date' }
+        policyYearEnd: { $ref: '#/components/schemas/Date' }
+        vetCare: { $ref: '#/components/schemas/VetCareTerms' }
+        riders: { type: array, items: { type: object } }
 
     RetentionSettings:
       type: object

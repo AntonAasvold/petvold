@@ -12,6 +12,8 @@ import {
   type ErasureRequest,
   type PartyRecord,
 } from '@petvold/parties';
+import { InMemoryPolicyStore, PolicyError, PolicyService, type PolicyRecord } from '@petvold/policies';
+import { animalPort, productPort } from './wiring.ts';
 import {
   CatalogError,
   CatalogService,
@@ -104,6 +106,12 @@ export interface AppDeps {
    * animal register as the only source of activity.
    */
   retention?: RetentionService;
+  /**
+   * Policies (ADR 0029). Omitted: kept in memory, with products, animals and
+   * parties from the services above. Give the same instance to the claims
+   * engine as its PolicyPort.
+   */
+  policies?: PolicyService;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
 }
@@ -690,10 +698,74 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await parties.rejectErasure(e.id, r.body, c.get('principal').subject) }));
   });
 
-  // Retention (ADR 0028). Activity comes from the animal register; the policy module adds its own (M3).
+  // Policies (ADR 0029). Scope: the caller's markets, and for a role bound to
+  // policies only those. A role bound to a clinic sees none.
+  const policies =
+    d.policies ??
+    new PolicyService({
+      store: new InMemoryPolicyStore(),
+      products: productPort(products),
+      animals: animalPort(animals),
+      parties,
+      clock: d.clock,
+      ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
+    });
+  const seesPolicy = (scope: Scope, p: PolicyRecord) => !scope.clinicId && coversPolicy(scope, p.market, p.id);
+  const visiblePolicy = async (c: Context<Env>) => {
+    const id = c.req.param('policyId') ?? '';
+    const p = await policies.get(id).catch((e: unknown) => {
+      if (e instanceof PolicyError && e.code === 'not_found') return null;
+      throw e;
+    });
+    if (!p || !seesPolicy(c.get('scope'), p)) throw new PolicyError('not_found', `Policy ${id} does not exist`);
+    return p;
+  };
+
+  app.post('/v1/policies', async (c) => {
+    const r = await readJson(c, 'IssuePolicyRequest');
+    if (!r.ok) return r.res;
+    const scope = c.get('scope');
+    if (scope.clinicId || scope.policyIds || !(scope.markets === '*' || scope.markets.has(r.body.market))) {
+      return problem(c, 403, 'Not permitted', 'The market is outside the caller\'s scope');
+    }
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.issue(r.body, c.get('principal').subject) }));
+  });
+
+  app.get('/v1/policies', async (c) => {
+    const animalId = c.req.query('animalId');
+    const partyId = c.req.query('policyholderPartyId');
+    if ((animalId === undefined) === (partyId === undefined)) return problem(c, 422, 'Give exactly one of animalId or policyholderPartyId');
+    const found = animalId !== undefined ? await policies.findByAnimal(animalId) : await policies.findByPolicyholder(partyId!);
+    return send(c, { items: found.filter((p) => seesPolicy(c.get('scope'), p)) });
+  });
+
+  app.get('/v1/policies/:policyId', async (c) => send(c, await visiblePolicy(c)));
+
+  app.get('/v1/policies/:policyId/history', async (c) => send(c, await policies.history((await visiblePolicy(c)).id)));
+
+  app.get('/v1/policies/:policyId/snapshot', async (c) => {
+    const p = await visiblePolicy(c);
+    const date = c.req.query('date');
+    const knownAt = c.req.query('knownAt');
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return problem(c, 422, 'date must be YYYY-MM-DD');
+    if (knownAt !== undefined && Number.isNaN(Date.parse(knownAt))) return problem(c, 422, 'knownAt must be a date and time');
+    const snap = await policies.getPolicyAt(p.id, date, knownAt === undefined ? undefined : new Date(knownAt).toISOString());
+    if (!snap) return problem(c, 404, `Policy ${p.id} is not in force on ${date}`);
+    return send(c, snap);
+  });
+
+  // Retention (ADR 0028). Activity comes from the animal register and the policies.
   const retention =
     d.retention ??
-    new RetentionService({ parties, settings: new InMemoryRetentionStore(), sources: [{ name: 'animals', activityOf: (id) => animals.activityOf(id) }], clock: d.clock });
+    new RetentionService({
+      parties,
+      settings: new InMemoryRetentionStore(),
+      sources: [
+        { name: 'animals', activityOf: (id) => animals.activityOf(id) },
+        { name: 'policies', activityOf: (id) => policies.activityOf(id) },
+      ],
+      clock: d.clock,
+    });
 
   app.get('/v1/retention-settings', async (c) => send(c, await retention.current()));
 
@@ -753,6 +825,9 @@ export function createApp(d: AppDeps) {
     if (err instanceof RuleSetError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
       return problem(c, status, err.message);
+    }
+    if (err instanceof PolicyError) {
+      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
     }
     if (err instanceof PartyError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;

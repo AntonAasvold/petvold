@@ -60,6 +60,10 @@ export const PERMISSIONS = [
   'parties:erase',
   /** Run retention: ask for anonymization of every party whose retention has ended (ADR 0028). */
   'parties:retention',
+  /** Read policies, their terms and history (ADR 0029). */
+  'policies:read',
+  /** Issue policies. Later also change, cancel, renew and transfer them. */
+  'policies:write',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -107,11 +111,12 @@ export const DEFAULT_ROLES: RoleDefinitions = {
       'catalog:read',
       'animals:read',
       'parties:read',
+      'policies:read',
     ],
     // SEK 25,000 and EUR 2,500 alone; above that, someone with claims:approve approves.
     decisionLimits: { SEK: 2_500_000, EUR: 250_000 },
   },
-  approver: { permissions: ['claims:read', 'claims:approve', 'limits:read', 'catalog:read', 'animals:read', 'parties:read'] },
+  approver: { permissions: ['claims:read', 'claims:approve', 'limits:read', 'catalog:read', 'animals:read', 'parties:read', 'policies:read'] },
   clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview', 'catalog:read', 'animals:lookup'], bindsTo: 'clinic' },
   'reassessment-job': { permissions: ['claims:read', 'claims:reassess'] },
   /** Writes rule set drafts and submits them for review. */
@@ -122,6 +127,8 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   'animal-registrar': { permissions: ['animals:read', 'animals:write', 'catalog:read', 'parties:read'] },
   /** Registers persons and organizations and keeps their details up to date, e.g. customer service. */
   'party-registrar': { permissions: ['parties:read', 'parties:write'] },
+  /** Issues policies, e.g. the insurer's sales channel or customer service (ADR 0029). */
+  'policy-registrar': { permissions: ['policies:read', 'policies:write', 'animals:read', 'parties:read', 'catalog:read'] },
   /** Handles erasure and restriction of personal data (ADR 0028). Two people are needed to anonymize. */
   'privacy-officer': { permissions: ['parties:read', 'parties:privacy', 'parties:erase', 'parties:retention'] },
   /** The scheduled retention run. Only asks; a privacy officer approves each request. */
@@ -133,7 +140,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Manages roles and limits. No permissions in claims. */
   admin: { permissions: ['access:read', 'access:manage'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */
-  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read'], bindsTo: 'policies' },
+  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read'], bindsTo: 'policies' },
 };
 
 export function isPermission(value: unknown): value is Permission {

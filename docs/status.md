@@ -32,6 +32,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #45 mergad.
+- Policymodulen, första delen (ADR 0029), PR #46:
+  - **Tecknande** med kontroll av djur, försäkringstagare, produkt till salu, val, valuta och startdag. En term på ett år och en bitemporal version. Transaktionen visar stegen, och premien anges av anroparen tills M4.
+  - **Databasen spärrar** två versioner av en policy för samma dag och två aktiva policyer för samma djur.
+  - **Skademotorn läser policyer från modulen** i dev-servern, och exempeldatan i minnet används inte längre där. Förhandsbedömning för Bella provad.
+  - **Gallringen** får policyerna som källa för relationer.
+  - **API:** fem operationer. Nya rättigheter `policies:read` och `policies:write`, och ny roll `policy-registrar`. Token `dev-seller`.
+  - **Migration 0021.** Provad ner och upp igen. Rollinställningen lokalt är uppdaterad med `npm run roles:sync -- --apply` till version 9.
+- 309 tester och 104 databastester.
 - #44 mergad.
 - ADR 0029 om policyns livscykel (Beslutad), PR #45. Bara beslutet, ingen kod.
   - Svenska lagregler (FAL 3 och 5 kap., distansavtalslagen 3 kap.) i en marknadsprofil i koden, och bolagets val i produkten.
@@ -98,10 +107,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Policymodulen (M3) enligt ADR 0029: tecknande och term först, sedan avslut, förnyelse och överlåtelse.
+1. Policymodulen, andra delen: avslut (kundens, bolagets, när djuret dör och ånger), med premie tillbaka och händelser.
 
 **Öppet**
-- Gallringen känner bara till djurregistret. Den ska inte köras skarpt förrän policyer och skador rapporterar sina relationer (M3).
+- Gallringen känner till djurregistret och policyerna, men inte öppna skador. Den ska inte köras skarpt förrän skador rapporterar sina relationer.
 - Det sparas inte vem som slagit upp ett djur.
 
 ## 2026-11-14 (pass 23)

@@ -10,6 +10,7 @@ create role decisioning_service login password 'decisioning_service';
 create role catalog_service login password 'catalog_service';
 create role animals_service login password 'animals_service';
 create role parties_service login password 'parties_service';
+create role policies_service login password 'policies_service';
 
 -- Separate database for tests, so tests never touch development data.
 create database petvold_test owner petvold;

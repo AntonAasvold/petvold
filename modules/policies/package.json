@@ -1,0 +1,15 @@
+{
+  "name": "@petvold/policies",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./postgres": "./src/postgres.ts",
+    "./test-suites/policy-store": "./test-suites/policy-store.ts"
+  },
+  "dependencies": {
+    "@petvold/claims-core": "^0.1.0",
+    "pg": "^8.23.1"
+  }
+}
