@@ -12,6 +12,8 @@ import {
   accounts,
   eventClaimId,
   type LimitKey,
+  type ClaimFilter,
+  type ClaimSummary,
   type Claim,
   type ClaimDecision,
   type ClaimsEvent,
@@ -257,6 +259,46 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
     return rows.map((r) => ({
       decision: toDecision(r),
       evidence: { decisionId: r.id, input: r.input, calculationModel: r.calculation_model, engineVersion: r.engine_version },
+    }));
+  }
+
+  async listClaims(filter: ClaimFilter): Promise<ClaimSummary[]> {
+    const { rows } = await this.pool.query(
+      `select * from (
+         select c.id, c.claim_no, c.policy_id, c.animal_id, c.market, c.currency, c.channel, c.clinic_id,
+                c.treatment_from::text as treatment_from, c.diagnosis_code, c.received_at,
+                d.seq, d.outcome, d.payout_minor, d.decided_at,
+                case
+                  when exists (select 1 from claims.decision_proposal p where p.claim_id = c.id and p.status = 'open') then 'awaiting-approval'
+                  when exists (select 1 from claims.review_request r where r.claim_id = c.id and r.closed_at is null) then 'review-requested'
+                  when d.seq is not null then 'decided'
+                  else 'awaiting-decision'
+                end as state
+         from claims.claim c
+         left join lateral (select seq, outcome, payout_minor, decided_at from claims.decision x where x.claim_id = c.id order by seq desc limit 1) d on true
+         where ($1::text is null or c.market = $1)
+           and ($2::text is null or c.policy_id = $2)
+           and ($3::text is null or c.animal_id = $3)
+           and ($4::text is null or c.clinic_id = $4)
+       ) q
+       where ($5::text is null or q.state = $5)
+       order by q.received_at, q.id`,
+      [filter.market ?? null, filter.policyId ?? null, filter.animalId ?? null, filter.clinicId ?? null, filter.state ?? null],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      claimNo: r.claim_no,
+      policyId: r.policy_id,
+      animalId: r.animal_id,
+      market: r.market,
+      currency: r.currency,
+      channel: r.channel,
+      ...(r.clinic_id === null ? {} : { clinicId: r.clinic_id }),
+      treatmentFrom: r.treatment_from,
+      diagnosisCode: r.diagnosis_code,
+      receivedAt: new Date(r.received_at).toISOString(),
+      state: r.state,
+      ...(r.seq === null ? {} : { latestDecision: { seq: r.seq, outcome: r.outcome, payout: Number(r.payout_minor), decidedAt: new Date(r.decided_at).toISOString() } }),
     }));
   }
 

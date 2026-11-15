@@ -41,6 +41,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Ny sida** `docs/teknik/drift.md`.
   - Provat: servern med en lokal nyckeltjänst gav `200` med en signerad token, `401` med dev-token, `ok` på `/healthz` och ordnad avstängning.
 - 366 tester och 111 databastester.
+- #61 mergad.
+- Listor och sidindelning före ett gränssnitt (granskningen A4), PR #62:
+  - **Sidindelning på alla 18 listor:** `limit` och `cursor` in, `nextCursor` ut, med gemensamma parametrar i kontraktet.
+  - **`GET /v1/claims`** med arbetsköer: status per ärende (`awaiting-decision`, `awaiting-approval`, `review-requested`, `decided`), filter på marknad, policy och djur, och anroparens omfång.
+  - **`GET /v1/products`** och **`GET /v1/rule-sets`** listar alla produkter och serier med versionernas status.
+  - Tre nya operationer, 90 i kontraktet.
+- 369 tester och 112 databastester.
 - #59 mergad.
 - Datum i marknadens tidszon (granskningen, A3), PR #60:
   - `marketDate(market, tidpunkt)` och `MARKET_TIME_ZONES` i `common`, med 15 europeiska marknader. En okänd marknad räknar i UTC.
@@ -212,7 +219,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Teckningsregler (F1, ny ADR) och godkännande vid tecknande (F3). Sedan sidindelning (A4) och ett beslut om dokument till kunden (F2).
+1. Före gränssnittet: `GET /v1/me` (vem som är inloggad och vad den får göra), CORS för lokal utveckling, rikare exempeldata och `AGENTS.md`.
+2. Teckningsregler (F1, ny ADR) och godkännande vid tecknande (F3). Sedan ett beslut om dokument till kunden (F2).
 
 **Öppet**
 - Flera instanser av servern kör var sitt relä. Leveransen sker minst en gång, men samma händelse kan levereras av två instanser samtidigt. Ett relä med lås per outbox (pg-boss) behövs före drift med flera instanser.

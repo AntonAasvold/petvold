@@ -520,6 +520,24 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.equal((await store.claimActivity('pol_suite', '2026-01-01', '2027-01-01')).open, true);
     });
 
+    it('claims are listed for work queues by state, oldest first', async (store) => {
+      await save(store, claim('clm_a'));
+      await save(store, claim('clm_b', { claimNo: 'S-b', receivedAt: '2026-10-01T09:00:00.000Z' }));
+      await save(store, claim('clm_c', { claimNo: 'S-c', animalId: 'ani_other' }));
+      const d = decision('clm_c', 1, 70_000);
+      await store.commitDecision(commit(d));
+      const all = await store.listClaims({});
+      assert.deepEqual(all.map((x) => [x.id, x.state]), [['clm_b', 'awaiting-decision'], ['clm_a', 'awaiting-decision'], ['clm_c', 'decided']]);
+      assert.deepEqual(all[2]!.latestDecision, { seq: 1, outcome: 'approved', payout: 70_000, decidedAt: d.decidedAt });
+      assert.ok(!("lines" in all[0]!));
+      assert.deepEqual((await store.listClaims({ state: 'awaiting-decision' })).map((x) => x.id), ['clm_b', 'clm_a']);
+      assert.deepEqual((await store.listClaims({ animalId: 'ani_other' })).map((x) => x.id), ['clm_c']);
+      assert.deepEqual(await store.listClaims({ market: 'NO' }), []);
+      const req = reviewRequest(d);
+      await store.saveReviewRequest(req, reviewRequested(req));
+      assert.deepEqual((await store.listClaims({ state: 'review-requested' })).map((x) => x.id), ['clm_c']);
+    });
+
     it('claims whose latest decision was made on given policy versions', async (store) => {
       await save(store, claim('clm_a'));
       await save(store, claim('clm_b', { claimNo: 'S-b' }));

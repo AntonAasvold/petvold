@@ -91,6 +91,11 @@ export class PostgresProductStore implements ProductStore {
     return rows[0] ? toProduct(rows[0]) : null;
   }
 
+  async productNames(): Promise<string[]> {
+    const { rows } = await this.pool.query(`select distinct product from catalog.product_version order by product`);
+    return rows.map((r) => r.product);
+  }
+
   async published(): Promise<ProductVersion[]> {
     const { rows } = await this.pool.query(
       `select ${PRODUCT_COLUMNS} from catalog.product_version where status = 'published' order by product, sales_from, version`,

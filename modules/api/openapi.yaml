@@ -46,6 +46,41 @@ tags:
 
 paths:
   /v1/claims:
+    get:
+      tags: [claims]
+      operationId: listClaims
+      x-permission: claims:read
+      summary: Claims for lists and work queues
+      description: |
+        Requires the permission `claims:read`. Oldest received first. Only claims
+        in the caller's scope: its markets, a clinic's own claims, or the bound
+        policies' claims. A work queue is a state:
+
+        - `awaiting-decision`: no decision yet, e.g. sent to a handler
+        - `awaiting-approval`: a decision proposal waits for an approver (ADR 0019)
+        - `review-requested`: the customer asked for a person to review an automated decision (ADR 0018)
+        - `decided`
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [awaiting-decision, awaiting-approval, review-requested, decided] } }
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - { name: policyId, in: query, schema: { type: string } }
+        - { name: animalId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: One page of claims
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ClaimSummary' } }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
     post:
       tags: [claims]
       operationId: registerClaim
@@ -135,6 +170,8 @@ paths:
       description: Requires the permission `claims:read`.
       parameters:
         - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -149,6 +186,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/Decision' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [decisions]
@@ -211,6 +249,8 @@ paths:
       description: Requires the permission `claims:read`. Oldest first, open and closed.
       parameters:
         - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -225,6 +265,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/DecisionProposal' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /v1/claims/{claimId}/proposals/{proposalId}/approvals:
@@ -311,6 +352,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ReferenceKind'
         - name: parent
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
           in: query
           description: Only the children of this code, e.g. the breeds of `dog`.
           schema: { type: string }
@@ -334,6 +377,7 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/ReferenceItem' }
 
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
   /v1/reference-data/{kind}/{code}:
     get:
       tags: [reference-data]
@@ -401,6 +445,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ReferenceKind'
         - $ref: '#/components/parameters/ReferenceCode'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -417,6 +463,7 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/ReferenceItem' }
 
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
   /v1/products/on-sale:
     get:
       tags: [products]
@@ -430,6 +477,8 @@ paths:
         `name` is in the language asked for with `Accept-Language`.
       parameters:
         - name: date
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
           in: query
           required: true
           schema: { $ref: '#/components/schemas/Date' }
@@ -454,6 +503,39 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/ProductVersion' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/products:
+    get:
+      tags: [products]
+      operationId: listProducts
+      x-permission: catalog:read
+      summary: Every product with its versions
+      description: Requires the permission `catalog:read`. Sorted by product; each product's versions oldest first.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: One page of products
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: 
+                    type: array
+                    items:
+                      type: object
+                      required: [product, versions]
+                      properties:
+                        product: { type: string }
+                        versions: { type: array, items: { $ref: '#/components/schemas/ProductVersion' } }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   /v1/products/{product}/versions:
@@ -471,6 +553,8 @@ paths:
         Lifecycle: `draft` → `in_review` → `published`, with four eyes.
       parameters:
         - $ref: '#/components/parameters/Product'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -485,6 +569,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/ProductVersion' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
     post:
       tags: [products]
       operationId: createProductDraft
@@ -713,6 +798,8 @@ paths:
         - { name: registration, in: query, schema: { type: string } }
         - { name: passport, in: query, schema: { type: string } }
         - { name: ownerPartyId, in: query, schema: { type: string }, description: 'Animals the party owns today.' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -727,6 +814,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/AnimalRecord' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '422': { $ref: '#/components/responses/Unprocessable' }
     post:
       tags: [animals]
@@ -870,6 +958,8 @@ paths:
       description: Requires the permission `parties:read`. Shows who changed what, when and why.
       parameters:
         - $ref: '#/components/parameters/PartyId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -886,6 +976,7 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/Party' }
 
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
   /v1/parties/{partyId}/identifiers:
     post:
       tags: [parties]
@@ -953,6 +1044,8 @@ paths:
       parameters:
         - { name: status, in: query, schema: { type: string, enum: [pending, decided] } }
         - { name: partyId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -967,6 +1060,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/ErasureRequest' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   /v1/erasure-requests/{requestId}:
@@ -1075,6 +1169,9 @@ paths:
       x-permission: parties:privacy
       summary: Every version of the retention settings, oldest first
       description: Requires the permission `parties:privacy`.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1089,6 +1186,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/RetentionSettings' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
     post:
       tags: [parties]
       operationId: changeRetentionSettings
@@ -1182,6 +1280,8 @@ paths:
       parameters:
         - { name: animalId, in: query, schema: { type: string } }
         - { name: policyholderPartyId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1196,6 +1296,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/PolicyRecord' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   /v1/policies/{policyId}:
@@ -1399,6 +1500,8 @@ paths:
       parameters:
         - { name: status, in: query, schema: { type: string, enum: [pending, decided] } }
         - { name: policyId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1411,6 +1514,7 @@ paths:
                 required: [items]
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/PolicyProposal' } }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   /v1/policy-proposals/{proposalId}:
@@ -1531,6 +1635,8 @@ paths:
       parameters:
         - { name: holderPartyId, in: query, schema: { type: string } }
         - { name: policyId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1543,6 +1649,7 @@ paths:
                 required: [items]
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/PolicyGroup' } }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   /v1/policy-groups/{groupId}:
@@ -1795,6 +1902,8 @@ paths:
         - { name: microchip, in: query, schema: { type: string }, description: '15 digits (ISO 11784). Spaces and hyphens are ignored.' }
         - { name: registration, in: query, schema: { type: string } }
         - { name: passport, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1810,6 +1919,7 @@ paths:
                     type: array
                     maxItems: 1
                     items: { $ref: '#/components/schemas/AnimalSummary' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   /v1/animals/{animalId}:
@@ -1867,6 +1977,8 @@ paths:
       description: Requires the permission `animals:read`. Shows who changed what, when and why.
       parameters:
         - $ref: '#/components/parameters/AnimalId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1883,6 +1995,7 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/Animal' }
 
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
   /v1/animals/{animalId}/identifiers:
     post:
       tags: [animals]
@@ -1964,6 +2077,9 @@ paths:
       x-permission: access:read
       summary: The history of the role settings
       description: Requires the permission `access:read`. Every version, oldest first. Versions never change.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1978,6 +2094,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/RoleConfig' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
     post:
       tags: [access]
       operationId: changeRoles
@@ -2012,6 +2129,47 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/rule-sets:
+    get:
+      tags: [rule-sets]
+      operationId: listRuleSetSeries
+      x-permission: rules:read
+      summary: Every series of claims rules, tariffs and price terms
+      description: Requires the permission `rules:read`. Sorted by series, with what each holds and its versions' states.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: One page of series
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: 
+                    type: array
+                    items:
+                      type: object
+                      required: [series, kind, versions]
+                      properties:
+                        series: { type: string }
+                        kind: { type: string, enum: [claims-rules, tariff, price-terms] }
+                        versions:
+                          type: array
+                          items:
+                            type: object
+                            required: [version, status, effectiveFrom]
+                            properties:
+                              version: { type: integer }
+                              status: { type: string, enum: [draft, in_review, published, retired] }
+                              effectiveFrom: { $ref: '#/components/schemas/Date' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/rule-sets/{series}/versions:
     get:
       tags: [rule-sets]
@@ -2027,6 +2185,8 @@ paths:
         with the latest `effectiveFrom` not after the treatment date.
       parameters:
         - $ref: '#/components/parameters/Series'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2041,6 +2201,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/RuleSetVersion' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
     post:
       tags: [rule-sets]
       operationId: createRuleSetDraft
@@ -2378,6 +2539,8 @@ paths:
       description: Requires the permission `claims:read`. Oldest first, open and closed.
       parameters:
         - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2392,6 +2555,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/ReviewRequest' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /v1/claims/{claimId}/reassessments:
@@ -2558,6 +2722,16 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: '^pgr_[A-Za-z0-9]+$' }
+    Limit:
+      name: limit
+      in: query
+      description: Items per page, 1-200. Default 50.
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    Cursor:
+      name: cursor
+      in: query
+      description: The nextCursor from the previous page (ADR 0002). Opaque.
+      schema: { type: string, maxLength: 200 }
     PolicyProposalId:
       name: proposalId
       in: path
@@ -3738,6 +3912,31 @@ components:
         vetCare: { $ref: '#/components/schemas/VetCareTerms' }
         deductibleOption: { type: string }
         price: { $ref: '#/components/schemas/PriceResult' }
+
+    ClaimSummary:
+      type: object
+      required: [id, claimNo, policyId, animalId, market, currency, channel, treatmentFrom, diagnosisCode, receivedAt, state]
+      properties:
+        id: { type: string }
+        claimNo: { type: string }
+        policyId: { type: string }
+        animalId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        channel: { type: string, enum: [clinic_direct, customer] }
+        clinicId: { type: string }
+        treatmentFrom: { $ref: '#/components/schemas/Date' }
+        diagnosisCode: { type: string }
+        receivedAt: { $ref: '#/components/schemas/DateTime' }
+        state: { type: string, enum: [awaiting-decision, awaiting-approval, review-requested, decided] }
+        latestDecision:
+          type: object
+          required: [seq, outcome, payout, decidedAt]
+          properties:
+            seq: { type: integer }
+            outcome: { type: string, enum: [approved, partial, rejected] }
+            payout: { $ref: '#/components/schemas/NonNegativeMoney' }
+            decidedAt: { $ref: '#/components/schemas/DateTime' }
 
     ChangePolicyRequest:
       type: object

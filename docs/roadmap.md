@@ -74,7 +74,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Kompositionsrot för drift: `server.ts` utan exempeldata, med relä för händelser (A1, A5)
 - [x] Inloggning med JWT och OIDC mot försäkringsbolagets identitetstjänst (A2)
 - [x] "I dag" i marknadens tidszon (A3)
-- [ ] Markörbaserad sidindelning på alla listor, enligt ADR 0002 (A4)
+- [x] Markörbaserad sidindelning på alla listor, enligt ADR 0002 (A4)
+- [x] Listor för ett gränssnitt: ärenden med arbetsköer, produkter och regelserier
 - [ ] Godkännande av villkoren sparas vid tecknande (F3)
 - [ ] ADR om dokument och meddelanden till kunden: förköpsinformation, villkor, försäkringsbrev, besked om förnyelse och uppsägning (F2)
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)

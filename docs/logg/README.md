@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [Listor och sidindelning](2026-11-15-listor.md) | #62 |
 | 2026-11-15 | [Drift: kompositionsrot, relä och inloggning](2026-11-15-drift.md) | #61 |
 | 2026-11-15 | [Datum i marknadens tidszon](2026-11-15-tidszon.md) | #60 |
 | 2026-11-15 | [Granskning av arkitektur och funktion](2026-11-15-granskning.md) | #59 |

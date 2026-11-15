@@ -114,6 +114,8 @@ export interface ProductStore {
   get(product: string, version: string): Promise<ProductVersion | null>;
   /** Published versions of every product. */
   published(): Promise<ProductVersion[]>;
+  /** Every product's name, sorted. */
+  productNames(): Promise<string[]>;
   /** Throws ProductConflictError if the version exists. */
   create(v: ProductVersion): Promise<void>;
   /** Throws ProductConflictError unless the stored revision is `v.revision - 1`. */
@@ -206,6 +208,11 @@ export class ProductService {
   }
 
   /** Published versions on sale on a date, optionally for one market and species. */
+  /** Every product with its versions, newest last: for a list of products. */
+  async allProducts(): Promise<{ product: string; versions: ProductVersion[] }[]> {
+    return Promise.all((await this.d.products.productNames()).map(async (product) => ({ product, versions: await this.d.products.list(product) })));
+  }
+
   async onSale(date: ISODate, filter: { market?: string; species?: string } = {}): Promise<ProductVersion[]> {
     if (!isDate(date)) throw new CatalogError('validation', 'The date must be YYYY-MM-DD');
     return (await this.d.products.published()).filter(
@@ -428,6 +435,10 @@ export class InMemoryProductStore implements ProductStore {
   async get(product: string, version: string) {
     const r = this.rows.find((x) => x.product === product && x.version === version);
     return r ? structuredClone(r) : null;
+  }
+
+  async productNames() {
+    return [...new Set(this.rows.map((r) => r.product))].sort();
   }
 
   async published() {

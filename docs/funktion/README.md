@@ -24,4 +24,5 @@ Petvold installeras en gång per försäkringsbolag (ADR 0010). Varje kund har s
 - **Historiken ändras aldrig.** Beslut och bokföring läggs till, de skrivs aldrig över. En omprövning blir ett nytt beslut som bokför skillnaden.
 - **Belopp i heltal i minsta valutaenhet.** 150 000 betyder 1 500,00 kr. Varje objekt har en valuta, och valutor växlas aldrig (ADR 0014).
 - **Marknaden är alltid uttalad.** Samma motor bär olika marknaders regler, till exempel självrisk per period i Norden och självrisk per skada på andra håll.
+- **Listor kommer en sida i taget.** Varje lista svarar med `items` och, om det finns mer, `nextCursor`. Nästa sida hämtas med `?cursor=…`. `limit` är 1–200, förval 50.
 - **Texter på kundens språk.** Skälen i en bedömning är koder som översätts till svenska eller engelska efter anroparens språk.

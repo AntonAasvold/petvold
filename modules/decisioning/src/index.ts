@@ -55,6 +55,8 @@ export interface RuleSetVersion {
 export interface RuleSetStore {
   /** All versions in the series, oldest first. */
   list(series: string): Promise<RuleSetVersion[]>;
+  /** Every series' name, sorted. */
+  seriesNames(): Promise<string[]>;
   get(series: string, version: number): Promise<RuleSetVersion | null>;
   /** Stores a new version. Throws RuleSetConflictError if it is not the next number in the series. */
   create(v: RuleSetVersion): Promise<void>;
@@ -129,6 +131,24 @@ export class DecisioningService {
     const v = await this.d.store.get(series, version);
     if (!v) throw new RuleSetError('not_found', `Rule set ${series}@${version} does not exist`);
     return v;
+  }
+
+  /**
+   * Every series with what it holds and its versions' states: for a list of
+   * claims rules, tariffs and price terms.
+   */
+  async allSeries(): Promise<{ series: string; kind: 'claims-rules' | 'tariff' | 'price-terms'; versions: { version: number; status: RuleSetStatus; effectiveFrom: ISODate }[] }[]> {
+    return Promise.all(
+      (await this.d.store.seriesNames()).map(async (series) => {
+        const versions = await this.d.store.list(series);
+        const model = versions[0]!.calculationModel;
+        return {
+          series,
+          kind: isTariffModel(model) ? ('tariff' as const) : isPriceTermsModel(model) ? ('price-terms' as const) : ('claims-rules' as const),
+          versions: versions.map((v) => ({ version: v.version, status: v.status, effectiveFrom: v.effectiveFrom })),
+        };
+      }),
+    );
   }
 
   /** A new draft in the series, with the next version number. */
@@ -288,6 +308,10 @@ export class InMemoryRuleSetStore implements RuleSetStore {
 
   async list(series: string) {
     return structuredClone(this.rows.filter((r) => r.series === series).sort((a, b) => a.version - b.version));
+  }
+
+  async seriesNames() {
+    return [...new Set(this.rows.map((r) => r.series))].sort();
   }
 
   async get(series: string, version: number) {

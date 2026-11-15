@@ -46,6 +46,35 @@ export interface Claim {
   receivedAt: Timestamp;
 }
 
+/** Where a claim is in its handling, for work queues. */
+export type ClaimState = 'awaiting-decision' | 'awaiting-approval' | 'review-requested' | 'decided';
+
+/** A claim in a list: the claim without its lines, its state and its latest decision. */
+export interface ClaimSummary {
+  id: string;
+  claimNo: string;
+  policyId: string;
+  animalId: string;
+  market: MarketCode;
+  currency: CurrencyCode;
+  channel: ClaimChannel;
+  clinicId?: string;
+  treatmentFrom: ISODate;
+  diagnosisCode: string;
+  receivedAt: Timestamp;
+  /** awaiting-approval (an open proposal) wins over review-requested, which wins over awaiting-decision. */
+  state: ClaimState;
+  latestDecision?: { seq: number; outcome: Outcome; payout: MinorUnits; decidedAt: Timestamp };
+}
+
+export interface ClaimFilter {
+  state?: ClaimState;
+  market?: MarketCode;
+  policyId?: string;
+  animalId?: string;
+  clinicId?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Policy data the claims engine reads (contract with the policy core)
 // ---------------------------------------------------------------------------

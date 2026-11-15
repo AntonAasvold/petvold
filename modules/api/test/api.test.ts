@@ -684,3 +684,46 @@ test('rule sets: an author drafts and submits, a publisher publishes; the steps 
   const retired = (await (await call('POST', `${base}/1/retirements`, { token: 'publisher', key: 'key-00000708', body: { reason: 'Replaced' } })).json()) as any;
   assert.equal(retired.status, 'retired');
 });
+
+// Lists, work queues and paging (ADR 0002, granskningen A4) -------------------------------
+
+test('claims are listed in work queues within the scope, a page at a time', async () => {
+  const { call } = setup();
+  // The cruciate claim goes to a handler; the otitis claim is settled automatically.
+  await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000901', body: input(cruciateClaim()) });
+  await call('POST', '/v1/claims', { key: 'key-00000902', body: input(otitisClaim()) });
+  const all = (await (await call('GET', '/v1/claims')).json()) as any;
+  assertSchema('ClaimSummary', all.items[0]);
+  const byState = Object.fromEntries(all.items.map((x: any) => [x.id, x.state]));
+  assert.deepEqual(byState, { clm_048213: 'awaiting-decision', clm_021877: 'decided' });
+  const queue = (await (await call('GET', '/v1/claims?state=awaiting-decision')).json()) as any;
+  assert.deepEqual(queue.items.map((x: any) => x.id), ['clm_048213']);
+  assert.equal((await call('GET', '/v1/claims?state=lost')).status, 422);
+  // The customer portal sees only Bella's claims; the clinic only its own.
+  assert.equal(((await (await call('GET', '/v1/claims', { token: 'customer' })).json()) as any).items.length, 2);
+  assert.deepEqual(((await (await call('GET', '/v1/claims', { token: 'clinic' })).json()) as any).items.map((x: any) => x.id), ['clm_048213']);
+
+  // Paging: one at a time, with the cursor from the previous page.
+  const first = (await (await call('GET', '/v1/claims?limit=1')).json()) as any;
+  assert.equal(first.items.length, 1);
+  assert.ok(first.nextCursor);
+  const second = (await (await call('GET', `/v1/claims?limit=1&cursor=${first.nextCursor}`)).json()) as any;
+  assert.equal(second.items.length, 1);
+  assert.notEqual(second.items[0].id, first.items[0].id);
+  assert.equal(second.nextCursor, undefined);
+  assert.equal((await call('GET', '/v1/claims?limit=0')).status, 422);
+  assert.equal((await call('GET', '/v1/claims?limit=201')).status, 422);
+  assert.equal((await call('GET', '/v1/claims?cursor=nonsense')).status, 422);
+});
+
+test('rule set series and products are listed', async () => {
+  const { call } = setup();
+  const { rulesVersion: _v, ...content } = RULES_SE_DOG;
+  await call('POST', '/v1/rule-sets/SE-HUND-VV/versions', { token: 'author', key: 'key-00000911', body: { content, calculationModel: 'vet-care.v1', effectiveFrom: '2026-01-01' } });
+  await call('POST', '/v1/rule-sets/SE-HUND-TARIFF/versions', { token: 'author', key: 'key-00000912', body: { content: TARIFF, calculationModel: 'tariff.v1', effectiveFrom: '2026-01-01' } });
+  const series = (await (await call('GET', '/v1/rule-sets', { token: 'author' })).json()) as any;
+  assert.deepEqual(series.items.map((s: any) => [s.series, s.kind, s.versions.map((v: any) => v.status)]), [['SE-HUND-TARIFF', 'tariff', ['draft']], ['SE-HUND-VV', 'claims-rules', ['draft']]]);
+  const products = await call('GET', '/v1/products');
+  assert.equal(products.status, 200);
+  assert.deepEqual(((await products.json()) as any).items, []);
+});

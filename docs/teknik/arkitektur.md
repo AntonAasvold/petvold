@@ -233,6 +233,8 @@ Händelser skrivs till `claims.outbox` i samma transaktion som ändringen (ADR 0
 
 - **Kontraktet först** (ADR 0002). `modules/api/openapi.yaml` är källan. Anrop valideras mot schemat, och `lint:openapi` kontrollerar att kontrakt och kod har exakt samma operationer.
 - **Fel** som `application/problem+json` (RFC 9457).
+- **Sidindelning (ADR 0002, granskningen A4):** alla 18 listor svarar med `{ items, nextCursor? }` och tar `limit` (1–200, förval 50) och `cursor`. `pageOf` i `app.ts` skär ut sidan, och markören är en base64url-kodad position (`{"o": 50}`) som klienten inte ska tolka. En felaktig markör eller gräns ger `422`. Listorna räknas ut i sin helhet och skärs i API-lagret, eftersom omfånget filtreras där. Listor som kan bli stora (ärenden) bör senare få markörer i databasfrågan.
+- **Listor för ett gränssnitt:** `GET /v1/claims` med status per ärende (`ClaimsStore.listClaims`, räknad i databasfrågan från förslag, begäranden om prövning och beslut), `GET /v1/products` (`ProductStore.productNames`) och `GET /v1/rule-sets` (`RuleSetStore.seriesNames`).
 - **Idempotens:** anrop som skapar något kräver `Idempotency-Key`. Svaret sparas per anropare och nyckel, i Postgres när dev-servern kör mot databasen.
 - **Språk:** regelskäl är koder som översätts efter `Accept-Language` (`messages.ts`).
 - **Behörighet (ADR 0016):** varje operation har en rättighet i kontraktet (`x-permission`). En middleware hittar operationen som matchats, läser rättigheten ur kontraktet och jämför med anroparens roller (`permissions.ts`). Rättigheterna står inte i koden. `createApp` vägrar starta om en operation saknar giltig rättighet eller om rollinställningen har en okänd rättighet, och `lint:openapi` stoppar samma fel i CI. Se [Behörighet](../funktion/behorighet.md).

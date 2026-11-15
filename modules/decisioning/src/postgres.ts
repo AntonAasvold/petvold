@@ -18,6 +18,11 @@ export class PostgresRuleSetStore implements RuleSetStore {
     return rows.map(toVersion);
   }
 
+  async seriesNames(): Promise<string[]> {
+    const { rows } = await this.pool.query(`select distinct series from decisioning.rule_set_version order by series`);
+    return rows.map((r) => r.series);
+  }
+
   async get(series: string, version: number): Promise<RuleSetVersion | null> {
     const { rows } = await this.pool.query(`select ${COLUMNS} from decisioning.rule_set_version where series = $1 and version = $2`, [
       series,
