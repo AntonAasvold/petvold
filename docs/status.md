@@ -32,6 +32,12 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #53 mergad.
+- ADR 0030 om tariffen (Föreslagen), PR #54. Bara beslutet, ingen kod.
+  - **Tariffen är versionerad data i `decisioning`**, med fyra ögon och kontrollsumma, som skaderegler. Produktversionen pekar på en tariffserie.
+  - **Priset räknas av en ren funktion** i en ny modul, `pricing-core`, med heltal och en förklaring steg för steg.
+  - **Samma funktion används överallt:** prisindikation utan sparat tillstånd, tecknande, ändring och förnyelse.
+  - **Manuellt pris** kräver en egen rättighet. Ingen uppgift om ägaren används utom postnumrets zon.
 - #52 mergad.
 - Policygrupper för kull och hushåll (ADR 0007), PR #53:
   - **Grupp** med marknad, sort, försäkringstagare och kull. **Medlemskap** med `from` och `to`, där en policy bara är med i en grupp i taget (migration 0027).
@@ -157,9 +163,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. M4: tariff som rena funktioner per produktversion, prisindikation och teckningsregler. Det ger riktiga priser vid tecknande, ändring och förnyelse, och grupprabatt.
+1. När ADR 0030 är beslutad: `pricing-core` och tariffserier i `decisioning`, prisindikation, och sedan priset vid tecknande, ändring och förnyelse.
 
 **Öppet**
+- ADR 0030 väntar på ditt beslut: var tariffen bor, vilka faktorer som ingår, och om postnummer ska få påverka priset.
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).
 - Gallringen känner till djur, policyer och skador. Innan den körs skarpt hos ett försäkringsbolag behöver bolaget bekräfta lagringstiderna och att inga andra system har relationer som Petvold inte känner till, till exempel betalningar (M5).
 - Det sparas inte vem som slagit upp ett djur.

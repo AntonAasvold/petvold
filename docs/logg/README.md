@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [ADR om tariffen](2026-11-15-tariff-adr.md) | #54 |
 | 2026-11-15 | [Policygrupper för kull och hushåll](2026-11-15-grupper.md) | #53 |
 | 2026-11-15 | [Ändring av val under termen](2026-11-15-andring.md) | #52 |
 | 2026-11-15 | [Gallringen känner till skador](2026-11-15-gallring-skador.md) | #51 |
