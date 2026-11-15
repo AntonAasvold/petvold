@@ -112,6 +112,8 @@ Djurregistret skickar händelser när ett djur byter ägare (`animal.ownership_c
 
 **Återkalla ett avslut:** `POST /v1/policies/{id}/reinstatements` med `cancellationId` och `note`. Det går bara om avslutet är policyns senaste transaktion, till exempel om ett dödsfall registrerades på fel djur. De ersatta versionerna gäller då igen, och premien tillbaka återkallas.
 
+**Skador omprövas.** När versioner ersätts, till exempel vid ett avslut bakåt i tiden, en överlåtelse eller en återkallelse, omprövar skademotorn varje skada vars senaste beslut fattades på en ersatt version. Om underlaget har ändrats blir det ett nytt automatiskt beslut, och ledgern bokför bara skillnaden. Om Rex dog 1 mars och en skada från 10 mars redan var ersatt, avslås den vid omprövningen, och utbetalningen bokas tillbaka. Om avslutet återkallas omprövas skadan igen och godkänns.
+
 **Händelser:** varje ändring skriver händelser i samma transaktion: `policy.issued`, `policy.renewed`, `policy.transferred`, `policy.cancelled` (med upphörandedag och premie tillbaka), `policy.reinstated` och `policy.version_superseded` för varje ersatt version. Dev-servern skriver ut dem i loggen.
 
 **Exempel:** Rex dör 1 mars 2027, och Anna hör av sig 20 mars. Kundservice skickar `{ "reason": "need-ceased", "effectiveDate": "2027-03-01", "note": "Djuret har dött" }`. Policyn upphör från 1 mars, och premien för 1 mars till 1 december betalas tillbaka. En skada på Rex efter 1 mars avslås, eftersom policyn är avslutad.
@@ -163,4 +165,4 @@ Svaret har en term från 1 december 2026 till 1 december 2027 (slutdagen räknas
 
 Dev-servern lägger in Bellas policy `pol_bella` första gången, med ägaren `pty_owner001` och förbehållet för hälta. Exemplet har bara den gällande termen. Token `dev-seller` tecknar policyer. Skademotorn läser policyerna från modulen.
 
-*Inte byggt än:* nytt pris vid förnyelse (M4), ändring av villkor under termen, policygrupper, och omprövning av skador efter ett avslut bakåt i tiden (ADR 0029).
+*Inte byggt än:* nytt pris vid förnyelse (M4), ändring av villkor under termen och policygrupper (ADR 0029).

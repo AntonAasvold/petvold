@@ -181,6 +181,7 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
   - `acceptProposal` för en överlåtelse delar versionerna vid försäljningsdagen och byter försäkringstagare i delen efter.
   - Ett avslut för ett dödsfall, ett avböjt förslag eller ett förslag som löpt ut går genom `cancel`.
   - Beslutet sparas i `policies.proposal_decision` i samma transaktion som ändringen (`PolicyStore.apply(…, decision)`).
+- **Omprövning efter policyändring:** `ClaimsStore.claimsDecidedOnPolicyVersions(ids)` ger skador vars senaste beslut fattades på någon av versionerna (`claims.decision.policy_version_id`). `ClaimsService.reassessForPolicyChange` omprövar dem med `reassess`, som bara skapar ett nytt beslut om `inputHash` har ändrats. Installationens relay anropar den för varje `policy.version_superseded`. En händelse som kommer två gånger ger inget nytt beslut.
 - **Förnyelse (migration 0023):** `PolicyStore.endingBetween(från, till)` ger policyer vars aktiva version slutar i perioden utan att någon version följer. `PolicyService.renewalRun` tar produktens `renewalLeadDays` via `ProductPort.offer` och den version som säljs via `ProductPort.versionOnSale`. `planRenewal` kontrollerar och bygger nästa term, och `renew` sparar den med `PolicyStore.apply(…, terms)`.
 
 **Rollinställningen (ADR 0020):**

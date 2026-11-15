@@ -346,6 +346,20 @@ export class ClaimsService {
     return this.commit(claim, assessed, action, decidedBy, { reason, deviatesFromProposal: false, automated: true });
   }
 
+  /**
+   * After a change of the policy, e.g. a cancellation back in time (ADR 0029):
+   * reassesses every claim whose latest decision was made on one of the
+   * superseded versions. A claim whose basis did not change gets no new
+   * decision. Safe to run twice for the same versions.
+   */
+  async reassessForPolicyChange(policyVersionIds: string[], reason: string, decidedBy: string): Promise<{ claimId: string; decision: ClaimDecision | null }[]> {
+    const out: { claimId: string; decision: ClaimDecision | null }[] = [];
+    for (const claimId of await this.d.store.claimsDecidedOnPolicyVersions(policyVersionIds)) {
+      out.push({ claimId, decision: await this.reassess(claimId, decidedBy, reason) });
+    }
+    return out;
+  }
+
   async getClaim(claimId: string): Promise<Claim> {
     return this.requireClaim(claimId);
   }

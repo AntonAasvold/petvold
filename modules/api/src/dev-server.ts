@@ -284,12 +284,20 @@ setInterval(
   1_000,
 ).unref();
 
-// The policy module's outbox (ADR 0008). Here the events are just logged.
+// The policy module's outbox (ADR 0008). A superseded version makes the claims
+// engine reassess the claims decided on it (ADR 0029); the rest is just logged.
 setInterval(
   () =>
     void (async () => {
       const events = await policyStore.pendingEvents(100);
-      for (const e of events) console.log(`[event] ${e.type} ${e.policyId}`);
+      for (const e of events) {
+        console.log(`[event] ${e.type} ${e.policyId}`);
+        if (e.type !== 'policy.version_superseded') continue;
+        const versionId = String(e.data.versionId);
+        for (const r of await service.reassessForPolicyChange([versionId], `Policy version ${versionId} was superseded`, 'policy-change')) {
+          console.log(`[reassessed] ${r.claimId}: ${r.decision ? `${r.decision.outcome} ${r.decision.payout}` : 'no change'}`);
+        }
+      }
       if (events.length) await policyStore.markPublished(events.map((e) => e.id), clock.now());
     })().catch((err) => console.error('[policy relay]', err)),
   1_000,

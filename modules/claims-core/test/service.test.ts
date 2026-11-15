@@ -133,6 +133,26 @@ test('retroactive policy change: reassessment books only the difference, and kno
   assert.equal(await service.reassess('clm_021877', 'system', 'igen'), null);
 });
 
+test('a cancellation back in time reassesses the claims decided on the superseded version, once', async () => {
+  const { service, store, policies, clock } = setup();
+  await service.registerClaim(otitisClaim()); // treated 2026-06-04, SEK 1,500
+  assert.deepEqual(await service.reassessForPolicyChange(['pv_other'], 'x', 'policy-change'), []);
+
+  // On 20 June the policy is cancelled from 1 June: the animal died (ADR 0029).
+  policies.supersede('pv_bella_v4', '2026-06-20T10:00:00Z');
+  policies.add({ snapshot: bellaPolicy({ policyVersionId: 'pv_bella_cut', validTo: '2026-06-01' }), sysFrom: '2026-06-20T10:00:00Z' });
+  policies.add({ snapshot: bellaPolicy({ policyVersionId: 'pv_bella_gone', validFrom: '2026-06-01', status: 'cancelled' }), sysFrom: '2026-06-20T10:00:00Z' });
+  clock.set('2026-06-21T09:00:00Z');
+
+  const out = await service.reassessForPolicyChange(['pv_bella_v4'], 'Policy version pv_bella_v4 superseded', 'policy-change');
+  assert.equal(out.length, 1);
+  assert.deepEqual([out[0]!.claimId, out[0]!.decision?.outcome, out[0]!.decision?.payout, out[0]!.decision?.decidedBy], ['clm_021877', 'rejected', 0, 'policy-change']);
+  assertBalanced(store);
+  // The claim is now decided on the cancelled version: the same event again changes nothing.
+  assert.deepEqual(await service.reassessForPolicyChange(['pv_bella_v4'], 'again', 'policy-change'), []);
+  assert.deepEqual((await service.reassessForPolicyChange(['pv_bella_gone'], 'again', 'policy-change')).map((x) => x.decision), [null]);
+});
+
 test('rejection on reassessment reverses the full amount and closes the deductible period', async () => {
   const { service, store, policies } = setup();
   await service.registerClaim(otitisClaim());
