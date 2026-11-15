@@ -72,6 +72,7 @@ Andra marknader har liknande regler, till exempel den tyska Versicherungsvertrag
   - beslut om vilka frågor som visas, som ligger i kanalen
   - förbehåll som läggs till efter tecknandet
   - en ny prövning vid förnyelse
+  - ansökan från kundkanalen, som i dag är bunden till policyer och inte till en part. Den kommer när kundkanalen kan bindas till en part.
 
 ## Alternativ
 
