@@ -119,7 +119,7 @@ function cancelSetup(midTermCancellation: 'term-end' | 'immediate' = 'term-end')
   });
   return { s, store, at: (iso: string) => (now = iso) };
 }
-// A term from 2026-12-01 to 2027-12-01 is 365 days; 365 000 öre gives 1 000 öre a day.
+// A term from 2026-12-01 to 2027-12-01 is 365 days; 365 000 minor units give 1 000 a day.
 const yearly = input({ premium: { amount: 365_000, currency: 'SEK' } });
 
 test('the customer cancels to the end of the term, always', async () => {
