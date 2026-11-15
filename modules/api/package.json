@@ -10,6 +10,7 @@
     "@hono/node-server": "^2.1.8",
     "@petvold/access": "^0.1.0",
     "@petvold/animals": "^0.1.0",
+    "@petvold/parties": "^0.1.0",
     "@petvold/catalog": "^0.1.0",
     "@petvold/claims-core": "^0.1.0",
     "@petvold/decisioning": "^0.1.0",

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Petvold API
   version: 0.1.0
-  summary: Headless core for pet insurance – claims, rule sets, products, reference data, animals and access.
+  summary: Headless core for pet insurance – claims, rule sets, products, reference data, animals, parties and access.
   description: |
     The contract is the source of truth. The server validates incoming
     requests against the schemas here, and the contract tests validate the responses.
@@ -39,6 +39,7 @@ tags:
   - name: reference-data
   - name: products
   - name: animals
+  - name: parties
   - name: previews
   - name: limits
 
@@ -750,6 +751,164 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AnimalRecord' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/party-searches:
+    post:
+      tags: [parties]
+      operationId: searchParties
+      x-permission: parties:read
+      summary: Find a party by personal or organization number
+      description: |
+        Requires the permission `parties:read`. The number is sent in the body,
+        so it never ends up in URLs or access logs (ADR 0026). Only parties in
+        the caller's markets are returned, and personal numbers are masked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PartySearchRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The party, or an empty list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    maxItems: 1
+                    items: { $ref: '#/components/schemas/PartyRecord' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/parties:
+    post:
+      tags: [parties]
+      operationId: registerParty
+      x-permission: parties:write
+      summary: Register a person or an organization
+      description: |
+        Requires the permission `parties:write`. A person has `givenName` and
+        `familyName`, an organization has `name`. A personal or organization
+        number that another party has gives `409`. Swedish numbers are checked
+        (date and check digit).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterPartyRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The party
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PartyRecord' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/parties/{partyId}:
+    get:
+      tags: [parties]
+      operationId: getParty
+      x-permission: parties:read
+      summary: A party with its identifiers
+      description: Requires the permission `parties:read`. A party outside the caller's markets, or any party for a role bound to a clinic or to policies, answers 404.
+      parameters:
+        - $ref: '#/components/parameters/PartyId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The party
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PartyRecord' }
+    put:
+      tags: [parties]
+      operationId: changeParty
+      x-permission: parties:write
+      summary: Change a party's details
+      description: |
+        Requires the permission `parties:write`. Replaces all details with a new
+        revision; details left out are removed. Kind and market never change.
+      parameters:
+        - $ref: '#/components/parameters/PartyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePartyRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The party
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PartyRecord' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/parties/{partyId}/revisions:
+    get:
+      tags: [parties]
+      operationId: listPartyRevisions
+      x-permission: parties:read
+      summary: Every revision of a party's details, oldest first
+      description: Requires the permission `parties:read`. Shows who changed what, when and why.
+      parameters:
+        - $ref: '#/components/parameters/PartyId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The revisions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Party' }
+
+  /v1/parties/{partyId}/identifiers:
+    post:
+      tags: [parties]
+      operationId: addPartyIdentifier
+      x-permission: parties:write
+      summary: Add a personal or organization number
+      description: Requires the permission `parties:write`. Identifiers are never removed. Adding one the party already has returns it unchanged.
+      parameters:
+        - $ref: '#/components/parameters/PartyId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PartyIdentifierInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The party
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PartyRecord' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
@@ -1521,6 +1680,11 @@ components:
       required: true
       description: The version label, e.g. 2026.2.
       schema: { type: string, pattern: '^[0-9A-Za-z][0-9A-Za-z.-]{0,31}$' }
+    PartyId:
+      name: partyId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' }
     AnimalId:
       name: animalId
       in: path
@@ -2205,6 +2369,108 @@ components:
       properties:
         salesTo: { $ref: '#/components/schemas/Date' }
         reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    PartyIdentifierInput:
+      type: object
+      additionalProperties: false
+      required: [type, country, value]
+      properties:
+        type: { type: string, enum: [personal-number, organization-number] }
+        country: { type: string, pattern: '^[A-Z]{2}$', description: The country that issued the number. }
+        value: { type: string, minLength: 1, maxLength: 40 }
+
+    PartySearchRequest:
+      $ref: '#/components/schemas/PartyIdentifierInput'
+
+    Address:
+      type: object
+      additionalProperties: false
+      required: [street, postalCode, city, country]
+      properties:
+        street: { type: string, minLength: 1, maxLength: 200 }
+        postalCode: { type: string, minLength: 1, maxLength: 12 }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        country: { type: string, pattern: '^[A-Z]{2}$' }
+
+    PartyDetails:
+      type: object
+      properties:
+        givenName: { type: string, maxLength: 100, description: Persons only. }
+        familyName: { type: string, maxLength: 100, description: Persons only. }
+        birthDate: { $ref: '#/components/schemas/Date' }
+        name: { type: string, maxLength: 200, description: Organizations only. }
+        email: { type: string, maxLength: 254 }
+        phone: { type: string, maxLength: 20, description: 'International format, e.g. +46701234567.' }
+        address: { $ref: '#/components/schemas/Address' }
+        language: { type: string, pattern: '^[a-z]{2}$', description: 'Preferred language, ISO 639-1.' }
+
+    Party:
+      allOf:
+        - $ref: '#/components/schemas/PartyDetails'
+        - type: object
+          required: [id, revision, kind, market, changedBy, changedAt]
+          properties:
+            id: { type: string }
+            revision: { type: integer, minimum: 1 }
+            kind: { type: string, enum: [person, organization] }
+            market: { $ref: '#/components/schemas/Market' }
+            changedBy: { type: string }
+            changedAt: { $ref: '#/components/schemas/DateTime' }
+            reason: { type: string }
+
+    PartyRecord:
+      allOf:
+        - $ref: '#/components/schemas/Party'
+        - type: object
+          required: [identifiers]
+          properties:
+            identifiers:
+              type: array
+              items:
+                type: object
+                required: [type, country, value, masked, addedBy, addedAt]
+                properties:
+                  type: { type: string, enum: [personal-number, organization-number] }
+                  country: { type: string }
+                  value: { type: string, description: 'Personal numbers are masked, e.g. 19850312-****.' }
+                  masked: { type: boolean }
+                  addedBy: { type: string }
+                  addedAt: { $ref: '#/components/schemas/DateTime' }
+
+    RegisterPartyRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, market]
+      properties:
+        kind: { type: string, enum: [person, organization] }
+        market: { $ref: '#/components/schemas/Market' }
+        givenName: { type: string, maxLength: 100 }
+        familyName: { type: string, maxLength: 100 }
+        birthDate: { $ref: '#/components/schemas/Date' }
+        name: { type: string, maxLength: 200 }
+        email: { type: string, maxLength: 254 }
+        phone: { type: string, maxLength: 20 }
+        address: { $ref: '#/components/schemas/Address' }
+        language: { type: string, pattern: '^[a-z]{2}$' }
+        identifiers:
+          type: array
+          items: { $ref: '#/components/schemas/PartyIdentifierInput' }
+
+    ChangePartyRequest:
+      type: object
+      additionalProperties: false
+      required: [basedOnRevision, reason]
+      properties:
+        basedOnRevision: { type: integer, minimum: 1 }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        givenName: { type: string, maxLength: 100 }
+        familyName: { type: string, maxLength: 100 }
+        birthDate: { $ref: '#/components/schemas/Date' }
+        name: { type: string, maxLength: 200 }
+        email: { type: string, maxLength: 254 }
+        phone: { type: string, maxLength: 20 }
+        address: { $ref: '#/components/schemas/Address' }
+        language: { type: string, pattern: '^[a-z]{2}$' }
 
     IdentifierInput:
       type: object

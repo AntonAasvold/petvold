@@ -49,7 +49,8 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `admin` | `access:read`, `access:manage` | – | Administratör för roller och gränser |
 | `rules-author` | `rules:read`, `rules:write`, `rules:simulate`, `catalog:read` | – | Skriver regelutkast |
 | `rules-publisher` | `rules:read`, `rules:publish`, `rules:simulate`, `catalog:read` | – | Granskar och publicerar regler |
-| `animal-registrar` | `animals:read`, `animals:write`, `catalog:read` | – | Registrerar djur och ägarbyten, till exempel kundservice |
+| `animal-registrar` | `animals:read`, `animals:write`, `catalog:read`, `parties:read` | – | Registrerar djur och ägarbyten, till exempel kundservice |
+| `party-registrar` | `parties:read`, `parties:write` | – | Registrerar personer och organisationer, till exempel kundservice |
 | `catalog-manager` | `catalog:read`, `catalog:write` | – | Underhåller referensdata och skriver produktutkast |
 | `catalog-publisher` | `catalog:read`, `catalog:publish` | – | Granskar och publicerar produktversioner |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview`, `catalog:read`, `animals:lookup` | klinik | Veterinärklinik med direktreglering |
@@ -167,7 +168,7 @@ Dev-servern har elva tokens:
 | `dev-publisher` | publicerar regler | inga ärenden |
 | `dev-catalog` | underhåller referensdata och skriver produktutkast | inga ärenden |
 | `dev-catalog-publisher` | publicerar produktversioner | inga ärenden |
-| `dev-registrar` | registrerar djur | SE |
+| `dev-registrar` | registrerar djur och parter | SE |
 | `dev-clinic` | klinik | SE, klinik `clinic_001` |
 | `dev-job` | omprövningsjobb | alla marknader |
 | `dev-customer` | kundkanal | SE, försäkringen `pol_bella` |
