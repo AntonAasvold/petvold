@@ -72,7 +72,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 
 **M4 – Pris och teckning**
 - [x] ADR om tariffen (ADR 0030)
-- [ ] Tariff som rena funktioner per produktversion
+- [x] Prisfunktionen (`pricing-core`) och tariffserier i `decisioning`
+- [ ] Produktversionen pekar på en tariffserie
 - [ ] Prisindikation utan sparat tillstånd
 - [ ] Teckningsregler och manuell prövning
 - [ ] Rabatter som regler

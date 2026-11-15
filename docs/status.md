@@ -32,6 +32,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #54 mergad.
+- Prisfunktion och tariffer (ADR 0030), PR #55:
+  - **Ny modul `pricing-core`:** `price(tariff, input)` räknar grundpremien gånger faktorerna för ålder, rasgrupp, självrisk och zon (ort). Den räknar med heltal och BigInt, avrundar en gång och ger lägsta premie, termens premie, `breakdown`, `facts` och `inputHash`. Postnumret sparas inte, bara zonen.
+  - **Tariffserier i `decisioning`** med beräkningsmodellen `tariff.v1` och samma livscykel och fyra ögon som skaderegler. En serie innehåller antingen tariffer eller skaderegler. `tariffInForce(serie, dag)`.
+  - **Kontraktet:** `RuleSetContent` är skaderegler eller `TariffContent`. Simulering av en tariff ger `422` tills priser sparas med policyer.
+  - **Ny sida** `docs/funktion/pris.md` med räkneexempel.
+- 346 tester och 111 databastester.
 - #53 mergad.
 - ADR 0030 om tariffen (Beslutad), PR #54. Bara beslutet, ingen kod. Ort påverkar priset (zon per postnummer), och rabatter är prisvilkor i en egen serie som läggs på efter grundpriset.
   - **Tariffen är versionerad data i `decisioning`**, med fyra ögon och kontrollsumma, som skaderegler. Produktversionen pekar på en tariffserie.
@@ -163,7 +170,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. `pricing-core` och tariffserier i `decisioning`, prisindikation, sedan prisvilkor, och sist priset vid tecknande, ändring och förnyelse (ADR 0030).
+1. Produktversionen pekar på en tariffserie, och prisindikation (`POST /v1/quotes`). Sedan prisvilkor, och sist priset vid tecknande, ändring och förnyelse (ADR 0030).
 
 **Öppet**
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).

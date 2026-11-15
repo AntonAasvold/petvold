@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [Prisfunktion och tariffer](2026-11-15-prisfunktion.md) | #55 |
 | 2026-11-15 | [ADR om tariffen](2026-11-15-tariff-adr.md) | #54 |
 | 2026-11-15 | [Policygrupper för kull och hushåll](2026-11-15-grupper.md) | #53 |
 | 2026-11-15 | [Ändring av val under termen](2026-11-15-andring.md) | #52 |

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CALCULATION_MODELS, ClaimsService } from '@petvold/claims-core';
 import { FixedClock, InMemoryClaimsStore, InMemoryPolicyPort, SequentialIds, fixtures } from '@petvold/claims-store-memory';
+import { TARIFF } from '@petvold/pricing-core/fixtures';
 import {
   DecisioningRulesPort,
   DecisioningService,
@@ -116,4 +117,25 @@ test('the claims engine assesses with the published rules in force on the treatm
   const b = await claims.preview(fixtures.otitisClaim()); // treated 2026-06-04
   assert.deepEqual([b.rulesVersion, b.mode], ['SE-HUND-VV@2', 'manual'], 'SEK 1,500 is now above the auto limit');
   assert.notEqual(a.inputHash, b.inputHash);
+});
+
+test('a tariff series has the same lifecycle, and is never mixed with claims rules (ADR 0030)', async () => {
+  const { service } = setup();
+  const tariff = { content: TARIFF as never, calculationModel: 'tariff.v1', effectiveFrom: '2026-01-01' };
+  await assert.rejects(service.createDraft('SE-HUND-TARIFF', { ...tariff, content: { ...TARIFF, roundTo: 0 } as never }, AUTHOR), /roundTo/);
+  const d = await service.createDraft('SE-HUND-TARIFF', tariff, AUTHOR);
+  await assert.rejects(service.createDraft('SE-HUND-TARIFF', input(), AUTHOR), /holds tariffs/);
+  await assert.rejects(service.updateDraft('SE-HUND-TARIFF', d.version, input()), /holds tariffs/);
+  assert.equal(await service.tariffInForce('SE-HUND-TARIFF', '2026-06-01'), null); // not published
+  await service.submit('SE-HUND-TARIFF', d.version, AUTHOR);
+  await assert.rejects(service.publish('SE-HUND-TARIFF', d.version, AUTHOR), code('forbidden'));
+  const p = await service.publish('SE-HUND-TARIFF', d.version, PUBLISHER);
+  const inForce = await service.tariffInForce('SE-HUND-TARIFF', '2026-06-01');
+  assert.deepEqual(inForce?.ref, { series: 'SE-HUND-TARIFF', version: 1, checksum: p.checksum });
+  assert.equal(inForce?.content.market, 'SE');
+  assert.equal(await service.tariffInForce('SE-HUND-TARIFF', '2025-12-31'), null);
+  assert.equal(await service.rulesInForce('SE-HUND-TARIFF', '2026-06-01'), null); // not claims rules
+  await publish(service, input());
+  assert.equal(await service.tariffInForce('SE-HUND-VV', '2026-06-01'), null);
+  await assert.rejects(service.createDraft('SE-HUND-VV', tariff, AUTHOR), /holds claims rules/);
 });

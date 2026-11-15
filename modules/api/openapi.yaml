@@ -2096,7 +2096,8 @@ paths:
         automatic and manual handling, and payouts per currency. Nothing is
         stored or booked, so no `Idempotency-Key` is needed. Each decision is
         simulated on its own; knock-on effects between claims, such as
-        deductible periods, are not simulated.
+        deductible periods, are not simulated. A tariff version answers `422`
+        until prices are stored with policies (ADR 0030).
       parameters:
         - $ref: '#/components/parameters/Series'
         - $ref: '#/components/parameters/RuleSetVersionNo'
@@ -2967,6 +2968,56 @@ components:
         reason: { type: string, minLength: 1, maxLength: 2000 }
 
     RuleSetContent:
+      description: Claims rules, or a tariff when the calculation model is a tariff's, e.g. tariff.v1 (ADR 0030).
+      oneOf:
+        - $ref: '#/components/schemas/ClaimsRulesContent'
+        - $ref: '#/components/schemas/TariffContent'
+
+    TariffContent:
+      type: object
+      additionalProperties: false
+      description: |
+        A tariff (ADR 0030). Amounts in minor units for a year; factors in basis
+        points (10 000 = 1.0). The price is the base premium times the factors
+        for age, breed group, deductible and zone, at least the minimum, rounded
+        half up to a multiple of roundTo.
+      required: [market, currency, basePremiums, ageBands, breedGroups, defaultBreedGroup, breedGroupFactors, deductibleFactors, zones, defaultZone, zoneFactors, minimumAnnual, roundTo]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        basePremiums:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [species, annualLimit, amount]
+            properties:
+              species: { type: string }
+              annualLimit: { $ref: '#/components/schemas/NonNegativeMoney' }
+              amount: { $ref: '#/components/schemas/NonNegativeMoney' }
+        ageBands:
+          type: array
+          description: The highest fromYears not above the animal's age on the term's first day applies.
+          items:
+            type: object
+            additionalProperties: false
+            required: [species, fromYears, bp]
+            properties:
+              species: { type: string }
+              fromYears: { type: integer, minimum: 0 }
+              bp: { type: integer, minimum: 1 }
+        breedGroups: { type: object, description: Breed code -> risk group., additionalProperties: { type: string } }
+        defaultBreedGroup: { type: string }
+        breedGroupFactors: { type: object, additionalProperties: { type: integer, minimum: 1 } }
+        deductibleFactors: { type: object, description: Deductible option -> factor., additionalProperties: { type: integer, minimum: 1 } }
+        zones: { type: object, description: Postal code prefix -> zone. The longest match applies., additionalProperties: { type: string } }
+        defaultZone: { type: string }
+        zoneFactors: { type: object, additionalProperties: { type: integer, minimum: 1 } }
+        minimumAnnual: { $ref: '#/components/schemas/NonNegativeMoney' }
+        roundTo: { type: integer, minimum: 1, description: 'e.g. 100: whole kronor.' }
+
+    ClaimsRulesContent:
       type: object
       additionalProperties: false
       required: [market, vatReimbursable, nonReimbursableCategories, diagnosisGroups, autoSettleMax]
@@ -2990,7 +3041,7 @@ components:
       required: [content, calculationModel, effectiveFrom]
       properties:
         content: { $ref: '#/components/schemas/RuleSetContent' }
-        calculationModel: { type: string, description: 'One of the engine''s calculation models, e.g. vet-care.v1.' }
+        calculationModel: { type: string, description: 'One of the engine''s calculation models, e.g. vet-care.v1, or a tariff''s, e.g. tariff.v1 (ADR 0030).' }
         effectiveFrom: { $ref: '#/components/schemas/Date' }
 
     RuleSetVersion:

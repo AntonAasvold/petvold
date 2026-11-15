@@ -5,13 +5,21 @@
  * the product's claims rules, the calculation model and the date it applies
  * from. Lifecycle: draft -> in_review -> published -> retired. Publishing needs
  * someone other than the one who submitted it. A published version never changes.
+ *
+ * A tariff (ADR 0030) is a series too, with the same lifecycle: its versions
+ * have a tariff calculation model, e.g. 'tariff.v1', and tariff content. A
+ * series holds either claims rules or tariffs, never both.
  */
 import { canonicalJson, sha256, type ClaimsRules, type ISODate, type RulesPort } from '@petvold/claims-core';
+import { TARIFF_MODELS, validateTariff, type TariffContent, type TariffRef } from '@petvold/pricing-core';
 
 export type RuleSetStatus = 'draft' | 'in_review' | 'published' | 'retired';
 
-/** The rules without their version: what an author writes. */
+/** The rules without their version: what an author writes. A tariff series holds TariffContent instead. */
 export type RuleSetContent = Omit<ClaimsRules, 'rulesVersion' | 'rulesChecksum'>;
+
+/** Whether the calculation model is a tariff's (ADR 0030). */
+export const isTariffModel = (model: string) => (TARIFF_MODELS as readonly string[]).includes(model);
 
 export interface RuleSetVersion {
   series: string;
@@ -79,7 +87,7 @@ export interface DraftInput {
 export interface DecisioningDeps {
   store: RuleSetStore;
   clock: { now(): string };
-  /** The calculation models the engine has, e.g. Object.keys(CALCULATION_MODELS). */
+  /** The calculation models the engine has, e.g. Object.keys(CALCULATION_MODELS). Tariff models are always known. */
   calculationModels: readonly string[];
 }
 
@@ -122,6 +130,9 @@ export class DecisioningService {
     if (!SERIES.test(series)) throw new RuleSetError('validation', `Invalid series '${series}': capital letters, digits and hyphens`);
     this.validate(input);
     const existing = await this.d.store.list(series);
+    if (existing.length && isTariffModel(existing[0]!.calculationModel) !== isTariffModel(input.calculationModel)) {
+      throw new RuleSetError('validation', `The series ${series} holds ${isTariffModel(existing[0]!.calculationModel) ? 'tariffs' : 'claims rules'}`);
+    }
     const v: RuleSetVersion = {
       series,
       version: (existing.at(-1)?.version ?? 0) + 1,
@@ -139,6 +150,9 @@ export class DecisioningService {
   async updateDraft(series: string, version: number, input: DraftInput): Promise<RuleSetVersion> {
     const v = await this.inStatus(series, version, 'draft');
     this.validate(input);
+    if (isTariffModel(v.calculationModel) !== isTariffModel(input.calculationModel)) {
+      throw new RuleSetError('validation', `The series ${series} holds ${isTariffModel(v.calculationModel) ? 'tariffs' : 'claims rules'}`);
+    }
     return this.save({ ...v, ...input });
   }
 
@@ -174,7 +188,14 @@ export class DecisioningService {
   /** The rules in force in a series on a date, as the claims engine uses them. */
   async rulesInForce(series: string, onDate: ISODate): Promise<ClaimsRules | null> {
     const v = inForce(await this.d.store.list(series), onDate);
-    return v ? toClaimsRules(v) : null;
+    return v && !isTariffModel(v.calculationModel) ? toClaimsRules(v) : null;
+  }
+
+  /** The tariff in force in a series on a date (ADR 0030), with its reference for the evidence. */
+  async tariffInForce(series: string, onDate: ISODate): Promise<{ content: TariffContent; ref: TariffRef } | null> {
+    const v = inForce(await this.d.store.list(series), onDate);
+    if (!v || !isTariffModel(v.calculationModel)) return null;
+    return { content: v.content as unknown as TariffContent, ref: { series: v.series, version: v.version, checksum: v.checksum! } };
   }
 
   private async inStatus(series: string, version: number, status: RuleSetStatus): Promise<RuleSetVersion> {
@@ -205,8 +226,15 @@ export class DecisioningService {
       throw new RuleSetError('validation', m);
     };
     const c = input.content;
-    if (!this.d.calculationModels.includes(input.calculationModel)) fail(`Unknown calculation model '${input.calculationModel}'`);
+    if (!this.d.calculationModels.includes(input.calculationModel) && !isTariffModel(input.calculationModel)) {
+      fail(`Unknown calculation model '${input.calculationModel}'`);
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveFrom) || Number.isNaN(Date.parse(input.effectiveFrom))) fail('effectiveFrom must be a date');
+    if (isTariffModel(input.calculationModel)) {
+      const errors = validateTariff(c as unknown as TariffContent);
+      if (errors.length) fail(errors.join('; '));
+      return;
+    }
     if (!/^[A-Z]{2}$/.test(c.market)) fail(`Invalid market '${c.market}'`);
     if (typeof c.vatReimbursable !== 'boolean') fail('vatReimbursable must be true or false');
     if (!Number.isSafeInteger(c.autoSettleMax) || c.autoSettleMax < 0) fail('autoSettleMax must be a non-negative integer');
