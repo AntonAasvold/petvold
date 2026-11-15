@@ -24,5 +24,6 @@
 | [0020](0020-roller-och-granser-som-konfiguration.md) | Roller och beloppsgränser som versionerad konfiguration via API | Beslutad |
 | [0021](0021-produktkatalog-och-regeluppsattningar.md) | Produktkatalog och regeluppsättningar | Beslutad |
 | [0022](0022-referensdata.md) | Referensdata: koder, översättningar och historik | Föreslagen |
+| [0023](0023-produktversioner.md) | Produktversioner: innehåll, livscykel och säljperiod | Föreslagen |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.

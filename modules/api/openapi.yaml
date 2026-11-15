@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Petvold API
   version: 0.1.0
-  summary: Headless core for pet insurance – claims, rule sets, reference data and access.
+  summary: Headless core for pet insurance – claims, rule sets, products, reference data and access.
   description: |
     The contract is the source of truth. The server validates incoming
     requests against the schemas here, and the contract tests validate the responses.
@@ -37,6 +37,7 @@ tags:
   - name: access
   - name: rule-sets
   - name: reference-data
+  - name: products
   - name: previews
   - name: limits
 
@@ -412,6 +413,286 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/ReferenceItem' }
+
+  /v1/products/on-sale:
+    get:
+      tags: [products]
+      operationId: listProductsOnSale
+      x-permission: catalog:read
+      summary: Published product versions on sale on a date
+      description: |
+        Requires the permission `catalog:read`.
+
+        At most one version of each product is on sale on a day (ADR 0023).
+        `name` is in the language asked for with `Accept-Language`.
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/Date' }
+        - name: market
+          in: query
+          schema: { $ref: '#/components/schemas/Market' }
+        - name: species
+          in: query
+          description: A species code from the reference data, e.g. `dog`.
+          schema: { type: string }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The versions on sale, ordered by product
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProductVersion' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/products/{product}/versions:
+    get:
+      tags: [products]
+      operationId: listProductVersions
+      x-permission: catalog:read
+      summary: The versions of a product
+      description: |
+        Requires the permission `catalog:read`.
+
+        A product version (e.g. `SE-HUND-VV-LIV@2026.2`) says what can be sold:
+        market, currency, species, sales period, the rule series claims are
+        assessed with, and the options for vet care (ADR 0021, 0023).
+        Lifecycle: `draft` → `in_review` → `published`, with four eyes.
+      parameters:
+        - $ref: '#/components/parameters/Product'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: All versions, ordered by sales start
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProductVersion' }
+    post:
+      tags: [products]
+      operationId: createProductDraft
+      x-permission: catalog:write
+      summary: Create a draft of a product version
+      description: Requires the permission `catalog:write`. The version label is chosen by the author, e.g. `2026.2`.
+      parameters:
+        - $ref: '#/components/parameters/Product'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductDraft' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/products/{product}/versions/{version}:
+    get:
+      tags: [products]
+      operationId: getProductVersion
+      x-permission: catalog:read
+      summary: One product version
+      description: Requires the permission `catalog:read`.
+      parameters:
+        - $ref: '#/components/parameters/Product'
+        - $ref: '#/components/parameters/ProductVersionLabel'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The product version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductVersion' }
+    put:
+      tags: [products]
+      operationId: updateProductDraft
+      x-permission: catalog:write
+      summary: Change a draft
+      description: Requires the permission `catalog:write`. Only drafts can change.
+      parameters:
+        - $ref: '#/components/parameters/Product'
+        - $ref: '#/components/parameters/ProductVersionLabel'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductDraftUpdate' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The changed draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/products/{product}/versions/{version}/vet-care-terms:
+    get:
+      tags: [products]
+      operationId: getVetCareTerms
+      x-permission: catalog:read
+      summary: The vet care terms for a customer's choices
+      description: |
+        Requires the permission `catalog:read`. The terms a policy gets when
+        written with these choices. A choice left out takes the product's default.
+      parameters:
+        - $ref: '#/components/parameters/Product'
+        - $ref: '#/components/parameters/ProductVersionLabel'
+        - name: annualLimit
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: deductible
+          in: query
+          description: The code of a deductible option, e.g. `standard`.
+          schema: { type: string }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The terms
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VetCareTerms' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/products/{product}/versions/{version}/submissions:
+    post:
+      tags: [products]
+      operationId: submitProductVersion
+      x-permission: catalog:write
+      summary: Submit a draft for review
+      description: Requires the permission `catalog:write`. Locks the content and computes its checksum. Every species must be active, and the rule series must have a published version in force when sales start.
+      parameters:
+        - $ref: '#/components/parameters/Product'
+        - $ref: '#/components/parameters/ProductVersionLabel'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The product version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/products/{product}/versions/{version}/returns:
+    post:
+      tags: [products]
+      operationId: returnProductVersion
+      x-permission: catalog:publish
+      summary: Return a version in review to draft
+      description: Requires the permission `catalog:publish`. Needs a reason.
+      parameters:
+        - $ref: '#/components/parameters/Product'
+        - $ref: '#/components/parameters/ProductVersionLabel'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The product version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/products/{product}/versions/{version}/publications:
+    post:
+      tags: [products]
+      operationId: publishProductVersion
+      x-permission: catalog:publish
+      summary: Publish a version in review
+      description: Requires the permission `catalog:publish`, and someone other than the submitter (four eyes). No other version of the product may be on sale in the same period. A published version never changes.
+      parameters:
+        - $ref: '#/components/parameters/Product'
+        - $ref: '#/components/parameters/ProductVersionLabel'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmptyRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The product version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/products/{product}/versions/{version}/sales-ends:
+    post:
+      tags: [products]
+      operationId: endProductSales
+      x-permission: catalog:publish
+      summary: Bring the end of sales forward
+      description: Requires the permission `catalog:publish`. Never before today, and never later than an earlier end. Policies already written keep the version and its rule series.
+      parameters:
+        - $ref: '#/components/parameters/Product'
+        - $ref: '#/components/parameters/ProductVersionLabel'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SalesEndRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The product version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /v1/access/roles:
     get:
@@ -1011,6 +1292,18 @@ components:
       required: true
       description: The code, e.g. `dog` or `dog-labrador-retriever`. Never changes.
       schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,63}$' }
+    Product:
+      name: product
+      in: path
+      required: true
+      description: The product, e.g. SE-HUND-VV-LIV.
+      schema: { type: string, pattern: '^[A-Z0-9][A-Z0-9-]{1,63}$' }
+    ProductVersionLabel:
+      name: version
+      in: path
+      required: true
+      description: The version label, e.g. 2026.2.
+      schema: { type: string, pattern: '^[0-9A-Za-z][0-9A-Za-z.-]{0,31}$' }
     Series:
       name: series
       in: path
@@ -1572,6 +1865,124 @@ components:
       minProperties: 1
       propertyNames: { pattern: '^[a-z]{2,3}(-[A-Z]{2})?$' }
       additionalProperties: { type: string, minLength: 1, maxLength: 200 }
+
+    DeductibleTerms:
+      type: object
+      additionalProperties: false
+      required: [fixed, fixedPer, variableBp]
+      properties:
+        fixed: { $ref: '#/components/schemas/NonNegativeMoney' }
+        fixedPer: { type: string, enum: [period, claim, policy_year] }
+        periodDays: { type: integer, minimum: 1, maximum: 3650, description: Required when fixedPer is period. }
+        periodEndsAtRenewal: { type: boolean }
+        variableBp: { type: integer, minimum: 0, maximum: 10000, description: 'Basis points: 2500 = 25 %.' }
+        variableBpByAge:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [fromAgeYears, bp]
+            properties:
+              fromAgeYears: { type: integer, minimum: 1 }
+              bp: { type: integer, minimum: 0, maximum: 10000 }
+
+    VetCareTerms:
+      type: object
+      required: [code, annualLimit, deductible, waitingPeriodDays]
+      properties:
+        code: { type: string, enum: [vet_care] }
+        annualLimit: { $ref: '#/components/schemas/NonNegativeMoney' }
+        deductible: { $ref: '#/components/schemas/DeductibleTerms' }
+        waitingPeriodDays: { type: integer, minimum: 0 }
+
+    ProductContent:
+      type: object
+      additionalProperties: false
+      required: [market, currency, species, names, ruleSeries, vetCare]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        species:
+          type: array
+          minItems: 1
+          items: { type: string }
+          description: Species codes from the reference data.
+        names: { $ref: '#/components/schemas/Labels' }
+        ruleSeries: { type: string, pattern: '^[A-Z0-9][A-Z0-9-]{1,63}$', description: 'The rule series claims are assessed with, e.g. SE-HUND-VV.' }
+        vetCare:
+          type: object
+          additionalProperties: false
+          required: [annualLimits, defaultAnnualLimit, deductibles, defaultDeductible, waitingPeriodDays]
+          properties:
+            annualLimits:
+              type: array
+              minItems: 1
+              items: { $ref: '#/components/schemas/NonNegativeMoney' }
+            defaultAnnualLimit: { $ref: '#/components/schemas/NonNegativeMoney' }
+            deductibles:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                additionalProperties: false
+                required: [code, labels, terms]
+                properties:
+                  code: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,31}$' }
+                  labels: { $ref: '#/components/schemas/Labels' }
+                  terms: { $ref: '#/components/schemas/DeductibleTerms' }
+            defaultDeductible: { type: string }
+            waitingPeriodDays: { type: integer, minimum: 0, maximum: 365 }
+
+    ProductDraftUpdate:
+      type: object
+      additionalProperties: false
+      required: [content, salesFrom]
+      properties:
+        content: { $ref: '#/components/schemas/ProductContent' }
+        salesFrom: { $ref: '#/components/schemas/Date' }
+        salesTo: { $ref: '#/components/schemas/Date' }
+
+    ProductDraft:
+      type: object
+      additionalProperties: false
+      required: [version, content, salesFrom]
+      properties:
+        version: { type: string, pattern: '^[0-9A-Za-z][0-9A-Za-z.-]{0,31}$' }
+        content: { $ref: '#/components/schemas/ProductContent' }
+        salesFrom: { $ref: '#/components/schemas/Date' }
+        salesTo: { $ref: '#/components/schemas/Date', description: 'First day not on sale. Omitted: until further notice.' }
+
+    ProductVersion:
+      type: object
+      required: [product, version, id, name, status, content, salesFrom, revision, createdBy, createdAt]
+      properties:
+        product: { type: string }
+        version: { type: string }
+        id: { type: string, description: 'product@version, as policies and claims refer to it.' }
+        name: { type: string, description: The name in the language asked for with Accept-Language. }
+        status: { type: string, enum: [draft, in_review, published] }
+        content: { $ref: '#/components/schemas/ProductContent' }
+        salesFrom: { $ref: '#/components/schemas/Date' }
+        salesTo: { $ref: '#/components/schemas/Date' }
+        checksum: { type: string, description: sha256 over content and salesFrom. Set from review on. }
+        revision: { type: integer, minimum: 1 }
+        createdBy: { type: string }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        submittedBy: { type: string }
+        submittedAt: { $ref: '#/components/schemas/DateTime' }
+        publishedBy: { type: string }
+        publishedAt: { $ref: '#/components/schemas/DateTime' }
+        salesEndedBy: { type: string }
+        salesEndedAt: { $ref: '#/components/schemas/DateTime' }
+        note: { type: string, description: Why the version was returned or its sales ended. }
+
+    SalesEndRequest:
+      type: object
+      additionalProperties: false
+      required: [salesTo, reason]
+      properties:
+        salesTo: { $ref: '#/components/schemas/Date' }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
 
     EmptyRequest:
       type: object

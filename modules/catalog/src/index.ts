@@ -1,5 +1,5 @@
 /**
- * The product catalog (ADR 0021, 0022). This part: reference data.
+ * The product catalog (ADR 0021, 0022, 0023): reference data here, products in products.ts.
  *
  * Reference data are the code lists other modules point at: species, breeds
  * and sexes. Each item has a stable code, labels per language and an active
@@ -7,6 +7,11 @@
  * point at it; it is deactivated instead. Every change is a new revision, so
  * the history shows who changed what and when.
  */
+
+import { CatalogError } from './errors.ts';
+
+export { CatalogError, type CatalogErrorCode } from './errors.ts';
+export * from './products.ts';
 
 export const REFERENCE_KINDS = ['species', 'breed', 'sex'] as const;
 export type ReferenceKind = (typeof REFERENCE_KINDS)[number];
@@ -46,18 +51,6 @@ export class ReferenceConflictError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ReferenceConflictError';
-  }
-}
-
-export type CatalogErrorCode = 'not_found' | 'validation' | 'conflict';
-
-export class CatalogError extends Error {
-  constructor(
-    public readonly code: CatalogErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'CatalogError';
   }
 }
 

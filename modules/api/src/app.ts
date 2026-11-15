@@ -1,7 +1,18 @@
 import { Hono, type Context } from 'hono';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
 import { DecisioningService, InMemoryRuleSetStore, RuleSetError, toClaimsRules } from '@petvold/decisioning';
-import { CatalogError, CatalogService, InMemoryReferenceDataStore, labelFor, type ReferenceItem } from '@petvold/catalog';
+import {
+  CatalogError,
+  CatalogService,
+  InMemoryProductStore,
+  InMemoryReferenceDataStore,
+  labelFor,
+  ProductService,
+  productVersionId,
+  vetCareTermsFor,
+  type ProductVersion,
+  type ReferenceItem,
+} from '@petvold/catalog';
 import { CALCULATION_MODELS, simulate } from '@petvold/claims-core';
 import type { Claim, ClaimsService, Clock } from '@petvold/claims-core';
 import { DomainError } from '@petvold/claims-core';
@@ -67,6 +78,12 @@ export interface AppDeps {
   decisioning?: DecisioningService;
   /** The product catalog, for now its reference data (ADR 0022). Omitted: kept in memory. */
   catalog?: CatalogService;
+  /**
+   * Products and product versions (ADR 0023). Omitted: kept in memory, checking
+   * species against `catalog` and rule series against `decisioning`.
+   * Give the same instance to the claims engine's RulesPort.
+   */
+  products?: ProductService;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
 }
@@ -390,6 +407,74 @@ export function createApp(d: AppDeps) {
     return send(c, withLabel(c, item), created ? 201 : 200);
   });
 
+  // Products (ADR 0023). The catalog checks species itself and asks decisioning
+  // through the service, never its tables (ADR 0001).
+  const products =
+    d.products ??
+    new ProductService({
+      products: new InMemoryProductStore(),
+      clock: d.clock,
+      speciesActive: async (code) => (await catalog.listReferences('species', { active: true })).some((i) => i.code === code),
+      ruleSeriesInForce: async (series, onDate) => (await decisioning.rulesInForce(series, onDate)) !== null,
+    });
+  const withName = (c: Context, v: ProductVersion) => ({
+    ...v,
+    id: productVersionId(v),
+    name: labelFor(v.content.names, c.req.header('accept-language')),
+  });
+  const productVersion = '/v1/products/:product/versions/:version';
+  const pathOf = (c: Context) => [c.req.param('product') ?? '', c.req.param('version') ?? ''] as const;
+
+  app.get('/v1/products/on-sale', async (c) => {
+    const date = c.req.query('date');
+    if (!date) return problem(c, 422, 'date is required');
+    const market = c.req.query('market');
+    const species = c.req.query('species');
+    const items = await products.onSale(date, { ...(market ? { market } : {}), ...(species ? { species } : {}) });
+    return send(c, { items: items.map((v) => withName(c, v)) });
+  });
+
+  app.get('/v1/products/:product/versions', async (c) => send(c, { items: (await products.list(c.req.param('product'))).map((v) => withName(c, v)) }));
+
+  app.post('/v1/products/:product/versions', async (c) => {
+    const r = await readJson(c, 'ProductDraft');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({
+      status: 201,
+      body: withName(c, await products.createDraft(c.req.param('product'), r.body, c.get('principal').subject)),
+    }));
+  });
+
+  app.get(productVersion, async (c) => send(c, withName(c, await products.get(...pathOf(c)))));
+
+  app.put(productVersion, async (c) => {
+    const r = await readJson(c, 'ProductDraftUpdate');
+    if (!r.ok) return r.res;
+    return send(c, withName(c, await products.updateDraft(...pathOf(c), r.body)));
+  });
+
+  app.get(`${productVersion}/vet-care-terms`, async (c) => {
+    const raw = c.req.query('annualLimit');
+    const annualLimit = raw === undefined ? undefined : Number(raw);
+    if (annualLimit !== undefined && (!Number.isSafeInteger(annualLimit) || annualLimit < 0)) {
+      return problem(c, 422, 'annualLimit must be a non-negative integer');
+    }
+    const deductible = c.req.query('deductible');
+    const v = await products.get(...pathOf(c));
+    return send(c, vetCareTermsFor(v, { ...(annualLimit !== undefined ? { annualLimit } : {}), ...(deductible ? { deductible } : {}) }));
+  });
+
+  const productStep = (path: string, schema: string, run: (p: string, v: string, by: string, body: any) => Promise<ProductVersion>) =>
+    app.post(`${productVersion}/${path}`, async (c) => {
+      const r = await readJson(c, schema);
+      if (!r.ok) return r.res;
+      return idempotent(c, r.body, async () => ({ status: 200, body: withName(c, await run(...pathOf(c), c.get('principal').subject, r.body)) }));
+    });
+  productStep('submissions', 'EmptyRequest', (p, v, by) => products.submit(p, v, by));
+  productStep('returns', 'ReasonRequest', (p, v, _by, b) => products.returnToDraft(p, v, b.reason));
+  productStep('publications', 'EmptyRequest', (p, v, by) => products.publish(p, v, by));
+  productStep('sales-ends', 'SalesEndRequest', (p, v, by, b) => products.endSales(p, v, b.salesTo, by, b.reason));
+
   app.get('/v1/access/roles', async (c) => send(c, await access.current()));
 
   app.get('/v1/access/roles/versions', async (c) => send(c, { items: await access.versions() }));
@@ -424,7 +509,8 @@ export function createApp(d: AppDeps) {
       return problem(c, status, err.message);
     }
     if (err instanceof CatalogError) {
-      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
+      const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
+      return problem(c, status, err.message);
     }
     if (err instanceof AccessError) {
       return problem(c, err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);

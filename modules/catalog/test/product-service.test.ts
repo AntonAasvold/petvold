@@ -1,0 +1,132 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { CatalogError, InMemoryProductStore, ProductService, vetCareTermsFor, type ProductDraft } from '../src/index.ts';
+import { content } from '../test-suites/product-store.ts';
+
+function setup(opts: { species?: string[]; series?: Record<string, string> } = {}) {
+  const species = new Set(opts.species ?? ['dog', 'cat']);
+  const series = opts.series ?? { 'XX-DOG': '2026-01-01' };
+  const s = new ProductService({
+    products: new InMemoryProductStore(),
+    clock: { now: () => '2026-11-15T10:00:00.000Z' },
+    speciesActive: async (c) => species.has(c),
+    ruleSeriesInForce: async (name, onDate) => series[name] !== undefined && series[name]! <= onDate,
+  });
+  return s;
+}
+const author = 'author@example.test';
+const publisher = 'publisher@example.test';
+const draft = (o: Partial<ProductDraft> = {}): ProductDraft => ({ version: '2026.1', content: content(), salesFrom: '2026-01-01', ...o });
+const rejects = (p: Promise<unknown>, code: string, msg?: RegExp) =>
+  assert.rejects(p, (e: unknown) => e instanceof CatalogError && e.code === code && (!msg || msg.test(e.message)));
+
+async function publish(s: ProductService, d: ProductDraft = draft()) {
+  await s.createDraft('XX-DOG-VC', d, author);
+  await s.submit('XX-DOG-VC', d.version, author);
+  return s.publish('XX-DOG-VC', d.version, publisher);
+}
+
+test('a product version goes from draft to published with four eyes, and its rule series is found', async () => {
+  const s = setup();
+  const d = await s.createDraft('XX-DOG-VC', draft(), author);
+  assert.equal(d.status, 'draft');
+  assert.equal(await s.ruleSeriesOf('XX-DOG-VC@2026.1'), null); // not published
+  const r = await s.submit('XX-DOG-VC', '2026.1', author);
+  assert.equal(r.status, 'in_review');
+  assert.match(r.checksum!, /^[0-9a-f]{64}$/);
+  await rejects(s.publish('XX-DOG-VC', '2026.1', author), 'forbidden', /four eyes/);
+  const p = await s.publish('XX-DOG-VC', '2026.1', publisher);
+  assert.deepEqual([p.status, p.publishedBy, p.revision], ['published', publisher, 3]);
+  assert.equal(await s.ruleSeriesOf('XX-DOG-VC@2026.1'), 'XX-DOG');
+  assert.equal(await s.ruleSeriesOf('XX-DOG-VC@2099.1'), null);
+  assert.equal(await s.ruleSeriesOf('no-at-sign'), null);
+});
+
+test('a draft can change, a version in review cannot, and it can be returned with a reason', async () => {
+  const s = setup();
+  await s.createDraft('XX-DOG-VC', draft(), author);
+  const changed = await s.updateDraft('XX-DOG-VC', '2026.1', { content: content({ names: { en: 'Renamed' } }), salesFrom: '2026-02-01' });
+  assert.equal(changed.salesFrom, '2026-02-01');
+  await s.submit('XX-DOG-VC', '2026.1', author);
+  await rejects(s.updateDraft('XX-DOG-VC', '2026.1', { content: content(), salesFrom: '2026-02-01' }), 'conflict', /in_review/);
+  await rejects(s.returnToDraft('XX-DOG-VC', '2026.1', ' '), 'validation', /reason/);
+  const back = await s.returnToDraft('XX-DOG-VC', '2026.1', 'Wrong limits');
+  assert.deepEqual([back.status, back.note, back.checksum], ['draft', 'Wrong limits', undefined]);
+});
+
+test('submitting checks species and that the rule series is in force when sales start', async () => {
+  const s = setup({ species: ['cat'], series: { 'XX-DOG': '2026-06-01' } });
+  await s.createDraft('XX-DOG-VC', draft(), author);
+  await rejects(s.submit('XX-DOG-VC', '2026.1', author), 'validation', /species 'dog'/);
+  await s.updateDraft('XX-DOG-VC', '2026.1', { content: content({ species: ['cat'] }), salesFrom: '2026-01-01' });
+  await rejects(s.submit('XX-DOG-VC', '2026.1', author), 'validation', /XX-DOG has no published version in force on 2026-01-01/);
+  await s.updateDraft('XX-DOG-VC', '2026.1', { content: content({ species: ['cat'] }), salesFrom: '2026-06-01' });
+  assert.equal((await s.submit('XX-DOG-VC', '2026.1', author)).status, 'in_review');
+});
+
+test('two versions of a product cannot be on sale on the same day', async () => {
+  const s = setup();
+  await publish(s, draft({ salesTo: '2026-07-01' }));
+  await s.createDraft('XX-DOG-VC', draft({ version: '2026.2', salesFrom: '2026-06-01' }), author);
+  await s.submit('XX-DOG-VC', '2026.2', author);
+  await rejects(s.publish('XX-DOG-VC', '2026.2', publisher), 'conflict', /2026\.1 is on sale/);
+  await s.returnToDraft('XX-DOG-VC', '2026.2', 'Start after 2026.1');
+  await s.updateDraft('XX-DOG-VC', '2026.2', { content: content(), salesFrom: '2026-07-01' });
+  await s.submit('XX-DOG-VC', '2026.2', author);
+  await s.publish('XX-DOG-VC', '2026.2', publisher);
+  assert.deepEqual((await s.onSale('2026-06-30')).map((v) => v.version), ['2026.1']);
+  assert.deepEqual((await s.onSale('2026-07-01')).map((v) => v.version), ['2026.2']);
+  assert.deepEqual(await s.onSale('2025-12-31'), []);
+  assert.deepEqual((await s.onSale('2026-07-01', { market: 'XX', species: 'dog' })).length, 1);
+  assert.deepEqual(await s.onSale('2026-07-01', { species: 'cat' }), []);
+  assert.deepEqual(await s.onSale('2026-07-01', { market: 'SE' }), []);
+});
+
+test('sales can be brought forward from today, never extended', async () => {
+  const s = setup();
+  await publish(s, draft({ salesTo: '2027-01-01' }));
+  await rejects(s.endSales('XX-DOG-VC', '2026.1', '2026-11-14', publisher, 'Too late'), 'validation', /before today/);
+  await rejects(s.endSales('XX-DOG-VC', '2026.1', '2027-02-01', publisher, 'Longer'), 'validation', /brought forward/);
+  await rejects(s.endSales('XX-DOG-VC', '2026.1', '2026-12-01', publisher, ''), 'validation', /reason/);
+  const e = await s.endSales('XX-DOG-VC', '2026.1', '2026-12-01', publisher, 'Replaced by 2027.1');
+  assert.deepEqual([e.salesTo, e.salesEndedBy, e.note, e.status], ['2026-12-01', publisher, 'Replaced by 2027.1', 'published']);
+  assert.equal(await s.ruleSeriesOf('XX-DOG-VC@2026.1'), 'XX-DOG'); // policies already written still find their rules
+});
+
+test('invalid drafts are refused', async () => {
+  const s = setup();
+  const bad = (o: Partial<ProductDraft>, msg: RegExp) => rejects(s.createDraft('XX-DOG-VC', draft(o), author), 'validation', msg);
+  const vc = content().vetCare;
+  await rejects(s.createDraft('xx-dog', draft(), author), 'validation', /Invalid product/);
+  await bad({ version: '2026 1' }, /Invalid version/);
+  await bad({ salesTo: '2026-01-01' }, /salesTo/);
+  await bad({ content: content({ currency: 'eur' }) }, /currency/);
+  await bad({ content: content({ species: [] }) }, /species/);
+  await bad({ content: content({ species: ['dog', 'dog'] }) }, /twice/);
+  await bad({ content: content({ ruleSeries: 'x' }) }, /rule series/);
+  await bad({ content: content({ vetCare: { ...vc, defaultAnnualLimit: 1 } }) }, /defaultAnnualLimit/);
+  await bad({ content: content({ vetCare: { ...vc, annualLimits: [1.5] } }) }, /annualLimits/);
+  await bad({ content: content({ vetCare: { ...vc, defaultDeductible: 'none' } }) }, /defaultDeductible/);
+  await bad({ content: content({ vetCare: { ...vc, waitingPeriodDays: -1 } }) }, /waitingPeriodDays/);
+  const periodWithoutDays = { code: 'p', labels: { en: 'P' }, terms: { fixed: 1, fixedPer: 'period' as const, variableBp: 0 } };
+  await bad({ content: content({ vetCare: { ...vc, deductibles: [...vc.deductibles, periodWithoutDays] } }) }, /periodDays/);
+  const overHundred = { code: 'x', labels: { en: 'X' }, terms: { fixed: 1, fixedPer: 'claim' as const, variableBp: 10_001 } };
+  await bad({ content: content({ vetCare: { ...vc, deductibles: [...vc.deductibles, overHundred] } }) }, /variableBp/);
+  await s.createDraft('XX-DOG-VC', draft(), author);
+  await rejects(s.createDraft('XX-DOG-VC', draft(), author), 'conflict', /already exists/);
+});
+
+test('the vet care terms follow the customer choices, with defaults', async () => {
+  const s = setup();
+  const v = await publish(s);
+  assert.deepEqual(vetCareTermsFor(v), {
+    code: 'vet_care',
+    annualLimit: 300_000,
+    deductible: { fixed: 5_000, fixedPer: 'claim', variableBp: 2000 },
+    waitingPeriodDays: 30,
+  });
+  const chosen = vetCareTermsFor(v, { annualLimit: 600_000, deductible: 'period' });
+  assert.deepEqual([chosen.annualLimit, chosen.deductible.fixedPer, chosen.deductible.periodDays], [600_000, 'period', 120]);
+  assert.throws(() => vetCareTermsFor(v, { annualLimit: 400_000 }), /no annual limit 400000/);
+  assert.throws(() => vetCareTermsFor(v, { deductible: 'zero' }), /no deductible 'zero'/);
+});

@@ -222,17 +222,20 @@ export class DecisioningService {
 }
 
 /**
- * The claims engine's RulesPort, reading published rule sets. Until the
- * product catalog exists, `seriesFor` maps a product version to its series.
+ * The claims engine's RulesPort, reading published rule sets. `seriesFor` maps
+ * a product version to its rule series, normally the product catalog's
+ * `ruleSeriesOf` (ADR 0023). null: the product version is unknown, and the
+ * engine answers that no rules are in force.
  */
 export class DecisioningRulesPort implements RulesPort {
   constructor(
     private readonly service: DecisioningService,
-    private readonly seriesFor: (productVersion: string) => string,
+    private readonly seriesFor: (productVersion: string) => string | null | Promise<string | null>,
   ) {}
 
-  getRules(productVersion: string, onDate: ISODate): Promise<ClaimsRules | null> {
-    return this.service.rulesInForce(this.seriesFor(productVersion), onDate);
+  async getRules(productVersion: string, onDate: ISODate): Promise<ClaimsRules | null> {
+    const series = await this.seriesFor(productVersion);
+    return series ? this.service.rulesInForce(series, onDate) : null;
   }
 }
 

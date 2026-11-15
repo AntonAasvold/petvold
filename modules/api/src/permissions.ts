@@ -34,8 +34,10 @@ export const PERMISSIONS = [
   'rules:simulate',
   /** Read reference data such as species and breeds (ADR 0022). Not sensitive. */
   'catalog:read',
-  /** Create and change reference data. Every change is kept in the history. */
+  /** Create and change reference data and product drafts, and submit product versions for review. */
   'catalog:write',
+  /** Publish or return product versions submitted by someone else (four eyes), and end their sales (ADR 0023). */
+  'catalog:publish',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -92,8 +94,10 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   'rules-author': { permissions: ['rules:read', 'rules:write', 'rules:simulate', 'catalog:read'] },
   /** Reviews and publishes rule sets. */
   'rules-publisher': { permissions: ['rules:read', 'rules:publish', 'rules:simulate', 'catalog:read'] },
-  /** Maintains reference data: species, breeds, sexes. */
+  /** Maintains reference data and writes product drafts. */
   'catalog-manager': { permissions: ['catalog:read', 'catalog:write'] },
+  /** Reviews and publishes product versions. */
+  'catalog-publisher': { permissions: ['catalog:read', 'catalog:publish'] },
   /** Manages roles and limits. No permissions in claims. */
   admin: { permissions: ['access:read', 'access:manage'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */

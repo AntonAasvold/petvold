@@ -43,4 +43,5 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [Produkter och produktversioner](2026-11-15-produktversioner.md) | #33 |
 | 2026-11-15 | [Referensdata: arter, raser och kön](2026-11-15-referensdata.md) | #32 |
