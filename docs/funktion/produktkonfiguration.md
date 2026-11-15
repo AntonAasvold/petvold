@@ -112,6 +112,8 @@ Produktens skaderegler (tabellen ovan) är en **regelserie**, till exempel `SE-H
 
 **Exempel:** version 1 gäller från 1 januari 2026 med `autoSettleMax` 10 000 kr. Version 2 gäller från 1 juni med 1 000 kr. En öroninflammation 4 juni på 1 500 kr bedöms då med version 2 och går till handläggare. Samma skada behandlad 30 maj hade bedömts med version 1 och beslutats automatiskt.
 
+**Alla serier:** `GET /v1/rule-sets` (rättighet `rules:read`) listar varje serie med vad den innehåller (`claims-rules`, `tariff` eller `price-terms`) och versionernas status.
+
 **Simulering före publicering:** `POST /v1/rule-sets/{serie}/versions/{v}/simulations` med `{ "from": …, "to": … }` (rättighet `rules:simulate`). Versionens regler, vanligtvis ett utkast, körs mot de sparade underlagen för beslut i perioden. Det gäller varje ärendes senaste beslut, från samma serie och inom anroparens omfång. Inget sparas eller bokförs. Svaret visar:
 
 | Fält | Betyder |
@@ -165,6 +167,7 @@ Inställningarna under `policy` kan utelämnas, och då gäller förvalen. De l�
 En publicerad version ändras aldrig utom slutdatumet för försäljningen. Policyer som redan har versionen behåller den, och skademotorn hittar fortfarande dess regelserie.
 
 **Läsa:**
+- `GET /v1/products` ger alla produkter med deras versioner och status (rättighet `catalog:read`), till exempel för en lista i ett gränssnitt.
 - `GET /v1/products/on-sale?date=2026-11-15&market=SE&species=dog` ger versionerna som säljs den dagen. Det är högst en per produkt.
 - `GET /v1/products/{produkt}/versions/{v}/vet-care-terms?annualLimit=3000000&deductible=high` ger de villkor en policy får med kundens val. Ett val som utelämnas ger standardvalet. Ett val som inte finns i produkten ger `422`.
 

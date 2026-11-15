@@ -28,7 +28,7 @@ import {
   type ReferenceItem,
 } from '@petvold/catalog';
 import { CALCULATION_MODELS, simulate } from '@petvold/claims-core';
-import type { Claim, ClaimsService, Clock } from '@petvold/claims-core';
+import type { Claim, ClaimState, ClaimsService, Clock } from '@petvold/claims-core';
 import { DomainError } from '@petvold/claims-core';
 import { formatErrors, openapiText, operationPermissions, validatorFor, type FieldError } from './contract.ts';
 import { routePath } from 'hono/route';
@@ -142,6 +142,38 @@ async function readJson(c: Context, schema: string): Promise<{ ok: true; body: a
 }
 
 /** JSON response with rule texts in the language the caller asked for. */
+/**
+ * One page of a list (ADR 0002): `limit` (1-200, default 50) and an opaque
+ * `cursor` from the previous page's `nextCursor`. The cursor is the position in
+ * the list for now; stores can move to keyset paging without changing the contract.
+ */
+export function pageOf<T>(c: Context, items: T[]): { items: T[]; nextCursor?: string } | { error: string } {
+  const rawLimit = c.req.query('limit');
+  const limit = rawLimit === undefined ? 50 : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) return { error: 'limit must be a whole number 1-200' };
+  let offset = 0;
+  const cursor = c.req.query('cursor');
+  if (cursor !== undefined) {
+    try {
+      const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { o?: unknown };
+      if (!Number.isInteger(parsed.o) || (parsed.o as number) < 0) throw new Error('bad');
+      offset = parsed.o as number;
+    } catch {
+      return { error: 'cursor is not one this API gave' };
+    }
+  }
+  const page = items.slice(offset, offset + limit);
+  const next = offset + limit < items.length ? Buffer.from(JSON.stringify({ o: offset + limit })).toString('base64url') : undefined;
+  return { items: page, ...(next ? { nextCursor: next } : {}) };
+}
+
+/** Sends one page of a list, or 422 for a bad limit or cursor. */
+function sendPage<T>(c: Context, items: T[]) {
+  const page = pageOf(c, items);
+  if ('error' in page) return problem(c, 422, page.error);
+  return send(c, page);
+}
+
 function send(c: Context, body: unknown, status = 200) {
   const locale = pickLocale(c.req.header('accept-language'));
   return c.body(JSON.stringify(localizeDeep(body, locale)), status as 200, {
@@ -229,6 +261,25 @@ export function createApp(d: AppDeps) {
     return result.status === 204 ? c.body(null, 204) : send(c, result.body, result.status);
   }
 
+  // Claims for lists and work queues, within the caller's scope: markets, and a
+  // clinic's own claims or the bound policies' claims.
+  app.get('/v1/claims', async (c) => {
+    const state = c.req.query('state');
+    if (state !== undefined && !['awaiting-decision', 'awaiting-approval', 'review-requested', 'decided'].includes(state)) {
+      return problem(c, 422, 'state is awaiting-decision, awaiting-approval, review-requested or decided');
+    }
+    const scope = c.get('scope');
+    const q = (k: string) => c.req.query(k);
+    const found = await d.service.listClaims({
+      ...(state ? { state: state as ClaimState } : {}),
+      ...(q('policyId') ? { policyId: q('policyId')! } : {}),
+      ...(q('animalId') ? { animalId: q('animalId')! } : {}),
+      ...(q('market') ? { market: q('market')! } : {}),
+      ...(scope.clinicId ? { clinicId: scope.clinicId } : {}),
+    });
+    return sendPage(c, found.filter((x) => coversClaim(scope, x)));
+  });
+
   app.post('/v1/claims', async (c) => {
     const r = await readJson(c, 'ClaimInput');
     if (!r.ok) return r.res;
@@ -249,7 +300,7 @@ export function createApp(d: AppDeps) {
     return send(c, await d.service.assessClaim(c.req.param('claimId'), knownAt));
   });
 
-  app.get('/v1/claims/:claimId/decisions', async (c) => send(c, { items: await d.service.getDecisions(c.req.param('claimId')) }));
+  app.get('/v1/claims/:claimId/decisions', async (c) => sendPage(c, await d.service.getDecisions(c.req.param('claimId'))));
 
   app.post('/v1/claims/:claimId/decisions', async (c) => {
     const p = c.get('principal');
@@ -264,7 +315,7 @@ export function createApp(d: AppDeps) {
     });
   });
 
-  app.get('/v1/claims/:claimId/proposals', async (c) => send(c, { items: await d.service.getProposals(c.req.param('claimId')) }));
+  app.get('/v1/claims/:claimId/proposals', async (c) => sendPage(c, await d.service.getProposals(c.req.param('claimId'))));
 
   app.post('/v1/claims/:claimId/proposals/:proposalId/approvals', async (c) => {
     const p = c.get('principal');
@@ -313,7 +364,7 @@ export function createApp(d: AppDeps) {
     });
   });
 
-  app.get('/v1/claims/:claimId/review-requests', async (c) => send(c, { items: await d.service.getReviewRequests(c.req.param('claimId')) }));
+  app.get('/v1/claims/:claimId/review-requests', async (c) => sendPage(c, await d.service.getReviewRequests(c.req.param('claimId'))));
 
   app.post('/v1/claims/:claimId/reassessments', async (c) => {
     const p = c.get('principal');
@@ -351,7 +402,9 @@ export function createApp(d: AppDeps) {
   const ruleSet = '/v1/rule-sets/:series/versions/:version';
   const version = (c: Context) => parseSeq(c.req.param('version') ?? '');
 
-  app.get('/v1/rule-sets/:series/versions', async (c) => send(c, { items: await decisioning.list(c.req.param('series')) }));
+  app.get('/v1/rule-sets', async (c) => sendPage(c, await decisioning.allSeries()));
+
+  app.get('/v1/rule-sets/:series/versions', async (c) => sendPage(c, await decisioning.list(c.req.param('series'))));
 
   app.post('/v1/rule-sets/:series/versions', async (c) => {
     const r = await readJson(c, 'RuleSetDraft');
@@ -422,14 +475,14 @@ export function createApp(d: AppDeps) {
       ...(parent !== undefined ? { parent } : {}),
       ...(active !== undefined ? { active: active === 'true' } : {}),
     });
-    return send(c, { items: items.map((i) => withLabel(c, i)) });
+    return sendPage(c, items.map((i) => withLabel(c, i)));
   });
 
   app.get(reference, async (c) => send(c, withLabel(c, await catalog.getReference(c.req.param('kind'), c.req.param('code')))));
 
   app.get(`${reference}/revisions`, async (c) => {
     const items = await catalog.referenceHistory(c.req.param('kind'), c.req.param('code'));
-    return send(c, { items: items.map((i) => withLabel(c, i)) });
+    return sendPage(c, items.map((i) => withLabel(c, i)));
   });
 
   app.put(reference, async (c) => {
@@ -472,10 +525,17 @@ export function createApp(d: AppDeps) {
     const market = c.req.query('market');
     const species = c.req.query('species');
     const items = await products.onSale(date, { ...(market ? { market } : {}), ...(species ? { species } : {}) });
-    return send(c, { items: items.map((v) => withName(c, v)) });
+    return sendPage(c, items.map((v) => withName(c, v)));
   });
 
-  app.get('/v1/products/:product/versions', async (c) => send(c, { items: (await products.list(c.req.param('product'))).map((v) => withName(c, v)) }));
+  app.get('/v1/products', async (c) =>
+    sendPage(
+      c,
+      (await products.allProducts()).map((p) => ({ product: p.product, versions: p.versions.map((v) => withName(c, v)) })),
+    ),
+  );
+
+  app.get('/v1/products/:product/versions', async (c) => sendPage(c, (await products.list(c.req.param('product'))).map((v) => withName(c, v))));
 
   app.post('/v1/products/:product/versions', async (c) => {
     const r = await readJson(c, 'ProductDraft');
@@ -555,7 +615,7 @@ export function createApp(d: AppDeps) {
     if (filters.length !== 1) return problem(c, 422, 'Give exactly one of microchip, registration, passport or ownerPartyId');
     const [key, value] = filters[0]!;
     const found = key === 'ownerPartyId' ? await animals.findByOwner(value) : await animals.findByIdentifier({ type: key as IdentifierType, value });
-    return send(c, { items: found.filter((a) => sees(c.get('scope'), a)) });
+    return sendPage(c, found.filter((a) => sees(c.get('scope'), a)));
   });
 
   // Lookup by identifier (ADR 0025): only animals open for lookup, as a summary
@@ -569,7 +629,7 @@ export function createApp(d: AppDeps) {
     const [type, value] = filters[0]!;
     const scope = c.get('scope');
     const found = await animals.lookup({ type, value });
-    return send(c, { items: found.filter((a) => scope.markets === '*' || scope.markets.has(a.market)) });
+    return sendPage(c, found.filter((a) => scope.markets === '*' || scope.markets.has(a.market)));
   });
 
   app.post('/v1/animals', async (c) => {
@@ -612,7 +672,7 @@ export function createApp(d: AppDeps) {
     return send(c, await animals.correct(a.id, r.body, c.get('principal').subject));
   });
 
-  app.get('/v1/animals/:animalId/revisions', async (c) => send(c, { items: await animals.revisions((await visibleAnimal(c)).id) }));
+  app.get('/v1/animals/:animalId/revisions', async (c) => sendPage(c, await animals.revisions((await visibleAnimal(c)).id)));
 
   app.post('/v1/animals/:animalId/identifiers', async (c) => {
     const a = await visibleAnimal(c);
@@ -692,7 +752,7 @@ export function createApp(d: AppDeps) {
       ...(partyId ? { partyId } : {}),
       ...(status ? { pending: status === 'pending' } : {}),
     });
-    return send(c, { items: items.filter((r) => inMarkets(c.get('scope'), r.market)) });
+    return sendPage(c, items.filter((r) => inMarkets(c.get('scope'), r.market)));
   });
 
   app.get('/v1/erasure-requests/:requestId', async (c) => send(c, await visibleErasure(c)));
@@ -752,7 +812,7 @@ export function createApp(d: AppDeps) {
     const partyId = c.req.query('policyholderPartyId');
     if ((animalId === undefined) === (partyId === undefined)) return problem(c, 422, 'Give exactly one of animalId or policyholderPartyId');
     const found = animalId !== undefined ? await policies.findByAnimal(animalId) : await policies.findByPolicyholder(partyId!);
-    return send(c, { items: found.filter((p) => seesPolicy(c.get('scope'), p)) });
+    return sendPage(c, found.filter((p) => seesPolicy(c.get('scope'), p)));
   });
 
   app.get('/v1/policies/:policyId', async (c) => send(c, await visiblePolicy(c)));
@@ -815,7 +875,7 @@ export function createApp(d: AppDeps) {
     if (status !== undefined && status !== 'pending' && status !== 'decided') return problem(c, 422, 'status is pending or decided');
     const policyId = c.req.query('policyId');
     const items = await policies.listProposals({ ...(policyId ? { policyId } : {}), ...(status ? { pending: status === 'pending' } : {}) });
-    return send(c, { items: items.filter((pr) => inScope(c, pr)) });
+    return sendPage(c, items.filter((pr) => inScope(c, pr)));
   });
 
   app.get('/v1/policy-proposals/:proposalId', async (c) => send(c, await visibleProposal(c)));
@@ -861,7 +921,7 @@ export function createApp(d: AppDeps) {
     const policyId = c.req.query('policyId');
     if ((holderPartyId === undefined) === (policyId === undefined)) return problem(c, 422, 'Give exactly one of holderPartyId or policyId');
     const found = await policies.findGroups(holderPartyId !== undefined ? { holderPartyId } : { policyId: policyId! });
-    return send(c, { items: found.filter((g) => seesGroup(c, g)) });
+    return sendPage(c, found.filter((g) => seesGroup(c, g)));
   });
 
   app.get('/v1/policy-groups/:groupId', async (c) => send(c, await visibleGroup(c)));
@@ -922,7 +982,7 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/retention-settings', async (c) => send(c, await retention.current()));
 
-  app.get('/v1/retention-settings/versions', async (c) => send(c, { items: await retention.versions() }));
+  app.get('/v1/retention-settings/versions', async (c) => sendPage(c, await retention.versions()));
 
   app.post('/v1/retention-settings/versions', async (c) => {
     const r = await readJson(c, 'ChangeRetentionRequest');
@@ -937,7 +997,7 @@ export function createApp(d: AppDeps) {
     return send(c, await retention.run({ dryRun: r.body.dryRun ?? false, markets: scope.markets }, c.get('principal').subject));
   });
 
-  app.get('/v1/parties/:partyId/revisions', async (c) => send(c, { items: await parties.revisions((await visibleParty(c)).id) }));
+  app.get('/v1/parties/:partyId/revisions', async (c) => sendPage(c, await parties.revisions((await visibleParty(c)).id)));
 
   app.post('/v1/parties/:partyId/identifiers', async (c) => {
     const p = await visibleParty(c);
@@ -948,7 +1008,7 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/access/roles', async (c) => send(c, await access.current()));
 
-  app.get('/v1/access/roles/versions', async (c) => send(c, { items: await access.versions() }));
+  app.get('/v1/access/roles/versions', async (c) => sendPage(c, await access.versions()));
 
   app.post('/v1/access/roles/versions', async (c) => {
     const p = c.get('principal');

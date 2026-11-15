@@ -12,6 +12,21 @@ Hur skademotorn bedömer, räknar ut och beslutar ett ärende. Exemplen bygger p
 
 *(Planerat i M1: reserv när skadan anmäls, attest av beslut över en beloppsgräns, och utbetalning. Se ADR 0016.)*
 
+## Arbetsköer
+
+`GET /v1/claims` (rättighet `claims:read`) listar ärenden inom anroparens omfång, äldst först. Varje rad visar ärendet, var det står och det senaste beslutet. Det är underlaget för arbetsköer i ett gränssnitt.
+
+| `state` | Betyder | Kö för |
+| --- | --- | --- |
+| `awaiting-decision` | Inget beslut än, eller ett förslag som skickats tillbaka | Handläggare |
+| `awaiting-approval` | Ett förslag över gränsen väntar på attest | Attestant |
+| `review-requested` | Kunden har begärt mänsklig prövning | Handläggare |
+| `decided` | Beslutat och inget öppet | – |
+
+Om flera stämmer gäller den som står först av `awaiting-approval`, `review-requested`, `decided` och `awaiting-decision`. Listan filtreras med `state`, `market`, `policyId` och `animalId`. En klinik ser bara sina egna ärenden och kundkanalen bara ärenden på sina försäkringar.
+
+**Exempel:** `GET /v1/claims?state=awaiting-decision&market=SE&limit=20` ger handläggarens kö i Sverige, 20 åt gången.
+
 ## Reglerna
 
 Varje bedömning prövar reglerna i denna ordning och visar resultatet för var och en. Utfallet är *godkänd* (pass), *avslag* (fail), *granskas* (review) eller *information* (info).

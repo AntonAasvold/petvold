@@ -1,5 +1,8 @@
 import { StoreConflictError, accounts } from '@petvold/claims-core';
 import type {
+  ClaimFilter,
+  ClaimState,
+  ClaimSummary,
   Claim,
   ClaimDecision,
   ClaimsEvent,
@@ -101,6 +104,41 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
       .sort((a, b) => (a.decidedAt < b.decidedAt ? -1 : a.decidedAt > b.decidedAt ? 1 : a.id < b.id ? -1 : 1))
       .slice(0, limit)
       .map((d) => ({ decision: structuredClone(d), evidence: structuredClone(this.evidence.get(d.id)!) }));
+  }
+
+  async listClaims(filter: ClaimFilter): Promise<ClaimSummary[]> {
+    const out: ClaimSummary[] = [];
+    for (const c of this.claims.values()) {
+      if (filter.market && c.market !== filter.market) continue;
+      if (filter.policyId && c.policyId !== filter.policyId) continue;
+      if (filter.animalId && c.animalId !== filter.animalId) continue;
+      if (filter.clinicId && c.clinicId !== filter.clinicId) continue;
+      const latest = this.decisions.filter((d) => d.claimId === c.id).sort((a, b) => b.seq - a.seq)[0];
+      const state: ClaimState = this.proposals.some((p) => p.claimId === c.id && p.status === 'open')
+        ? 'awaiting-approval'
+        : this.reviews.some((r) => r.claimId === c.id && !r.closedAt)
+          ? 'review-requested'
+          : latest
+            ? 'decided'
+            : 'awaiting-decision';
+      if (filter.state && state !== filter.state) continue;
+      out.push({
+        id: c.id,
+        claimNo: c.claimNo,
+        policyId: c.policyId,
+        animalId: c.animalId,
+        market: c.market,
+        currency: c.currency,
+        channel: c.channel,
+        ...(c.clinicId ? { clinicId: c.clinicId } : {}),
+        treatmentFrom: c.treatmentFrom,
+        diagnosisCode: c.diagnosisCode,
+        receivedAt: c.receivedAt,
+        state,
+        ...(latest ? { latestDecision: { seq: latest.seq, outcome: latest.outcome, payout: latest.payout, decidedAt: latest.decidedAt } } : {}),
+      });
+    }
+    return structuredClone(out.sort((a, b) => (a.receivedAt < b.receivedAt ? -1 : a.receivedAt > b.receivedAt ? 1 : a.id < b.id ? -1 : 1)));
   }
 
   async claimActivity(policyId: string, from: ISODate, to: ISODate) {

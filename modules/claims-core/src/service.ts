@@ -1,6 +1,8 @@
 import { CALCULATION_MODEL, assess, deductibleScope, validateClaim } from './assess.ts';
 import { StoreConflictError, type ClaimsEvent, type ClaimsStore, type Clock, type IdGenerator, type PolicyPort, type RulesPort } from './ports.ts';
 import type {
+  ClaimFilter,
+  ClaimSummary,
   Assessment,
   AssessmentInput,
   Claim,
@@ -363,6 +365,11 @@ export class ClaimsService {
   /** For retention (ADR 0028): whether a claim on the policy treated in [from, to) is still open, and the latest activity. */
   claimActivity(policyId: string, from: ISODate, to: ISODate): Promise<{ open: boolean; lastAt?: Timestamp }> {
     return this.d.store.claimActivity(policyId, from, to);
+  }
+
+  /** Claims for a list or a work queue, e.g. those awaiting a handler's decision. */
+  listClaims(filter: ClaimFilter = {}): Promise<ClaimSummary[]> {
+    return this.d.store.listClaims(filter);
   }
 
   async getClaim(claimId: string): Promise<Claim> {

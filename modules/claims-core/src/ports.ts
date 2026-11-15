@@ -1,5 +1,7 @@
 import type {
   ClaimDecision,
+  ClaimFilter,
+  ClaimSummary,
   DecisionEvidence,
   ClaimsRules,
   DeductiblePeriod,
@@ -80,6 +82,8 @@ export interface ClaimsStore {
    * decision proposal. lastAt: the latest a claim was received or decided.
    */
   claimActivity(policyId: string, from: ISODate, to: ISODate): Promise<{ open: boolean; lastAt?: Timestamp }>;
+  /** Claims matching the filter, oldest received first (work queues). */
+  listClaims(filter: ClaimFilter): Promise<ClaimSummary[]>;
   /** Claims whose latest decision was made on one of the policy versions, e.g. ones that were just superseded. */
   claimsDecidedOnPolicyVersions(policyVersionIds: string[]): Promise<string[]>;
   /**
