@@ -25,6 +25,7 @@ import {
   type Principal,
   type RoleDefinitions,
 } from '@petvold/api';
+import { TARIFF } from '@petvold/pricing-core/fixtures';
 import { docsPage, SCALAR_VERSION } from '../src/docs.ts';
 
 const { bellaPolicy, cruciateClaim, otitisClaim, eurPolicy, eurClaim, RULES_SE_DOG, RULES_EUR_EXAMPLE, PRODUCT, PRODUCT_EUR } = fixtures;
@@ -629,6 +630,22 @@ test('role settings: an old version gives 409, own roles 403, an invalid set 422
 });
 
 // Rule sets (ADR 0021) -------------------------------------------------------------------
+
+test('a tariff is a rule set series with a tariff model; it cannot be simulated against claims (ADR 0030)', async () => {
+  const { call } = setup();
+  const base = '/v1/rule-sets/SE-HUND-TARIFF/versions';
+  const draft = { content: TARIFF, calculationModel: 'tariff.v1', effectiveFrom: '2026-01-01' };
+  assert.equal((await call('POST', base, { token: 'author', key: 'key-00000781', body: { ...draft, content: { ...TARIFF, roundTo: 0 } } })).status, 422);
+  const created = await call('POST', base, { token: 'author', key: 'key-00000782', body: draft });
+  assert.equal(created.status, 201);
+  assertSchema('RuleSetVersion', await created.json());
+  await call('POST', `${base}/1/submissions`, { token: 'author', key: 'key-00000783', body: {} });
+  const published = await call('POST', `${base}/1/publications`, { token: 'publisher', key: 'key-00000784', body: {} });
+  assert.equal(published.status, 200);
+  assertSchema('RuleSetVersion', await published.json());
+  const sim = await call('POST', `${base}/1/simulations`, { token: 'author', key: 'key-00000785', body: { from: '2026-01-01T00:00:00Z', to: '2026-12-01T00:00:00Z' } });
+  assert.equal(sim.status, 422);
+});
 
 test('rule sets: an author drafts and submits, a publisher publishes; the steps follow the contract', async () => {
   const { call, as } = setup();

@@ -12,6 +12,7 @@
     "@petvold/animals": "^0.1.0",
     "@petvold/parties": "^0.1.0",
     "@petvold/policies": "^0.1.0",
+    "@petvold/pricing-core": "^0.1.0",
     "@petvold/catalog": "^0.1.0",
     "@petvold/claims-core": "^0.1.0",
     "@petvold/decisioning": "^0.1.0",

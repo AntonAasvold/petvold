@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
-import { DecisioningService, InMemoryRuleSetStore, RuleSetError, toClaimsRules } from '@petvold/decisioning';
+import { DecisioningService, InMemoryRuleSetStore, RuleSetError, isTariffModel, toClaimsRules } from '@petvold/decisioning';
 import { AnimalError, AnimalService, IDENTIFIER_TYPES, InMemoryAnimalStore, type AnimalRecord, type IdentifierType } from '@petvold/animals';
 import {
   InMemoryPartyStore,
@@ -393,6 +393,7 @@ export function createApp(d: AppDeps) {
     if (!r.ok) return r.res;
     const series = c.req.param('series');
     const target = await decisioning.get(series, v);
+    if (isTariffModel(target.calculationModel)) return problem(c, 422, 'Tariffs are simulated against stored prices, which comes with pricing at issue (ADR 0030)');
     const scope = c.get('scope');
     const stored = (await d.service.decisionsForSimulation(r.body.from, r.body.to)).filter(
       (x) => x.evidence.input.rules.rulesVersion.startsWith(`${series}@`) && coversClaim(scope, x.evidence.input.claim),
