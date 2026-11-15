@@ -14,6 +14,7 @@
     "test:db": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 \"db/test/*.test.ts\" \"modules/*/test-db/*.test.ts\"",
     "lint:openapi": "tsx modules/api/scripts/check-contract.ts",
     "dev": "tsx watch modules/api/src/dev-server.ts",
+    "start": "node --import tsx modules/api/src/server.ts",
     "dev:up": "docker compose up -d --wait && npm run db:migrate",
     "dev:down": "docker compose down",
     "dev:reset": "docker compose down -v && npm run dev:up",
