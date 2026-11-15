@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [ADR om teckningsregler och ansökan](2026-11-15-teckningsregler-adr.md) | #64 |
 | 2026-11-15 | [Inför ett gränssnitt: vem är jag, CORS och exempeldata](2026-11-15-infor-gransnitt.md) | #63 |
 | 2026-11-15 | [Listor och sidindelning](2026-11-15-listor.md) | #62 |
 | 2026-11-15 | [Drift: kompositionsrot, relä och inloggning](2026-11-15-drift.md) | #61 |
