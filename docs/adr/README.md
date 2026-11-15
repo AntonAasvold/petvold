@@ -31,5 +31,6 @@
 | [0027](0027-kullar.md) | Kullar i djurregistret | Beslutad |
 | [0028](0028-gallring-och-anonymisering.md) | Gallring och anonymisering av personuppgifter | Beslutad |
 | [0029](0029-policyns-livscykel.md) | Policyns livscykel: tecknande, förnyelse, avslut och överlåtelse | Beslutad |
+| [0030](0030-tariff.md) | Tariff: pris som versionerad data och en ren funktion | Beslutad |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.
