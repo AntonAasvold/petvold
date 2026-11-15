@@ -29,5 +29,6 @@
 | [0025](0025-uppslagning-av-djur.md) | Uppslagning av djur, till exempel för kliniker | Beslutad |
 | [0026](0026-parter.md) | Parter: personer och organisationer | Beslutad |
 | [0027](0027-kullar.md) | Kullar i djurregistret | Beslutad |
+| [0028](0028-gallring-och-anonymisering.md) | Gallring och anonymisering av personuppgifter | Föreslagen |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.

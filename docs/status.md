@@ -32,6 +32,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #40 mergad.
+- ADR 0028 om gallring och anonymisering (Föreslagen), PR #41. Bara beslutet, ingen kod. Personuppgifter finns bara i partmodulen. De anonymiseras med fyra ögon när lagringstiden efter partens sista relation har gått ut, eller på begäran när inget måste sparas. Lagringstiderna är en inställning per marknad.
 - #39 mergad. ADR 0025, 0026 och 0027 beslutade: djur är stängda för kliniker från början, personnummer krypteras inte per fält, en ägare hör till djurets marknad och en kull ändras inte.
 - #31 mergad: simulering och rättningen av outboxens ordning.
 - Referensdata i den nya modulen `catalog` (ADR 0022, Beslutad):
@@ -68,10 +70,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. ADR om gallring och anonymisering (GDPR artikel 17), eller flytten av `assess` och `calculate` till `decisioning-core`.
+1. Bygga gallring och anonymisering när ADR 0028 är beslutad, eller flytten av `assess` och `calculate` till `decisioning-core`.
 
 **Öppet**
-- Gallring och anonymisering av personuppgifter (GDPR artikel 17) behöver en ADR innan Petvold används med riktiga kunder.
+- ADR 0028 väntar på ditt beslut, särskilt den föreslagna lagringstiden för Sverige (tio år efter senaste försäkringsfallet) och fyra ögon för varje anonymisering.
 - `parties:read`, `parties:write` och `party-registrar` saknas i installationer som redan har en sparad rollinställning.
 - Det sparas inte vem som slagit upp ett djur.
 - `animals:lookup` saknas på `clinic` i installationer som redan har en sparad rollinställning.
