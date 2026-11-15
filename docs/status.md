@@ -6,7 +6,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
 **Gjort**
 - #31 mergad: simulering och rättningen av outboxens ordning.
-- Referensdata i den nya modulen `catalog` (ADR 0022, Föreslagen):
+- Referensdata i den nya modulen `catalog` (ADR 0022, Beslutad):
   - **Arter, raser och kön** med koder som aldrig ändras och etiketter per språk. `label` följer `Accept-Language`.
   - **Historik:** varje ändring blir en ny revision med vem, när och varför. Tjänsterollen `catalog_service` får bara läsa och lägga till. En kod avaktiveras i stället för att tas bort.
   - **En ras tillhör en art** som måste finnas och vara aktiv, och arten ändras aldrig. Kontrolleras både i tjänsten och av en trigger.
@@ -15,20 +15,28 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Dev-servern** läser in exempeldata (3 arter, 2 kön, 8 raser på engelska och svenska). Ny token `dev-catalog`.
 - **Bygglogg** i `docs/logg/` med en post per PR om hur ändringen är byggd. Den har lagts till i `CLAUDE.md` och arbetssättet.
 - #32 mergad.
-- Produkter och produktversioner i `catalog` (ADR 0023, Föreslagen):
+- Produkter och produktversioner i `catalog` (ADR 0023, Beslutad):
   - **Produktversioner** som `SE-HUND-VV-LIV@2026.2` har marknad, valuta, arter, namn, regelserie, säljperiod och valbara försäkringsbelopp och självrisker för veterinärvård.
   - **Livscykel:** utkast, granskning och publicering med fyra ögon. Vid granskning kontrolleras arter och att regelserien gäller när försäljningen börjar. Försäljningen kan avslutas tidigare, med motivering. Högst en version av en produkt säljs samma dag, och databasen spärrar det också.
   - **Skademotorn** hittar regelserien via policyns produktversion (`ProductService.ruleSeriesOf`). Den tillfälliga funktionen i dev-servern är borta.
   - **API:** nio operationer under `/v1/products`, bland annat produkter till salu ett visst datum och villkor för kundens val. Ny rättighet `catalog:publish` och ny roll `catalog-publisher`.
   - **Migration 0014:** `catalog.product_version`. Provad ner och upp igen.
   - **Dev-servern** publicerar exempelprodukten (Bellas). Ny token `dev-catalog-publisher`.
-- 254 tester och 86 databastester.
+- #33 mergad.
+- Djurregistret i den nya modulen `animals` (ADR 0024, Beslutad). Flytten av `assess` och `calculate` får vänta, eftersom ADR 0021 säger att den görs när de behövs utanför skademotorn.
+  - **Djur** med art, ras och kön ur referensdatan, namn, födelse och död, som revisioner med motivering. Marknad och art ändras aldrig.
+  - **Id-nummer:** chip (15 siffror), registreringsnummer och pass. De är unika i installationen och tas aldrig bort.
+  - **Ägarskap med giltighetstid.** Ett ägarbyte avslutar det gällande samma dag i en transaktion. Databasen spärrar glapp, överlapp och ändringar.
+  - **API:** sju operationer under `/v1/animals`, med sökning på chip och ägare. Nya rättigheter `animals:read` och `animals:write`, och ny roll `animal-registrar`. Omfånget är djurets marknad, och roller bundna till klinik eller försäkringar ser inga djur.
+  - **Migration 0015:** schemat `animals` och rollen `animals_service`. Provad ner och upp igen.
+  - **Dev-servern** registrerar Bella. Ny token `dev-registrar`. Lokal rollinställning är version 4.
+- 267 tester och 91 databastester.
 
 **Nästa steg**
-1. `assess` och `calculate` flyttas till `decisioning-core` (ADR 0021, steg 4), eller djurregistret, beroende på vad du prioriterar.
+1. Kullar i djurregistret, eller partmodulen (personer, organisationer, roller), som ägarna pekar på.
 
 **Öppet**
-- ADR 0022 och 0023 väntar på ditt beslut.
+- Kliniker kan inte slå upp djur på chipnummer. Det kräver ett beslut om vad en klinik får se om ägaren.
 - `catalog:read`, `catalog-manager` och `catalog-publisher` saknas i installationer som redan har en sparad rollinställning. Lokalt måste de läggas till via API:et.
 
 ## 2026-11-14 (pass 23)

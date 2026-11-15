@@ -38,6 +38,10 @@ export const PERMISSIONS = [
   'catalog:write',
   /** Publish or return product versions submitted by someone else (four eyes), and end their sales (ADR 0023). */
   'catalog:publish',
+  /** Read the animal register: animals, identifiers and owners (ADR 0024). Personal data: owners are parties. */
+  'animals:read',
+  /** Register animals, correct their details, add identifiers and change owners. */
+  'animals:write',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -83,17 +87,20 @@ export const DEFAULT_ROLES: RoleDefinitions = {
       'claims:preview',
       'limits:read',
       'catalog:read',
+      'animals:read',
     ],
     // SEK 25,000 and EUR 2,500 alone; above that, someone with claims:approve approves.
     decisionLimits: { SEK: 2_500_000, EUR: 250_000 },
   },
-  approver: { permissions: ['claims:read', 'claims:approve', 'limits:read', 'catalog:read'] },
+  approver: { permissions: ['claims:read', 'claims:approve', 'limits:read', 'catalog:read', 'animals:read'] },
   clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview', 'catalog:read'], bindsTo: 'clinic' },
   'reassessment-job': { permissions: ['claims:read', 'claims:reassess'] },
   /** Writes rule set drafts and submits them for review. */
   'rules-author': { permissions: ['rules:read', 'rules:write', 'rules:simulate', 'catalog:read'] },
   /** Reviews and publishes rule sets. */
   'rules-publisher': { permissions: ['rules:read', 'rules:publish', 'rules:simulate', 'catalog:read'] },
+  /** Registers animals and changes of owner, e.g. the insurer's back office or sales channel. */
+  'animal-registrar': { permissions: ['animals:read', 'animals:write', 'catalog:read'] },
   /** Maintains reference data and writes product drafts. */
   'catalog-manager': { permissions: ['catalog:read', 'catalog:write'] },
   /** Reviews and publishes product versions. */

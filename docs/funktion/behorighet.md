@@ -28,6 +28,8 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `catalog:read` | Läsa referensdata (ADR 0022) och produktversioner, produkter till salu och villkor för ett val (ADR 0023) | `GET /v1/reference-data/…`, `GET /v1/products/on-sale`, `GET /v1/products/{p}/versions…`, `.../{v}/vet-care-terms` |
 | `catalog:write` | Skapa och ändra referensdata. Skriva produktutkast och skicka dem till granskning. | `PUT /v1/reference-data/{sort}/{kod}`, `POST`/`PUT /v1/products/{p}/versions…`, `.../submissions` |
 | `catalog:publish` | Publicera eller skicka tillbaka produktversioner, aldrig den egna inskickade, och avsluta försäljning | `.../publications`, `.../returns`, `.../sales-ends` |
+| `animals:read` | Läsa djurregistret: djur, id-nummer, ägare och historik (ADR 0024) | `GET /v1/animals`, `.../{id}`, `.../{id}/revisions` |
+| `animals:write` | Registrera djur, rätta uppgifter, lägga till id-nummer och byta ägare | `POST /v1/animals`, `PUT .../{id}`, `.../identifiers`, `.../ownerships` |
 | `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/access/roles`, `.../versions` |
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/access/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
@@ -41,11 +43,12 @@ Petvold levereras med de här rollerna som utgångspunkt:
 
 | Roll | Rättigheter | Bunden till | För |
 | --- | --- | --- | --- |
-| `handler` | Alla `claims:`-rättigheter utom `claims:approve`, samt `limits:read` och `catalog:read`. Beslutar ensam upp till 25 000 SEK eller 2 500 EUR. | – | Skadehandläggare |
-| `approver` | `claims:read`, `claims:approve`, `limits:read`, `catalog:read`. Ingen gräns för attest. | – | Attestant |
+| `handler` | Alla `claims:`-rättigheter utom `claims:approve`, samt `limits:read`, `catalog:read` och `animals:read`. Beslutar ensam upp till 25 000 SEK eller 2 500 EUR. | – | Skadehandläggare |
+| `approver` | `claims:read`, `claims:approve`, `limits:read`, `catalog:read`, `animals:read`. Ingen gräns för attest. | – | Attestant |
 | `admin` | `access:read`, `access:manage` | – | Administratör för roller och gränser |
 | `rules-author` | `rules:read`, `rules:write`, `rules:simulate`, `catalog:read` | – | Skriver regelutkast |
 | `rules-publisher` | `rules:read`, `rules:publish`, `rules:simulate`, `catalog:read` | – | Granskar och publicerar regler |
+| `animal-registrar` | `animals:read`, `animals:write`, `catalog:read` | – | Registrerar djur och ägarbyten, till exempel kundservice |
 | `catalog-manager` | `catalog:read`, `catalog:write` | – | Underhåller referensdata och skriver produktutkast |
 | `catalog-publisher` | `catalog:read`, `catalog:publish` | – | Granskar och publicerar produktversioner |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview`, `catalog:read` | klinik | Veterinärklinik med direktreglering |
@@ -76,6 +79,7 @@ Hur Petvold svarar utanför omfånget:
 | Läsa, besluta, ompröva eller begära prövning i ett ärende utanför omfånget | `404`, samma svar som för ett ärende som inte finns |
 | Anmäla en skada eller få förhandsbesked i en annan marknad eller på en annan försäkring | `403` |
 | Försäkringsbelopp för en försäkring utanför omfånget | `404` |
+| Djur i en annan marknad, eller för en roll bunden till klinik eller försäkringar | `404` vid läsning, `403` vid registrering (ADR 0024) |
 | Försäkringsbelopp för en roll bunden till klinik | `404`. En klinik är inte knuten till försäkringar och kan därför inte slå upp försäkringsbelopp per försäkrings-id. |
 
 `404` i stället för `403` gör att det inte går att ta reda på vilka ärenden som finns genom att prova id:n (OWASP API1, *Broken Object Level Authorization*).
@@ -150,7 +154,7 @@ Första gången Petvold startar skapas version 1 från standardrollerna. **Stand
 
 ## Lokalt
 
-Dev-servern har tio tokens:
+Dev-servern har elva tokens:
 
 | Token | Roll | Omfång |
 | --- | --- | --- |
@@ -161,6 +165,7 @@ Dev-servern har tio tokens:
 | `dev-publisher` | publicerar regler | inga ärenden |
 | `dev-catalog` | underhåller referensdata och skriver produktutkast | inga ärenden |
 | `dev-catalog-publisher` | publicerar produktversioner | inga ärenden |
+| `dev-registrar` | registrerar djur | SE |
 | `dev-clinic` | klinik | SE, klinik `clinic_001` |
 | `dev-job` | omprövningsjobb | alla marknader |
 | `dev-customer` | kundkanal | SE, försäkringen `pol_bella` |

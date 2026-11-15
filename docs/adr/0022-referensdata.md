@@ -1,6 +1,6 @@
 # 0022. Referensdata: koder, översättningar och historik
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-15
 
 ## Sammanhang

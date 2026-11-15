@@ -1,6 +1,6 @@
 # 0023. Produktversioner: innehåll, livscykel och säljperiod
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-15
 
 ## Sammanhang
