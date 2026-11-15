@@ -34,7 +34,7 @@ Petvold kontrollerar att:
 - **startdagen inte ligger före dagen för tecknandet**
 - **djuret inte redan har en policy** för någon av dagarna (`409`)
 
-Termens längd kommer från produkten (`policy.termMonths`, förval 12 månader). Den får inte vara längre än marknaden tillåter, i Sverige ett år (FAL 3 kap. 2 §). Transaktionen går igenom stegen utkast, prissatt, riskbedömd och utfärdad. Tills tariffen och teckningsreglerna finns (M4) anger anroparen premien, och alla ansökningar godkänns. Stegen visar det.
+Termens längd kommer från produkten (`policy.termMonths`, förval 12 månader). Den får inte vara längre än marknaden tillåter, i Sverige ett år (FAL 3 kap. 2 §). Transaktionen går igenom stegen utkast, prissatt, riskbedömd och utfärdad. **Premien** räknas med produktens tariff ([Pris](pris.md#priset-på-policyn)). För en produkt utan tariff anger anroparen den. Tills teckningsreglerna finns godkänns alla ansökningar, och stegen visar det.
 
 ## Ändra val under termen
 

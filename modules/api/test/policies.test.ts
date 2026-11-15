@@ -19,6 +19,7 @@ const tokens: Record<string, Principal> = {
   handler: { subject: 'h@example.test', roles: ['handler'], markets: '*' },
   clinic: { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   job: { subject: 'renewal-job', roles: ['renewal-job'], markets: '*' },
+  underwriter: { subject: 'uw@example.test', roles: ['underwriter'], markets: ['SE'] },
   portal: { subject: 'portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_x'] },
 };
 
@@ -96,8 +97,9 @@ const apply = {
   productVersion: 'SE-HUND@1',
   startDate: '2026-12-01',
   vetCare: { annualLimit: 3_000_000 },
-  premium: { amount: 480_000, currency: 'SEK' },
 };
+/** Rex with the test tariff: 240 000 × 0.9 (2 years) × 1.0 × 1.0 × 0.95 (no address: rural) = 205 200. */
+const REX_PREMIUM = 205_200;
 
 test('a policy is issued, found, and seen by the claims engine as of a date', async () => {
   const call = await setup();
@@ -148,7 +150,7 @@ test('a policy is cancelled and the cancellation reversed', async () => {
   const w = await call('POST', `/v1/policies/${p.id}/cancellations`, 'seller', { reason: 'withdrawal' });
   assert.equal(w.status, 201);
   assert.ok(validatorFor('PolicyTransaction')(structuredClone(w.body)), JSON.stringify(validatorFor('PolicyTransaction').errors));
-  assert.deepEqual([w.body.cancellation.effectiveDate, w.body.cancellation.refund], ['2026-12-01', { amount: 480_000, currency: 'SEK' }]);
+  assert.deepEqual([w.body.cancellation.effectiveDate, w.body.cancellation.refund], ['2026-12-01', { amount: REX_PREMIUM, currency: 'SEK' }]);
   assert.equal((await call('GET', `/v1/policies/${p.id}/snapshot?date=2027-01-01`, 'handler')).body.status, 'cancelled');
   assert.equal((await call('POST', `/v1/policies/${p.id}/cancellations`, 'seller', { reason: 'customer-term-end' })).status, 409);
 
@@ -172,7 +174,9 @@ test('the renewal run renews with the version on sale, and a policy can be renew
   const run = await call('POST', '/v1/renewal-runs', 'job', {});
   assert.equal(run.body.renewed.length, 1);
   assert.equal((await call('GET', `/v1/policies/${p.id}`, 'handler')).body.terms.length, 2);
-  const manual = await call('POST', `/v1/policies/${p.id}/renewals`, 'seller', { premium: { amount: 500_000, currency: 'SEK' } });
+  assert.equal((await call('POST', `/v1/policies/${p.id}/renewals`, 'seller', { premium: { amount: 500_000, currency: 'SEK' } })).status, 403); // a manual price
+  assert.equal((await call('POST', `/v1/policies/${p.id}/renewals`, 'underwriter', { premium: { amount: 500_000, currency: 'SEK' } })).status, 422); // needs a reason
+  const manual = await call('POST', `/v1/policies/${p.id}/renewals`, 'underwriter', { premium: { amount: 500_000, currency: 'SEK' }, priceOverride: { reason: 'Agreed with the customer' } });
   assert.equal(manual.status, 201);
   assert.deepEqual(manual.body.renewal, { termNo: 3, productVersion: 'SE-HUND@1', premium: { amount: 500_000, currency: 'SEK' } });
 });
@@ -207,7 +211,6 @@ test('the choices are changed from a day during the term', async () => {
   const res = await call('POST', `/v1/policies/${p.id}/changes`, 'seller', {
     from: '2027-06-01',
     vetCare: { annualLimit: 6_000_000 },
-    premium: { amount: 600_000, currency: 'SEK' },
     reason: 'Higher amount',
   });
   assert.equal(res.status, 201);

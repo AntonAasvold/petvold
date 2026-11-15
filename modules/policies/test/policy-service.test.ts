@@ -538,3 +538,56 @@ test('a quote prices the facts with the product\'s tariff, and stores nothing', 
   await rejects(s.quote({ ...base, productVersion: 'SE-PLAIN@1', animalId: 'ani_bella' }), 'conflict', /no tariff/);
   await rejects(s.quote({ ...base, animal: { species: 'dog', birthDate: '2026-05-01' } }), 'validation', /not born/);
 });
+
+test('a product with a tariff is priced at issue, change and renewal; a manual premium needs the right and a reason (ADR 0030)', async () => {
+  const { TARIFF, PRICE_TERMS } = await import('@petvold/pricing-core/fixtures');
+  let now = '2026-03-20T10:00:00.000Z';
+  let n = 0;
+  const priced = offer({
+    tariffSeries: 'SE-HUND-TARIFF',
+    priceTermsSeries: 'SE-HUND-TERMS',
+    vetCareTermsFor: (c) => ({ ...vetCare, annualLimit: c.annualLimit ?? 6_000_000, deductibleOption: c.deductible ?? 'standard' }),
+  });
+  const s = new PolicyService({
+    store: new InMemoryPolicyStore(),
+    products: { offer: async () => priced, versionOnSale: async () => 'SE-HUND@1' },
+    animals: { get: async () => ({ market: 'SE', species: 'dog', breed: 'dog-labrador-retriever', birthDate: '2019-03-14' }) },
+    parties: { marketOf: async () => 'SE', postalCodeOf: async () => '111 22' },
+    tariffs: {
+      tariffInForce: async (series) => ({ content: TARIFF, ref: { series, version: 1, checksum: 't' } }),
+      priceTermsInForce: async (series) => ({ content: PRICE_TERMS, ref: { series, version: 1, checksum: 'p' } }),
+    },
+    clock: { now: () => now },
+    ids: { next: (p) => `${p}_${++n}` },
+  });
+  const base = { market: 'SE', animalId: 'ani_bella', policyholderPartyId: 'pty_anna', productVersion: 'SE-HUND@1', startDate: '2026-04-01' };
+
+  // Issue: Bella's price, 4 934 kr, with the campaign 20 % off: 3 947 kr.
+  const p = await s.issue({ ...base, campaignCode: 'PUPPY2026' }, by);
+  const t1 = p.terms[0]!;
+  assert.deepEqual([t1.premium, t1.pricing?.result.basePremium, t1.pricing?.input.zone, t1.pricing?.result.tariff?.series], [394_700, 493_400, 'city', 'SE-HUND-TARIFF']);
+  assert.equal((t1.pricing?.input as Record<string, unknown>).postalCode, undefined);
+  assert.match((await s.transactions(p.id))[0]!.steps[1]!.note!, /Priced by SE-HUND-TARIFF@1/);
+
+  // A manual premium needs the right, and a reason; the computed premium is kept.
+  await rejects(s.issue({ ...base, animalId: 'ani_2', premium: { amount: 300_000, currency: 'SEK' } }, by), 'forbidden', /price-override/);
+  await rejects(s.issue({ ...base, animalId: 'ani_2', premium: { amount: 300_000, currency: 'SEK' } }, by, { mayOverridePrice: true }), 'validation', /reason/);
+  const manual = await s.issue({ ...base, animalId: 'ani_2', premium: { amount: 300_000, currency: 'SEK' }, priceOverride: { reason: 'Loyal customer' } }, by, { mayOverridePrice: true });
+  assert.deepEqual([manual.terms[0]!.premium, manual.terms[0]!.pricing?.override], [300_000, { computedPremium: 493_400, reason: 'Loyal customer', by }]);
+  // The same premium as the tariff's needs no override.
+  assert.equal((await s.issue({ ...base, animalId: 'ani_3', premium: { amount: 493_400, currency: 'SEK' } }, by)).terms[0]!.pricing?.override, undefined);
+
+  // Change from 1 June to the lower annual limit: priced for the whole term at the new choices.
+  now = '2026-06-01T10:00:00.000Z';
+  const ch = await s.change(p.id, { from: '2026-06-01', vetCare: { annualLimit: 3_000_000 }, reason: 'Lower amount' }, 'cs');
+  // 2 400 × 1.3 × 1.1 × 1.15 = 3 946.80 -> 3 947 kr; no campaign on a change.
+  assert.equal(ch.change?.premium.amount, 394_700);
+
+  // Renewal: the animal is a year older (8, the same band) and the campaign is not repeated.
+  now = '2027-02-20T03:00:00.000Z';
+  const run = await s.renewalRun({ dryRun: false, markets: '*' }, 'job');
+  const renewed = run.renewed.find((r) => r.policyId === p.id)!;
+  assert.equal(renewed.premium, 394_700); // 3 000 000 limit kept: 3 947 kr without campaign
+  const t2 = (await s.get(p.id)).terms[1]!;
+  assert.deepEqual([t2.pricing?.input.newPolicy, t2.pricing?.result.facts.ageYears], [false, 8]);
+});

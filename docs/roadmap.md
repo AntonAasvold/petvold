@@ -76,7 +76,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Produktversionen pekar på en tariffserie som täcker den
 - [x] Prisindikation utan sparat tillstånd (`POST /v1/quotes`)
 - [x] Prisvilkor: grupprabatt och kampanjkoder efter grundpriset, med tak
-- [ ] Priset vid tecknande, ändring och förnyelse, manuellt pris och simulering av tariffer
+- [x] Priset vid tecknande, ändring och förnyelse, med underlaget sparat på termen, och manuellt pris med egen rättighet
+- [ ] Simulering av tariffer och prisvilkor mot sparade priser
 - [ ] Teckningsregler och manuell prövning
 - [ ] Rabatter som regler
 
@@ -84,6 +85,11 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 
 **M5 – Pengar**
 - Premieåterbetalning vid avslut och ny premieplan vid förnyelse.
+- Distribution och provision (ny ADR):
+  - vem som sålde en policy: försäkringsbolagets egen kanal, en säljare eller ett ombud (förmedlare), sparat på tecknandet och på varje förnyelse
+  - provisionsavtal per förmedlare och produkt, versionerade som tariffen: andel av premien första året och vid förnyelse, eller fast belopp
+  - provision räknas på premien när den betalas, och återtas per dag vid ånger och avslut
+  - redovisning till förmedlaren, och krav på information om ersättning enligt lagen om försäkringsdistribution (2018:1219) och IDD (EU 2016/97)
 - Betalningsmodul (ADR 0017): porten `PaymentProvider`, tillståndsmaskin, fake-adapter och gemensam testsvit.
 - Betalintegrationer, en adapter per tjänst:
   - Stripe (kort, sparat kort)

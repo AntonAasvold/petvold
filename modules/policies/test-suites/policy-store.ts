@@ -54,6 +54,19 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
 
     it('a policy is read back with its term, version and transaction', async (store) => {
       const t = issued();
+      t.term.pricing = {
+        result: {
+          currency: 'SEK',
+          basePremium: 480_000,
+          annualPremium: 480_000,
+          termPremium: 480_000,
+          breakdown: [{ code: 'base', value: 480_000, amount: 480_000 }],
+          facts: { ageYears: 2, breedGroup: 'A', zone: 'city', termDays: 365, yearDays: 365, discountBp: 0 },
+          tariff: { series: 'SE-T', version: 1, checksum: 'c' },
+          inputHash: 'h',
+        },
+        input: { market: 'SE', species: 'dog', birthDate: '2024-03-01', startDate: '2026-12-01', endDate: '2027-12-01', annualLimit: 6_000_000, deductibleOption: 'standard', zone: 'city', newPolicy: true },
+      };
       await store.issue(t.policy, t.term, t.version, t.transaction, []);
       assert.deepEqual(await store.get('pol_t1'), { ...t.policy, terms: [t.term], versions: [t.version] });
       assert.deepEqual(await store.history('pol_t1'), [t.version]);

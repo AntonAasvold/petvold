@@ -43,12 +43,12 @@ export class PostgresPolicyStore implements PolicyStore {
     if (!p) return null;
     const terms = await this.pool.query(
       `select policy_id, term_no, start_date::text as start_date, end_date::text as end_date, product_version, currency, vet_care,
-         deductible_option, premium, riders, transaction_id from policies.term where policy_id = $1 order by term_no`,
+         deductible_option, premium, riders, transaction_id, pricing from policies.term where policy_id = $1 order by term_no`,
       [id],
     );
     const versions = await this.pool.query(`select ${VERSION} from policies.policy_version where policy_id = $1 and sys_to is null order by valid_from`, [id]);
     const changes = await this.pool.query(
-      `select term_no, change_no, from_date::text as from_date, vet_care, deductible_option, premium, transaction_id
+      `select term_no, change_no, from_date::text as from_date, vet_care, deductible_option, premium, transaction_id, pricing
        from policies.term_change where policy_id = $1 order by term_no, change_no`,
       [id],
     );
@@ -69,6 +69,7 @@ export class PostgresPolicyStore implements PolicyStore {
             deductibleOption: c.deductible_option,
             premium: Number(c.premium),
             transactionId: c.transaction_id,
+            ...(c.pricing === null ? {} : { pricing: c.pricing }),
           }));
         return own.length ? { ...t, changes: own } : t;
       }),
@@ -158,9 +159,9 @@ export class PostgresPolicyStore implements PolicyStore {
       for (const t of terms) await insertTerm(db, t);
       for (const c of changes) {
         await db.query(
-          `insert into policies.term_change (policy_id, term_no, change_no, from_date, vet_care, deductible_option, premium, transaction_id)
-           values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [c.policyId, c.termNo, c.changeNo, c.from, JSON.stringify(c.vetCare), c.deductibleOption, c.premium, c.transactionId],
+          `insert into policies.term_change (policy_id, term_no, change_no, from_date, vet_care, deductible_option, premium, transaction_id, pricing)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [c.policyId, c.termNo, c.changeNo, c.from, JSON.stringify(c.vetCare), c.deductibleOption, c.premium, c.transactionId, c.pricing ? JSON.stringify(c.pricing) : null],
         );
       }
       const { rows } = await db.query(`select animal_id from policies.policy where policy_id = $1`, [policyId]);
@@ -372,9 +373,22 @@ async function endMembership(
 
 async function insertTerm(db: pg.PoolClient, t: Term) {
   await db.query(
-    `insert into policies.term (policy_id, term_no, start_date, end_date, product_version, currency, vet_care, deductible_option, premium, riders, transaction_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-    [t.policyId, t.termNo, t.startDate, t.endDate, t.productVersion, t.currency, JSON.stringify(t.vetCare), t.deductibleOption, t.premium, JSON.stringify(t.riders), t.transactionId],
+    `insert into policies.term (policy_id, term_no, start_date, end_date, product_version, currency, vet_care, deductible_option, premium, riders, transaction_id, pricing)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [
+      t.policyId,
+      t.termNo,
+      t.startDate,
+      t.endDate,
+      t.productVersion,
+      t.currency,
+      JSON.stringify(t.vetCare),
+      t.deductibleOption,
+      t.premium,
+      JSON.stringify(t.riders),
+      t.transactionId,
+      t.pricing ? JSON.stringify(t.pricing) : null,
+    ],
   );
 }
 
@@ -435,6 +449,7 @@ function toTerm(r: Record<string, any>): Term {
     premium: Number(r.premium),
     riders: r.riders,
     transactionId: r.transaction_id,
+    ...(r.pricing === null || r.pricing === undefined ? {} : { pricing: r.pricing }),
   };
 }
 

@@ -3432,7 +3432,7 @@ components:
     IssuePolicyRequest:
       type: object
       additionalProperties: false
-      required: [market, animalId, policyholderPartyId, productVersion, startDate, premium]
+      required: [market, animalId, policyholderPartyId, productVersion, startDate]
       properties:
         market: { $ref: '#/components/schemas/Market' }
         animalId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
@@ -3450,10 +3450,13 @@ components:
           type: object
           additionalProperties: false
           required: [amount, currency]
-          description: The premium for the whole term. Given by the caller until the tariff exists (M4).
+          description: 'The premium for the whole term. Omitted: the product''s tariff prices it (ADR 0030). For a product with a tariff, a different premium is a manual price: it needs priceOverride and the permission policies:price-override. Required for a product without a tariff.'
           properties:
             amount: { $ref: '#/components/schemas/NonNegativeMoney' }
             currency: { $ref: '#/components/schemas/Currency' }
+        priceOverride: { $ref: '#/components/schemas/PriceOverride' }
+        groupId: { type: string, pattern: '^pgr_[A-Za-z0-9]+$', description: A group the policy joins from its start; gives the group discount. }
+        campaignCode: { type: string, maxLength: 32 }
 
     PolicyTerm:
       type: object
@@ -3470,6 +3473,7 @@ components:
         premium: { $ref: '#/components/schemas/NonNegativeMoney' }
         riders: { type: array, items: { type: object } }
         transactionId: { type: string }
+        pricing: { $ref: '#/components/schemas/TermPricing' }
         changes:
           type: array
           description: Changes of the choices during the term, oldest first.
@@ -3483,6 +3487,7 @@ components:
               deductibleOption: { type: string }
               premium: { $ref: '#/components/schemas/NonNegativeMoney' }
               transactionId: { type: string }
+              pricing: { $ref: '#/components/schemas/TermPricing' }
 
     PolicyVersion:
       type: object
@@ -3737,7 +3742,7 @@ components:
     ChangePolicyRequest:
       type: object
       additionalProperties: false
-      required: [from, vetCare, premium, reason]
+      required: [from, vetCare, reason]
       properties:
         from: { $ref: '#/components/schemas/Date' }
         vetCare:
@@ -3751,10 +3756,11 @@ components:
           type: object
           additionalProperties: false
           required: [amount, currency]
-          description: The premium for a whole term at the new choices.
+          description: 'The premium for a whole term at the new choices. Omitted: the tariff prices it. A different premium needs priceOverride and policies:price-override.'
           properties:
             amount: { $ref: '#/components/schemas/NonNegativeMoney' }
             currency: { $ref: '#/components/schemas/Currency' }
+        priceOverride: { $ref: '#/components/schemas/PriceOverride' }
         reason: { type: string, minLength: 1, maxLength: 2000 }
 
     CreatePolicyGroupRequest:
@@ -3818,10 +3824,34 @@ components:
           type: object
           additionalProperties: false
           required: [amount, currency]
-          description: 'Default: the same as the last term.'
+          description: 'Default: the tariff''s price on the renewal day, or the last term''s premium for a product without a tariff. A different premium needs priceOverride and policies:price-override.'
           properties:
             amount: { $ref: '#/components/schemas/NonNegativeMoney' }
             currency: { $ref: '#/components/schemas/Currency' }
+        priceOverride: { $ref: '#/components/schemas/PriceOverride' }
+
+    PriceOverride:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      description: Why the premium differs from the tariff's (ADR 0030). The computed premium is kept next to it.
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    TermPricing:
+      type: object
+      required: [result, input]
+      description: How the premium was priced (ADR 0030), so it can be explained and recomputed. The zone, never the postal code.
+      properties:
+        result: { $ref: '#/components/schemas/PriceResult' }
+        input: { type: object, description: What the price was computed from, with the zone. }
+        override:
+          type: object
+          required: [computedPremium, reason, by]
+          properties:
+            computedPremium: { $ref: '#/components/schemas/NonNegativeMoney' }
+            reason: { type: string }
+            by: { type: string }
 
     RenewalRunRequest:
       type: object
@@ -3858,7 +3888,7 @@ components:
             required: [policyId, issue, detail]
             properties:
               policyId: { type: string }
-              issue: { type: string, enum: [product-not-on-sale, option-not-offered, species-not-covered, term-too-long, animal-died, policyholder-unavailable] }
+              issue: { type: string, enum: [product-not-on-sale, option-not-offered, species-not-covered, term-too-long, animal-died, policyholder-unavailable, price-not-available] }
               detail: { type: string }
 
     ReinstatePolicyRequest:

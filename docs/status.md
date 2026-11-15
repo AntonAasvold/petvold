@@ -32,6 +32,14 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #57 mergad.
+- Priset på policyn (ADR 0030), PR #58:
+  - **Tecknande, ändring och förnyelse** räknar premien med produktens tariff och prisvilkor: djurets uppgifter från djurregistret, postnumret från försäkringstagaren (bara zonen sparas), grupprabatt och kampanjkod. Förnyelsen ger nytt pris efter ålder och gällande tariff.
+  - **Underlaget sparas** på termen och ändringen (`TermPricing`, migration 0028), så priset kan förklaras och räknas om.
+  - **Manuellt pris** med ny rättighet `policies:price-override`, ny roll `underwriter` och motivering. Det beräknade priset sparas bredvid.
+  - **Förnyelsekörningen** listar policyer där priset inte går att räkna (`price-not-available`).
+  - **Provisioner** finns inte med än. De är nu en punkt i M5 i roadmapen (distribution och provision, ny ADR).
+- 356 tester och 111 databastester.
 - #56 mergad.
 - Prisvilkor (ADR 0030), PR #57:
   - **`price-terms.v1`** i `decisioning`, med grupprabatter (`kind`, `fromMember`), kampanjkoder (giltighet, `newPoliciesOnly`) och `maxTotalDiscountBp`.
@@ -183,7 +191,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Priset vid tecknande, ändring och förnyelse: räknas och sparas med underlaget, manuellt pris med egen rättighet, och simulering av tariffer (ADR 0030).
+1. Simulering av tariffer och prisvilkor mot sparade priser, sedan teckningsregler (ny ADR). Därefter M5, där distribution och provision behöver en egen ADR.
 
 **Öppet**
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).
