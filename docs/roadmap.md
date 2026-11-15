@@ -48,7 +48,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Tecknande med term, bitemporala versioner och transaktion. Skademotorn läser policyer från modulen (ADR 0029).
 - [x] Avslut enligt marknadsprofil och produktinställning, med premie tillbaka, återkallelse och händelser (ADR 0029)
 - [x] Förnyelse: körning inom produktens framförhållning, termlängd per produkt, lista för beslut, och förnyelse för hand (ADR 0029)
-- [ ] Ändring
+- [x] Ändring av val under termen, med premiejustering för resten av termen (ADR 0029)
 - [ ] Ändring, reversering och ändring i fel ordning
 - [x] Överlåtelse vid försäljning och förslag till avslut vid dödsfall, från djurregistrets händelser (ADR 0029)
 - [ ] PolicyGroup
