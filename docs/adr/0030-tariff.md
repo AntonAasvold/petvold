@@ -1,6 +1,6 @@
 # 0030. Tariff: pris som versionerad data och en ren funktion
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-15
 
 ## Sammanhang
@@ -25,29 +25,34 @@ Kvar att bestämma:
    - Den gäller från ett datum (`effectiveFrom`), och den kan simuleras mot tidigare priser innan den publiceras.
    - Produktversionen pekar på en **tariffserie** (`tariffSeries`), som den pekar på en regelserie.
    - Ett pris räknas med den tariffversion som gäller på termens första dag.
-2. **Uppbyggnad.** En tariff är tabeller, inte kod:
+2. **Uppbyggnad.** En tariff är tabeller, inte kod, och ger **grundpriset**:
    - **Grundpremie** per art och försäkringsbelopp, i minsta valutaenhet för ett år.
    - **Faktorer** i baspunkter (10 000 = 1,0) som multipliceras:
      - åldersband för djurets ålder på termens första dag
      - riskgrupp per ras, med en förvald grupp för ras som saknas eller är okänd
      - självrisk per alternativ
-     - valfritt zon per postnummerprefix, från försäkringstagarens adress
+     - **ort:** zon per postnummerprefix, från försäkringstagarens adress, med en förvald zon för postnummer som saknas i tabellen
    - **Lägsta premie** per år.
    - **Avrundning** till hel valutaenhet, till exempel hela kronor.
-   - **Rabatter** som egna rader: andra och följande djur i samma grupp (ADR 0007) och kampanjkoder. Varje rabatt har ett tak i procent.
-3. **Priset räknas av en ren funktion i en ny modul, `pricing-core`.**
-   - Funktionen är `price(tariff, input) → { annualPremium, breakdown, inputHash }`. Den har ingen I/O, inget ramverk och ingen text för användare.
-   - Indata är marknad, art, ras, födelsedatum, startdag, termlängd, valt försäkringsbelopp och självrisk, eventuellt postnummer, gruppens storlek och kampanjkod.
+3. **Rabatter är prisvilkor som läggs på efter grundpriset.**
+   - Prisvilkoren är en egen versionerad serie i `decisioning`, med samma livscykel. De kan därför ändras utan att tariffen ändras, till exempel för en kampanj.
+   - Exempel på villkor: andra och följande djur i samma grupp (ADR 0007), och kampanjkoder med giltighetstid.
+   - Varje villkor har ett tak i procent. Villkoren tillsammans får aldrig ge ett pris under tariffens lägsta premie.
+   - Produktversionen pekar på en serie med prisvilkor (`priceTermsSeries`), om den har några.
+4. **Priset räknas av en ren funktion i en ny modul, `pricing-core`.**
+   - Funktionen är `price(tariff, priceTerms, input) → { basePremium, annualPremium, breakdown, inputHash }`. Den har ingen I/O, inget ramverk och ingen text för användare.
+   - Indata är marknad, art, ras, födelsedatum, startdag, termlängd, valt försäkringsbelopp och självrisk, postnummer, gruppens storlek och kampanjkod.
+   - Grundpriset och priset efter prisvilkoren redovisas var för sig.
    - All räkning sker med heltal. Faktorerna multipliceras i BigInt, och avrundningen sker en gång på slutet, halvt uppåt. Termens premie är årspremien gånger termens dagar delat med årets.
    - `breakdown` listar varje steg med kod och värde, så att priset kan förklaras på kundens språk (ADR 0018).
-4. **Ingen ålder, kön eller annan uppgift om ägaren** används i priset, utöver postnumrets zon. Uppgiftsminimering enligt GDPR artikel 5.1 c.
-5. **Prisindikation utan sparat tillstånd.** `POST /v1/quotes` räknar priset för givna uppgifter och sparar ingenting. Svaret har tariffversion, kontrollsumma och `inputHash`.
-6. **Tecknande, ändring och förnyelse räknar priset själva** genom en port (`PricingPort`), med samma funktion.
-   - Termen eller ändringen sparar årspremien, tariffversionen, kontrollsumman, `inputHash` och `breakdown`. Priset kan alltid räknas om och jämföras, som ett skadebeslut.
+5. **Ingen ålder, kön eller annan uppgift om ägaren** används i priset, utöver postnumrets zon. Zonen räknas från postnumret när priset räknas, och bara zonen sparas med priset. Uppgiftsminimering enligt GDPR artikel 5.1 c.
+6. **Prisindikation utan sparat tillstånd.** `POST /v1/quotes` räknar priset för givna uppgifter och sparar ingenting. Svaret har tariffversion, kontrollsumma och `inputHash`.
+7. **Tecknande, ändring och förnyelse räknar priset själva** genom en port (`PricingPort`), med samma funktion.
+   - Termen eller ändringen sparar årspremien, tariffversionen, prisvillkorens version, kontrollsummorna, `inputHash` och `breakdown`. Priset kan alltid räknas om och jämföras, som ett skadebeslut.
    - Förnyelsen räknar ett nytt pris med den tariff som gäller på förnyelsedagen och djurets nya ålder. Om priset ändras syns det i händelsen `policy.renewed`, så att kanalen kan meddela kunden i tid. Förnyelsens framförhållning i produkten (ADR 0029) ger den tiden.
-7. **Manuellt pris** kräver en egen rättighet, `policies:price-override`, och en motivering. Det sparas tillsammans med det beräknade priset, så att skillnaden syns.
-8. **Skatt på premien** ligger i marknadsprofilen (ADR 0029), med källa. Tariffens priser är utan skatt, och skatten läggs på och visas för sig. Sverige har ingen skatt.
-9. **Teckningsregler** (åldersgränser, raser som inte försäkras, hälsofrågor och förbehåll) får en egen ADR. De hör ihop med priset men inte med tariffen.
+8. **Manuellt pris** kräver en egen rättighet, `policies:price-override`, och en motivering. Det sparas tillsammans med det beräknade priset, så att skillnaden syns.
+9. **Skatt på premien** ligger i marknadsprofilen (ADR 0029), med källa. Tariffens priser är utan skatt, och skatten läggs på och visas för sig. Sverige har ingen skatt.
+10. **Teckningsregler** (åldersgränser, raser som inte försäkras, hälsofrågor och förbehåll) får en egen ADR. De hör ihop med priset men inte med tariffen.
 
 ## Konsekvenser
 
@@ -55,7 +60,8 @@ Kvar att bestämma:
 - Varje pris går att förklara, räkna om och simulera, på samma sätt som skadebeslut.
 - Policymodulen slutar ta emot premien från anroparen, utom med `policies:price-override`.
 - Produktversioner behöver `tariffSeries`. Befintliga produkter utan den fortsätter att ta premien från anroparen, så att inget går sönder.
-- Zon efter postnummer kräver försäkringstagarens adress, som finns i partmodulen. Den läses via en port.
+- Zon efter ort kräver försäkringstagarens adress, som finns i partmodulen. Den läses via en port. En försäkringstagare utan postnummer får tariffens förvalda zon.
+- Att priset beror på ort bör framgå av förköpsinformationen till kunden.
 - En tariff i tabellform kan inte uttrycka alla modeller, till exempel kurvor eller interaktioner mellan faktorer. Om det behövs blir det en ny beräkningsmodell med ett eget namn, som beräkningsmodellerna i skademotorn.
 
 ## Alternativ

@@ -1,6 +1,6 @@
 # ADR om tariffen (PR #54)
 
-**Datum:** 2026-11-15 **ADR:** 0030 (Föreslagen) **Moduler:** inga, bara dokumentation
+**Datum:** 2026-11-15 **ADR:** 0030 (Beslutad) **Moduler:** inga, bara dokumentation
 
 ## Vad
 
@@ -17,7 +17,8 @@ Ett förslag till hur Petvold räknar premier i M4. Ingen kod.
 
 - **Heltal och BigInt, och avrundning en gång.** Flyttal ger öresfel som syns när ett pris räknas om.
 - **Tariffen utanför produkten.** Priser ändras oftare än produkter, och av samma skäl ligger skadereglerna utanför produkten.
-- **Inga uppgifter om ägaren** utom eventuellt postnumrets zon (GDPR artikel 5.1 c).
+- **Ort påverkar priset**, enligt ditt beslut. Bara zonen sparas med priset, inte postnumret (GDPR artikel 5.1 c).
+- **Rabatter är prisvilkor efter grundpriset**, enligt ditt beslut. De är en egen serie och kan ändras utan att tariffen ändras.
 - **Teckningsregler får en egen ADR.** De påverkar om en ansökan godkänns och vilka förbehåll som gäller, inte priset.
 
 ## Att känna till

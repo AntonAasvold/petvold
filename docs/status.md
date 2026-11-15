@@ -33,7 +33,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
 - #53 mergad.
-- ADR 0030 om tariffen (Föreslagen), PR #54. Bara beslutet, ingen kod.
+- ADR 0030 om tariffen (Beslutad), PR #54. Bara beslutet, ingen kod. Ort påverkar priset (zon per postnummer), och rabatter är prisvilkor i en egen serie som läggs på efter grundpriset.
   - **Tariffen är versionerad data i `decisioning`**, med fyra ögon och kontrollsumma, som skaderegler. Produktversionen pekar på en tariffserie.
   - **Priset räknas av en ren funktion** i en ny modul, `pricing-core`, med heltal och en förklaring steg för steg.
   - **Samma funktion används överallt:** prisindikation utan sparat tillstånd, tecknande, ändring och förnyelse.
@@ -163,10 +163,9 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. När ADR 0030 är beslutad: `pricing-core` och tariffserier i `decisioning`, prisindikation, och sedan priset vid tecknande, ändring och förnyelse.
+1. `pricing-core` och tariffserier i `decisioning`, prisindikation, sedan prisvilkor, och sist priset vid tecknande, ändring och förnyelse (ADR 0030).
 
 **Öppet**
-- ADR 0030 väntar på ditt beslut: var tariffen bor, vilka faktorer som ingår, och om postnummer ska få påverka priset.
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).
 - Gallringen känner till djur, policyer och skador. Innan den körs skarpt hos ett försäkringsbolag behöver bolaget bekräfta lagringstiderna och att inga andra system har relationer som Petvold inte känner till, till exempel betalningar (M5).
 - Det sparas inte vem som slagit upp ett djur.
