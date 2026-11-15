@@ -85,8 +85,13 @@ Motiveringarna får inte innehålla personuppgifter. De sparas för att visa vad
 **Sista relationen** är det senaste av:
 - när parten själv senast ändrades
 - när partens senaste ägarskap av ett djur slutade
+- när partens senaste försäkring slutade, som försäkringstagare
+- när en skada på en försäkring som parten hade senast togs emot eller beslutades. Det gäller bara skador med behandling medan parten var försäkringstagare.
 
-Om parten äger ett djur i dag, eller har en annan pågående relation, gallras den inte. Policymodulen (M3) kommer att rapportera försäkringar och skador på samma sätt.
+**Pågående relationer** stoppar gallringen helt:
+- ett djur som parten äger i dag
+- en försäkring som gäller
+- en skada som inte är färdigbeslutad, alltså utan beslut, med ett beslutsförslag som väntar på attest, eller med en begäran om omprövning
 
 **Gallringskörningen** går igenom alla parter i anroparens marknader. För varje part vars lagringstid har gått ut skapas en begäran om anonymisering med `basis: retention-expired`. En dataskyddsansvarig godkänner eller avslår varje begäran, precis som när någon själv har bett om radering. Körningen är tänkt att schemaläggas med rollen `retention-job`, till exempel en gång i veckan.
 
@@ -121,4 +126,4 @@ Om parten äger ett djur i dag, eller har en annan pågående relation, gallras 
 
 Dev-servern registrerar Bellas ägare `pty_owner001` (Anna Example) utan personnummer. Tokens `dev-privacy` och `dev-privacy-2` är två dataskyddsansvariga, så att fyra ögon går att prova. `dev-retention-job` kör gallringen. Token `dev-registrar` får registrera och ändra parter i Sverige. Testerna använder personnummer födda 2099, som ingen levande person kan ha.
 
-*Inte byggt än:* kundens åtkomst till sin egen part, kontaktpersoner för organisationer, och relationer från policyer och skador i gallringen (M3).
+*Inte byggt än:* kundens åtkomst till sin egen part, kontaktpersoner för organisationer, och kontaktpersoner för organisationer.

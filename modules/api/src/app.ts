@@ -13,7 +13,7 @@ import {
   type PartyRecord,
 } from '@petvold/parties';
 import { InMemoryPolicyStore, PolicyError, PolicyService, type PolicyRecord, type Proposal } from '@petvold/policies';
-import { animalPort, productPort } from './wiring.ts';
+import { animalPort, claimsActivity, productPort } from './wiring.ts';
 import {
   CatalogError,
   CatalogService,
@@ -833,6 +833,7 @@ export function createApp(d: AppDeps) {
       sources: [
         { name: 'animals', activityOf: (id) => animals.activityOf(id) },
         { name: 'policies', activityOf: (id) => policies.activityOf(id) },
+        claimsActivity(policies, d.service),
       ],
       clock: d.clock,
     });

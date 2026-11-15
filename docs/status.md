@@ -32,6 +32,12 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #50 mergad.
+- Gallringen känner till skador (ADR 0028), PR #51:
+  - `ClaimsService.claimActivity(policyId, från, till)` svarar om en skada med behandling under perioden är öppen (utan beslut, med förslag som väntar på attest, eller med begäran om omprövning), och när den senast togs emot eller beslutades.
+  - `claimsActivity(policies, claims)` i `api/src/wiring.ts` är den tredje källan för gallringen. Den använder perioderna då parten var försäkringstagare (`PolicyService.holderPeriods`).
+  - Gallringen känner nu till djur, policyer och skador.
+- 332 tester och 109 databastester.
 - #49 mergad.
 - Omprövning av skador när en policyversion ersätts, PR #50:
   - `ClaimsService.reassessForPolicyChange(versioner)` omprövar varje skada vars senaste beslut fattades på en ersatt version. Ett nytt beslut skapas bara om underlaget har ändrats, så en händelse som kommer två gånger gör ingenting.
@@ -137,11 +143,11 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Gallringen kan få veta om öppna skador (via policyns relationer), så att den kan köras skarpt. Eller policygrupper för kullar och hushåll.
+1. Policygrupper för kullar och hushåll, eller ändring av policyns val under termen.
 
 **Öppet**
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).
-- Gallringen känner till djurregistret och policyerna, men inte öppna skador. Den ska inte köras skarpt förrän skador rapporterar sina relationer.
+- Gallringen känner till djur, policyer och skador. Innan den körs skarpt hos ett försäkringsbolag behöver bolaget bekräfta lagringstiderna och att inga andra system har relationer som Petvold inte känner till, till exempel betalningar (M5).
 - Det sparas inte vem som slagit upp ett djur.
 
 ## 2026-11-14 (pass 23)

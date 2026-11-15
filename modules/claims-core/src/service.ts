@@ -360,6 +360,11 @@ export class ClaimsService {
     return out;
   }
 
+  /** For retention (ADR 0028): whether a claim on the policy treated in [from, to) is still open, and the latest activity. */
+  claimActivity(policyId: string, from: ISODate, to: ISODate): Promise<{ open: boolean; lastAt?: Timestamp }> {
+    return this.d.store.claimActivity(policyId, from, to);
+  }
+
   async getClaim(claimId: string): Promise<Claim> {
     return this.requireClaim(claimId);
   }

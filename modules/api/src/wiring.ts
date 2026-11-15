@@ -5,7 +5,9 @@
  */
 import { AnimalError, type AnimalService } from '@petvold/animals';
 import { CatalogError, onSale, policySettingsOf, productVersionId, vetCareTermsFor, type ProductService } from '@petvold/catalog';
-import type { AnimalPort, ProductPort } from '@petvold/policies';
+import type { ClaimsService } from '@petvold/claims-core';
+import type { ActivitySource } from '@petvold/parties';
+import type { AnimalPort, PolicyService, ProductPort } from '@petvold/policies';
 
 /** Product versions as the policy module sees them (ADR 0023, 0029). */
 export function productPort(products: ProductService): ProductPort {
@@ -48,6 +50,27 @@ export function animalPort(animals: AnimalService): AnimalPort {
         throw e;
       });
       return a ? { market: a.market, species: a.species, birthDate: a.birthDate, ...(a.deceasedOn ? { deceasedOn: a.deceasedOn } : {}) } : null;
+    },
+  };
+}
+
+/**
+ * The claims a party had, for retention (ADR 0028): claims on the policies the
+ * party held, treated while it held them. Ongoing while one is open; otherwise
+ * the day of the latest claim activity, e.g. the last decision.
+ */
+export function claimsActivity(policies: PolicyService, claims: ClaimsService): ActivitySource {
+  return {
+    name: 'claims',
+    async activityOf(partyId) {
+      let last: string | undefined;
+      for (const period of await policies.holderPeriods(partyId)) {
+        const a = await claims.claimActivity(period.policyId, period.from, period.to);
+        if (a.open) return { ongoing: true };
+        const day = a.lastAt?.slice(0, 10);
+        if (day && (!last || day > last)) last = day;
+      }
+      return last ? { lastDate: last } : null;
     },
   };
 }
