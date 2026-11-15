@@ -74,6 +74,8 @@ export interface ClaimsStore {
    * [from, to) and has evidence, with that evidence. Oldest first, at most `limit`.
    */
   latestDecisionsWithEvidence(from: Timestamp, to: Timestamp, limit: number): Promise<Array<{ decision: ClaimDecision; evidence: DecisionEvidence }>>;
+  /** Claims whose latest decision was made on one of the policy versions, e.g. ones that were just superseded. */
+  claimsDecidedOnPolicyVersions(policyVersionIds: string[]): Promise<string[]>;
   /**
    * Stores the decision, its evidence, journals and changed deductible periods atomically
    * (one database transaction in production). Periods the claim opened earlier

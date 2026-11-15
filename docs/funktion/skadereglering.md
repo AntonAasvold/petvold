@@ -8,7 +8,7 @@ Hur skademotorn bedömer, räknar ut och beslutar ett ärende. Exemplen bygger p
 2. **Anmälan.** Skadan registreras med fakturarader, diagnos och behandlingsdatum. Motorn bedömer den direkt.
 3. **Automatiskt beslut eller handläggare.** Om alla regler går igenom och ersättningen är under produktens gräns beslutas skadan automatiskt. Annars hamnar den hos en handläggare.
 4. **Beslut.** Handläggaren godkänner det som bedömningen föreslår eller avslår. Beslutet bokförs.
-5. **Omprövning.** Om policyn ändras i efterhand, till exempel om en ny självrisk gäller retroaktivt, bedöms ärendet om. Om ersättningen ändras blir det ett nytt beslut som bokför skillnaden.
+5. **Omprövning.** Om policyn ändras i efterhand bedöms ärendet om, till exempel om en ny självrisk gäller retroaktivt eller om policyn avslutas från ett tidigare datum. Det sker automatiskt när policymodulen ersätter den version som beslutet fattades på (`policy.version_superseded`). Om ersättningen ändras blir det ett nytt beslut som bokför skillnaden.
 
 *(Planerat i M1: reserv när skadan anmäls, attest av beslut över en beloppsgräns, och utbetalning. Se ADR 0016.)*
 

@@ -260,6 +260,17 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
     }));
   }
 
+  async claimsDecidedOnPolicyVersions(policyVersionIds: string[]): Promise<string[]> {
+    const { rows } = await this.pool.query(
+      `select d.claim_id from claims.decision d
+       where d.policy_version_id = any($1)
+         and d.seq = (select max(seq) from claims.decision x where x.claim_id = d.claim_id)
+       order by d.claim_id`,
+      [policyVersionIds],
+    );
+    return rows.map((r) => r.claim_id);
+  }
+
   async getEvidence(decisionId: string): Promise<DecisionEvidence | null> {
     const { rows } = await this.pool.query(
       `select decision_id, input, calculation_model, engine_version from claims.decision_evidence where decision_id = $1`,

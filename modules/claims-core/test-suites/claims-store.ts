@@ -505,6 +505,18 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.deepEqual(await store.latestDecisionsWithEvidence('2026-10-03T10:00:00.000Z', '2026-10-03T10:00:00.000Z', 10), []);
     });
 
+    it('claims whose latest decision was made on given policy versions', async (store) => {
+      await save(store, claim('clm_a'));
+      await save(store, claim('clm_b', { claimNo: 'S-b' }));
+      const a1 = decision('clm_a', 1, 50_000);
+      const a2 = decision('clm_a', 2, 30_000, { assessment: { ...assessment('clm_a'), policyVersionId: 'pv_new' } });
+      const b1 = decision('clm_b', 1, 70_000);
+      for (const d of [a1, a2, b1]) await store.commitDecision(commit(d));
+      assert.deepEqual(await store.claimsDecidedOnPolicyVersions(['pv_suite']), ['clm_b']); // clm_a's latest is on pv_new
+      assert.deepEqual(await store.claimsDecidedOnPolicyVersions(['pv_suite', 'pv_new']), ['clm_a', 'clm_b']);
+      assert.deepEqual(await store.claimsDecidedOnPolicyVersions(['pv_none']), []);
+    });
+
     // Review requests (ADR 0018) ------------------------------------------------
 
     it('the automated flag and the answered review are read back with the decision', async (store) => {

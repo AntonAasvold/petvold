@@ -32,6 +32,12 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #49 mergad.
+- Omprövning av skador när en policyversion ersätts, PR #50:
+  - `ClaimsService.reassessForPolicyChange(versioner)` omprövar varje skada vars senaste beslut fattades på en ersatt version. Ett nytt beslut skapas bara om underlaget har ändrats, så en händelse som kommer två gånger gör ingenting.
+  - Dev-servern anropar den för varje `policy.version_superseded`.
+  - Provat mot Postgres: en skada på Bella (1 500 kr) avslogs när policyn avslutades bakåt i tiden, och godkändes igen när avslutet återkallades.
+- 330 tester och 108 databastester.
 - #48 mergad.
 - Överlåtelse och dödsfall (ADR 0029), PR #49:
   - **Djurregistret har en outbox** med `animal.ownership_changed` och `animal.died` (migration 0024).
@@ -131,10 +137,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Skademotorn lyssnar på `policy.version_superseded` och omprövar skador efter ett avslut bakåt i tiden, eller policygrupper för kullar och hushåll.
+1. Gallringen kan få veta om öppna skador (via policyns relationer), så att den kan köras skarpt. Eller policygrupper för kullar och hushåll.
 
 **Öppet**
-- Skademotorn omprövar inte skador automatiskt när en policy avslutas bakåt i tiden. Händelsen `policy.version_superseded` finns, men ingen lyssnar på den än.
+- En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).
 - Gallringen känner till djurregistret och policyerna, men inte öppna skador. Den ska inte köras skarpt förrän skador rapporterar sina relationer.
 - Det sparas inte vem som slagit upp ett djur.
 
