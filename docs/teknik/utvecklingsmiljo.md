@@ -46,6 +46,7 @@ Exemplen finns i kontraktet (`components/examples`). Testerna kontrollerar att d
 | `npm run db:migrate` | Kör nya migreringar mot båda databaserna |
 | `npm run db:new <namn>` | Skapar en ny migreringsfil i `db/migrations/` |
 | `npm run test:db` | Databastester mot `TEST_DATABASE_URL` |
+| `npm run site` | Bygger dokumentationssajten i `_site/`: all Markdown i `docs/` och README som HTML, och API-sidan från `openapi.yaml`. Stoppar vid trasiga länkar. |
 
 Porten är 5432. Om den är upptagen: sätt `PETVOLD_PG_PORT` och ändra porten i `.env`.
 

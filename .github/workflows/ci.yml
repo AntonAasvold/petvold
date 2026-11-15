@@ -19,6 +19,7 @@ jobs:
       - run: npm test
       - run: npm run lint:openapi
       - run: npm run lint:lang
+      - run: npm run site
 
   database:
     # Same steps as locally: compose, migrations, database tests.

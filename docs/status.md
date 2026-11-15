@@ -5,6 +5,11 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 ## 2026-11-15 (pass 24)
 
 **Gjort**
+- #34 och #35 mergade.
+- Dokumentationen och API-specen publiceras på GitHub Pages, PR #36:
+  - **`npm run site`** bygger `_site/` från all Markdown i `docs/` och README, med länkar mellan sidorna och länkar till koden på GitHub. Den stoppar vid trasiga länkar.
+  - **API-sidan** (`api/`) är Scalar med `openapi.yaml`, samma som dev-serverns `/docs` men utan förifylld token.
+  - **Arbetsflödet `Pages`** publicerar efter varje merge till `main`. CI bygger sajten i varje PR.
 - #31 mergad: simulering och rättningen av outboxens ordning.
 - Referensdata i den nya modulen `catalog` (ADR 0022, Beslutad):
   - **Arter, raser och kön** med koder som aldrig ändras och etiketter per språk. `label` följer `Accept-Language`.

@@ -28,5 +28,6 @@ npm run test:db        # kräver npm run dev:up
 npm run typecheck
 npm run lint:openapi
 npm run lint:lang
+npm run site           # bygger dokumentationssajten i _site/
 npm run dev
 ```
