@@ -79,4 +79,4 @@ Svaret har `"value": "20990101-****"` och `"masked": true`. Numret är fött 209
 
 Dev-servern registrerar Bellas ägare `pty_owner001` (Anna Example) utan personnummer. Token `dev-registrar` får registrera och ändra parter i Sverige. Testerna använder personnummer födda 2099, som ingen levande person kan ha.
 
-*Inte byggt än:* kundens åtkomst till sin egen part, kontaktpersoner för organisationer, och gallring och anonymisering (GDPR artikel 17).
+*Inte byggt än:* kundens åtkomst till sin egen part, kontaktpersoner för organisationer, och gallring och anonymisering (GDPR artikel 17, föreslagen i ADR 0028).

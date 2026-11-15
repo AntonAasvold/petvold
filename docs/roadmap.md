@@ -40,7 +40,12 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Kullar i djurregistret (ADR 0027)
 - [x] Parter (ADR 0026): personer och organisationer, personnummer som aldrig visas, och historik. Roller ägs av modulen som har relationen.
 - [x] Djurregistret kontrollerar att ägaren finns som part, i djurets marknad
-- [ ] Gallring och anonymisering av personuppgifter (GDPR artikel 17)
+- [x] ADR om gallring och anonymisering av personuppgifter (ADR 0028)
+- [ ] Gallring och anonymisering enligt ADR 0028:
+  - lagringstider per marknad som inställning
+  - `lastActivity` i djurregistret och skademotorn
+  - anonymisering med fyra ögon och en logg som körs igen efter återställning
+  - begäran om radering och begränsning
 
 **M3 – Policy**
 - [ ] Bitemporala versioner, term, transaktionslivscykel
