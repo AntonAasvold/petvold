@@ -92,6 +92,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - Utbetalning av ersättning från skademotorn. Obetald, förfallen premie kvittas först om villkoren tillåter det, och kvittningen syns i utbetalningsordern och i förklaringen till kunden.
 - Billing: premieplaner, fakturor, påminnelser, tillgodohavande och utebliven betalning.
 - Ledger för premier och betalningar, med bokföringsperioder som skärs på bokföringsdatum och dagsavslut. En stängd period ändras aldrig: en rättelse bokas i en öppen period.
+- Saldon som skala: saldoavstämning per konto och bokföringsperiod, så att ett saldo räknas från senaste avstämning och inte summeras över alla rader. Gäller både skadornas och premiernas ledger, och byggs innan ledgern används i drift.
+- Partitionering per månad av verifikationsrader, outbox och idempotensnycklar, med rensning av publicerade händelser och utgångna nycklar.
 
 **M6 – Stöd**: dokument, utskick med preferenser, ärenden, interaktionslogg, klinikintegration.
 
@@ -99,7 +101,9 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 
 **Insikt – läsmodell för portföljen**: en egen modul som bara läser händelser och kan byggas om genom att spela upp dem. Den visar till exempel automatiseringsgrad, andel avvikelser, tid till utbetalning och prövningar. Belopp läses ur ledgern, och modulen håller inga egna. Kärnan ändras inte.
 
-**M7 – Drift**: Kubernetes med CloudNativePG, observabilitet, säkerhetskopiering, DORA-anpassning. Volymprov med genererade portföljer (tusentals försäkringar och skador) mot Postgres, med mål för svarstid och genomströmning.
+**M7 – Drift**: Kubernetes med CloudNativePG, observabilitet, säkerhetskopiering, DORA-anpassning.
+- Volymprov med k6 mot en genererad portfölj i storlek med ett stort bolag: 2 miljoner djur och 10 års historik (cirka 30 miljoner skador och 200 miljoner verifikationsrader). Mål för svarstid och genomströmning för skadebeslut, bitemporala uppslag och fakturakörning. Uppskattningen är 200–1 000 skadebeslut per sekund på en primär databas, och behovet under 10 per sekund vid toppar. Provet ska bekräfta eller ändra det.
+- Rapporter och aktuariefrågor körs mot en läsreplik eller en analysexport, aldrig mot den primära databasen.
 
 ## Öppna frågor
 
