@@ -114,3 +114,26 @@ test('scope, permissions and refusals', async () => {
   assert.equal((await call('GET', `/v1/policies/${p.id}/snapshot`, 'handler')).status, 422);
   assert.equal((await call('GET', '/v1/policies/pol_none', 'handler')).status, 404);
 });
+
+test('a policy is cancelled and the cancellation reversed', async () => {
+  const call = await setup();
+  const p = (await call('POST', '/v1/policies', 'seller', apply)).body;
+  // The test product keeps the term (no policy settings): the customer cannot cancel at once.
+  assert.equal((await call('POST', `/v1/policies/${p.id}/cancellations`, 'seller', { reason: 'customer-immediate' })).status, 422);
+  assert.equal((await call('POST', `/v1/policies/${p.id}/cancellations`, 'seller', { reason: 'later' })).status, 422);
+  assert.equal((await call('POST', `/v1/policies/${p.id}/cancellations`, 'handler', { reason: 'withdrawal' })).status, 403);
+
+  const w = await call('POST', `/v1/policies/${p.id}/cancellations`, 'seller', { reason: 'withdrawal' });
+  assert.equal(w.status, 201);
+  assert.ok(validatorFor('PolicyTransaction')(structuredClone(w.body)), JSON.stringify(validatorFor('PolicyTransaction').errors));
+  assert.deepEqual([w.body.cancellation.effectiveDate, w.body.cancellation.refund], ['2026-12-01', { amount: 480_000, currency: 'SEK' }]);
+  assert.equal((await call('GET', `/v1/policies/${p.id}/snapshot?date=2027-01-01`, 'handler')).body.status, 'cancelled');
+  assert.equal((await call('POST', `/v1/policies/${p.id}/cancellations`, 'seller', { reason: 'customer-term-end' })).status, 409);
+
+  assert.equal((await call('POST', `/v1/policies/${p.id}/reinstatements`, 'seller', { cancellationId: 'ptx_none', note: 'x' })).status, 409);
+  const back = await call('POST', `/v1/policies/${p.id}/reinstatements`, 'seller', { cancellationId: w.body.id, note: 'Registered by mistake' });
+  assert.equal(back.status, 201);
+  assert.equal((await call('GET', `/v1/policies/${p.id}/snapshot?date=2027-01-01`, 'handler')).body.status, 'active');
+  const history = (await call('GET', `/v1/policies/${p.id}/history`, 'handler')).body;
+  assert.deepEqual(history.transactions.map((t: any) => t.type), ['issue', 'cancel', 'reinstate']);
+});

@@ -1,7 +1,7 @@
 /** Shared PolicyStore tests, run against every implementation. */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PolicyConflictError, type Policy, type PolicyStore, type PolicyTransaction, type PolicyVersion, type Term } from '../src/index.ts';
+import { PolicyConflictError, type Policy, type PolicyEvent, type PolicyStore, type PolicyTransaction, type PolicyVersion, type Term } from '../src/index.ts';
 
 export type PolicyStoreFactory = () => Promise<{ store: PolicyStore; cleanup?: () => Promise<void> }>;
 
@@ -54,7 +54,7 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
 
     it('a policy is read back with its term, version and transaction', async (store) => {
       const t = issued();
-      await store.issue(t.policy, t.term, t.version, t.transaction);
+      await store.issue(t.policy, t.term, t.version, t.transaction, []);
       assert.deepEqual(await store.get('pol_t1'), { ...t.policy, terms: [t.term], versions: [t.version] });
       assert.deepEqual(await store.history('pol_t1'), [t.version]);
       assert.deepEqual(await store.transactions('pol_t1'), [t.transaction]);
@@ -66,7 +66,7 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
 
     it('the version on a date, as known at a time', async (store) => {
       const t = issued();
-      await store.issue(t.policy, t.term, t.version, t.transaction);
+      await store.issue(t.policy, t.term, t.version, t.transaction, []);
       assert.equal((await store.versionAt('pol_t1', '2026-12-01'))?.id, 'pv_t1');
       assert.equal((await store.versionAt('pol_t1', '2027-11-30'))?.id, 'pv_t1');
       assert.equal(await store.versionAt('pol_t1', '2027-12-01'), null); // end exclusive
@@ -75,16 +75,50 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
       assert.equal(await store.versionAt('pol_t1', '2027-01-01', '2026-11-15T09:59:59.000Z'), null); // not known yet
     });
 
+    it('a change supersedes versions and adds new ones, all or nothing, with its events', async (store) => {
+      const t = issued();
+      const ev = (id: string, type: PolicyEvent['type']): PolicyEvent => ({ id, type, policyId: 'pol_t1', occurredAt: at, data: { n: 1 } });
+      await store.issue(t.policy, t.term, t.version, t.transaction, [ev('pev_1', 'policy.issued')]);
+      const later = '2027-03-01T10:00:00.000Z';
+      const tx: PolicyTransaction = {
+        id: 'ptx_c1',
+        policyId: 'pol_t1',
+        type: 'cancel',
+        steps: [{ step: 'issued', at: later }],
+        requestedBy: 'cs',
+        requestedAt: later,
+        supersedes: ['pv_t1'],
+        cancellation: { reason: 'customer-immediate', receivedOn: '2027-03-01', effectiveDate: '2027-03-02', refund: { amount: 274_000, currency: 'SEK' } },
+      };
+      const cut: PolicyVersion = { ...t.version, id: 'pv_c1', validTo: '2027-03-02', sysFrom: later, transactionId: 'ptx_c1' };
+      const gone: PolicyVersion = { ...t.version, id: 'pv_c2', validFrom: '2027-03-02', status: 'cancelled', sysFrom: later, transactionId: 'ptx_c1' };
+      await store.apply('pol_t1', ['pv_t1'], [cut, gone], tx, [ev('pev_2', 'policy.cancelled')]);
+      await assert.rejects(store.apply('pol_t1', ['pv_t1'], [], { ...tx, id: 'ptx_c2' }, []), PolicyConflictError);
+      assert.deepEqual((await store.get('pol_t1'))!.versions, [cut, gone]);
+      assert.deepEqual(await store.history('pol_t1'), [{ ...t.version, sysTo: later }, cut, gone]);
+      assert.deepEqual((await store.transactions('pol_t1')).at(-1), tx);
+      assert.equal((await store.versionAt('pol_t1', '2027-06-01'))?.status, 'cancelled');
+      assert.equal((await store.versionAt('pol_t1', '2027-06-01', '2027-02-01T00:00:00.000Z'))?.status, 'active');
+      // A cancelled policy does not stop a new one for the animal.
+      const next = issued(5, { validFrom: '2027-04-01', validTo: '2028-04-01' });
+      await store.issue(next.policy, next.term, next.version, next.transaction, []);
+
+      const pending = await store.pendingEvents(10);
+      assert.deepEqual(pending.map((e) => e.id), ['pev_1', 'pev_2']);
+      await store.markPublished(['pev_1'], later);
+      assert.deepEqual((await store.pendingEvents(10)).map((e) => e.id), ['pev_2']);
+    });
+
     it('an animal is never insured twice for the same day', async (store) => {
       const a = issued(1);
-      await store.issue(a.policy, a.term, a.version, a.transaction);
+      await store.issue(a.policy, a.term, a.version, a.transaction, []);
       const b = issued(2, { validFrom: '2027-06-01', validTo: '2028-06-01' });
-      await assert.rejects(store.issue(b.policy, b.term, b.version, b.transaction), PolicyConflictError);
+      await assert.rejects(store.issue(b.policy, b.term, b.version, b.transaction, []), PolicyConflictError);
       assert.equal(await store.get('pol_t2'), null);
       const c = issued(3, { validFrom: '2027-12-01', validTo: '2028-12-01' }); // starts the day the first ends
-      await store.issue(c.policy, c.term, c.version, c.transaction);
+      await store.issue(c.policy, c.term, c.version, c.transaction, []);
       const d = issued(4, { animalId: 'ani_bella' });
-      await store.issue(d.policy, d.term, d.version, d.transaction);
+      await store.issue(d.policy, d.term, d.version, d.transaction, []);
       assert.deepEqual(await store.findByAnimal('ani_rex'), ['pol_t1', 'pol_t3']);
     });
   });

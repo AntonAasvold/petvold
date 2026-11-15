@@ -8,6 +8,7 @@ const offer = (o: Partial<ProductOffer> = {}): ProductOffer => ({
   currency: 'SEK',
   species: ['dog'],
   onSale: true,
+  midTermCancellation: 'term-end',
   vetCareTermsFor: (c) => {
     if (c.annualLimit !== undefined && c.annualLimit !== 6_000_000) throw new Error(`No annual limit ${c.annualLimit}`);
     return { ...vetCare, deductibleOption: c.deductible ?? 'standard' };
@@ -102,4 +103,123 @@ test('as an ActivitySource: ongoing while a version has not ended', async () => 
   await s.issue(input(), by);
   assert.deepEqual(await s.activityOf('pty_anna'), { ongoing: true });
   assert.equal(await s.activityOf('pty_bo'), null);
+});
+
+function cancelSetup(midTermCancellation: 'term-end' | 'immediate' = 'term-end') {
+  let now = '2026-11-15T10:00:00.000Z';
+  let n = 0;
+  const store = new InMemoryPolicyStore();
+  const s = new PolicyService({
+    store,
+    products: { offer: async () => offer({ midTermCancellation }) },
+    animals: { get: async () => ({ market: 'SE', species: 'dog', birthDate: '2024-03-01' }) },
+    parties: { marketOf: async () => 'SE' },
+    clock: { now: () => now },
+    ids: { next: (p) => `${p}_${++n}` },
+  });
+  return { s, store, at: (iso: string) => (now = iso) };
+}
+// A term from 2026-12-01 to 2027-12-01 is 365 days; 365 000 minor units give 1 000 a day.
+const yearly = input({ premium: { amount: 365_000, currency: 'SEK' } });
+
+test('the customer cancels to the end of the term, always', async () => {
+  const { s, at } = cancelSetup();
+  const p = await s.issue(yearly, by);
+  at('2027-03-01T10:00:00.000Z');
+  const tx = await s.cancel(p.id, { reason: 'customer-term-end' }, 'cs');
+  assert.deepEqual([tx.cancellation?.effectiveDate, tx.cancellation?.refund.amount, tx.supersedes], ['2027-12-01', 0, []]);
+  // Nothing changes in the versions now; the cancellation will stop the renewal.
+  assert.deepEqual((await s.get(p.id)).versions.map((v) => [v.validTo, v.status]), [['2027-12-01', 'active']]);
+  assert.deepEqual((await s.cancellationsInForce(p.id)).map((c) => c.id), [tx.id]);
+  await rejects(s.cancel(p.id, { reason: 'customer-term-end' }, 'cs'), 'conflict', /already cancelled from 2027-12-01/);
+  // An earlier end is still possible, e.g. when the animal dies.
+  assert.equal((await s.cancel(p.id, { reason: 'need-ceased', effectiveDate: '2027-03-01', note: 'Died' }, 'cs')).cancellation?.effectiveDate, '2027-03-01');
+});
+
+test('the customer cancels at once only if the product allows it, with the rest of the premium back', async () => {
+  const kept = cancelSetup('term-end');
+  const p1 = await kept.s.issue(yearly, by);
+  kept.at('2027-03-01T10:00:00.000Z');
+  await rejects(kept.s.cancel(p1.id, { reason: 'customer-immediate' }, 'cs'), 'validation', /keeps the term/);
+
+  const { s, at } = cancelSetup('immediate');
+  const p = await s.issue(yearly, by);
+  at('2027-03-01T10:00:00.000Z');
+  await rejects(s.cancel(p.id, { reason: 'customer-immediate', effectiveDate: '2027-03-01' }, 'cs'), 'validation', /day after notice/);
+  const tx = await s.cancel(p.id, { reason: 'customer-immediate' }, 'cs');
+  // From 2027-03-02 to 2027-12-01: 274 days of 365.
+  assert.deepEqual([tx.cancellation?.effectiveDate, tx.cancellation?.refund], ['2027-03-02', { amount: 274_000, currency: 'SEK' }]);
+  const after = await s.get(p.id);
+  assert.deepEqual(after.versions.map((v) => [v.validFrom, v.validTo, v.status]), [['2026-12-01', '2027-03-02', 'active'], ['2027-03-02', '2027-12-01', 'cancelled']]);
+  assert.equal((await s.getPolicyAt(p.id, '2027-03-10'))?.status, 'cancelled');
+  assert.equal((await s.getPolicyAt(p.id, '2027-03-01'))?.status, 'active');
+  // What was known before the cancellation still answers the same.
+  assert.equal((await s.getPolicyAt(p.id, '2027-03-10', '2027-02-01T00:00:00.000Z'))?.status, 'active');
+});
+
+test('withdrawal within 14 days of issue, and not later', async () => {
+  const { s, at } = cancelSetup();
+  const p = await s.issue(yearly, by); // issued 2026-11-15, starts 2026-12-01
+  at('2026-11-20T10:00:00.000Z');
+  const tx = await s.cancel(p.id, { reason: 'withdrawal' }, 'cs');
+  // Withdrawn before the start: nothing applied, everything back.
+  assert.deepEqual([tx.cancellation?.effectiveDate, tx.cancellation?.refund.amount], ['2026-12-01', 365_000]);
+  assert.deepEqual((await s.get(p.id)).versions.map((v) => v.status), ['cancelled']);
+
+  const late = cancelSetup();
+  const q = await late.s.issue(yearly, by);
+  late.at('2026-11-30T10:00:00.000Z');
+  await rejects(late.s.cancel(q.id, { reason: 'withdrawal' }, 'cs'), 'validation', /withdrawal period of 14 days/);
+});
+
+test('the need ceased in the past, e.g. the animal died, and the cancellation can be reversed', async () => {
+  const { s, store, at } = cancelSetup();
+  const p = await s.issue(yearly, by);
+  at('2027-03-20T10:00:00.000Z');
+  await rejects(s.cancel(p.id, { reason: 'need-ceased', effectiveDate: '2027-03-01' }, 'cs'), 'validation', /note/);
+  await rejects(s.cancel(p.id, { reason: 'need-ceased', note: 'Died' }, 'cs'), 'validation', /effectiveDate/);
+  const tx = await s.cancel(p.id, { reason: 'need-ceased', effectiveDate: '2027-03-01', note: 'The animal died' }, 'cs');
+  assert.deepEqual([tx.cancellation?.effectiveDate, tx.cancellation?.refund.amount], ['2027-03-01', 275_000]);
+
+  await rejects(s.reinstate(p.id, { cancellationId: 'ptx_none', note: 'x' }, 'cs'), 'conflict', /latest transaction/);
+  const back = await s.reinstate(p.id, { cancellationId: tx.id, note: 'The death was registered on the wrong animal' }, 'cs');
+  assert.equal(back.reverses, tx.id);
+  const now = await s.get(p.id);
+  assert.deepEqual(now.versions.map((v) => [v.validFrom, v.validTo, v.status]), [['2026-12-01', '2027-12-01', 'active']]);
+  assert.equal((await s.history(p.id)).versions.length, 4); // issued, cut, cancelled, reinstated
+  const events = await store.pendingEvents(100);
+  assert.deepEqual(events.map((e) => e.type), [
+    'policy.issued',
+    'policy.cancelled',
+    'policy.version_superseded',
+    'policy.reinstated',
+    'policy.version_superseded',
+    'policy.version_superseded',
+  ]);
+  await store.markPublished([events[0]!.id], '2027-03-20T11:00:00.000Z');
+  assert.equal((await store.pendingEvents(100)).length, 5);
+});
+
+test('the insurer cancels with notice, for breach, or for unpaid premium', async () => {
+  const a = cancelSetup();
+  const p = await a.s.issue(yearly, by);
+  a.at('2027-11-02T10:00:00.000Z');
+  await rejects(a.s.cancel(p.id, { reason: 'insurer-term-end' }, 'uw'), 'validation', /at least 1 month before/);
+  a.at('2027-10-31T10:00:00.000Z');
+  assert.equal((await a.s.cancel(p.id, { reason: 'insurer-term-end' }, 'uw')).cancellation?.effectiveDate, '2027-12-01');
+
+  const b = cancelSetup();
+  const q = await b.s.issue(yearly, by);
+  b.at('2027-03-01T10:00:00.000Z');
+  await rejects(b.s.cancel(q.id, { reason: 'insurer-breach' }, 'uw'), 'validation', /note/);
+  assert.equal((await b.s.cancel(q.id, { reason: 'unpaid-premium' }, 'billing')).cancellation?.effectiveDate, '2027-03-15');
+
+  const c = cancelSetup();
+  const r = await c.s.issue(yearly, by);
+  c.at('2027-03-01T10:00:00.000Z');
+  assert.equal((await c.s.cancel(r.id, { reason: 'insurer-breach', note: 'Fraud' }, 'uw')).cancellation?.effectiveDate, '2027-03-15');
+  await rejects(c.s.cancel(r.id, { reason: 'customer-immediate', receivedOn: '2027-04-01' }, 'cs'), 'validation', /receivedOn/);
+  await rejects(c.s.cancel(r.id, { reason: 'whim' as never }, 'cs'), 'validation', /Unknown reason/);
+  // An earlier death still moves the end earlier.
+  assert.equal((await c.s.cancel(r.id, { reason: 'need-ceased', effectiveDate: '2027-02-20', note: 'Died' }, 'cs')).cancellation?.effectiveDate, '2027-02-20');
 });

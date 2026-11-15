@@ -4,7 +4,7 @@
  * and by the dev server.
  */
 import { AnimalError, type AnimalService } from '@petvold/animals';
-import { CatalogError, onSale, vetCareTermsFor, type ProductService } from '@petvold/catalog';
+import { CatalogError, onSale, policySettingsOf, vetCareTermsFor, type ProductService } from '@petvold/catalog';
 import type { AnimalPort, ProductPort } from '@petvold/policies';
 
 /** Product versions as the policy module sees them (ADR 0023, 0029). */
@@ -23,6 +23,7 @@ export function productPort(products: ProductService): ProductPort {
         currency: v.content.currency,
         species: [...v.content.species],
         onSale: onSale(v, onDate),
+        midTermCancellation: policySettingsOf(v.content).midTermCancellation,
         vetCareTermsFor: (choice) => ({ ...vetCareTermsFor(v, choice), deductibleOption: choice.deductible ?? v.content.vetCare.defaultDeductible }),
       };
     },

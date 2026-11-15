@@ -46,7 +46,9 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 
 **M3 – Policy**
 - [x] Tecknande med term, bitemporala versioner och transaktion. Skademotorn läser policyer från modulen (ADR 0029).
-- [ ] Avslut, förnyelse och ändring
+- [x] Avslut enligt marknadsprofil och produktinställning, med premie tillbaka, återkallelse och händelser (ADR 0029)
+- [ ] Förnyelse och ändring
+- [ ] Förslag till avslut och överlåtelse från djurregistrets händelser
 - [ ] Ändring, reversering och ändring i fel ordning
 - [ ] PolicyGroup och överlåtelse
 - [ ] Policyer och skador rapporterar partens relationer till gallringen (`ActivitySource`, ADR 0028)

@@ -741,6 +741,20 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/policies/:policyId', async (c) => send(c, await visiblePolicy(c)));
 
+  app.post('/v1/policies/:policyId/cancellations', async (c) => {
+    const p = await visiblePolicy(c);
+    const r = await readJson(c, 'CancelPolicyRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.cancel(p.id, r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/policies/:policyId/reinstatements', async (c) => {
+    const p = await visiblePolicy(c);
+    const r = await readJson(c, 'ReinstatePolicyRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.reinstate(p.id, r.body, c.get('principal').subject) }));
+  });
+
   app.get('/v1/policies/:policyId/history', async (c) => send(c, await policies.history((await visiblePolicy(c)).id)));
 
   app.get('/v1/policies/:policyId/snapshot', async (c) => {

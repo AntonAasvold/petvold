@@ -1217,6 +1217,78 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PolicyRecord' }
 
+  /v1/policies/{policyId}/cancellations:
+    post:
+      tags: [policies]
+      operationId: cancelPolicy
+      x-permission: policies:write
+      summary: End a policy
+      description: |
+        Requires the permission `policies:write` (ADR 0029). The reason decides
+        from when, following the market's law and the product's setting:
+
+        - `customer-term-end`: at the end of the term. Nothing changes now; the policy is not renewed.
+        - `customer-immediate`: the day after notice (or a later `effectiveDate`), if the product allows it, with the rest of the premium refunded.
+        - `withdrawal`: within the withdrawal period after issue, the day after notice.
+        - `need-ceased`: from `effectiveDate`, possibly in the past, e.g. the day the animal died. Needs a note.
+        - `insurer-term-end`: at the end of the term, with notice before it.
+        - `insurer-breach`: after the notice period from `receivedOn` (the day sent). Needs a note.
+        - `unpaid-premium`: after the notice period from `receivedOn`.
+
+        `receivedOn` is the day the notice reached or left the insurer
+        (default today). Versions from the effective date are superseded by
+        a cancelled one, and the refund is the premium per day for the days
+        lost. An earlier cancellation still in force gives `409`.
+      parameters:
+        - $ref: '#/components/parameters/PolicyIdPath'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancelPolicyRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The cancellation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyTransaction' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/policies/{policyId}/reinstatements:
+    post:
+      tags: [policies]
+      operationId: reinstatePolicy
+      x-permission: policies:write
+      summary: Reverse the latest cancellation
+      description: |
+        Requires the permission `policies:write`. Only when the cancellation is
+        the policy's latest transaction, e.g. a death registered by mistake.
+        The versions it superseded apply again, and the refund is reversed.
+      parameters:
+        - $ref: '#/components/parameters/PolicyIdPath'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReinstatePolicyRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The reinstatement
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyTransaction' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/policies/{policyId}/history:
     get:
       tags: [policies]
@@ -2713,6 +2785,18 @@ components:
           description: Species codes from the reference data.
         names: { $ref: '#/components/schemas/Labels' }
         ruleSeries: { type: string, pattern: '^[A-Z0-9][A-Z0-9-]{1,63}$', description: 'The rule series claims are assessed with, e.g. SE-HUND-VV.' }
+        policy:
+          type: object
+          additionalProperties: false
+          description: How the product's policies behave over time (ADR 0029). Omitted settings get their defaults.
+          properties:
+            midTermCancellation:
+              type: string
+              enum: [term-end, immediate]
+              default: term-end
+              description: 'The customer''s cancellation during a term: at the end of the term (binding period), or the day after notice with the rest of the premium refunded.'
+            renewalLeadDays: { type: integer, minimum: 31, maximum: 120, default: 45, description: Days before the term ends that it is renewed. }
+            transferAcceptanceDays: { type: integer, minimum: 1, maximum: 90, default: 30, description: Days a new owner has to accept a transferred policy. }
         vetCare:
           type: object
           additionalProperties: false
@@ -2920,7 +3004,7 @@ components:
       properties:
         id: { type: string }
         policyId: { type: string }
-        type: { type: string, enum: [issue] }
+        type: { type: string, enum: [issue, cancel, reinstate] }
         steps:
           type: array
           items:
@@ -2932,6 +3016,46 @@ components:
               note: { type: string }
         requestedBy: { type: string }
         requestedAt: { $ref: '#/components/schemas/DateTime' }
+        supersedes: { type: array, items: { type: string }, description: The versions this transaction ended in system time. }
+        cancellation:
+          type: object
+          required: [reason, receivedOn, effectiveDate, refund]
+          properties:
+            reason: { $ref: '#/components/schemas/CancellationReason' }
+            receivedOn: { $ref: '#/components/schemas/Date' }
+            effectiveDate: { $ref: '#/components/schemas/Date', description: The first day the policy no longer applies. }
+            refund:
+              type: object
+              required: [amount, currency]
+              description: Premium for the days that no longer apply, to be paid back.
+              properties:
+                amount: { $ref: '#/components/schemas/NonNegativeMoney' }
+                currency: { $ref: '#/components/schemas/Currency' }
+            note: { type: string }
+        reverses: { type: string, description: A reinstatement's cancellation. }
+        note: { type: string }
+
+    CancellationReason:
+      type: string
+      enum: [customer-term-end, customer-immediate, withdrawal, need-ceased, insurer-term-end, insurer-breach, unpaid-premium]
+
+    CancelPolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { $ref: '#/components/schemas/CancellationReason' }
+        receivedOn: { $ref: '#/components/schemas/Date', description: 'The day the notice reached the insurer, or the insurer sent it. Default today.' }
+        effectiveDate: { $ref: '#/components/schemas/Date', description: 'For need-ceased the day the need ceased; for customer-immediate a later day than the day after notice.' }
+        note: { type: string, maxLength: 2000, description: 'Required for need-ceased and insurer-breach. Must not contain personal data.' }
+
+    ReinstatePolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [cancellationId, note]
+      properties:
+        cancellationId: { type: string }
+        note: { type: string, minLength: 1, maxLength: 2000 }
 
     PolicyRecord:
       type: object
