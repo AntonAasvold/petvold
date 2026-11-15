@@ -56,6 +56,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **`AGENTS.md`** för Cursor och andra agenter, med hur man bygger mot API:t.
   - Provat: dev-servern mot Postgres efter `dev:reset`, två starter i rad. Köerna, `/v1/me`, preflight och policyerna svarade som väntat.
 - 373 tester och 112 databastester.
+- #63 mergad.
+- ADR 0031 om teckningsregler, ansökan och godkännande vid tecknande (F1, F3), Föreslagen, PR #64:
+  - **Teckningsregler** som en versionerad serie i `decisioning` (`underwriting.v1`). De innehåller åldersgränser per art, hälsofrågor, regler för svaren och raser.
+  - **En ren funktion** i den nya modulen `underwriting-core`. Utfallen är godkänd, godkänd med förbehåll, manuell prövning och avslag med skälskod.
+  - **Ansökan sparas** i policymodulen med underlaget (`POST /v1/applications`). Den har en kö för manuell prövning och den nya rättigheten `policies:underwrite`.
+  - **Godkännandet** sparas med kanal, referens och tid vid varje tecknande.
+  - **Källor:** FAL 2 kap. 2 §, 3 kap. 1–2 §§, 4 kap. 1–2 §§ och 7 kap. 6 §, och VVG § 19.
 - #59 mergad.
 - Datum i marknadens tidszon (granskningen, A3), PR #60:
   - `marketDate(market, tidpunkt)` och `MARKET_TIME_ZONES` i `common`, med 15 europeiska marknader. En okänd marknad räknar i UTC.
@@ -228,7 +235,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
 **Nästa steg**
 1. Gränssnittet kan börja: API:t har listor, köer, `/v1/me`, CORS och exempeldata.
-2. Teckningsregler (F1, ny ADR) och godkännande vid tecknande (F3). Sedan ett beslut om dokument till kunden (F2).
+2. Beslut om ADR 0031. Sedan bygge i steg: `underwriting-core` och serien, ansökan med godkännande, och manuell prövning. Därefter ett beslut om dokument till kunden (F2).
 
 **Öppet**
 - Flera instanser av servern kör var sitt relä. Leveransen sker minst en gång, men samma händelse kan levereras av två instanser samtidigt. Ett relä med lås per outbox (pg-boss) behövs före drift med flera instanser.
