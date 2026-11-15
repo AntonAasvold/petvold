@@ -34,6 +34,8 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `animals:read` | Läsa djurregistret: djur, id-nummer, ägare och historik (ADR 0024) | `GET /v1/animals`, `.../{id}`, `.../{id}/revisions` |
 | `animals:write` | Registrera djur, rätta uppgifter, lägga till id-nummer och byta ägare | `POST /v1/animals`, `PUT .../{id}`, `.../identifiers`, `.../ownerships` |
 | `animals:lookup` | Slå upp ett djur på id-nummer, utan ägare eller historik. Hittar bara djur som är öppna för uppslagning (ADR 0025). | `GET /v1/animal-lookup` |
+| `policies:read` | Läsa policyer, termer och historik (ADR 0029) | `GET /v1/policies`, `.../{id}`, `.../history`, `.../snapshot` |
+| `policies:write` | Teckna policyer | `POST /v1/policies` |
 | `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/access/roles`, `.../versions` |
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/access/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
@@ -54,6 +56,7 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `rules-publisher` | `rules:read`, `rules:publish`, `rules:simulate`, `catalog:read` | – | Granskar och publicerar regler |
 | `animal-registrar` | `animals:read`, `animals:write`, `catalog:read`, `parties:read` | – | Registrerar djur och ägarbyten, till exempel kundservice |
 | `party-registrar` | `parties:read`, `parties:write` | – | Registrerar personer och organisationer, till exempel kundservice |
+| `policy-registrar` | `policies:read`, `policies:write`, `animals:read`, `parties:read`, `catalog:read` | – | Tecknar policyer, till exempel säljkanal eller kundservice |
 | `privacy-officer` | `parties:read`, `parties:privacy`, `parties:erase`, `parties:retention` | – | Dataskyddsansvarig. Två personer behövs för att anonymisera. |
 | `retention-job` | `parties:retention` | – | Schemalagd gallringskörning. Begär bara, och en dataskyddsansvarig godkänner. |
 | `catalog-manager` | `catalog:read`, `catalog:write` | – | Underhåller referensdata och skriver produktutkast |
@@ -181,6 +184,7 @@ Dev-servern har elva tokens:
 | `dev-registrar` | registrerar djur och parter | SE |
 | `dev-privacy`, `dev-privacy-2` | två dataskyddsansvariga | SE |
 | `dev-retention-job` | gallringskörning | alla |
+| `dev-seller` | tecknar policyer | SE |
 | `dev-clinic` | klinik | SE, klinik `clinic_001` |
 | `dev-job` | omprövningsjobb | alla marknader |
 | `dev-customer` | kundkanal | SE, försäkringen `pol_bella` |

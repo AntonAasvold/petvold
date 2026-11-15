@@ -45,7 +45,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Gallring enligt ADR 0028: lagringstider per marknad, relationer från djurregistret, gallringskörning och omkörning efter återställning
 
 **M3 – Policy**
-- [ ] Bitemporala versioner, term, transaktionslivscykel
+- [x] Tecknande med term, bitemporala versioner och transaktion. Skademotorn läser policyer från modulen (ADR 0029).
+- [ ] Avslut, förnyelse och ändring
 - [ ] Ändring, reversering och ändring i fel ordning
 - [ ] PolicyGroup och överlåtelse
 - [ ] Policyer och skador rapporterar partens relationer till gallringen (`ActivitySource`, ADR 0028)
