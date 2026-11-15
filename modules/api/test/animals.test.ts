@@ -172,3 +172,40 @@ test('a clinic looks up an animal by chip only when the animal is open for looku
   const { allowLookup: _a, ...missing } = open;
   assert.equal((await call('PUT', `/v1/animals/${a.id}`, 'registrar', { ...missing, basedOnRevision: 3 })).status, 422);
 });
+
+test('a litter is registered with its animals, found by id, and its animals sold one by one', async () => {
+  const call = await setup();
+  await references(call);
+  await call('PUT', '/v1/reference-data/sex/female', 'catalog', { labels: { en: 'Female' } });
+  const dam = (await (await call('POST', '/v1/animals', 'registrar', { ...rex, sex: 'female', name: 'Dam', owner: { partyId: 'pty_bo', from: '2024-05-01' } })).json()) as any;
+  const body = {
+    market: 'SE',
+    species: 'dog',
+    birthDate: '2026-09-01',
+    damId: dam.id,
+    breederPartyId: 'pty_bo',
+    animals: [
+      { name: 'Pup A', sex: 'female', breed: 'dog-beagle' },
+      { name: 'Pup B', sex: 'male', identifiers: [{ type: 'microchip', value: '752098100000043' }] },
+    ],
+  };
+  const res = await call('POST', '/v1/litters', 'registrar', body);
+  assert.equal(res.status, 201);
+  const l = (await res.json()) as any;
+  assert.ok(validatorFor('Litter')(structuredClone(l)));
+  assert.deepEqual([l.damId, l.breederPartyId, l.animalIds.length], [dam.id, 'pty_bo', 2]);
+  assert.deepEqual(await (await call('GET', `/v1/litters/${l.id}`, 'handler')).json(), l);
+
+  const pup = (await (await call('GET', `/v1/animals/${l.animalIds[1]}`, 'handler')).json()) as any;
+  valid(pup);
+  assert.deepEqual([pup.litterId, pup.breed, pup.ownerships[0].partyId, pup.ownerships[0].validFrom], [l.id, undefined, 'pty_bo', '2026-09-01']);
+  assert.equal((await call('POST', `/v1/animals/${pup.id}/ownerships`, 'registrar', { partyId: 'pty_anna', from: '2026-11-01', reason: 'Sold' })).status, 201);
+
+  assert.equal((await call('GET', `/v1/litters/${l.id}`, 'registrarDe')).status, 404);
+  assert.equal((await call('GET', '/v1/litters/lit_none', 'handler')).status, 404);
+  assert.equal((await call('POST', '/v1/litters', 'registrarDe', body)).status, 403);
+  assert.equal((await call('POST', '/v1/litters', 'handler', body)).status, 403);
+  assert.equal((await call('POST', '/v1/litters', 'registrar', { ...body, animals: [] })).status, 422);
+  assert.equal((await call('POST', '/v1/litters', 'registrar', { ...body, breederPartyId: 'pty_dag' })).status, 422);
+  assert.equal((await call('POST', '/v1/litters', 'registrar', { ...body, damId: undefined, animals: [body.animals[1]] })).status, 409); // chip taken
+});

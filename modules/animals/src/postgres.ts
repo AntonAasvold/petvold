@@ -3,7 +3,8 @@
  * service role `animals_service`: it may insert and read, and may only set the
  * end of an open ownership. The database also checks that market and species
  * never change and that ownerships follow each other without gaps.
- * Migration 0016 adds whether the animal is open for lookup (ADR 0025).
+ * Migration 0016 adds whether the animal is open for lookup (ADR 0025), and
+ * migration 0018 adds litters (ADR 0027).
  */
 import type pg from 'pg';
 import {
@@ -15,6 +16,8 @@ import {
   type AnimalStore,
   type IdentifierType,
   type ISODate,
+  type Litter,
+  type NewAnimal,
   type Ownership,
 } from './index.ts';
 
@@ -37,8 +40,10 @@ export class PostgresAnimalStore implements AnimalStore {
        from animals.ownership where animal_id = $1 order by seq`,
       [id],
     );
+    const litter = await this.pool.query(`select litter_id from animals.litter_member where animal_id = $1`, [id]);
     return {
       ...toAnimal(rows[0]),
+      ...(litter.rows[0] ? { litterId: litter.rows[0].litter_id } : {}),
       identifiers: ids.rows.map((r) => ({ type: r.type, value: r.value, addedBy: r.added_by, addedAt: iso(r.added_at) })),
       ownerships: owners.rows.map((r) => ({
         seq: r.seq,
@@ -77,6 +82,49 @@ export class PostgresAnimalStore implements AnimalStore {
       for (const i of identifiers) await insertIdentifier(db, animal.id, i);
       await insertOwnership(db, animal.id, owner);
     });
+  }
+
+  async registerLitter(litter: Litter, animals: NewAnimal[]): Promise<void> {
+    await this.tx(async (db) => {
+      await db
+        .query(
+          `insert into animals.litter (litter_id, market, species, birth_date, dam_id, sire_id, breeder_party_id, registered_by, registered_at)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [litter.id, litter.market, litter.species, litter.birthDate, litter.damId ?? null, litter.sireId ?? null, litter.breederPartyId, litter.registeredBy, litter.registeredAt],
+        )
+        .catch(conflict(`Litter ${litter.id} exists`));
+      for (const [i, a] of animals.entries()) {
+        await insertRevision(db, a.animal);
+        for (const id of a.identifiers) await insertIdentifier(db, a.animal.id, id);
+        await insertOwnership(db, a.animal.id, a.owner);
+        await db
+          .query(`insert into animals.litter_member (animal_id, litter_id, position) values ($1, $2, $3)`, [a.animal.id, litter.id, i + 1])
+          .catch(conflict(`Animal ${a.animal.id} is already in a litter`));
+      }
+    });
+  }
+
+  async getLitter(id: string): Promise<Litter | null> {
+    const { rows } = await this.pool.query(
+      `select litter_id, market, species, birth_date::text as birth_date, dam_id, sire_id, breeder_party_id, registered_by, registered_at
+       from animals.litter where litter_id = $1`,
+      [id],
+    );
+    const r = rows[0];
+    if (!r) return null;
+    const members = await this.pool.query(`select animal_id from animals.litter_member where litter_id = $1 order by position`, [id]);
+    return {
+      id: r.litter_id,
+      market: r.market,
+      species: r.species,
+      birthDate: r.birth_date,
+      ...(r.dam_id === null ? {} : { damId: r.dam_id }),
+      ...(r.sire_id === null ? {} : { sireId: r.sire_id }),
+      breederPartyId: r.breeder_party_id,
+      animalIds: members.rows.map((m) => m.animal_id),
+      registeredBy: r.registered_by,
+      registeredAt: iso(r.registered_at),
+    };
   }
 
   async appendRevision(animal: Animal): Promise<void> {

@@ -549,6 +549,27 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/animals/:animalId', async (c) => send(c, await visibleAnimal(c)));
 
+  // Litters (ADR 0027): same scope as animals.
+  app.post('/v1/litters', async (c) => {
+    const r = await readJson(c, 'RegisterLitterRequest');
+    if (!r.ok) return r.res;
+    const scope = c.get('scope');
+    if (scope.clinicId || scope.policyIds || !(scope.markets === '*' || scope.markets.has(r.body.market))) {
+      return problem(c, 403, 'Not permitted', 'The market is outside the caller\'s scope');
+    }
+    return idempotent(c, r.body, async () => ({ status: 201, body: await animals.registerLitter(r.body, c.get('principal').subject) }));
+  });
+
+  app.get('/v1/litters/:litterId', async (c) => {
+    const id = c.req.param('litterId');
+    const l = await animals.getLitter(id);
+    const scope = c.get('scope');
+    if (scope.clinicId || scope.policyIds || !(scope.markets === '*' || scope.markets.has(l.market))) {
+      throw new AnimalError('not_found', `Litter ${id} does not exist`);
+    }
+    return send(c, l);
+  });
+
   app.put('/v1/animals/:animalId', async (c) => {
     const a = await visibleAnimal(c);
     const r = await readJson(c, 'CorrectAnimalRequest');

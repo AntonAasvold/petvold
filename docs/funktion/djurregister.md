@@ -1,6 +1,6 @@
 # Djurregister
 
-Registret håller ordning på de försäkrade djuren: vad djuret är, hur det identifieras och vem som äger det vid en viss tidpunkt. Besluten bakom finns i ADR 0024 och ADR 0025 (uppslagning).
+Registret håller ordning på de försäkrade djuren: vad djuret är, hur det identifieras och vem som äger det vid en viss tidpunkt. Besluten bakom finns i ADR 0024, ADR 0025 (uppslagning) och ADR 0027 (kullar).
 
 ## Vad ett djur har
 
@@ -16,6 +16,7 @@ Registret håller ordning på de försäkrade djuren: vad djuret är, hur det id
 | `allowLookup` | Om djuret kan slås upp, till exempel av en klinik. Stängt om inget anges. | Med motivering |
 | `identifiers` | Chip, registreringsnummer och pass | Läggs till, tas aldrig bort |
 | `ownerships` | Ägare med giltighetstid | Ägarbyte |
+| `litterId` | Kullen djuret föddes i, om det registrerades med en kull | Aldrig |
 
 ## Så fungerar det
 
@@ -35,6 +36,8 @@ Registret håller ordning på de försäkrade djuren: vad djuret är, hur det id
 | `GET /v1/animals/{id}/revisions` | `animals:read` | Alla revisioner, äldst först |
 | `POST /v1/animals/{id}/identifiers` | `animals:write` | Lägger till ett id-nummer |
 | `POST /v1/animals/{id}/ownerships` | `animals:write` | Ny ägare från ett datum |
+| `POST /v1/litters` | `animals:write` | Registrerar en kull med alla djur, ägda av uppfödaren från födelsedatumet |
+| `GET /v1/litters/{id}` | `animals:read` | Kullen med föräldrar, uppfödare och djur |
 | `GET /v1/animal-lookup?microchip=…` | `animals:lookup` | Slår upp ett djur som är öppet för uppslagning. Visar inga ägare. Det går också att använda `registration` eller `passport`. |
 
 ## Exempel
@@ -65,6 +68,22 @@ POST /v1/animals
 
 Om Rex är stängd, inte finns eller finns i en annan marknad blir svaret `{ "items": [] }`.
 
+**Kennel Exempel registrerar en kull:**
+
+```http
+POST /v1/litters
+{
+  "market": "SE", "species": "dog", "birthDate": "2026-09-01",
+  "damId": "ani_…", "sireId": "ani_…", "breederPartyId": "pty_kennel",
+  "animals": [
+    { "name": "Valp 1", "sex": "female" },
+    { "name": "Valp 2", "sex": "male", "identifiers": [{ "type": "microchip", "value": "752098100000043" }] }
+  ]
+}
+```
+
+Båda valparna ägs av kenneln från 1 september. Om båda föräldrarna är beaglar blir valparna det också. Varje valp har `litterId`, och den säljs med ett vanligt ägarbyte.
+
 **Rex säljs 1 juni:** `POST /v1/animals/{id}/ownerships` med `{ "partyId": "pty_bo", "from": "2026-06-01", "reason": "Såld" }`. Anna ägde Rex till och med 31 maj. Bo äger honom från 1 juni.
 
 ## Vem ser vad
@@ -86,10 +105,11 @@ Om Rex är stängd, inte finns eller finns i en annan marknad blir svaret `{ "it
 | Dödsdatum i framtiden eller före födelsedatumet | `422` |
 | Ny ägare samma dag som eller före den gällande, eller efter dödsdatumet | `422` |
 | Samma ägare igen | `409` |
+| En kull utan djur eller med fler än 24, en mor som inte är hona, en förälder av annan art eller född efter kullen | `422` |
 | Ägaren finns inte, eller hör till en annan marknad | `422` |
 
 ## Lokalt
 
 Dev-servern registrerar Bella (`ani_bella`, labrador, chip `752098100000001`, ägare `pty_owner001`, öppen för uppslagning) första gången. Token `dev-clinic` kan slå upp henne. Token `dev-registrar` får registrera och ändra djur i Sverige.
 
-*Inte byggt än:* en logg över vem som slagit upp ett djur, kullar, händelser vid ägarbyte och dödsfall (M3), och en ägare som flyttar till ett annat land.
+*Inte byggt än:* en logg över vem som slagit upp ett djur, att lägga till ett djur i en kull i efterhand, händelser vid ägarbyte och dödsfall (M3), och en ägare som flyttar till ett annat land.

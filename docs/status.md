@@ -25,6 +25,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Ägaren måste finnas och höra till djurets marknad** vid registrering och ägarbyte. Annars blir svaret `422`, med samma svar för en part som saknas och en part i en annan marknad.
   - **Porten `PartyPort`** i `animals`, som `PartyService.marketOf` uppfyller. API-lagret och dev-servern kopplar ihop dem.
 - 282 tester och 95 databastester.
+- #38 mergad.
+- Kullar i djurregistret (ADR 0027, Föreslagen), PR #39:
+  - **`POST /v1/litters`** registrerar alla djur i kullen på en gång, ägda av uppfödaren från födelsedatumet. `GET /v1/litters/{id}` visar kullen.
+  - **Föräldrarna kontrolleras:** samma art och marknad, mor hona och far hane, födda före kullen. Rasen ärvs om båda har samma.
+  - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
+  - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
+- 286 tester och 96 databastester.
 - #31 mergad: simulering och rättningen av outboxens ordning.
 - Referensdata i den nya modulen `catalog` (ADR 0022, Beslutad):
   - **Arter, raser och kön** med koder som aldrig ändras och etiketter per språk. `label` följer `Accept-Language`.
@@ -60,10 +67,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Kullar i djurregistret, eller ADR om gallring och anonymisering (GDPR artikel 17).
+1. ADR om gallring och anonymisering (GDPR artikel 17), eller flytten av `assess` och `calculate` till `decisioning-core`.
 
 **Öppet**
-- ADR 0025 och 0026 väntar på ditt beslut.
+- ADR 0025, 0026 och 0027 väntar på ditt beslut.
 - Gallring och anonymisering av personuppgifter (GDPR artikel 17) behöver en ADR innan Petvold används med riktiga kunder.
 - `parties:read`, `parties:write` och `party-registrar` saknas i installationer som redan har en sparad rollinställning.
 - Det sparas inte vem som slagit upp ett djur.

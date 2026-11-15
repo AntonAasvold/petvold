@@ -141,6 +141,7 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 - **Referensdata** läses via porten `ReferencePort.get(kind, code)`. `ReferenceDataStore` i `catalog` har samma form, så installationen skickar den direkt. `animals` beror inte på `catalog`.
 - **Omfång** kontrolleras i API-lagret: djurets marknad mot anroparens marknader. Roller bundna till klinik eller försäkringar ser inga hela djur.
 - **Ägare** kontrolleras via porten `PartyPort.marketOf(partyId)`, som `PartyService` uppfyller. `animals` beror inte på `parties`. Utan port kontrolleras bara formatet.
+- **Kullar (ADR 0027):** `animals.litter` och `animals.litter_member` (migration 0018), där `animal_id` är primärnyckel så att ett djur bara kan höra till en kull. `AnimalStore.registerLitter` sparar kullen, djuren, id-numren, ägarskapen och medlemskapen i en transaktion.
 - **Uppslagning (ADR 0025):** kolumnen `allow_lookup` i `animal_revision` (migration 0016). `AnimalService.lookup` hittar djuret på id-nummer, filtrerar bort stängda djur och returnerar `summaryOf(record)` utan ägare och historik. API-lagret filtrerar på marknad men inte på bindning, eftersom svaret saknar personuppgifter.
 
 **Parter (ADR 0026):**

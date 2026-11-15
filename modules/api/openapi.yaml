@@ -912,6 +912,58 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/litters:
+    post:
+      tags: [animals]
+      operationId: registerLitter
+      x-permission: animals:write
+      summary: Register a litter with all its animals
+      description: |
+        Requires the permission `animals:write`. Registers every animal in the
+        litter at once, owned by the breeder from the birth date (ADR 0027).
+        The dam and sire, if given, must be registered animals of the species in
+        the same market, born before the litter. Without a breed, the animals
+        get the parents' breed when both have the same one.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterLitterRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The litter
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Litter' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/litters/{litterId}:
+    get:
+      tags: [animals]
+      operationId: getLitter
+      x-permission: animals:read
+      summary: A litter with its parents, breeder and animals
+      description: Requires the permission `animals:read`. A litter outside the caller's markets answers 404.
+      parameters:
+        - name: litterId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^lit_[A-Za-z0-9]+$' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The litter
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Litter' }
+
   /v1/animal-lookup:
     get:
       tags: [animals]
@@ -2528,6 +2580,7 @@ components:
         - type: object
           required: [identifiers, ownerships]
           properties:
+            litterId: { type: string, description: The litter the animal was born in, if registered as one (ADR 0027). }
             identifiers:
               type: array
               items:
@@ -2591,6 +2644,49 @@ components:
         birthDate: { $ref: '#/components/schemas/Date' }
         deceasedOn: { $ref: '#/components/schemas/Date' }
         allowLookup: { type: boolean }
+
+    Litter:
+      type: object
+      required: [id, market, species, birthDate, breederPartyId, animalIds, registeredBy, registeredAt]
+      properties:
+        id: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        species: { type: string }
+        birthDate: { $ref: '#/components/schemas/Date' }
+        damId: { type: string }
+        sireId: { type: string }
+        breederPartyId: { type: string, description: Owner of every animal in the litter from the birth date. }
+        animalIds: { type: array, items: { type: string } }
+        registeredBy: { type: string }
+        registeredAt: { $ref: '#/components/schemas/DateTime' }
+
+    RegisterLitterRequest:
+      type: object
+      additionalProperties: false
+      required: [market, species, birthDate, breederPartyId, animals]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        species: { type: string }
+        birthDate: { $ref: '#/components/schemas/Date' }
+        damId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
+        sireId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
+        breederPartyId: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' }
+        animals:
+          type: array
+          minItems: 1
+          maxItems: 24
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, sex]
+            properties:
+              name: { type: string, minLength: 1, maxLength: 100 }
+              sex: { type: string }
+              breed: { type: string }
+              allowLookup: { type: boolean, default: false }
+              identifiers:
+                type: array
+                items: { $ref: '#/components/schemas/IdentifierInput' }
 
     TransferAnimalRequest:
       type: object

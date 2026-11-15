@@ -15,7 +15,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate animals.animal_revision, animals.animal_identifier, animals.ownership');
+const clean = () => admin.query('truncate animals.animal_revision, animals.animal_identifier, animals.ownership, animals.litter, animals.litter_member');
 
 animalStoreSuite('PostgresAnimalStore', async () => {
   await clean();

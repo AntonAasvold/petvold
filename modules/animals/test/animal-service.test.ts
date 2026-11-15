@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AnimalError, AnimalService, InMemoryAnimalStore, normalizeIdentifier, ownerOn, type RegisterInput } from '../src/index.ts';
+import { AnimalError, AnimalService, InMemoryAnimalStore, normalizeIdentifier, ownerOn, type LitterInput, type RegisterInput } from '../src/index.ts';
 
 const refs: Record<string, { active: boolean; parent?: string }> = {
   'species:dog': { active: true },
@@ -123,6 +123,52 @@ test('with a party port, the owner must exist in the animal\'s market', async ()
   const a = await s.register(input(), by);
   await rejects(s.transfer(a.id, { partyId: 'pty_dag', from: '2026-06-01' }, by), 'validation', /does not exist/);
   assert.equal((await s.transfer(a.id, { partyId: 'pty_bo', from: '2026-06-01' }, by)).ownerships.length, 2);
+});
+
+test('a litter registers every animal at once, owned by the breeder from the birth date', async () => {
+  const s = setup();
+  const dam = await s.register(input({ sex: 'female', name: 'Dam', identifiers: [] }), by);
+  const sire = await s.register(input({ name: 'Sire', identifiers: [] }), by);
+  const litter: LitterInput = {
+    market: 'SE',
+    species: 'dog',
+    birthDate: '2026-09-01',
+    damId: dam.id,
+    sireId: sire.id,
+    breederPartyId: 'pty_kennel',
+    animals: [
+      { name: 'Pup A', sex: 'female', identifiers: [{ type: 'microchip', value: '752098100000021' }] },
+      { name: 'Pup B', sex: 'male', allowLookup: true },
+    ],
+  };
+  const l = await s.registerLitter(litter, by);
+  assert.deepEqual([l.id, l.damId, l.sireId, l.animalIds.length], ['lit_5', dam.id, sire.id, 2]);
+  const [a, b] = await Promise.all(l.animalIds.map((id) => s.get(id)));
+  assert.deepEqual([a!.name, a!.breed, a!.litterId, a!.birthDate, a!.allowLookup], ['Pup A', 'dog-beagle', l.id, '2026-09-01', false]); // both parents beagles
+  assert.deepEqual(a!.ownerships.map((o) => [o.partyId, o.validFrom]), [['pty_kennel', '2026-09-01']]);
+  assert.equal(b!.allowLookup, true);
+  assert.deepEqual(await s.getLitter(l.id), l);
+  // Sold to its first owner like any animal.
+  const sold = await s.transfer(a!.id, { partyId: 'pty_anna', from: '2026-11-01', reason: 'Sold' }, by);
+  assert.deepEqual(sold.ownerships.map((o) => o.partyId), ['pty_kennel', 'pty_anna']);
+});
+
+test('invalid litters are refused', async () => {
+  const s = setup();
+  const dam = await s.register(input({ sex: 'female', name: 'Dam', identifiers: [] }), by);
+  const cat = await s.register(input({ species: 'cat', breed: 'cat-domestic', sex: 'female', name: 'Cat', identifiers: [] }), by);
+  const base: LitterInput = { market: 'SE', species: 'dog', birthDate: '2026-09-01', breederPartyId: 'pty_kennel', animals: [{ name: 'Pup', sex: 'male' }] };
+  await rejects(s.registerLitter({ ...base, animals: [] }, by), 'validation', /1-24 animals/);
+  await rejects(s.registerLitter({ ...base, birthDate: '2026-12-01' }, by), 'validation', /birthDate/);
+  await rejects(s.registerLitter({ ...base, damId: 'ani_none' }, by), 'validation', /does not exist/);
+  await rejects(s.registerLitter({ ...base, damId: cat.id }, by), 'validation', /not a dog/);
+  await rejects(s.registerLitter({ ...base, sireId: dam.id }, by), 'validation', /not male/);
+  await rejects(s.registerLitter({ ...base, damId: dam.id, birthDate: '2024-01-01' }, by), 'validation', /born after/);
+  await rejects(s.registerLitter({ ...base, breederPartyId: 'kennel' }, by), 'validation', /party id/);
+  await rejects(s.registerLitter({ ...base, animals: [{ name: 'Pup', sex: 'male', breed: 'cat-domestic' }] }, by), 'validation', /not a dog breed/);
+  const chip = { type: 'microchip' as const, value: '752098100000031' };
+  await rejects(s.registerLitter({ ...base, animals: [{ name: 'A', sex: 'male', identifiers: [chip] }, { name: 'B', sex: 'male', identifiers: [chip] }] }, by), 'validation', /twice/);
+  await rejects(s.getLitter('lit_none'), 'not_found');
 });
 
 test('invalid registrations are refused', async () => {

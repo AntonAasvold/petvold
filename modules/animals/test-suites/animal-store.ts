@@ -74,6 +74,35 @@ export function animalStoreSuite(name: string, factory: AnimalStoreFactory): voi
       assert.equal((await store.get('ani_rex'))!.neutered, true);
     });
 
+    it('a litter is stored with all its animals, all or nothing', async (store) => {
+      const pup = (n: number, chipValue?: string) => ({
+        animal: animal({ id: `ani_pup${n}`, name: `Pup ${n}`, birthDate: '2026-09-01' }),
+        identifiers: chipValue ? [chip(chipValue)] : [],
+        owner: owner({ partyId: 'pty_kennel', validFrom: '2026-09-01' }),
+      });
+      const litter = {
+        id: 'lit_1',
+        market: 'XX',
+        species: 'dog',
+        birthDate: '2026-09-01',
+        damId: 'ani_rex',
+        breederPartyId: 'pty_kennel',
+        animalIds: ['ani_pup1', 'ani_pup2'],
+        registeredBy: 'registrar@example.test',
+        registeredAt: at,
+      };
+      await store.register(animal(), [chip()], owner());
+      await assert.rejects(store.registerLitter({ ...litter, id: 'lit_0' }, [pup(1), pup(2, '752098100000001')]), IdentifierTakenError);
+      assert.equal(await store.get('ani_pup1'), null);
+      assert.equal(await store.getLitter('lit_0'), null);
+      await store.registerLitter(litter, [pup(1, '752098100000011'), pup(2)]);
+      assert.deepEqual(await store.getLitter('lit_1'), litter);
+      const p1 = (await store.get('ani_pup1'))!;
+      assert.deepEqual([p1.litterId, p1.ownerships[0]!.partyId, p1.identifiers.length], ['lit_1', 'pty_kennel', 1]);
+      assert.equal((await store.get('ani_rex'))!.litterId, undefined);
+      assert.equal(await store.getLitter('lit_none'), null);
+    });
+
     it('a transfer closes the open ownership the day the new one starts', async (store) => {
       await store.register(animal(), [], owner());
       const next = owner({ seq: 2, partyId: 'pty_bo', validFrom: '2026-06-01', reason: 'Sold' });
