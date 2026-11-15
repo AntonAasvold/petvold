@@ -4,6 +4,17 @@ import assert from 'node:assert/strict';
 import { ClaimsService } from '@petvold/claims-core';
 import { FixedClock, InMemoryClaimsStore, InMemoryPolicyPort, SequentialIds, StaticRulesPort, fixtures } from '@petvold/claims-store-memory';
 import { createApp, InMemoryIdempotencyStore, validatorFor, type Principal } from '@petvold/api';
+import { InMemoryPartyStore, PartyService } from '@petvold/parties';
+
+/** Owners as parties (ADR 0026): Anna and Bo in Sweden, Dag in Germany. */
+async function partiesWithOwners(clock: { now(): string }) {
+  const store = new InMemoryPartyStore();
+  const at = clock.now();
+  for (const [id, givenName, market] of [['pty_anna', 'Anna', 'SE'], ['pty_bo', 'Bo', 'SE'], ['pty_dag', 'Dag', 'DE']] as const) {
+    await store.register({ id, revision: 1, kind: 'person', market, givenName, familyName: 'Example', changedBy: 'test', changedAt: at }, []);
+  }
+  return new PartyService({ store, clock, ids: { next: (p) => `${p}_x` } });
+}
 
 const tokens: Record<string, Principal> = {
   registrar: { subject: 'registrar@example.test', roles: ['animal-registrar'], markets: ['SE'] },
@@ -15,7 +26,7 @@ const tokens: Record<string, Principal> = {
   boundRegistrar: { subject: 'portal', roles: ['animal-registrar', 'customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
 };
 
-function setup() {
+async function setup() {
   const clock = new FixedClock('2026-11-15T10:00:00.000Z');
   const service = new ClaimsService({
     policies: new InMemoryPolicyPort([]),
@@ -24,7 +35,13 @@ function setup() {
     clock,
     ids: new SequentialIds(),
   });
-  const app = createApp({ service, clock, idempotency: new InMemoryIdempotencyStore(), auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
+  const app = createApp({
+    service,
+    clock,
+    parties: await partiesWithOwners(clock),
+    idempotency: new InMemoryIdempotencyStore(),
+    auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) },
+  });
   let n = 0;
   return (method: string, path: string, token: string, body?: unknown) =>
     app.request(path, {
@@ -38,7 +55,7 @@ function setup() {
     });
 }
 
-async function references(call: ReturnType<typeof setup>) {
+async function references(call: Awaited<ReturnType<typeof setup>>) {
   await call('PUT', '/v1/reference-data/species/dog', 'catalog', { labels: { en: 'Dog' } });
   await call('PUT', '/v1/reference-data/breed/dog-beagle', 'catalog', { parent: 'dog', labels: { en: 'Beagle' } });
   await call('PUT', '/v1/reference-data/sex/male', 'catalog', { labels: { en: 'Male' } });
@@ -57,7 +74,7 @@ const record = validatorFor('AnimalRecord');
 const valid = (x: unknown) => assert.ok(record(structuredClone(x)), JSON.stringify(record.errors));
 
 test('an animal is registered, found by chip and owner, corrected and sold', async () => {
-  const call = setup();
+  const call = await setup();
   await references(call);
   const res = await call('POST', '/v1/animals', 'registrar', rex);
   assert.equal(res.status, 201);
@@ -88,7 +105,7 @@ test('an animal is registered, found by chip and owner, corrected and sold', asy
 });
 
 test('scope: markets, bound roles and permissions', async () => {
-  const call = setup();
+  const call = await setup();
   await references(call);
   const a = (await (await call('POST', '/v1/animals', 'registrar', rex)).json()) as any;
   assert.equal((await call('GET', `/v1/animals/${a.id}`, 'registrarDe')).status, 404);
@@ -103,7 +120,7 @@ test('scope: markets, bound roles and permissions', async () => {
 });
 
 test('errors: duplicate chip, bad filters, unknown animals', async () => {
-  const call = setup();
+  const call = await setup();
   await references(call);
   await call('POST', '/v1/animals', 'registrar', rex);
   assert.equal((await call('POST', '/v1/animals', 'registrar', { ...rex, name: 'Copy' })).status, 409);
@@ -113,10 +130,16 @@ test('errors: duplicate chip, bad filters, unknown animals', async () => {
   assert.equal((await call('GET', '/v1/animals?microchip=123', 'handler')).status, 422);
   assert.equal((await call('GET', '/v1/animals/ani_none', 'handler')).status, 404);
   assert.equal((await call('POST', '/v1/animals/ani_none/ownerships', 'registrar', { partyId: 'pty_bo', from: '2026-06-01' })).status, 404);
+  // The owner must exist, in the animal's market.
+  assert.equal((await call('POST', '/v1/animals', 'registrar', { ...rex, identifiers: [], owner: { partyId: 'pty_nobody', from: '2024-05-01' } })).status, 422);
+  assert.equal((await call('POST', '/v1/animals', 'registrar', { ...rex, identifiers: [], owner: { partyId: 'pty_dag', from: '2024-05-01' } })).status, 422);
+  const a = (await (await call('GET', '/v1/animals?microchip=752098100000042', 'handler')).json()) as any;
+  const toDag = await call('POST', `/v1/animals/${a.items[0].id}/ownerships`, 'registrar', { partyId: 'pty_dag', from: '2026-06-01' });
+  assert.equal(toDag.status, 422);
 });
 
 test('a clinic looks up an animal by chip only when the animal is open for lookup', async () => {
-  const call = setup();
+  const call = await setup();
   await references(call);
   const a = (await (await call('POST', '/v1/animals', 'registrar', rex)).json()) as any;
   assert.equal(a.allowLookup, false);

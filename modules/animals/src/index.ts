@@ -7,8 +7,8 @@
  * period. Nothing is overwritten: a correction is a new revision with a reason,
  * and a change of owner closes the previous ownership on the day the new one starts.
  *
- * Owners are party ids (`pty_…`). The party module (M2) will own the parties;
- * until then the register checks only the format.
+ * Owners are party ids (`pty_…`) from the party module (ADR 0026). With a
+ * PartyPort, an owner must exist and belong to the animal's market.
  *
  * Lookup (ADR 0025): an animal can be open for lookup by identifier, e.g. by a
  * clinic. A lookup returns a summary without owners or change history.
@@ -135,9 +135,17 @@ export interface ReferencePort {
   get(kind: 'species' | 'breed' | 'sex', code: string): Promise<{ active: boolean; parent?: string } | null>;
 }
 
+/** Reads parties, e.g. PartyService.marketOf in the module `parties`. */
+export interface PartyPort {
+  /** The party's market, or null if it does not exist. */
+  marketOf(partyId: string): Promise<string | null>;
+}
+
 export interface AnimalDeps {
   store: AnimalStore;
   references: ReferencePort;
+  /** Omitted: owners are checked only for format. */
+  parties?: PartyPort;
   clock: { now(): string };
   ids: { next(prefix: string): string };
 }
@@ -249,6 +257,7 @@ export class AnimalService {
     await this.reference('species', input.species);
     await this.checkDetails(input.species, input);
     if (!PARTY.test(input.owner?.partyId ?? '')) throw new AnimalError('validation', `Invalid party id '${input.owner?.partyId}'`);
+    await this.checkOwner(input.owner.partyId, input.market);
     if (!isDate(input.owner.from) || input.owner.from < input.birthDate) {
       throw new AnimalError('validation', 'The owner must be from a date on or after the birth date');
     }
@@ -333,6 +342,7 @@ export class AnimalService {
     if (open.partyId === input.partyId) throw new AnimalError('conflict', `${input.partyId} already owns animal ${id}`);
     if (input.from <= open.validFrom) throw new AnimalError('validation', `The new owner must start after ${open.validFrom}`);
     if (cur.deceasedOn && input.from > cur.deceasedOn) throw new AnimalError('validation', `Animal ${id} died ${cur.deceasedOn}`);
+    await this.checkOwner(input.partyId, cur.market);
     const reason = input.reason?.trim();
     const next: Ownership = {
       seq: open.seq + 1,
@@ -360,6 +370,14 @@ export class AnimalService {
     if (!isDate(input.birthDate) || input.birthDate > this.today()) throw new AnimalError('validation', 'birthDate must be a date not after today');
     if (input.neutered !== undefined && typeof input.neutered !== 'boolean') throw new AnimalError('validation', 'neutered must be true or false');
     if (input.allowLookup !== undefined && typeof input.allowLookup !== 'boolean') throw new AnimalError('validation', 'allowLookup must be true or false');
+  }
+
+  /** The owner must exist and belong to the animal's market (ADR 0026). Same answer for both, so nothing about other markets is revealed. */
+  private async checkOwner(partyId: string, market: string) {
+    if (!this.d.parties) return;
+    if ((await this.d.parties.marketOf(partyId)) !== market) {
+      throw new AnimalError('validation', `The party ${partyId} does not exist in market ${market}`);
+    }
   }
 
   private async reference(kind: 'species' | 'breed' | 'sex', code: string) {

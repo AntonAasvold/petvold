@@ -205,7 +205,7 @@ async function seedParties(): Promise<void> {
 // The animal register (ADR 0024): in Postgres with ANIMALS_DATABASE_URL, else in memory.
 const animalsUrl = process.env.ANIMALS_DATABASE_URL;
 const animalStore: AnimalStore = animalsUrl ? new PostgresAnimalStore(createPool(animalsUrl, { max: 2 })) : new InMemoryAnimalStore();
-const animals = new AnimalService({ store: animalStore, references: referenceStore, clock, ids });
+const animals = new AnimalService({ store: animalStore, references: referenceStore, parties, clock, ids });
 await seedAnimals();
 
 /** Bella from the sample policy, with a microchip and her owner since she was a puppy. */

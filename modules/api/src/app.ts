@@ -481,6 +481,14 @@ export function createApp(d: AppDeps) {
   productStep('publications', 'EmptyRequest', (p, v, by) => products.publish(p, v, by));
   productStep('sales-ends', 'SalesEndRequest', (p, v, by, b) => products.endSales(p, v, b.salesTo, by, b.reason));
 
+  // Parties first: the animal register checks owners against them (ADR 0026).
+  const parties =
+    d.parties ??
+    new PartyService({
+      store: new InMemoryPartyStore(),
+      clock: d.clock,
+      ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
+    });
   // The animal register (ADR 0024). Scope: the caller's markets. A role bound to a
   // clinic or to policies sees no animals, since the register cannot tell which are theirs.
   const animals =
@@ -488,6 +496,7 @@ export function createApp(d: AppDeps) {
     new AnimalService({
       store: new InMemoryAnimalStore(),
       references: { get: (kind, code) => catalog.getReference(kind, code).catch(() => null) },
+      parties,
       clock: d.clock,
       ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
     });
@@ -566,13 +575,6 @@ export function createApp(d: AppDeps) {
   // Parties (ADR 0026). Same scope as animals: the caller's markets, and no
   // parties for roles bound to a clinic or to policies. Personal numbers are
   // masked in every response and searched for in a request body, never in the URL.
-  const parties =
-    d.parties ??
-    new PartyService({
-      store: new InMemoryPartyStore(),
-      clock: d.clock,
-      ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
-    });
   const seesParty = (scope: Scope, p: PartyRecord) =>
     !scope.clinicId && !scope.policyIds && (scope.markets === '*' || scope.markets.has(p.market));
   const visibleParty = async (c: Context<Env>) => {

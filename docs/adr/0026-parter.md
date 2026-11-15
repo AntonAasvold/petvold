@@ -36,12 +36,13 @@ Djurregistret pekar på ägare med part-id (`pty_…`, ADR 0024), och policyn ko
    - `parties:read` och `parties:write`, och en ny roll `party-registrar`.
    - `handler`, `approver` och `animal-registrar` får läsa.
    - Parten har en marknad, och anroparen ser bara parter i sina marknader. Roller som är bundna till klinik eller försäkringar ser inga parter.
+8. **Djurregistret kontrollerar ägaren** via porten `PartyPort.marketOf`. Ägaren måste finnas och höra till djurets marknad, både vid registrering och vid ägarbyte. Annars blir svaret `422`, med samma text oavsett om parten saknas eller finns i en annan marknad. Det betyder att den som registrerar djur inte kan ta reda på om en part finns i en marknad som den inte ser. En ägare som flyttar till ett annat land hanteras när det behövs.
 
 ## Konsekvenser
 
 - Ägare och försäkringstagare får namn och kontaktuppgifter, med historik över vem som ändrade vad.
 - Kundservice kan hitta en kund på personnummer utan att numret syns i svar eller loggar.
-- Djurregistret kontrollerar ännu inte att ägaren finns. Det görs i nästa steg via en port mot `PartyService.marketOf`.
+- Djurregistret kan inte peka på en ägare som inte finns. Ägarskap som registrerades innan kontrollen fanns kontrolleras inte i efterhand.
 - **Radering enligt GDPR artikel 17 är inte löst.** Historiken skrivs aldrig över, men försäkringsuppgifter måste sparas en viss tid. En ADR om gallring och anonymisering behövs innan Petvold används med riktiga kunder.
 - **Personnumret sparas i klartext** i databasen och skyddas av databasens rättigheter och installationens kryptering av lagringen. Kryptering per fält kan bli en senare ADR.
 - **Kundens egen kanal**, alltså en roll bunden till försäkringar, ser inte sin egen part än. Det kräver en bindning till part i tokenen.
