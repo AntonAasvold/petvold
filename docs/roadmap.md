@@ -37,7 +37,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [ ] `assess` och `calculate` flyttas till `decisioning-core`
 - [x] Djurregister (ADR 0024): djur, id-nummer och ägarskap med giltighetstid
 - [x] Uppslagning av djur för kliniker, styrd per djur (ADR 0025)
-- [ ] Kullar i djurregistret
+- [x] Kullar i djurregistret (ADR 0027)
 - [x] Parter (ADR 0026): personer och organisationer, personnummer som aldrig visas, och historik. Roller ägs av modulen som har relationen.
 - [x] Djurregistret kontrollerar att ägaren finns som part, i djurets marknad
 - [ ] Gallring och anonymisering av personuppgifter (GDPR artikel 17)

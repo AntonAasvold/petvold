@@ -10,6 +10,9 @@
  * Owners are party ids (`pty_…`) from the party module (ADR 0026). With a
  * PartyPort, an owner must exist and belong to the animal's market.
  *
+ * Litters (ADR 0027): animals born together, registered at once with the
+ * breeder as owner from the birth date. A litter never changes.
+ *
  * Lookup (ADR 0025): an animal can be open for lookup by identifier, e.g. by a
  * clinic. A lookup returns a summary without owners or change history.
  */
@@ -80,6 +83,33 @@ export interface AnimalSummary {
 export interface AnimalRecord extends Animal {
   identifiers: AnimalIdentifier[];
   ownerships: Ownership[];
+  /** The litter the animal was born in, if registered as one. */
+  litterId?: string;
+}
+
+/** Animals born together (ADR 0027). Never changes. */
+export interface Litter {
+  id: string;
+  market: string;
+  species: string;
+  birthDate: ISODate;
+  /** The mother, if registered. */
+  damId?: string;
+  /** The father, if registered. */
+  sireId?: string;
+  /** The breeder: owner of every animal in the litter from the birth date. */
+  breederPartyId: string;
+  /** The animals in the litter, in the order they were given. */
+  animalIds: string[];
+  registeredBy: string;
+  registeredAt: string;
+}
+
+/** One new animal in a litter, with what the store needs to register it. */
+export interface NewAnimal {
+  animal: Animal;
+  identifiers: AnimalIdentifier[];
+  owner: Ownership;
 }
 
 export interface AnimalStore {
@@ -95,6 +125,9 @@ export interface AnimalStore {
   appendRevision(animal: Animal): Promise<void>;
   /** Throws IdentifierTakenError if any animal already has it. */
   addIdentifier(animalId: string, identifier: AnimalIdentifier): Promise<void>;
+  /** Stores the litter and all its animals, all or nothing. */
+  registerLitter(litter: Litter, animals: NewAnimal[]): Promise<void>;
+  getLitter(id: string): Promise<Litter | null>;
   /**
    * Closes ownership `closesSeq` on `next.validFrom` and adds `next`, all or nothing.
    * Throws AnimalConflictError if `closesSeq` is not the open ownership.
@@ -168,6 +201,26 @@ export interface RegisterInput {
   identifiers?: IdentifierInput[];
   owner: { partyId: string; from: ISODate };
 }
+
+export interface LitterInput {
+  market: string;
+  species: string;
+  birthDate: ISODate;
+  damId?: string;
+  sireId?: string;
+  breederPartyId: string;
+  animals: {
+    name: string;
+    sex: string;
+    /** Omitted: the dam's breed if both parents have the same, else unknown. */
+    breed?: string;
+    allowLookup?: boolean;
+    identifiers?: IdentifierInput[];
+  }[];
+}
+
+/** At most this many animals in one litter. */
+export const MAX_LITTER_SIZE = 24;
 
 export interface CorrectionInput {
   basedOnRevision: number;
@@ -288,6 +341,86 @@ export class AnimalService {
     return this.get(animal.id);
   }
 
+  async getLitter(id: string): Promise<Litter> {
+    const l = await this.d.store.getLitter(id);
+    if (!l) throw new AnimalError('not_found', `Litter ${id} does not exist`);
+    return l;
+  }
+
+  /**
+   * Registers a litter: every animal at once, owned by the breeder from the birth
+   * date. The parents, if given, must be registered animals of the species in the
+   * same market: the dam female and the sire male, both born before the litter and
+   * alive when it was born.
+   */
+  async registerLitter(input: LitterInput, by: string): Promise<Litter> {
+    if (!/^[A-Z]{2}$/.test(input.market ?? '')) throw new AnimalError('validation', `Invalid market '${input.market}'`);
+    await this.reference('species', input.species);
+    if (!isDate(input.birthDate) || input.birthDate > this.today()) throw new AnimalError('validation', 'birthDate must be a date not after today');
+    if (!PARTY.test(input.breederPartyId ?? '')) throw new AnimalError('validation', `Invalid party id '${input.breederPartyId}'`);
+    await this.checkOwner(input.breederPartyId, input.market);
+    const list = input.animals ?? [];
+    if (list.length < 1 || list.length > MAX_LITTER_SIZE) throw new AnimalError('validation', `A litter has 1-${MAX_LITTER_SIZE} animals`);
+    const dam = input.damId === undefined ? undefined : await this.parent(input.damId, 'female', input);
+    const sire = input.sireId === undefined ? undefined : await this.parent(input.sireId, 'male', input);
+    const inherited = dam?.breed && dam.breed === sire?.breed ? dam.breed : undefined;
+
+    const now = this.d.clock.now();
+    const all = list.flatMap((a) => a.identifiers ?? []).map(normalizeIdentifier);
+    if (new Set(all.map((i) => `${i.type}:${i.value}`)).size !== all.length) throw new AnimalError('validation', 'An identifier is listed twice');
+    const animals: NewAnimal[] = [];
+    for (const a of list) {
+      const breed = a.breed ?? inherited;
+      await this.checkDetails(input.species, { ...a, ...(breed ? { breed } : {}), birthDate: input.birthDate });
+      const animal: Animal = {
+        id: this.d.ids.next('ani'),
+        revision: 1,
+        market: input.market,
+        species: input.species,
+        ...(breed ? { breed } : {}),
+        sex: a.sex,
+        neutered: false,
+        name: a.name.trim(),
+        birthDate: input.birthDate,
+        allowLookup: a.allowLookup ?? false,
+        changedBy: by,
+        changedAt: now,
+      };
+      animals.push({
+        animal,
+        identifiers: (a.identifiers ?? []).map((i) => ({ ...normalizeIdentifier(i), addedBy: by, addedAt: now })),
+        owner: { seq: 1, partyId: input.breederPartyId, validFrom: input.birthDate, recordedBy: by, recordedAt: now },
+      });
+    }
+    const litter: Litter = {
+      id: this.d.ids.next('lit'),
+      market: input.market,
+      species: input.species,
+      birthDate: input.birthDate,
+      ...(dam ? { damId: dam.id } : {}),
+      ...(sire ? { sireId: sire.id } : {}),
+      breederPartyId: input.breederPartyId,
+      animalIds: animals.map((a) => a.animal.id),
+      registeredBy: by,
+      registeredAt: now,
+    };
+    await this.d.store.registerLitter(litter, animals).catch(this.translate);
+    return this.getLitter(litter.id);
+  }
+
+  private async parent(id: string, sex: 'female' | 'male', litter: LitterInput): Promise<AnimalRecord> {
+    const role = sex === 'female' ? 'dam' : 'sire';
+    const p = await this.d.store.get(id);
+    if (!p || p.market !== litter.market) throw new AnimalError('validation', `The ${role} ${id} does not exist in market ${litter.market}`);
+    if (p.species !== litter.species) throw new AnimalError('validation', `The ${role} ${id} is not a ${litter.species}`);
+    if (p.sex !== sex) throw new AnimalError('validation', `The ${role} ${id} is not ${sex}`);
+    if (p.birthDate >= litter.birthDate) throw new AnimalError('validation', `The ${role} ${id} was born after the litter`);
+    if (p.deceasedOn && p.deceasedOn < litter.birthDate && sex === 'female') {
+      throw new AnimalError('validation', `The dam ${id} died before the litter was born`);
+    }
+    return p;
+  }
+
   /** Corrects or updates the details, e.g. neutered or deceased. Species and market never change. */
   async correct(id: string, input: CorrectionInput, by: string): Promise<AnimalRecord> {
     const cur = await this.get(id);
@@ -405,6 +538,7 @@ export class AnimalService {
 
 /** In-memory store, for tests and the dev server without a database. */
 export class InMemoryAnimalStore implements AnimalStore {
+  private litters: Litter[] = [];
   private animals: Animal[] = [];
   private identifiers = new Map<string, AnimalIdentifier & { animalId: string }>();
   private owners: (Ownership & { animalId: string })[] = [];
@@ -422,7 +556,27 @@ export class InMemoryAnimalStore implements AnimalStore {
         .filter((o) => o.animalId === id)
         .sort((a, b) => a.seq - b.seq)
         .map(({ animalId: _a, ...o }) => o),
+      ...this.litterField(id),
     });
+  }
+
+  private litterField(animalId: string): { litterId?: string } {
+    const l = this.litters.find((x) => x.animalIds.includes(animalId));
+    return l ? { litterId: l.id } : {};
+  }
+
+  async registerLitter(litter: Litter, animals: NewAnimal[]) {
+    if (this.litters.some((l) => l.id === litter.id)) throw new AnimalConflictError(`Litter ${litter.id} exists`);
+    const ids = animals.flatMap((a) => a.identifiers);
+    for (const i of ids) if (this.identifiers.has(`${i.type}:${i.value}`)) throw new IdentifierTakenError(i);
+    for (const a of animals) if (this.animals.some((x) => x.id === a.animal.id)) throw new AnimalConflictError(`Animal ${a.animal.id} exists`);
+    for (const a of animals) await this.register(a.animal, a.identifiers, a.owner);
+    this.litters.push(structuredClone(litter));
+  }
+
+  async getLitter(id: string) {
+    const l = this.litters.find((x) => x.id === id);
+    return l ? structuredClone(l) : null;
   }
 
   async revisions(id: string) {
