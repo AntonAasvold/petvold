@@ -489,6 +489,22 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       await store.commitDecision(commit(decision('clm_b', 1, 0), [], next));
       assert.deepEqual(await store.findDeductiblePeriod('ani_suite', 'ora', '2027-02-03'), next);
     });
+    it('for simulation: each claim\'s latest decision in the period, with its evidence, oldest first', async (store) => {
+      await save(store, claim('clm_a'));
+      await save(store, claim('clm_b', { claimNo: 'S-b' }));
+      await save(store, claim('clm_c', { claimNo: 'S-c' }));
+      const a1 = decision('clm_a', 1, 50_000); // 2026-10-03
+      const a2 = decision('clm_a', 2, 30_000, { decidedBy: 'h1' }); // 2026-10-04: replaces a1
+      const b1 = decision('clm_b', 1, 70_000); // 2026-10-03
+      const c1 = decision('clm_c', 1, 10_000, { decidedAt: '2026-11-01T10:00:00.000Z' }); // outside
+      for (const d of [a1, a2, b1, c1]) await store.commitDecision(commit(d));
+      const got = await store.latestDecisionsWithEvidence('2026-10-01T00:00:00.000Z', '2026-10-31T00:00:00.000Z', 10);
+      assert.deepEqual(got.map((x) => x.decision.id), [b1.id, a2.id]);
+      assert.deepEqual(got[1]!.evidence, evidenceFor(a2));
+      assert.equal((await store.latestDecisionsWithEvidence('2026-10-01T00:00:00.000Z', '2026-10-31T00:00:00.000Z', 1)).length, 1);
+      assert.deepEqual(await store.latestDecisionsWithEvidence('2026-10-03T10:00:00.000Z', '2026-10-03T10:00:00.000Z', 10), []);
+    });
+
     // Review requests (ADR 0018) ------------------------------------------------
 
     it('the automated flag and the answered review are read back with the decision', async (store) => {

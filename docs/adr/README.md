@@ -22,6 +22,6 @@
 | [0018](0018-beslutsmotor-och-beviskedja.md) | Beslutsmotor som egen modul, med beviskedja för varje beslut | Beslutad |
 | [0019](0019-attestkedja-och-utbetalningsorder.md) | Attestkedja: beslutsförslag, attest och utbetalningsorder | Beslutad |
 | [0020](0020-roller-och-granser-som-konfiguration.md) | Roller och beloppsgränser som versionerad konfiguration via API | Beslutad |
-| [0021](0021-produktkatalog-och-regeluppsattningar.md) | Produktkatalog och regeluppsättningar | Föreslagen |
+| [0021](0021-produktkatalog-och-regeluppsattningar.md) | Produktkatalog och regeluppsättningar | Beslutad |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.

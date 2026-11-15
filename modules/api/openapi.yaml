@@ -465,6 +465,42 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/rule-sets/{series}/versions/{version}/simulations:
+    post:
+      tags: [rule-sets]
+      operationId: simulateRuleSet
+      x-permission: rules:simulate
+      summary: Simulate a rule set version against stored decisions
+      description: |
+        Requires the permission `rules:simulate`.
+
+        Runs the version's rules (a draft or any other version) against the
+        stored evidence of decisions made in [`from`, `to`): each claim's
+        latest decision, from the same series, within the caller's scope
+        (ADR 0018). Shows how many decisions would change, moves between
+        automatic and manual handling, and payouts per currency. Nothing is
+        stored or booked, so no `Idempotency-Key` is needed. Each decision is
+        simulated on its own; knock-on effects between claims, such as
+        deductible periods, are not simulated.
+      parameters:
+        - $ref: '#/components/parameters/Series'
+        - $ref: '#/components/parameters/RuleSetVersionNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SimulationRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SimulationResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/rule-sets/{series}/versions/{version}/submissions:
     post:
       tags: [rule-sets]
@@ -1309,6 +1345,65 @@ components:
         retiredBy: { type: string }
         retiredAt: { $ref: '#/components/schemas/DateTime' }
         note: { type: string, description: Why the version was returned or retired. }
+
+    SimulationRequest:
+      type: object
+      additionalProperties: false
+      required: [from, to]
+      properties:
+        from: { $ref: '#/components/schemas/DateTime' }
+        to: { $ref: '#/components/schemas/DateTime' }
+
+    SimulatedOutcome:
+      type: object
+      required: [proposedOutcome, mode, payout]
+      properties:
+        proposedOutcome: { $ref: '#/components/schemas/Outcome' }
+        mode: { type: string, enum: [auto, manual] }
+        payout: { $ref: '#/components/schemas/NonNegativeMoney' }
+        rulesVersion: { type: string }
+
+    SimulationResult:
+      type: object
+      required: [rulesVersion, calculationModel, decisions, changed, modeChanged, totals, items]
+      properties:
+        rulesVersion: { type: string }
+        calculationModel: { type: string }
+        decisions: { type: integer, minimum: 0, description: Decisions simulated. }
+        changed: { type: integer, minimum: 0, description: Decisions whose proposal, mode or payout would change. }
+        modeChanged:
+          type: object
+          required: [autoToManual, manualToAuto]
+          properties:
+            autoToManual: { type: integer, minimum: 0 }
+            manualToAuto: { type: integer, minimum: 0 }
+        totals:
+          type: array
+          description: Payouts per currency. Never added across currencies.
+          items:
+            type: object
+            required: [currency, decisions, storedPayout, simulatedPayout]
+            properties:
+              currency: { $ref: '#/components/schemas/Currency' }
+              decisions: { type: integer, minimum: 0 }
+              storedPayout: { $ref: '#/components/schemas/NonNegativeMoney' }
+              simulatedPayout: { $ref: '#/components/schemas/NonNegativeMoney' }
+        items:
+          type: array
+          maxItems: 200
+          description: The decisions that would change.
+          items:
+            type: object
+            required: [claimId, decisionId, seq, currency, stored, simulated, payoutDelta, changed]
+            properties:
+              claimId: { type: string }
+              decisionId: { type: string }
+              seq: { type: integer, minimum: 1 }
+              currency: { $ref: '#/components/schemas/Currency' }
+              stored: { $ref: '#/components/schemas/SimulatedOutcome' }
+              simulated: { $ref: '#/components/schemas/SimulatedOutcome' }
+              payoutDelta: { $ref: '#/components/schemas/Money' }
+              changed: { type: boolean }
 
     EmptyRequest:
       type: object

@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
-import { DecisioningService, InMemoryRuleSetStore, RuleSetError } from '@petvold/decisioning';
-import { CALCULATION_MODELS } from '@petvold/claims-core';
+import { DecisioningService, InMemoryRuleSetStore, RuleSetError, toClaimsRules } from '@petvold/decisioning';
+import { CALCULATION_MODELS, simulate } from '@petvold/claims-core';
 import type { Claim, ClaimsService, Clock } from '@petvold/claims-core';
 import { DomainError } from '@petvold/claims-core';
 import { formatErrors, openapiText, operationPermissions, validatorFor, type FieldError } from './contract.ts';
@@ -336,6 +336,22 @@ export function createApp(d: AppDeps) {
       if (!r.ok) return r.res;
       return idempotent(c, r.body, async () => ({ status: 200, body: await run(c.req.param('series'), v, c.get('principal').subject, r.body) }));
     });
+  // Simulation (ADR 0018): the version's rules against stored decisions from the
+  // same series, within the caller's scope. Nothing is stored.
+  app.post(`${ruleSet}/simulations`, async (c) => {
+    const v = version(c);
+    if (!v) return problem(c, 422, 'version must be a positive integer');
+    const r = await readJson(c, 'SimulationRequest');
+    if (!r.ok) return r.res;
+    const series = c.req.param('series');
+    const target = await decisioning.get(series, v);
+    const scope = c.get('scope');
+    const stored = (await d.service.decisionsForSimulation(r.body.from, r.body.to)).filter(
+      (x) => x.evidence.input.rules.rulesVersion.startsWith(`${series}@`) && coversClaim(scope, x.evidence.input.claim),
+    );
+    return send(c, simulate(stored, toClaimsRules(target), target.calculationModel));
+  });
+
   step('submissions', 'EmptyRequest', (s, v, by) => decisioning.submit(s, v, by));
   step('returns', 'ReasonRequest', (s, v, _by, b) => decisioning.returnToDraft(s, v, b.reason));
   step('publications', 'EmptyRequest', (s, v, by) => decisioning.publish(s, v, by));

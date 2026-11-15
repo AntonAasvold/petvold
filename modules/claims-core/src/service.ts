@@ -366,6 +366,17 @@ export class ClaimsService {
     return replay(evidence, decision.assessment, this.d.engineVersion ?? 'unknown');
   }
 
+  /**
+   * Stored decisions with their evidence, for simulating rules (ADR 0018): each
+   * claim's latest decision made in [from, to). At most `limit`.
+   */
+  async decisionsForSimulation(from: Timestamp, to: Timestamp, limit = 5_000) {
+    if (Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to)) || from >= to) {
+      throw new DomainError('validation', 'from and to must be points in time with from before to');
+    }
+    return this.d.store.latestDecisionsWithEvidence(new Date(from).toISOString(), new Date(to).toISOString(), limit);
+  }
+
   /** Explanation of a stored decision for the customer, the handler or an auditor (ADR 0018). */
   async explainDecision(claimId: string, seq: number): Promise<DecisionExplanation> {
     const decisions = await this.getDecisions(claimId);

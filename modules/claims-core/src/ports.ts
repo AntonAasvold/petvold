@@ -70,6 +70,11 @@ export interface ClaimsStore {
   /** The evidence stored with a decision, unchanged. null for unknown decisions and decisions made before evidence was stored. */
   getEvidence(decisionId: string): Promise<DecisionEvidence | null>;
   /**
+   * For simulation (ADR 0018): each claim's latest decision, if it was made in
+   * [from, to) and has evidence, with that evidence. Oldest first, at most `limit`.
+   */
+  latestDecisionsWithEvidence(from: Timestamp, to: Timestamp, limit: number): Promise<Array<{ decision: ClaimDecision; evidence: DecisionEvidence }>>;
+  /**
    * Stores the decision, its evidence, journals and changed deductible periods atomically
    * (one database transaction in production). Periods the claim opened earlier
    * are replaced by `deductiblePeriod` (or removed if it is null).

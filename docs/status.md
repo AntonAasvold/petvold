@@ -2,6 +2,26 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-14 (pass 23)
+
+**Gjort**
+- #30 mergad: `api`. ADR 0021 är beslutad.
+- Simulering av regelversioner (ADR 0018):
+  - **`POST /v1/rule-sets/{serie}/versions/{v}/simulations`** med `from` och `to`. Rättigheten `rules:simulate` finns i `rules-author` och `rules-publisher`.
+  - **Den rena funktionen `simulate()`** i kärnan kör sparade underlag med versionens regler och jämför med besluten. Svaret visar ändrade beslut, flytt mellan automatiskt och manuellt, och ersättning per valuta. Inget sparas.
+  - **Underlagen** kommer via skademodulens tjänst, varje ärendes senaste beslut i perioden. API-lagret filtrerar på serie och anroparens omfång.
+  - **Migration 0012:** index på `claims.decision (decided_at)`.
+- Dokumentation: produktkonfiguration (simulering med exempel), behörighet och arkitektur.
+- **Rättat fel i outboxen:** `pendingEvents` sorterade på id som text (`order by id` syftade på `id::text`). Därför kom id 10 före id 9, och reläet kunde publicera händelser i fel ordning när sekvensen passerade en siffergräns. Felet upptäcktes när CI föll. Nu sorteras det på det numeriska id:t, och ett regressionstest sätter sekvensen till 8 och kontrollerar ordningen 9, 10, 11.
+- 228 tester och 77 databastester.
+
+**Nästa steg**
+1. Produktkatalogen `catalog`: referensdata med översättningar, produkter och produktversioner.
+
+**Öppet**
+- Följdeffekter mellan skador (självriskperioder) simuleras inte.
+- `rules:simulate` saknas i installationer som redan har en sparad rollinställning. En administratör lägger till den.
+
 ## 2026-11-14 (pass 22)
 
 **Gjort**
