@@ -17,6 +17,7 @@ const CODE = /(\.(ts|js|mjs|sql|ya?ml|http|json|sh)|^\.env\.example)$/;
 const ALLOWED: Record<string, string> = {
   'scripts/check-language.ts': 'names the characters it looks for',
   'modules/api/src/messages.ts': 'Swedish message catalogue for users (sv)',
+  'modules/catalog/seed/reference-data.json': 'sample reference data with Swedish labels (sv)',
   'db/migrations/0001_claims.sql': 'migration already applied; never edited',
   'db/migrations/0002_claims_grants.sql': 'migration already applied; never edited',
   'db/migrations/0003_claims_line_order_and_journal_currency.sql': 'migration already applied; never edited',

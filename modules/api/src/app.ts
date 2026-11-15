@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
 import { DecisioningService, InMemoryRuleSetStore, RuleSetError, toClaimsRules } from '@petvold/decisioning';
+import { CatalogError, CatalogService, InMemoryReferenceDataStore, labelFor, type ReferenceItem } from '@petvold/catalog';
 import { CALCULATION_MODELS, simulate } from '@petvold/claims-core';
 import type { Claim, ClaimsService, Clock } from '@petvold/claims-core';
 import { DomainError } from '@petvold/claims-core';
@@ -64,6 +65,8 @@ export interface AppDeps {
   access?: AccessService<RoleDefinitions>;
   /** Rule sets (ADR 0021). Omitted: kept in memory. Give the same instance to the claims engine's RulesPort. */
   decisioning?: DecisioningService;
+  /** The product catalog, for now its reference data (ADR 0022). Omitted: kept in memory. */
+  catalog?: CatalogService;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
 }
@@ -357,6 +360,36 @@ export function createApp(d: AppDeps) {
   step('publications', 'EmptyRequest', (s, v, by) => decisioning.publish(s, v, by));
   step('retirements', 'ReasonRequest', (s, v, by, b) => decisioning.retire(s, v, by, b.reason));
 
+  // Reference data (ADR 0022). `label` is resolved from Accept-Language; `labels` has every language.
+  const catalog = d.catalog ?? new CatalogService({ references: new InMemoryReferenceDataStore(), clock: d.clock });
+  const withLabel = (c: Context, i: ReferenceItem) => ({ ...i, label: labelFor(i.labels, c.req.header('accept-language')) });
+  const reference = '/v1/reference-data/:kind/:code';
+
+  app.get('/v1/reference-data/:kind', async (c) => {
+    const active = c.req.query('active');
+    if (active !== undefined && active !== 'true' && active !== 'false') return problem(c, 422, 'active must be true or false');
+    const parent = c.req.query('parent');
+    const items = await catalog.listReferences(c.req.param('kind'), {
+      ...(parent !== undefined ? { parent } : {}),
+      ...(active !== undefined ? { active: active === 'true' } : {}),
+    });
+    return send(c, { items: items.map((i) => withLabel(c, i)) });
+  });
+
+  app.get(reference, async (c) => send(c, withLabel(c, await catalog.getReference(c.req.param('kind'), c.req.param('code')))));
+
+  app.get(`${reference}/revisions`, async (c) => {
+    const items = await catalog.referenceHistory(c.req.param('kind'), c.req.param('code'));
+    return send(c, { items: items.map((i) => withLabel(c, i)) });
+  });
+
+  app.put(reference, async (c) => {
+    const r = await readJson(c, 'ReferenceItemChange');
+    if (!r.ok) return r.res;
+    const { item, created } = await catalog.putReference(c.req.param('kind'), c.req.param('code'), r.body, c.get('principal').subject);
+    return send(c, withLabel(c, item), created ? 201 : 200);
+  });
+
   app.get('/v1/access/roles', async (c) => send(c, await access.current()));
 
   app.get('/v1/access/roles/versions', async (c) => send(c, { items: await access.versions() }));
@@ -389,6 +422,9 @@ export function createApp(d: AppDeps) {
     if (err instanceof RuleSetError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
       return problem(c, status, err.message);
+    }
+    if (err instanceof CatalogError) {
+      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
     }
     if (err instanceof AccessError) {
       return problem(c, err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);

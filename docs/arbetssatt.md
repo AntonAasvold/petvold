@@ -42,6 +42,7 @@ Petvold är ett privat projekt, skilt från anställning.
 - Beslut går att styrka (ADR 0018): en ändring i bedömning eller beräkning får inte ändra resultatet för sparade beslut. En rättelse blir en ny beräkningsmodell, och gamla modeller tas inte bort.
 - Nya beslut har en ADR. Ändrade beslut får en ny ADR som ersätter den gamla.
 - Dokumentationen är uppdaterad i samma PR: [funktion](funktion/) för beteende och konfiguration, [teknik](teknik/) för hur det är byggt. Ny regel, beräkning eller inställning betyder ny text med exempel.
+- Byggloggen [`docs/logg/`](logg/) har en post som förklarar hur ändringen är byggd och varför.
 - `docs/status.md` säger vad som ändrats och vad som är nästa steg.
 
 ## Beslut (ADR)

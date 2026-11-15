@@ -7,7 +7,7 @@
  * in-memory sample data until the policy and product modules exist.
  *
  * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-admin'
- * (roles and limits), 'dev-clinic'
+ * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' (reference data), 'dev-clinic'
  * (clinic), 'dev-job' (reassessment job), 'dev-customer' (customer channel). Roles map to
  * permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
@@ -22,6 +22,9 @@ import { AccessService, InMemoryRoleConfigStore, type RoleConfigStore } from '@p
 import { PostgresRoleConfigStore } from '@petvold/access/postgres';
 import { DecisioningRulesPort, DecisioningService, InMemoryRuleSetStore, ruleSetChecksum, type RuleSetStore, type RuleSetVersion } from '@petvold/decisioning';
 import { PostgresRuleSetStore } from '@petvold/decisioning/postgres';
+import { CatalogService, InMemoryReferenceDataStore, isReferenceKind, type ReferenceDataStore } from '@petvold/catalog';
+import { PostgresReferenceDataStore } from '@petvold/catalog/postgres';
+import referenceSeed from '@petvold/catalog/seed/reference-data.json' with { type: 'json' };
 import { CALCULATION_MODEL, CALCULATION_MODELS } from '@petvold/claims-core';
 import { createApp, InMemoryIdempotencyStore, type IdempotencyStore, type Principal } from './index.ts';
 import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './permissions.ts';
@@ -106,6 +109,23 @@ async function seedRules(store: RuleSetStore): Promise<void> {
   await store.update({ ...v, revision: 2 });
 }
 
+// Reference data (ADR 0022): in Postgres with CATALOG_DATABASE_URL, else in memory.
+const catalogUrl = process.env.CATALOG_DATABASE_URL;
+const referenceStore: ReferenceDataStore = catalogUrl ? new PostgresReferenceDataStore(createPool(catalogUrl, { max: 2 })) : new InMemoryReferenceDataStore();
+const catalog = new CatalogService({ references: referenceStore, clock });
+await seedReferenceData();
+
+/** Sample species, sexes and breeds, created once. Parents come first in the file. */
+async function seedReferenceData(): Promise<void> {
+  for (const [kind, items] of Object.entries(referenceSeed)) {
+    if (!isReferenceKind(kind)) continue;
+    for (const i of items as { code: string; parent?: string; labels: Record<string, string> }[]) {
+      if (await referenceStore.get(kind, i.code)) continue;
+      await catalog.putReference(kind, i.code, { labels: i.labels, ...(i.parent ? { parent: i.parent } : {}) }, 'petvold-seed');
+    }
+  }
+}
+
 const service = new ClaimsService({
   policies: new InMemoryPolicyPort([{ snapshot: fixtures.bellaPolicy(), sysFrom: '2026-03-03T00:00:00Z' }]),
   // Until the product catalog exists: every sample product uses the SE-HUND-VV series.
@@ -129,6 +149,7 @@ const tokens: Record<string, Principal> = {
   'dev-admin': { subject: 'admin@example.test', roles: ['admin'] },
   'dev-author': { subject: 'author@example.test', roles: ['rules-author'] },
   'dev-publisher': { subject: 'publisher@example.test', roles: ['rules-publisher'] },
+  'dev-catalog': { subject: 'catalog@example.test', roles: ['catalog-manager'] },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
   // Acts for the customer who owns Bella's policy in the sample data.
@@ -141,6 +162,7 @@ const app = createApp({
   idempotency,
   access,
   decisioning,
+  catalog,
   auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) },
 });
 
@@ -157,7 +179,8 @@ serve({
 console.log(`Petvold listening on http://localhost:${port}`);
 console.log(`  Storage:   ${storage}`);
 console.log(`  Rules:     ${decisioningUrl ? 'Postgres' : 'memory'}, series ${SERIES} (GET /v1/rule-sets/${SERIES}/versions)`);
+console.log(`  Reference: ${catalogUrl ? 'Postgres' : 'memory'} (GET /v1/reference-data/breed?parent=dog)`);
 console.log(`  Roles:     ${accessUrl ? 'Postgres, versioned (GET /v1/access/roles)' : 'memory, versioned (GET /v1/access/roles)'}`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-catalog (reference data), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);

@@ -1,0 +1,46 @@
+# Bygglogg
+
+En post per PR som förklarar *hur* något är byggt och *varför*: vägen genom koden, valen som gjordes och vad som valdes bort. Den här loggen kompletterar annan dokumentation:
+
+| Dokument | Svarar på |
+| --- | --- |
+| `docs/funktion/` | Vad gör Petvold, och hur ställs det in? |
+| `docs/teknik/` | Hur ser systemet ut just nu? |
+| `docs/adr/` | Vilka beslut är svåra att ändra, och varför fattades de? |
+| `docs/status.md` | Vad gjordes i varje pass, och vad är nästa steg? |
+| **`docs/logg/`** | **Hur implementerades en ändring, steg för steg, och vad är bra att veta när man läser koden?** |
+
+Posterna ändras inte i efterhand. Om något ändras senare skriver den nya PR:en en ny post.
+
+## Mall
+
+Filnamn: `ÅÅÅÅ-MM-DD-kort-namn.md`.
+
+```markdown
+# Rubrik (PR #NN)
+
+**Datum:** … **ADR:** … **Moduler:** …
+
+## Vad
+En eller två meningar om vad som går att göra nu.
+
+## Hur det fungerar
+Vägen genom koden för ett typiskt anrop, från HTTP till databas, med filer och funktioner.
+
+## Val och avvägningar
+Varför det blev så, och vad som valdes bort.
+
+## Att känna till
+Fallgropar, begränsningar och vad som inte är byggt.
+
+## Filer
+De viktigaste filerna.
+```
+
+## Poster
+
+Senaste först.
+
+| Datum | Post | PR |
+| --- | --- | --- |
+| 2026-11-15 | [Referensdata: arter, raser och kön](2026-11-15-referensdata.md) | #32 |

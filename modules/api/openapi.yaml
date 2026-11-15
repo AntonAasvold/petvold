@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Petvold API
   version: 0.1.0
-  summary: Headless core for pet insurance – claims, rule sets and access.
+  summary: Headless core for pet insurance – claims, rule sets, reference data and access.
   description: |
     The contract is the source of truth. The server validates incoming
     requests against the schemas here, and the contract tests validate the responses.
@@ -36,6 +36,7 @@ tags:
   - name: approvals
   - name: access
   - name: rule-sets
+  - name: reference-data
   - name: previews
   - name: limits
 
@@ -289,6 +290,128 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/reference-data/{kind}:
+    get:
+      tags: [reference-data]
+      operationId: listReferenceItems
+      x-permission: catalog:read
+      summary: The codes of a kind of reference data
+      description: |
+        Requires the permission `catalog:read`.
+
+        Reference data are the code lists other data point at: `species`,
+        `breed` and `sex` (ADR 0022). A code never changes and is never
+        deleted; it is deactivated instead. `label` is in the language asked
+        for with `Accept-Language`, and `labels` has every language.
+      parameters:
+        - $ref: '#/components/parameters/ReferenceKind'
+        - name: parent
+          in: query
+          description: Only the children of this code, e.g. the breeds of `dog`.
+          schema: { type: string }
+        - name: active
+          in: query
+          description: Only active (`true`) or inactive (`false`) codes. Omitted means both.
+          schema: { type: string, enum: ['true', 'false'] }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The latest revision of every code, ordered by code
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReferenceItem' }
+
+  /v1/reference-data/{kind}/{code}:
+    get:
+      tags: [reference-data]
+      operationId: getReferenceItem
+      x-permission: catalog:read
+      summary: One code
+      description: Requires the permission `catalog:read`.
+      parameters:
+        - $ref: '#/components/parameters/ReferenceKind'
+        - $ref: '#/components/parameters/ReferenceCode'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The latest revision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReferenceItem' }
+    put:
+      tags: [reference-data]
+      operationId: putReferenceItem
+      x-permission: catalog:write
+      summary: Create a code or store a new revision of it
+      description: |
+        Requires the permission `catalog:write`.
+
+        - A new code: omit `basedOnRevision`. A breed needs an active `parent` species.
+        - A change: `basedOnRevision` is the current revision, and `reason` is required.
+          Another revision stored since gives `409`.
+        - The parent never changes. Deactivate with `active: false`.
+        - Repeating a change that is already stored returns it unchanged, so a retry is safe.
+      parameters:
+        - $ref: '#/components/parameters/ReferenceKind'
+        - $ref: '#/components/parameters/ReferenceCode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReferenceItemChange' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The code was created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReferenceItem' }
+        '200':
+          description: The new revision, or the stored one if nothing changed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReferenceItem' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/reference-data/{kind}/{code}/revisions:
+    get:
+      tags: [reference-data]
+      operationId: listReferenceItemRevisions
+      x-permission: catalog:read
+      summary: Every revision of a code
+      description: Requires the permission `catalog:read`. Shows who changed what, when and why.
+      parameters:
+        - $ref: '#/components/parameters/ReferenceKind'
+        - $ref: '#/components/parameters/ReferenceCode'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: All revisions, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReferenceItem' }
 
   /v1/access/roles:
     get:
@@ -876,6 +999,18 @@ components:
       in: path
       required: true
       schema: { type: string }
+    ReferenceKind:
+      name: kind
+      in: path
+      required: true
+      description: The kind of reference data.
+      schema: { type: string, enum: [species, breed, sex] }
+    ReferenceCode:
+      name: code
+      in: path
+      required: true
+      description: The code, e.g. `dog` or `dog-labrador-retriever`. Never changes.
+      schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,63}$' }
     Series:
       name: series
       in: path
@@ -1404,6 +1539,39 @@ components:
               simulated: { $ref: '#/components/schemas/SimulatedOutcome' }
               payoutDelta: { $ref: '#/components/schemas/Money' }
               changed: { type: boolean }
+
+    ReferenceItem:
+      type: object
+      required: [kind, code, label, labels, active, revision, changedBy, changedAt]
+      properties:
+        kind: { type: string, enum: [species, breed, sex] }
+        code: { type: string }
+        parent: { type: string, description: 'The parent code, e.g. the species of a breed.' }
+        label: { type: string, description: 'The label in the language asked for with Accept-Language, else English, else the first language.' }
+        labels: { $ref: '#/components/schemas/Labels' }
+        active: { type: boolean, description: 'Inactive codes stay readable for stored data but are not offered for new data.' }
+        revision: { type: integer, minimum: 1 }
+        changedBy: { type: string }
+        changedAt: { $ref: '#/components/schemas/DateTime' }
+        reason: { type: string }
+
+    ReferenceItemChange:
+      type: object
+      additionalProperties: false
+      required: [labels]
+      properties:
+        labels: { $ref: '#/components/schemas/Labels' }
+        parent: { type: string, description: 'Required for a new breed: its species. Never changes.' }
+        active: { type: boolean, default: true }
+        basedOnRevision: { type: integer, minimum: 1, description: 'The current revision. Omitted for a new code.' }
+        reason: { type: string, minLength: 1, maxLength: 2000, description: 'Required when changing an existing code.' }
+
+    Labels:
+      type: object
+      description: 'Language tag (BCP 47, e.g. sv, en, de-CH) -> label.'
+      minProperties: 1
+      propertyNames: { pattern: '^[a-z]{2,3}(-[A-Z]{2})?$' }
+      additionalProperties: { type: string, minLength: 1, maxLength: 200 }
 
     EmptyRequest:
       type: object

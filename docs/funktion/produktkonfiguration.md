@@ -131,4 +131,4 @@ Varje beslut simuleras för sig, med den självriskperiod och det förbrukade be
 ## När katalogen finns *(planerat, M2)*
 
 - Produkter och produktversioner med moment, villkorsalternativ och säljperiod. Produktversionen pekar på en regelserie.
-- Referensdata (arter, raser, kön, diagnoskoder, fakturakategorier) med översättningar.
+- Referensdata: arter, raser och kön är byggda, se [Referensdata](referensdata.md). Diagnoskoder och fakturakategorier kan läggas till som nya sorter.

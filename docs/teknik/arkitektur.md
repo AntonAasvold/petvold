@@ -26,8 +26,9 @@ flowchart LR
 | `claims-store-memory` | Lagring i minnet och exempeldata, för tester och snabb utveckling | `claims-core` |
 | `claims-store-postgres` | Lagring i Postgres med ren SQL (ADR 0015) och idempotensnycklar | `claims-core`, `pg` |
 | `decisioning` | Regeluppsättningar med livscykel: `DecisioningService`, porten `RuleSetStore`, lagring i minnet och i Postgres (schemat `decisioning`), och `DecisioningRulesPort` som skademotorn läser regler genom (ADR 0021) | `claims-core` (typer och kontrollsumma), `pg` |
+| `catalog` | Produktkatalogen, i dag referensdata: `CatalogService`, porten `ReferenceDataStore`, lagring i minnet och i Postgres (schemat `catalog`), och `labelFor` som väljer etikett efter språk (ADR 0022) | `pg` |
 | `access` | Rollinställningen som versioner: tjänsten `AccessService`, porten `RoleConfigStore`, lagring i minnet och i Postgres (schemat `access`, ADR 0020) | `pg` |
-| `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, Hono |
+| `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, `catalog`, Hono |
 
 ## Portar och adaptrar
 
@@ -107,6 +108,14 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 - **Underlagen** kommer från skademodulens tjänst (`decisionsForSimulation`, porten `latestDecisionsWithEvidence`). Regeln kommer från `decisioning`, och API-lagret kopplar ihop dem. Ingen modul läser den andras tabeller.
 - **Filter.** API-lagret filtrerar på serie (`rulesVersion` börjar med `<serie>@`) och på anroparens omfång.
 - **Index.** `claims.decision (decided_at)` (migration 0012).
+
+**Referensdata (ADR 0022):**
+- **Tabell.** `catalog.reference_item` (migration 0013) med en rad per revision. Primärnyckeln är `(kind, code, revision)`. Gällande värde är den högsta revisionen per kod (`distinct on`).
+- **Bara tillägg.** Tjänsterollen `catalog_service` får `select` och `insert`, inte `update` eller `delete`. Historiken kan alltså inte skrivas om.
+- **Optimistisk låsning.** En ny revision sparas bara om den är exakt nästa (`insert … where revision = max + 1`, med primärnyckeln som skydd vid samtidiga anrop).
+- **Databasen upprätthåller reglerna:** en ras har en art som finns, och arten ändras aldrig (trigger). Andra sorter har ingen förälder, och en ändring har en motivering (check-constraints).
+- **Upprepning är säker.** Skickas samma ändring igen returnerar tjänsten den sparade revisionen och skapar ingen ny. Därför behöver `PUT` ingen `Idempotency-Key`.
+- **Språk.** `labelFor(labels, acceptLanguage)` är ren: exakt tagg, sedan språket utan region, sedan engelska, sedan första taggen i bokstavsordning. API-lagret lägger till `label` i svaret.
 
 **Rollinställningen (ADR 0020):**
 - **Versioner.** Modulen `access` sparar hela rollinställningen som versioner i `access.role_config` (migration 0009). Den har en egen tjänsteroll, `access_service`, som bara får läsa och lägga till.
