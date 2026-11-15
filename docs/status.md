@@ -30,13 +30,22 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **API:** sju operationer under `/v1/animals`, med sökning på chip och ägare. Nya rättigheter `animals:read` och `animals:write`, och ny roll `animal-registrar`. Omfånget är djurets marknad, och roller bundna till klinik eller försäkringar ser inga djur.
   - **Migration 0015:** schemat `animals` och rollen `animals_service`. Provad ner och upp igen.
   - **Dev-servern** registrerar Bella. Ny token `dev-registrar`. Lokal rollinställning är version 4.
-- 267 tester och 91 databastester.
+- ADR 0022, 0023 och 0024 beslutade.
+- Uppslagning av djur för kliniker (ADR 0025, Föreslagen), PR #35:
+  - **Flaggan `allowLookup`** per djur, som en del av revisionerna. Stängt om inget anges, och måste alltid anges vid en rättelse.
+  - **`GET /v1/animal-lookup`** på chip, registrering eller pass. Visar djuret utan ägare och historik, och bara i anroparens marknader. Stängt, okänt och fel marknad ger samma tomma lista.
+  - **Ny rättighet `animals:lookup`**, som rollen `clinic` får.
+  - **Migration 0016:** kolumnen `allow_lookup`. Provad ner och upp igen.
+  - **Dev-servern** öppnar Bella, och `dev-clinic` hittar henne på chipet. Lokal rollinställning är version 5.
+- 269 tester och 91 databastester.
 
 **Nästa steg**
 1. Kullar i djurregistret, eller partmodulen (personer, organisationer, roller), som ägarna pekar på.
 
 **Öppet**
-- Kliniker kan inte slå upp djur på chipnummer. Det kräver ett beslut om vad en klinik får se om ägaren.
+- ADR 0025 väntar på ditt beslut.
+- Det sparas inte vem som slagit upp ett djur.
+- `animals:lookup` saknas på `clinic` i installationer som redan har en sparad rollinställning.
 - `catalog:read`, `catalog-manager` och `catalog-publisher` saknas i installationer som redan har en sparad rollinställning. Lokalt måste de läggas till via API:et.
 
 ## 2026-11-14 (pass 23)

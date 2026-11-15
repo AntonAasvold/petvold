@@ -1,6 +1,6 @@
 # Djurregister
 
-Registret håller ordning på de försäkrade djuren: vad djuret är, hur det identifieras och vem som äger det vid en viss tidpunkt. Beslutet bakom finns i ADR 0024.
+Registret håller ordning på de försäkrade djuren: vad djuret är, hur det identifieras och vem som äger det vid en viss tidpunkt. Besluten bakom finns i ADR 0024 och ADR 0025 (uppslagning).
 
 ## Vad ett djur har
 
@@ -13,6 +13,7 @@ Registret håller ordning på de försäkrade djuren: vad djuret är, hur det id
 | `sex`, `neutered` | Kön ur referensdatan, och om djuret är kastrerat | Med motivering |
 | `name`, `birthDate` | Namn och födelsedatum | Med motivering |
 | `deceasedOn` | Dödsdatum | Med motivering |
+| `allowLookup` | Om djuret kan slås upp, till exempel av en klinik. Stängt om inget anges. | Med motivering |
 | `identifiers` | Chip, registreringsnummer och pass | Läggs till, tas aldrig bort |
 | `ownerships` | Ägare med giltighetstid | Ägarbyte |
 
@@ -34,6 +35,7 @@ Registret håller ordning på de försäkrade djuren: vad djuret är, hur det id
 | `GET /v1/animals/{id}/revisions` | `animals:read` | Alla revisioner, äldst först |
 | `POST /v1/animals/{id}/identifiers` | `animals:write` | Lägger till ett id-nummer |
 | `POST /v1/animals/{id}/ownerships` | `animals:write` | Ny ägare från ett datum |
+| `GET /v1/animal-lookup?microchip=…` | `animals:lookup` | Slår upp ett djur som är öppet för uppslagning. Visar inga ägare. Det går också att använda `registration` eller `passport`. |
 
 ## Exempel
 
@@ -51,6 +53,18 @@ POST /v1/animals
 
 **Rex kastreras:** `PUT /v1/animals/{id}` med alla uppgifter, `"neutered": true`, `"basedOnRevision": 1` och `"reason": "Kastrerad"`. Svaret har `revision: 2`.
 
+**Ägaren låter kliniker hitta Rex:** `PUT /v1/animals/{id}` med alla uppgifter, `"allowLookup": true` och `"reason": "Ägaren godkänner uppslagning"`.
+
+**Kliniken läser chipet:** `GET /v1/animal-lookup?microchip=752098100000042` ger
+
+```json
+{ "items": [{ "id": "ani_…", "market": "SE", "species": "dog", "breed": "dog-beagle", "sex": "male",
+  "neutered": true, "name": "Rex", "birthDate": "2024-03-01",
+  "identifiers": [{ "type": "microchip", "value": "752098100000042" }] }] }
+```
+
+Om Rex är stängd, inte finns eller finns i en annan marknad blir svaret `{ "items": [] }`.
+
 **Rex säljs 1 juni:** `POST /v1/animals/{id}/ownerships` med `{ "partyId": "pty_bo", "from": "2026-06-01", "reason": "Såld" }`. Anna ägde Rex till och med 31 maj. Bo äger honom från 1 juni.
 
 ## Vem ser vad
@@ -58,7 +72,8 @@ POST /v1/animals
 - `animal-registrar` registrerar och ändrar. Det kan till exempel vara försäkringsbolagets kundservice eller säljkanal.
 - `handler` och `approver` kan läsa.
 - Alla ser bara djur i sina egna marknader. Ett djur i en annan marknad ger `404`.
-- **Roller som är bundna till klinik eller försäkringar ser inga djur.** Registret kan inte avgöra vilka djur som hör till en viss klinik eller försäkring. Kliniker kan alltså inte slå upp djur på chipnummer än. Det kräver ett eget beslut om vad en klinik får se om ägaren.
+- **Roller som är bundna till klinik eller försäkringar ser inga hela djur.** Registret kan inte avgöra vilka djur som hör till en viss klinik eller försäkring, och ett helt djur visar ägaren.
+- **Kliniker slår upp djur** med `GET /v1/animal-lookup` (rättigheten `animals:lookup`, som rollen `clinic` har). De hittar bara djur som är öppna (`allowLookup`) och i klinikens marknader, och ser aldrig ägare eller historik. Det går inte att söka på ägare. Se ADR 0025.
 
 ## Spärrar
 
@@ -74,6 +89,6 @@ POST /v1/animals
 
 ## Lokalt
 
-Dev-servern registrerar Bella (`ani_bella`, labrador, chip `752098100000001`, ägare `pty_owner001`) första gången. Token `dev-registrar` får registrera och ändra djur i Sverige.
+Dev-servern registrerar Bella (`ani_bella`, labrador, chip `752098100000001`, ägare `pty_owner001`, öppen för uppslagning) första gången. Token `dev-clinic` kan slå upp henne. Token `dev-registrar` får registrera och ändra djur i Sverige.
 
-*Inte byggt än:* kullar, händelser vid ägarbyte och dödsfall (M3), och kontroll av att parten finns (partmodulen).
+*Inte byggt än:* en logg över vem som slagit upp ett djur, kullar, händelser vid ägarbyte och dödsfall (M3), och kontroll av att parten finns (partmodulen).

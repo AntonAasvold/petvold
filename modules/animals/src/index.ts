@@ -9,6 +9,9 @@
  *
  * Owners are party ids (`pty_…`). The party module (M2) will own the parties;
  * until then the register checks only the format.
+ *
+ * Lookup (ADR 0025): an animal can be open for lookup by identifier, e.g. by a
+ * clinic. A lookup returns a summary without owners or change history.
  */
 
 export type ISODate = string;
@@ -32,6 +35,8 @@ export interface Animal {
   name: string;
   birthDate: ISODate;
   deceasedOn?: ISODate;
+  /** Whether a lookup by identifier, e.g. by a clinic, finds the animal (ADR 0025). */
+  allowLookup: boolean;
   changedBy: string;
   changedAt: string;
   /** Why the details were corrected. Required from revision 2. */
@@ -55,6 +60,20 @@ export interface Ownership {
   recordedBy: string;
   recordedAt: string;
   reason?: string;
+}
+
+/** What a lookup shows: the current details and identifiers, without owners or change history (ADR 0025). */
+export interface AnimalSummary {
+  id: string;
+  market: string;
+  species: string;
+  breed?: string;
+  sex: string;
+  neutered: boolean;
+  name: string;
+  birthDate: ISODate;
+  deceasedOn?: ISODate;
+  identifiers: { type: IdentifierType; value: string }[];
 }
 
 /** An animal with its current details, identifiers and every ownership. */
@@ -136,6 +155,8 @@ export interface RegisterInput {
   neutered?: boolean;
   name: string;
   birthDate: ISODate;
+  /** Default false: the animal is not found by a lookup until someone opens it. */
+  allowLookup?: boolean;
   identifiers?: IdentifierInput[];
   owner: { partyId: string; from: ISODate };
 }
@@ -149,6 +170,7 @@ export interface CorrectionInput {
   name: string;
   birthDate: ISODate;
   deceasedOn?: ISODate;
+  allowLookup: boolean;
 }
 
 const PARTY = /^pty_[A-Za-z0-9]{1,64}$/;
@@ -167,6 +189,22 @@ export function normalizeIdentifier(i: IdentifierInput): IdentifierInput {
   const v = raw.replace(/\s+/g, ' ').toUpperCase();
   if (!/^[A-Z0-9][A-Z0-9 /.-]{0,39}$/.test(v)) throw new AnimalError('validation', `Invalid ${i.type} number`);
   return { type: i.type, value: v };
+}
+
+/** The animal as a lookup shows it. Pure. */
+export function summaryOf(a: AnimalRecord): AnimalSummary {
+  return {
+    id: a.id,
+    market: a.market,
+    species: a.species,
+    ...(a.breed ? { breed: a.breed } : {}),
+    sex: a.sex,
+    neutered: a.neutered,
+    name: a.name,
+    birthDate: a.birthDate,
+    ...(a.deceasedOn ? { deceasedOn: a.deceasedOn } : {}),
+    identifiers: a.identifiers.map((i) => ({ type: i.type, value: i.value })),
+  };
 }
 
 /** The owner on a date, if any. Pure. */
@@ -192,6 +230,11 @@ export class AnimalService {
     const i = normalizeIdentifier(input);
     const id = await this.d.store.findByIdentifier(i.type, i.value);
     return id ? [await this.get(id)] : [];
+  }
+
+  /** Finds an animal by identifier for a lookup: only if it is open for lookup, and only as a summary (ADR 0025). */
+  async lookup(input: IdentifierInput): Promise<AnimalSummary[]> {
+    return (await this.findByIdentifier(input)).filter((a) => a.allowLookup).map(summaryOf);
   }
 
   /** Animals the party owns today. */
@@ -221,6 +264,7 @@ export class AnimalService {
       neutered: input.neutered ?? false,
       name: input.name.trim(),
       birthDate: input.birthDate,
+      allowLookup: input.allowLookup ?? false,
       changedBy: by,
       changedAt: now,
     };
@@ -262,6 +306,7 @@ export class AnimalService {
       name: input.name.trim(),
       birthDate: input.birthDate,
       ...(input.deceasedOn ? { deceasedOn: input.deceasedOn } : {}),
+      allowLookup: input.allowLookup,
       changedBy: by,
       changedAt: this.d.clock.now(),
       reason,
@@ -301,7 +346,10 @@ export class AnimalService {
     return this.get(id);
   }
 
-  private async checkDetails(species: string, input: { breed?: string; sex: string; name: string; birthDate: ISODate; neutered?: boolean }) {
+  private async checkDetails(
+    species: string,
+    input: { breed?: string; sex: string; name: string; birthDate: ISODate; neutered?: boolean; allowLookup?: boolean },
+  ) {
     if (input.breed !== undefined) {
       const b = await this.reference('breed', input.breed);
       if (b.parent !== species) throw new AnimalError('validation', `The breed '${input.breed}' is not a ${species} breed`);
@@ -311,6 +359,7 @@ export class AnimalService {
     if (!name || name.length > 100) throw new AnimalError('validation', 'The name must be 1-100 characters');
     if (!isDate(input.birthDate) || input.birthDate > this.today()) throw new AnimalError('validation', 'birthDate must be a date not after today');
     if (input.neutered !== undefined && typeof input.neutered !== 'boolean') throw new AnimalError('validation', 'neutered must be true or false');
+    if (input.allowLookup !== undefined && typeof input.allowLookup !== 'boolean') throw new AnimalError('validation', 'allowLookup must be true or false');
   }
 
   private async reference(kind: 'species' | 'breed' | 'sex', code: string) {

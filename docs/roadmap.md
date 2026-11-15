@@ -36,6 +36,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Produkter och produktversioner i `catalog` (ADR 0023): säljperiod, villkorsalternativ, regelserie och publicering med fyra ögon. Skademotorn hittar regelserien via produktversionen.
 - [ ] `assess` och `calculate` flyttas till `decisioning-core`
 - [x] Djurregister (ADR 0024): djur, id-nummer och ägarskap med giltighetstid
+- [x] Uppslagning av djur för kliniker, styrd per djur (ADR 0025)
 - [ ] Kullar i djurregistret
 - [ ] Part: person, organisation, roller
 

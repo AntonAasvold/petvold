@@ -185,7 +185,7 @@ async function seedAnimals(): Promise<void> {
   const now = clock.now();
   const by = 'petvold-seed';
   await animalStore.register(
-    { id: 'ani_bella', revision: 1, market: 'SE', species: 'dog', breed: 'dog-labrador-retriever', sex: 'female', neutered: true, name: 'Bella', birthDate: '2019-03-14', changedBy: by, changedAt: now },
+    { id: 'ani_bella', revision: 1, market: 'SE', species: 'dog', breed: 'dog-labrador-retriever', sex: 'female', neutered: true, name: 'Bella', birthDate: '2019-03-14', allowLookup: true, changedBy: by, changedAt: now },
     [{ type: 'microchip', value: '752098100000001', addedBy: by, addedAt: now }],
     { seq: 1, partyId: 'pty_owner001', validFrom: '2019-05-20', recordedBy: by, recordedAt: now },
   );

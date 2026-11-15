@@ -30,6 +30,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `catalog:publish` | Publicera eller skicka tillbaka produktversioner, aldrig den egna inskickade, och avsluta försäljning | `.../publications`, `.../returns`, `.../sales-ends` |
 | `animals:read` | Läsa djurregistret: djur, id-nummer, ägare och historik (ADR 0024) | `GET /v1/animals`, `.../{id}`, `.../{id}/revisions` |
 | `animals:write` | Registrera djur, rätta uppgifter, lägga till id-nummer och byta ägare | `POST /v1/animals`, `PUT .../{id}`, `.../identifiers`, `.../ownerships` |
+| `animals:lookup` | Slå upp ett djur på id-nummer, utan ägare eller historik. Hittar bara djur som är öppna för uppslagning (ADR 0025). | `GET /v1/animal-lookup` |
 | `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/access/roles`, `.../versions` |
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/access/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
@@ -51,7 +52,7 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `animal-registrar` | `animals:read`, `animals:write`, `catalog:read` | – | Registrerar djur och ägarbyten, till exempel kundservice |
 | `catalog-manager` | `catalog:read`, `catalog:write` | – | Underhåller referensdata och skriver produktutkast |
 | `catalog-publisher` | `catalog:read`, `catalog:publish` | – | Granskar och publicerar produktversioner |
-| `clinic` | `claims:register`, `claims:read`, `claims:preview`, `catalog:read` | klinik | Veterinärklinik med direktreglering |
+| `clinic` | `claims:register`, `claims:read`, `claims:preview`, `catalog:read`, `animals:lookup` | klinik | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | – | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
 | `customer-channel` | `claims:read`, `claims:request-review`, `catalog:read` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
 
@@ -80,6 +81,7 @@ Hur Petvold svarar utanför omfånget:
 | Anmäla en skada eller få förhandsbesked i en annan marknad eller på en annan försäkring | `403` |
 | Försäkringsbelopp för en försäkring utanför omfånget | `404` |
 | Djur i en annan marknad, eller för en roll bunden till klinik eller försäkringar | `404` vid läsning, `403` vid registrering (ADR 0024) |
+| Uppslagning av ett djur som är stängt, saknas eller finns i en annan marknad | Tom lista (ADR 0025) |
 | Försäkringsbelopp för en roll bunden till klinik | `404`. En klinik är inte knuten till försäkringar och kan därför inte slå upp försäkringsbelopp per försäkrings-id. |
 
 `404` i stället för `403` gör att det inte går att ta reda på vilka ärenden som finns genom att prova id:n (OWASP API1, *Broken Object Level Authorization*).

@@ -3,6 +3,7 @@
  * service role `animals_service`: it may insert and read, and may only set the
  * end of an open ownership. The database also checks that market and species
  * never change and that ownerships follow each other without gaps.
+ * Migration 0016 adds whether the animal is open for lookup (ADR 0025).
  */
 import type pg from 'pg';
 import {
@@ -19,7 +20,7 @@ import {
 
 const UNIQUE_VIOLATION = '23505';
 const REVISION = `animal_id, revision, market, species, breed, sex, neutered, name, birth_date::text as birth_date,
-  deceased_on::text as deceased_on, changed_by, changed_at, reason`;
+  deceased_on::text as deceased_on, allow_lookup, changed_by, changed_at, reason`;
 
 export class PostgresAnimalStore implements AnimalStore {
   constructor(private readonly pool: pg.Pool) {}
@@ -81,8 +82,8 @@ export class PostgresAnimalStore implements AnimalStore {
   async appendRevision(animal: Animal): Promise<void> {
     const res = await this.pool
       .query(
-        `insert into animals.animal_revision (animal_id, revision, market, species, breed, sex, neutered, name, birth_date, deceased_on, changed_by, changed_at, reason)
-         select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+        `insert into animals.animal_revision (animal_id, revision, market, species, breed, sex, neutered, name, birth_date, deceased_on, allow_lookup, changed_by, changed_at, reason)
+         select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
          where $2 = (select max(revision) + 1 from animals.animal_revision where animal_id = $1)`,
         revisionParams(animal),
       )
@@ -134,6 +135,7 @@ function revisionParams(a: Animal) {
     a.name,
     a.birthDate,
     a.deceasedOn ?? null,
+    a.allowLookup,
     a.changedBy,
     a.changedAt,
     a.reason ?? null,
@@ -143,8 +145,8 @@ function revisionParams(a: Animal) {
 async function insertRevision(db: Db, a: Animal) {
   await db
     .query(
-      `insert into animals.animal_revision (animal_id, revision, market, species, breed, sex, neutered, name, birth_date, deceased_on, changed_by, changed_at, reason)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      `insert into animals.animal_revision (animal_id, revision, market, species, breed, sex, neutered, name, birth_date, deceased_on, allow_lookup, changed_by, changed_at, reason)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       revisionParams(a),
     )
     .catch(conflict(`Animal ${a.id} exists`));
@@ -196,6 +198,7 @@ function toAnimal(r: Record<string, any>): Animal {
     name: r.name,
     birthDate: r.birth_date,
     ...(r.deceased_on === null ? {} : { deceasedOn: r.deceased_on }),
+    allowLookup: r.allow_lookup,
     changedBy: r.changed_by,
     changedAt: iso(r.changed_at),
     ...(r.reason === null ? {} : { reason: r.reason }),
