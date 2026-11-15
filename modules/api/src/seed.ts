@@ -1,10 +1,16 @@
 /**
- * Sample data for the dev server: Bella, her owner and policy, the sample rules,
- * tariff, price terms, reference data and products. Made up (ADR 0009). Each
- * part is created only if it is not there, so restarts keep what was changed.
- * Never used by server.ts.
+ * Sample data for the dev server and a user interface to work against. Made up
+ * (ADR 0009). Each part is created only if it is not there, so restarts keep
+ * what was changed. Never used by server.ts.
+ *
+ * - The sample rules, tariff, price terms, reference data and products.
+ * - Bella, her owner and policy, and four claims: one in each work queue.
+ * - Doris in Gothenburg, with a policy priced by the tariff.
+ * - A household in Malmo: Max and Ludde insured together with the household
+ *   discount, and the cat Smilla without insurance.
  */
-import { CALCULATION_MODEL } from '@petvold/claims-core';
+import { CALCULATION_MODEL, type Claim } from '@petvold/claims-core';
+import { marketDate } from '@petvold/common';
 import { fixtures } from '@petvold/claims-store-memory';
 import { isReferenceKind, productChecksum, type ProductVersion } from '@petvold/catalog';
 import { ruleSetChecksum, type RuleSetStore, type RuleSetVersion } from '@petvold/decisioning';
@@ -114,6 +120,130 @@ export async function seedSampleData(inst: Installation, clock: { now(): string 
       { id: 'ptx_bellaseed', policyId: 'pol_bella', type: 'issue', steps: [{ step: 'issued', at, note: 'Sample data' }], requestedBy: by, requestedAt: at },
       [],
     );
+  }
+
+  await seedClaims(inst);
+  await seedHouseholds(inst, now, by);
+}
+
+/**
+ * Bella's claims, one in each work queue (GET /v1/claims?state=…):
+ * decided automatically, review requested, awaiting decision and awaiting approval.
+ */
+async function seedClaims(inst: Installation): Promise<void> {
+  const claims = inst.deps.service;
+  const exists = (id: string) => claims.getClaim(id).then(() => true, () => false);
+
+  // decided: settled automatically in June.
+  if (!(await exists('clm_021877'))) await claims.registerClaim(fixtures.otitisClaim());
+
+  // review-requested: the ear again in September, settled automatically, and the customer asks for a person.
+  if (!(await exists('clm_033410'))) {
+    const { decision } = await claims.registerClaim(
+      fixtures.otitisClaim({
+        id: 'clm_033410',
+        claimNo: 'S-2026-033410',
+        channel: 'customer',
+        treatmentFrom: '2026-09-15',
+        treatmentTo: '2026-09-15',
+        receivedAt: '2026-09-16T18:20:00Z',
+        lines: [
+          { id: 'l1', description: 'Examination', category: 'examination', amount: 65_000 },
+          { id: 'l2', description: 'Ear cytology', category: 'diagnostics', amount: 48_000 },
+          { id: 'l3', description: 'Ear drops', category: 'medication', amount: 29_000 },
+        ],
+      }),
+    );
+    if (decision) await claims.requestReview('clm_033410', decision.seq, { requestedBy: 'customer-portal', statement: 'The cytology was ordered by the vet and should be covered in full.' });
+  }
+
+  // awaiting-decision: the cruciate surgery, with a rider that may apply.
+  if (!(await exists('clm_048213'))) await claims.registerClaim(fixtures.cruciateClaim());
+
+  // awaiting-approval: a large surgery a handler accepted above their limit (SEK 25,000).
+  if (!(await exists('clm_050977'))) {
+    await claims.registerClaim(LARGE_CLAIM);
+    await claims.decide('clm_050977', {
+      action: 'accept',
+      decidedBy: 'handlaggare@example.test',
+      reason: 'Foreign body confirmed by ultrasound',
+      decisionLimits: { SEK: 2_500_000, EUR: 250_000 },
+    });
+  }
+}
+
+const LARGE_CLAIM: Claim = {
+  id: 'clm_050977',
+  claimNo: 'S-2026-050977',
+  policyId: 'pol_bella',
+  animalId: 'ani_bella',
+  market: 'SE',
+  currency: 'SEK',
+  channel: 'clinic_direct',
+  treatmentFrom: '2026-11-08',
+  treatmentTo: '2026-11-10',
+  diagnosisCode: 'GI-ENTERIT',
+  receivedAt: '2026-11-12T08:15:00Z',
+  lines: [
+    { id: 'l1', description: 'Emergency examination', category: 'examination', amount: 120_000 },
+    { id: 'l2', description: 'Ultrasound, abdomen', category: 'diagnostics', amount: 310_000 },
+    { id: 'l3', description: 'Anaesthesia', category: 'anaesthesia', amount: 180_000 },
+    { id: 'l4', description: 'Laparotomy, removal of foreign body', category: 'surgery', amount: 2_600_000 },
+    { id: 'l5', description: 'Hospital care, 2 days', category: 'hospitalisation', amount: 540_000 },
+    { id: 'l6', description: 'Medication', category: 'medication', amount: 95_000 },
+  ],
+};
+
+interface SampleAnimal {
+  id: string;
+  name: string;
+  species: 'dog' | 'cat';
+  breed: string;
+  sex: 'male' | 'female';
+  birthDate: string;
+  chip: string;
+}
+
+/** More owners and animals, with policies issued through the policy service so the tariff prices them. */
+async function seedHouseholds(inst: Installation, now: string, by: string): Promise<void> {
+  const { stores } = inst;
+  const policies = inst.deps.policies!;
+  const today = marketDate('SE', now);
+
+  const person = async (id: string, givenName: string, address: { street: string; postalCode: string; city: string }) => {
+    if (await stores.parties.get(id)) return;
+    await stores.parties.register(
+      { id, revision: 1, kind: 'person', market: 'SE', givenName, familyName: 'Example', email: `${givenName.toLowerCase()}@example.test`, address: { ...address, country: 'SE' }, language: 'sv', changedBy: by, changedAt: now },
+      [],
+    );
+  };
+  const animal = async (a: SampleAnimal, ownerId: string) => {
+    if (await stores.animals.get(a.id)) return;
+    await stores.animals.register(
+      { id: a.id, revision: 1, market: 'SE', species: a.species, breed: a.breed, sex: a.sex, neutered: false, name: a.name, birthDate: a.birthDate, allowLookup: true, changedBy: by, changedAt: now },
+      [{ type: 'microchip', value: a.chip, addedBy: by, addedAt: now }],
+      { seq: 1, partyId: ownerId, validFrom: a.birthDate, recordedBy: by, recordedAt: now },
+    );
+  };
+  const insure = async (animalId: string, holder: string, groupId?: string) => {
+    if ((await policies.findByAnimal(animalId)).length > 0) return;
+    await policies.issue({ market: 'SE', animalId, policyholderPartyId: holder, productVersion: 'SE-HUND-BAS@2026.1', startDate: today, ...(groupId ? { groupId } : {}) }, by);
+  };
+
+  // Doris in Gothenburg.
+  await person('pty_owner002', 'Erik', { street: 'Example Road 2', postalCode: '41101', city: 'Gothenburg' });
+  await animal({ id: 'ani_doris', name: 'Doris', species: 'dog', breed: 'dog-golden-retriever', sex: 'female', birthDate: '2023-05-02', chip: '752098100000002' }, 'pty_owner002');
+  await insure('ani_doris', 'pty_owner002');
+
+  // A household in Malmo: two dogs insured together, and a cat without insurance.
+  await person('pty_owner003', 'Sara', { street: 'Example Square 3', postalCode: '21115', city: 'Malmo' });
+  await animal({ id: 'ani_max', name: 'Max', species: 'dog', breed: 'dog-german-shepherd', sex: 'male', birthDate: '2021-08-19', chip: '752098100000003' }, 'pty_owner003');
+  await animal({ id: 'ani_ludde', name: 'Ludde', species: 'dog', breed: 'dog-mixed', sex: 'male', birthDate: '2024-02-11', chip: '752098100000004' }, 'pty_owner003');
+  await animal({ id: 'ani_smilla', name: 'Smilla', species: 'cat', breed: 'cat-domestic', sex: 'female', birthDate: '2022-10-01', chip: '752098100000005' }, 'pty_owner003');
+  if ((await policies.findByAnimal('ani_max')).length === 0) {
+    const group = await policies.createGroup({ market: 'SE', kind: 'household', holderPartyId: 'pty_owner003' }, by);
+    await insure('ani_max', 'pty_owner003', group.id);
+    await insure('ani_ludde', 'pty_owner003', group.id);
   }
 }
 

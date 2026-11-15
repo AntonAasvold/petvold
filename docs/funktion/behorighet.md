@@ -6,11 +6,30 @@ Vem som får göra vad i Petvold, och hur det ställs in för en installation. B
 
 1. **Anroparen loggar in hos försäkringsbolagets identitetstjänst** och skickar en token med varje anrop. Tokenen innehåller anroparens roller. Petvold lagrar inga användare.
 2. **Varje roll ger ett antal rättigheter.** Vilka rättigheter en roll ger ställs in per installation.
-3. **Varje anrop kräver exakt en rättighet.** Den står i API-kontraktet (`x-permission`) och visas på API-sidan.
+3. **Varje anrop kräver exakt en rättighet.** Den står i API-kontraktet (`x-permission`) och visas på API-sidan. Det enda undantaget är `GET /v1/me`, som alla inloggade får anropa (`x-permission: signed-in`), eftersom det bara visar anroparen själv.
 4. **Saknas rättigheten** svarar Petvold `403` och anger vilken rättighet som krävs.
 5. **Anroparen ser bara ärenden inom sitt omfång** (se nedan). Ett ärende utanför omfånget ger `404`, precis som ett ärende som inte finns.
 
 En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen roll som ger allt.
+
+## Vem är jag?
+
+`GET /v1/me` visar vem anroparen är och vad den får göra just nu. Ett gränssnitt använder svaret för att välja vilka menyer och knappar som ska visas. API:t kontrollerar ändå varje anrop.
+
+```json
+{
+  "subject": "handlaggare@example.test",
+  "roles": ["handler"],
+  "permissions": ["animals:read", "catalog:read", "claims:decide", "claims:override", "claims:preview", "claims:read", "..."],
+  "scope": { "markets": "*" },
+  "decisionLimits": { "SEK": 2500000, "EUR": 250000 }
+}
+```
+
+- **`roles`** är de roller i token som installationen känner till. Okända roller står i `unknownRoles` och ger inget.
+- **`scope`** visar marknaderna och, för bundna roller, kliniken (`clinicId`) eller försäkringarna (`policyIds`).
+- **`decisionLimits` och `approvalLimits`** finns bara med `claims:decide` respektive `claims:approve`. `null` betyder ingen gräns, och en valuta som saknas har gränsen 0.
+- Svaret följer rollinställningen som gäller, så en ändring syns vid nästa anrop.
 
 ## Rättigheter
 

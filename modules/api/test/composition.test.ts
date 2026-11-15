@@ -25,3 +25,30 @@ test('the modules are connected, and the relay drives the policy module from the
 test('database URLs come from the environment, skipping empty ones', () => {
   assert.deepEqual(databasesFromEnv({ CLAIMS_DATABASE_URL: 'postgres://c', PARTIES_DATABASE_URL: '', OTHER: 'x' }), { claims: 'postgres://c' });
 });
+
+test('the sample data fills every work queue and prices the households with the tariff', async () => {
+  const clock = { now: () => '2026-11-15T10:00:00.000Z' };
+  const inst = await compose({ databases: {}, engineVersion: 'test', clock });
+  await seedSampleData(inst, clock);
+  await seedSampleData(inst, clock); // twice is harmless
+  const claims = await inst.deps.service.listClaims({});
+  assert.deepEqual(
+    claims.map((c) => [c.id, c.state]),
+    [
+      ['clm_021877', 'decided'],
+      ['clm_033410', 'review-requested'],
+      ['clm_050977', 'awaiting-approval'],
+      ['clm_048213', 'awaiting-decision'],
+    ],
+  );
+  const policies = inst.deps.policies!;
+  const [doris] = await policies.findByAnimal('ani_doris');
+  const [max] = await policies.findByAnimal('ani_max');
+  const [ludde] = await policies.findByAnimal('ani_ludde');
+  for (const p of [doris, max, ludde]) assert.ok(p!.terms[0]!.pricing, `${p!.id} is priced by the tariff`);
+  assert.equal((await policies.findByAnimal('ani_smilla')).length, 0);
+  // Ludde joins Max in the household group and gets the group discount.
+  assert.ok(ludde!.terms[0]!.pricing!.result.facts.discountBp > 0);
+  assert.equal(doris!.terms[0]!.pricing!.result.facts.discountBp, 0);
+  await inst.close();
+});

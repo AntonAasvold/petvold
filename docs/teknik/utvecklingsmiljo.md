@@ -29,6 +29,23 @@ npm run dev            # API:et på http://localhost:8787, startar om vid ändri
 
 Servern skriver ut vilken lagring den använder och loggar varje händelse som reläet publicerar.
 
+**Exempeldata** (`modules/api/src/seed.ts`), för att ett gränssnitt ska ha något att visa:
+
+| Vad | Id | Visar |
+| --- | --- | --- |
+| Anna och Bella, labrador i Stockholm | `pty_owner001`, `ani_bella`, `pol_bella` | Policy med tillägg (`SE-HUND-VV-LIV`) |
+| Bellas öroninflammation i juni | `clm_021877` | Automatiskt beslut (`decided`) |
+| Bellas öra igen i september | `clm_033410` | Automatiskt beslut där kunden begärt prövning (`review-requested`) |
+| Bellas korsbandsoperation | `clm_048213` | Väntar på handläggare (`awaiting-decision`) |
+| Bellas främmande kropp | `clm_050977` | Förslag över handläggarens gräns som väntar på attest (`awaiting-approval`) |
+| Erik och Doris, golden retriever i Göteborg | `pty_owner002`, `ani_doris` | Policy på `SE-HUND-BAS`, prissatt av tariffen |
+| Sara, Max och Ludde i Malmö | `pty_owner003`, `ani_max`, `ani_ludde` | Två policyer i ett hushåll, Ludde med grupprabatt |
+| Saras katt Smilla | `ani_smilla` | Ett djur utan försäkring |
+
+De nya policyerna tecknas med dagens datum första gången servern startar, så deras id skiljer sig mellan databaser. Hitta dem med `GET /v1/policies?policyholderPartyId=pty_owner003`. En befintlig lokal databas får de nya delarna vid nästa start, men Bellas skador och policyer bara om de saknas. Kör `npm run dev:reset` för att börja om.
+
+**Gränssnitt i webbläsaren:** dev-servern tillåter anrop från `http://localhost:5173` (Vite) och `http://localhost:3000`. Ange andra adresser med `PETVOLD_CORS_ORIGINS`, kommaseparerat. `GET /v1/me` visar vad varje dev-token får göra.
+
 ## Testa API:et för hand
 
 - **API-sidan:** http://localhost:8787/docs. Den genereras från `openapi.yaml` med Scalar. Token `dev-handler` är förifylld, och varje anrop har färdiga exempel (öroninflammation, korsbandsskada, behandling före försäkringens start).

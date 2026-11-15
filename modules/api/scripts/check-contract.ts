@@ -1,10 +1,10 @@
 /** Fails if the contract and the implementation have drifted apart. Runs in CI. */
 import { ClaimsService } from '@petvold/claims-core';
-import { createApp, implementedOperations, contractOperations, operationPermissions, isPermission } from '../src/index.ts';
+import { createApp, implementedOperations, contractOperations, operationPermissions, isOperationPermission } from '../src/index.ts';
 import { InMemoryIdempotencyStore } from '../src/app.ts';
 
-// Every operation must name one known permission (ADR 0016).
-const withoutPermission = [...operationPermissions()].filter(([, p]) => !isPermission(p)).map(([op, p]) => `${op} (${String(p)})`);
+// Every operation must name one known permission, or signed-in (ADR 0016).
+const withoutPermission = [...operationPermissions()].filter(([, p]) => !isOperationPermission(p)).map(([op, p]) => `${op} (${String(p)})`);
 if (withoutPermission.length) {
   console.error('Operations without a valid x-permission:', withoutPermission);
   process.exit(1);

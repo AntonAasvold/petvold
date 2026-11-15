@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { cors } from 'hono/cors';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
 import { DecisioningService, InMemoryRuleSetStore, RuleSetError, isPriceTermsModel, isTariffModel, toClaimsRules } from '@petvold/decisioning';
 import { AnimalError, AnimalService, IDENTIFIER_TYPES, InMemoryAnimalStore, type AnimalRecord, type IdentifierType } from '@petvold/animals';
@@ -38,7 +39,9 @@ import {
   coversClaim,
   coversPolicy,
   DEFAULT_ROLES,
+  isOperationPermission,
   isPermission,
+  SIGNED_IN,
   permissionsOf,
   scopeOf,
   type RoleDefinitions,
@@ -115,6 +118,33 @@ export interface AppDeps {
   policies?: PolicyService;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
+  /**
+   * Origins of browser applications allowed to call the API (CORS), e.g.
+   * ['https://portal.example.test']. Exact origins only; omitted or empty: none.
+   */
+  corsOrigins?: readonly string[];
+}
+
+/**
+ * Allowed CORS origins from PETVOLD_CORS_ORIGINS (comma-separated). Each must be
+ * an origin (scheme, host and optional port) and never '*': the API is called
+ * with a bearer token, so every browser application is named.
+ */
+export function corsOriginsFromEnv(env: Record<string, string | undefined>, fallback: readonly string[] = []): string[] {
+  const raw = env.PETVOLD_CORS_ORIGINS;
+  if (raw === undefined) return [...fallback];
+  const origins = raw.split(',').map((o) => o.trim()).filter(Boolean);
+  for (const o of origins) {
+    let ok = false;
+    try {
+      const u = new URL(o);
+      ok = (u.protocol === 'https:' || u.protocol === 'http:') && u.origin === o;
+    } catch {
+      ok = false;
+    }
+    if (!ok) throw new Error(`PETVOLD_CORS_ORIGINS: ${o} is not an origin such as https://portal.example.test`);
+  }
+  return origins;
 }
 
 type Env = { Variables: { principal: Principal; scope: Scope; roles: RoleDefinitions } };
@@ -200,6 +230,21 @@ export function createApp(d: AppDeps) {
   const contractPermissions = operationPermissions();
   const app = new Hono<Env>();
 
+  // CORS before authentication, so that a preflight (OPTIONS) is answered without a token.
+  if (d.corsOrigins?.length) {
+    const allowed = new Set(d.corsOrigins);
+    app.use(
+      '*',
+      cors({
+        origin: (origin) => (allowed.has(origin) ? origin : null),
+        allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+        allowHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key', 'Accept-Language'],
+        exposeHeaders: ['Content-Language'],
+        maxAge: 600,
+      }),
+    );
+  }
+
   app.get('/openapi.yaml', (c) => c.body(openapiText, 200, { 'content-type': 'application/yaml' }));
   app.get('/health', (c) => c.json({ ok: true }));
 
@@ -218,7 +263,8 @@ export function createApp(d: AppDeps) {
       const roles = (await access.current()).roles;
       c.set('roles', roles);
       const permission = contractPermissions.get(operationKey(c.req.method, route));
-      if (!isPermission(permission) || !permissionsOf(principal.roles, roles).has(permission)) {
+      const allowed = permission === SIGNED_IN || (isPermission(permission) && permissionsOf(principal.roles, roles).has(permission));
+      if (!allowed) {
         return problem(c, 403, 'Not permitted', isPermission(permission) ? `Requires the permission ${permission}` : undefined);
       }
       const scope = scopeOf(principal.roles, principal, roles);
@@ -1006,6 +1052,27 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: publicView(await parties.addIdentifier(p.id, r.body, c.get('principal').subject)) }));
   });
 
+  // Who the caller is, for a user interface. Only a valid token is needed (x-permission signed-in).
+  app.get('/v1/me', (c) => {
+    const p = c.get('principal');
+    const roles = c.get('roles');
+    const scope = c.get('scope');
+    const permissions = permissionsOf(p.roles, roles);
+    return send(c, {
+      subject: p.subject,
+      roles: p.roles.filter((r) => Object.hasOwn(roles, r)),
+      ...(p.roles.some((r) => !Object.hasOwn(roles, r)) ? { unknownRoles: p.roles.filter((r) => !Object.hasOwn(roles, r)) } : {}),
+      permissions: [...permissions].sort(),
+      scope: {
+        markets: scope.markets === '*' ? '*' : [...scope.markets].sort(),
+        ...(scope.clinicId ? { clinicId: scope.clinicId } : {}),
+        ...(scope.policyIds ? { policyIds: [...scope.policyIds].sort() } : {}),
+      },
+      ...(permissions.has('claims:decide') ? { decisionLimits: amountLimitsOf(p.roles, roles, 'decide') } : {}),
+      ...(permissions.has('claims:approve') ? { approvalLimits: amountLimitsOf(p.roles, roles, 'approve') } : {}),
+    });
+  });
+
   app.get('/v1/access/roles', async (c) => send(c, await access.current()));
 
   app.get('/v1/access/roles/versions', async (c) => sendPage(c, await access.versions()));
@@ -1029,7 +1096,7 @@ export function createApp(d: AppDeps) {
   // Every operation must have a valid permission in the contract, so a new
   // operation is closed until someone has decided who may call it.
   for (const op of implementedOperations(app)) {
-    if (!isPermission(contractPermissions.get(op))) throw new Error(`${op} has no valid x-permission in the contract`);
+    if (!isOperationPermission(contractPermissions.get(op))) throw new Error(`${op} has no valid x-permission in the contract`);
   }
 
   app.notFound((c) => problem(c, 404, 'The resource does not exist'));
