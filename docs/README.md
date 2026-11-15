@@ -26,6 +26,8 @@ För utvecklare och drift.
 - [Roadmap](roadmap.md): milstolpar
 - [Status](status.md): var vi är och nästa steg
 - [Beslut (ADR)](adr/README.md): arkitekturbeslut med motivering och källor
+- [Granskningar](granskning/README.md): genomgångar av arkitektur och funktion, med fynd och förslag
+- [Bygglogg](logg/README.md): hur varje ändring är byggd
 
 ## Så skriver vi
 

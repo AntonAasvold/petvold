@@ -70,6 +70,15 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [ ] Ändring i fel ordning (en ändring registreras bakåt i tiden efter en senare ändring, ADR 0006)
 - [ ] Självriskperiod och försäkringsbelopp över termgränsen
 
+**Före första kund** (från [granskningen 2026-11-15](granskning/2026-11-15-arkitektur-och-funktion.md))
+- [ ] Kompositionsrot för drift: `server.ts` utan exempeldata, med relä för händelser (A1, A5)
+- [ ] Inloggning med JWT och OIDC mot försäkringsbolagets identitetstjänst (A2)
+- [ ] "I dag" i marknadens tidszon (A3)
+- [ ] Markörbaserad sidindelning på alla listor, enligt ADR 0002 (A4)
+- [ ] Godkännande av villkoren sparas vid tecknande (F3)
+- [ ] ADR om dokument och meddelanden till kunden: förköpsinformation, villkor, försäkringsbrev, besked om förnyelse och uppsägning (F2)
+- [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
+
 **M4 – Pris och teckning**
 - [x] ADR om tariffen (ADR 0030)
 - [x] Prisfunktionen (`pricing-core`) och tariffserier i `decisioning`

@@ -32,6 +32,12 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #58 mergad.
+- Granskning av arkitektur och funktion, PR #59 (`docs/granskning/2026-11-15-arkitektur-och-funktion.md`). Modulgränserna håller, och principerna skyddas av databasen. Före första kund behövs:
+  - kompositionsrot för drift, inloggning med JWT, datum i marknadens tidszon och sidindelning
+  - teckningsregler, godkännande vid tecknande, ett beslut om dokument till kunden, och livförsäkring eller ett nytt namn på exempelprodukten
+
+  Fynden står i roadmapen under "Före första kund".
 - #57 mergad.
 - Priset på policyn (ADR 0030), PR #58:
   - **Tecknande, ändring och förnyelse** räknar premien med produktens tariff och prisvilkor: djurets uppgifter från djurregistret, postnumret från försäkringstagaren (bara zonen sparas), grupprabatt och kampanjkod. Förnyelsen ger nytt pris efter ålder och gällande tariff.
@@ -191,7 +197,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Simulering av tariffer och prisvilkor mot sparade priser, sedan teckningsregler (ny ADR). Därefter M5, där distribution och provision behöver en egen ADR.
+1. Enligt granskningen: tidszon (A3) och kompositionsrot med inloggning (A1, A2), sedan teckningsregler (F1, ny ADR) och godkännande vid tecknande (F3). Simulering av tariffer och provision kommer därefter.
 
 **Öppet**
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).
