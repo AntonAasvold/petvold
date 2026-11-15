@@ -6,18 +6,109 @@
     "content": {
       "market": "SE",
       "currency": "SEK",
-      "species": ["dog"],
-      "names": { "en": "Dog insurance, vet care and life", "sv": "Hundförsäkring, veterinärvård och liv" },
+      "species": [
+        "dog"
+      ],
+      "names": {
+        "en": "Dog insurance, vet care and life",
+        "sv": "Hundförsäkring, veterinärvård och liv"
+      },
       "ruleSeries": "SE-HUND-VV",
       "vetCare": {
-        "annualLimits": [3000000, 6000000, 12000000],
+        "annualLimits": [
+          3000000,
+          6000000,
+          12000000
+        ],
         "defaultAnnualLimit": 6000000,
         "deductibles": [
-          { "code": "standard", "labels": { "en": "Standard", "sv": "Standard" }, "terms": { "fixed": 200000, "fixedPer": "period", "periodDays": 125, "variableBp": 2500 } },
-          { "code": "high", "labels": { "en": "High", "sv": "Hög" }, "terms": { "fixed": 400000, "fixedPer": "period", "periodDays": 125, "variableBp": 2500 } }
+          {
+            "code": "standard",
+            "labels": {
+              "en": "Standard",
+              "sv": "Standard"
+            },
+            "terms": {
+              "fixed": 200000,
+              "fixedPer": "period",
+              "periodDays": 125,
+              "variableBp": 2500
+            }
+          },
+          {
+            "code": "high",
+            "labels": {
+              "en": "High",
+              "sv": "Hög"
+            },
+            "terms": {
+              "fixed": 400000,
+              "fixedPer": "period",
+              "periodDays": 125,
+              "variableBp": 2500
+            }
+          }
         ],
         "defaultDeductible": "standard",
         "waitingPeriodDays": 30
+      }
+    }
+  },
+  {
+    "product": "SE-HUND-BAS",
+    "version": "2026.1",
+    "salesFrom": "2026-01-01",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "species": [
+        "dog"
+      ],
+      "names": {
+        "en": "Dog insurance Basic, priced by the tariff",
+        "sv": "Hundförsäkring Bas, prissatt med tariffen"
+      },
+      "ruleSeries": "SE-HUND-VV",
+      "tariffSeries": "SE-HUND-TARIFF",
+      "vetCare": {
+        "annualLimits": [
+          3000000,
+          6000000
+        ],
+        "defaultAnnualLimit": 6000000,
+        "deductibles": [
+          {
+            "code": "standard",
+            "labels": {
+              "en": "Standard",
+              "sv": "Standard"
+            },
+            "terms": {
+              "fixed": 200000,
+              "fixedPer": "period",
+              "periodDays": 125,
+              "variableBp": 2500
+            }
+          },
+          {
+            "code": "high",
+            "labels": {
+              "en": "High",
+              "sv": "Hög"
+            },
+            "terms": {
+              "fixed": 400000,
+              "fixedPer": "period",
+              "periodDays": 125,
+              "variableBp": 2500
+            }
+          }
+        ],
+        "defaultDeductible": "standard",
+        "waitingPeriodDays": 30
+      },
+      "policy": {
+        "midTermCancellation": "immediate"
       }
     }
   }

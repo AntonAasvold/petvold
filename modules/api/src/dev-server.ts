@@ -28,6 +28,8 @@ import { PostgresPartyStore, PostgresRetentionStore } from '@petvold/parties/pos
 import { InMemoryPolicyStore, PolicyService, type PolicyStore } from '@petvold/policies';
 import { PostgresPolicyStore } from '@petvold/policies/postgres';
 import { animalPort, claimsActivity, productPort } from './wiring.ts';
+import { tariffCoverage } from '@petvold/pricing-core';
+import { TARIFF } from '@petvold/pricing-core/fixtures';
 import {
   CatalogService,
   InMemoryProductStore,
@@ -101,6 +103,29 @@ const ruleStore: RuleSetStore = decisioningUrl ? new PostgresRuleSetStore(create
 const decisioning = new DecisioningService({ store: ruleStore, clock, calculationModels: Object.keys(CALCULATION_MODELS) });
 const SERIES = 'SE-HUND-VV';
 await seedRules(ruleStore);
+await seedTariff(ruleStore);
+
+/** The made-up dog tariff (ADR 0030), which the sample product SE-HUND-BAS is priced with. */
+async function seedTariff(store: RuleSetStore): Promise<void> {
+  const series = 'SE-HUND-TARIFF';
+  if ((await store.list(series)).length > 0) return;
+  const now = clock.now();
+  const base = { series, version: 1, content: TARIFF as never, calculationModel: 'tariff.v1', effectiveFrom: '2026-01-01' };
+  const v: RuleSetVersion = {
+    ...base,
+    status: 'published',
+    checksum: ruleSetChecksum(base),
+    revision: 2,
+    createdBy: 'petvold-seed',
+    createdAt: now,
+    submittedBy: 'petvold-seed',
+    submittedAt: now,
+    publishedBy: 'petvold-install',
+    publishedAt: now,
+  };
+  await store.create({ ...v, status: 'draft', revision: 1 } as RuleSetVersion);
+  await store.update(v);
+}
 
 /**
  * The first start publishes the sample rules as SE-HUND-VV@1, so the dev server
@@ -139,6 +164,10 @@ const products = new ProductService({
   clock,
   speciesActive: async (code) => (await referenceStore.get('species', code))?.active === true,
   ruleSeriesInForce: async (series, onDate) => (await decisioning.rulesInForce(series, onDate)) !== null,
+  tariffProblems: async (series, onDate, product) => {
+    const t = await decisioning.tariffInForce(series, onDate);
+    return t ? tariffCoverage(t.content, product) : null;
+  },
 });
 await seedReferenceData();
 await seedProducts();
@@ -227,7 +256,7 @@ async function seedAnimals(): Promise<void> {
 // The claims engine reads them through PolicyService as its PolicyPort.
 const policiesUrl = process.env.POLICIES_DATABASE_URL;
 const policyStore: PolicyStore = policiesUrl ? new PostgresPolicyStore(createPool(policiesUrl, { max: 2 })) : new InMemoryPolicyStore();
-const policies = new PolicyService({ store: policyStore, products: productPort(products), animals: animalPort(animals), parties, clock, ids });
+const policies = new PolicyService({ store: policyStore, products: productPort(products), animals: animalPort(animals), parties, tariffs: decisioning, clock, ids });
 await seedPolicies();
 
 /**

@@ -62,6 +62,8 @@ export const PERMISSIONS = [
   'parties:retention',
   /** Read policies, their terms and history (ADR 0029). */
   'policies:read',
+  /** Get a price indication (ADR 0030). Stores nothing. */
+  'policies:quote',
   /** Issue, renew and cancel policies, and reverse a cancellation. */
   'policies:write',
   /** Scheduled policy jobs: renew every policy up for renewal, and end the ones whose transfer was not accepted in time (ADR 0029). */
@@ -130,7 +132,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Registers persons and organizations and keeps their details up to date, e.g. customer service. */
   'party-registrar': { permissions: ['parties:read', 'parties:write'] },
   /** Issues policies, e.g. the insurer's sales channel or customer service (ADR 0029). */
-  'policy-registrar': { permissions: ['policies:read', 'policies:write', 'animals:read', 'parties:read', 'catalog:read'] },
+  'policy-registrar': { permissions: ['policies:read', 'policies:write', 'policies:quote', 'animals:read', 'parties:read', 'catalog:read'] },
   /** The scheduled renewal run and expiry of transfers not accepted in time. */
   'renewal-job': { permissions: ['policies:renew'] },
   /** Handles erasure and restriction of personal data (ADR 0028). Two people are needed to anonymize. */
@@ -144,7 +146,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Manages roles and limits. No permissions in claims. */
   admin: { permissions: ['access:read', 'access:manage'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */
-  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read'], bindsTo: 'policies' },
+  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote'], bindsTo: 'policies' },
 };
 
 export function isPermission(value: unknown): value is Permission {

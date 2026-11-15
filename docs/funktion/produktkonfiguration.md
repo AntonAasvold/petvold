@@ -138,6 +138,7 @@ En produktversion säger vad som kan säljas och med vilka val (ADR 0023). Id:t 
 | `species` | Arter ur [referensdatan](referensdata.md) | `["dog"]` |
 | `names` | Namn per språk | `{ "en": "Dog insurance, vet care and life", "sv": "Hundförsäkring, veterinärvård och liv" }` |
 | `ruleSeries` | Regelserien skador bedöms med | `SE-HUND-VV` |
+| `tariffSeries` | Tariffserien priset räknas med ([Pris](pris.md)). Utelämnad: premien anges för hand. | `SE-HUND-TARIFF` |
 | `salesFrom`, `salesTo` | Säljperiod, där `salesTo` är första dagen den inte säljs. Utan `salesTo` säljs den tills vidare. | `2026-01-01` |
 | `vetCare.annualLimits` | Valbara försäkringsbelopp | 30 000, 60 000 och 120 000 kr |
 | `vetCare.deductibles` | Valbara självrisker, var och en med kod, namn och villkor (se [Policyns villkor](#policyns-villkor-för-veterinärvård)) | `standard`: 2 000 kr per period och 25 %. `high`: 4 000 kr per period och 25 %. |

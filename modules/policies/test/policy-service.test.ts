@@ -508,3 +508,33 @@ test('a group holds policies of one policyholder; a policy leaves it when the an
   assert.equal(ended.members[1]!.to, '2027-06-10');
   await rejects(s.getGroup('pgr_none'), 'not_found');
 });
+
+test('a quote prices the facts with the product\'s tariff, and stores nothing', async () => {
+  const tariff = (await import('@petvold/pricing-core/fixtures')).TARIFF;
+  let n = 0;
+  const store = new InMemoryPolicyStore();
+  const s = new PolicyService({
+    store,
+    products: { offer: async (pv) => (pv === 'SE-PLAIN@1' ? offer() : offer({ tariffSeries: 'SE-HUND-TARIFF' })), versionOnSale: async () => null },
+    animals: { get: async () => ({ market: 'SE', species: 'dog', breed: 'dog-labrador-retriever', birthDate: '2019-03-14' }) },
+    parties: { marketOf: async () => 'SE', postalCodeOf: async () => '111 22' },
+    tariffs: { tariffInForce: async (series) => (series === 'SE-HUND-TARIFF' ? { content: tariff, ref: { series, version: 1, checksum: 'c' } } : null) },
+    clock: { now: () => '2026-03-20T10:00:00.000Z' },
+    ids: { next: (p) => `${p}_${++n}` },
+  });
+  const q = await s.quote({ market: 'SE', productVersion: 'SE-HUND@1', startDate: '2026-04-01', animalId: 'ani_bella', policyholderPartyId: 'pty_anna' });
+  assert.deepEqual([q.endDate, q.deductibleOption, q.price.annualPremium, q.price.facts.zone, q.price.tariff?.version], ['2027-04-01', 'standard', 493_400, 'city', 1]);
+  assert.ok(!JSON.stringify(q).includes('111'));
+  // The same facts given directly give the same price.
+  const direct = await s.quote({ market: 'SE', productVersion: 'SE-HUND@1', startDate: '2026-04-01', animal: { species: 'dog', breed: 'dog-labrador-retriever', birthDate: '2019-03-14' }, postalCode: '11122' });
+  assert.equal(direct.price.inputHash, q.price.inputHash);
+  assert.equal((await store.findByAnimal('ani_bella')).length, 0);
+
+  const base = { market: 'SE', productVersion: 'SE-HUND@1', startDate: '2026-04-01' };
+  await rejects(s.quote({ ...base }), 'validation', /animalId or animal/);
+  await rejects(s.quote({ ...base, animalId: 'ani_bella', animal: { species: 'dog', birthDate: '2019-03-14' } }), 'validation', /animalId or animal/);
+  await rejects(s.quote({ ...base, startDate: '2026-03-01', animalId: 'ani_bella' }), 'validation', /before today/);
+  await rejects(s.quote({ ...base, animalId: 'ani_bella', policyholderPartyId: 'pty_anna', postalCode: '1' }), 'validation', /not both/);
+  await rejects(s.quote({ ...base, productVersion: 'SE-PLAIN@1', animalId: 'ani_bella' }), 'conflict', /no tariff/);
+  await rejects(s.quote({ ...base, animal: { species: 'dog', birthDate: '2026-05-01' } }), 'validation', /not born/);
+});

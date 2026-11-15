@@ -9,6 +9,9 @@ import { InMemoryPartyStore, PartyService } from '@petvold/parties';
 import { InMemoryPolicyStore, PolicyService } from '@petvold/policies';
 import { createApp, InMemoryIdempotencyStore, validatorFor, type Principal } from '@petvold/api';
 import { animalPort, productPort } from '../src/wiring.ts';
+import { CALCULATION_MODELS } from '@petvold/claims-core';
+import { DecisioningService, InMemoryRuleSetStore } from '@petvold/decisioning';
+import { TARIFF } from '@petvold/pricing-core/fixtures';
 
 const tokens: Record<string, Principal> = {
   seller: { subject: 'seller@example.test', roles: ['policy-registrar'], markets: ['SE'] },
@@ -16,6 +19,7 @@ const tokens: Record<string, Principal> = {
   handler: { subject: 'h@example.test', roles: ['handler'], markets: '*' },
   clinic: { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   job: { subject: 'renewal-job', roles: ['renewal-job'], markets: '*' },
+  portal: { subject: 'portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_x'] },
 };
 
 const content = {
@@ -24,6 +28,7 @@ const content = {
   species: ['dog'],
   names: { en: 'Dog insurance' },
   ruleSeries: 'SE-HUND-VV',
+  tariffSeries: 'SE-HUND-TARIFF',
   vetCare: {
     annualLimits: [3_000_000, 6_000_000],
     defaultAnnualLimit: 6_000_000,
@@ -37,6 +42,10 @@ async function setup() {
   const clock = new FixedClock('2026-11-15T10:00:00.000Z');
   let n = 0;
   const ids = { next: (p: string) => `${p}_${++n}` };
+  const decisioning = new DecisioningService({ store: new InMemoryRuleSetStore(), clock, calculationModels: Object.keys(CALCULATION_MODELS) });
+  await decisioning.createDraft('SE-HUND-TARIFF', { content: TARIFF as never, calculationModel: 'tariff.v1', effectiveFrom: '2026-01-01' }, 'author');
+  await decisioning.submit('SE-HUND-TARIFF', 1, 'author');
+  await decisioning.publish('SE-HUND-TARIFF', 1, 'publisher');
   const products = new ProductService({ products: new InMemoryProductStore(), clock, speciesActive: async () => true, ruleSeriesInForce: async () => true });
   await products.createDraft('SE-HUND', { version: '1', salesFrom: '2026-11-01', content } as never, 'author');
   await products.submit('SE-HUND', '1', 'author');
@@ -52,9 +61,9 @@ async function setup() {
     [],
     { seq: 1, partyId: 'pty_anna', validFrom: '2024-05-01', recordedBy: 't', recordedAt: clock.now() },
   );
-  const policies = new PolicyService({ store: new InMemoryPolicyStore(), products: productPort(products), animals: animalPort(animals), parties, clock, ids });
+  const policies = new PolicyService({ store: new InMemoryPolicyStore(), products: productPort(products), animals: animalPort(animals), parties, tariffs: decisioning, clock, ids });
   const service = new ClaimsService({ policies: new InMemoryPolicyPort([]), rules: new StaticRulesPort({}, fixtures.RULES_SE_DOG), store: new InMemoryClaimsStore(), clock, ids: new SequentialIds() });
-  const app = createApp({ service, clock, products, animals, parties, policies, idempotency: new InMemoryIdempotencyStore(), auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
+  const app = createApp({ service, clock, decisioning, products, animals, parties, policies, idempotency: new InMemoryIdempotencyStore(), auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
   const call = async (method: string, path: string, token: string, body?: unknown) => {
     const res = await app.request(path, {
       method,
@@ -227,4 +236,22 @@ test('a household group is created, a policy joins and leaves', async () => {
   call.clock.set('2027-01-10T10:00:00.000Z');
   const left = await call('POST', `/v1/policy-groups/${g.body.id}/members/${p.id}/ends`, 'seller', { reason: 'Moved out' });
   assert.deepEqual([left.status, left.body.members[0].to], [201, '2027-01-10']);
+});
+
+test('a price indication from the product\'s tariff, with ids or with the facts', async () => {
+  const call = await setup();
+  const body = { market: 'SE', productVersion: 'SE-HUND@1', startDate: '2026-12-01', animalId: 'ani_rex', policyholderPartyId: 'pty_anna' };
+  const res = await call('POST', '/v1/quotes', 'seller', body);
+  assert.equal(res.status, 200);
+  assert.ok(validatorFor('Quote')(structuredClone(res.body)), JSON.stringify(validatorFor('Quote').errors));
+  // Rex: 2 years on 2026-12-01, no breed, no postal code: 300 000 × 0.9 × 1.0 × 1.0 × 0.95 = 256 500.
+  assert.deepEqual([res.body.endDate, res.body.price.annualPremium, res.body.price.facts.zone, res.body.price.facts.ageYears], ['2027-12-01', 256_500, 'rural', 2]);
+  // A customer portal gives the facts, not ids.
+  assert.equal((await call('POST', '/v1/quotes', 'portal', body)).status, 403);
+  const facts = await call('POST', '/v1/quotes', 'portal', { market: 'SE', productVersion: 'SE-HUND@1', startDate: '2026-12-01', animal: { species: 'dog', birthDate: '2024-03-01' }, postalCode: '111 22', vetCare: { annualLimit: 3_000_000 } });
+  assert.equal(facts.status, 200);
+  assert.equal(facts.body.price.facts.zone, 'city');
+  assert.equal((await call('POST', '/v1/quotes', 'sellerDe', body)).status, 403);
+  assert.equal((await call('POST', '/v1/quotes', 'handler', body)).status, 403); // no policies:quote
+  assert.equal((await call('POST', '/v1/quotes', 'seller', { ...body, animalId: undefined })).status, 422);
 });

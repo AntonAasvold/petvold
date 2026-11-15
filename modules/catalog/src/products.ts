@@ -75,6 +75,8 @@ export interface ProductContent {
   names: Labels;
   /** The rule series the claims engine assesses claims on this version with (ADR 0021). */
   ruleSeries: string;
+  /** The tariff series that prices it (ADR 0030). Omitted: the premium is given by hand. */
+  tariffSeries?: string;
   vetCare: VetCareCover;
   policy?: PolicySettings;
 }
@@ -139,6 +141,16 @@ export interface ProductDeps {
    * Given by the installation, which asks the decisioning module (ADR 0001).
    */
   ruleSeriesInForce(series: string, onDate: ISODate): Promise<boolean>;
+  /**
+   * What the tariff in force on the date cannot price for the product, e.g. an
+   * annual limit it lacks (ADR 0030). null: no tariff in force. Omitted: tariff
+   * series are not checked.
+   */
+  tariffProblems?(
+    series: string,
+    onDate: ISODate,
+    product: { market: string; currency: string; species: string[]; annualLimits: number[]; deductibleOptions: string[] },
+  ): Promise<string[] | null>;
 }
 
 export const productVersionId = (v: Pick<ProductVersion, 'product' | 'version'>) => `${v.product}@${v.version}`;
@@ -276,6 +288,19 @@ export class ProductService {
     if (!(await this.d.ruleSeriesInForce(v.content.ruleSeries, v.salesFrom))) {
       throw new CatalogError('validation', `The rule series ${v.content.ruleSeries} has no published version in force on ${v.salesFrom}`);
     }
+    const tariff = v.content.tariffSeries;
+    if (tariff && this.d.tariffProblems) {
+      const c = v.content;
+      const problems = await this.d.tariffProblems(tariff, v.salesFrom, {
+        market: c.market,
+        currency: c.currency,
+        species: c.species,
+        annualLimits: c.vetCare.annualLimits,
+        deductibleOptions: c.vetCare.deductibles.map((d) => d.code),
+      });
+      if (problems === null) throw new CatalogError('validation', `The tariff series ${tariff} has no published version in force on ${v.salesFrom}`);
+      if (problems.length) throw new CatalogError('validation', `The tariff series ${tariff} does not cover the product: ${problems.join('; ')}`);
+    }
   }
 
   private async inStatus(product: string, version: string, status: ProductStatus): Promise<ProductVersion> {
@@ -314,6 +339,7 @@ export class ProductService {
     if (new Set(c.species).size !== c.species.length) fail('A species is listed twice');
     if (!c.names || Object.keys(c.names).length === 0) fail('The product needs a name');
     if (!PRODUCT.test(c.ruleSeries ?? '')) fail(`Invalid rule series '${c.ruleSeries}'`);
+    if (c.tariffSeries !== undefined && !PRODUCT.test(c.tariffSeries)) fail(`Invalid tariff series '${c.tariffSeries}'`);
     const vc = c.vetCare;
     if (!vc) return fail('vetCare is required');
     if (!Array.isArray(vc.annualLimits) || vc.annualLimits.length === 0 || !vc.annualLimits.every(isAmount)) {
