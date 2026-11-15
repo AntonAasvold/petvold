@@ -1,6 +1,6 @@
 # ADR om teckningsregler och ansökan (PR #64)
 
-**Datum:** 2026-11-15 **ADR:** 0031 (Föreslagen) **Moduler:** inga, bara dokumentation
+**Datum:** 2026-11-15 **ADR:** 0031 (Beslutad) **Moduler:** inga, bara dokumentation
 
 ## Vad
 

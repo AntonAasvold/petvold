@@ -1,6 +1,6 @@
 # 0031. Teckningsregler, ansökan och godkännande vid tecknande
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-15
 
 ## Sammanhang
