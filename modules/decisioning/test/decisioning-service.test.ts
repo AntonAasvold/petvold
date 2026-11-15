@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CALCULATION_MODELS, ClaimsService } from '@petvold/claims-core';
 import { FixedClock, InMemoryClaimsStore, InMemoryPolicyPort, SequentialIds, fixtures } from '@petvold/claims-store-memory';
 import { PRICE_TERMS, TARIFF } from '@petvold/pricing-core/fixtures';
+import { UNDERWRITING } from '@petvold/underwriting-core/fixtures';
 import {
   DecisioningRulesPort,
   DecisioningService,
@@ -151,4 +152,20 @@ test('price terms are a series of their own, with the same lifecycle (ADR 0030)'
   assert.deepEqual((await service.priceTermsInForce('SE-HUND-TERMS', '2026-06-01'))?.ref, { series: 'SE-HUND-TERMS', version: 1, checksum: p.checksum });
   assert.equal(await service.tariffInForce('SE-HUND-TERMS', '2026-06-01'), null);
   assert.equal(await service.rulesInForce('SE-HUND-TERMS', '2026-06-01'), null);
+});
+
+test('underwriting rules are a series of their own, in force on the application date (ADR 0031)', async () => {
+  const { service } = setup();
+  const uw = { content: UNDERWRITING as never, calculationModel: 'underwriting.v1', effectiveFrom: '2026-01-01' };
+  await assert.rejects(service.createDraft('SE-HUND-UW', { ...uw, content: { ...UNDERWRITING, ageLimits: [] } as never }, AUTHOR), /age limits/);
+  const d = await service.createDraft('SE-HUND-UW', uw, AUTHOR);
+  await assert.rejects(service.createDraft('SE-HUND-UW', input(), AUTHOR), /holds underwriting rules/);
+  assert.equal(await service.underwritingInForce('SE-HUND-UW', '2026-06-01'), null); // not published
+  await service.submit('SE-HUND-UW', d.version, AUTHOR);
+  const p = await service.publish('SE-HUND-UW', d.version, PUBLISHER);
+  const inForce = await service.underwritingInForce('SE-HUND-UW', '2026-06-01');
+  assert.deepEqual(inForce?.ref, { series: 'SE-HUND-UW', version: 1, checksum: p.checksum });
+  assert.equal(await service.underwritingInForce('SE-HUND-UW', '2025-12-31'), null);
+  assert.equal(await service.tariffInForce('SE-HUND-UW', '2026-06-01'), null);
+  assert.deepEqual((await service.allSeries()).map((s) => [s.series, s.kind]), [['SE-HUND-UW', 'underwriting']]);
 });

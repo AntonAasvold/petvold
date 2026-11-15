@@ -27,6 +27,7 @@ import {
   type RoleDefinitions,
 } from '@petvold/api';
 import { TARIFF } from '@petvold/pricing-core/fixtures';
+import { UNDERWRITING } from '@petvold/underwriting-core/fixtures';
 import { docsPage, SCALAR_VERSION } from '../src/docs.ts';
 
 const { bellaPolicy, cruciateClaim, otitisClaim, eurPolicy, eurClaim, RULES_SE_DOG, RULES_EUR_EXAMPLE, PRODUCT, PRODUCT_EUR } = fixtures;
@@ -784,4 +785,19 @@ test('CORS origins from the environment are exact origins, never *', () => {
   assert.deepEqual(corsOriginsFromEnv({ PETVOLD_CORS_ORIGINS: 'https://a.example.test, http://localhost:3000' }), ['https://a.example.test', 'http://localhost:3000']);
   assert.throws(() => corsOriginsFromEnv({ PETVOLD_CORS_ORIGINS: '*' }), /not an origin/);
   assert.throws(() => corsOriginsFromEnv({ PETVOLD_CORS_ORIGINS: 'https://a.example.test/app' }), /not an origin/);
+});
+
+test('underwriting rules are drafted like a tariff, and cannot be simulated against claims (ADR 0031)', async () => {
+  const { call } = setup();
+  const body = { content: UNDERWRITING, calculationModel: 'underwriting.v1', effectiveFrom: '2026-01-01' };
+  const res = await call('POST', '/v1/rule-sets/SE-HUND-UW/versions', { token: 'author', key: 'key-00000921', body });
+  assert.equal(res.status, 201);
+  assertSchema('RuleSetVersion', await res.json());
+  const bad = await call('POST', '/v1/rule-sets/SE-HUND-UW2/versions', { token: 'author', key: 'key-00000922', body: { ...body, content: { ...UNDERWRITING, answerRules: [{ question: 'nope', outcome: 'refer', reason: 'x-y' }] } } });
+  assert.equal(bad.status, 422);
+  assert.match(((await bad.json()) as any).title, /unknown question 'nope'/);
+  const series = (await (await call('GET', '/v1/rule-sets', { token: 'author' })).json()) as any;
+  assert.deepEqual(series.items.map((s: any) => [s.series, s.kind]), [['SE-HUND-UW', 'underwriting']]);
+  const sim = await call('POST', '/v1/rule-sets/SE-HUND-UW/versions/1/simulations', { token: 'author', body: { from: '2026-01-01T00:00:00Z', to: '2026-12-31T00:00:00Z' } });
+  assert.equal(sim.status, 422);
 });

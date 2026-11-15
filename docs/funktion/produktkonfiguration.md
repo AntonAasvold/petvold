@@ -112,7 +112,7 @@ Produktens skaderegler (tabellen ovan) är en **regelserie**, till exempel `SE-H
 
 **Exempel:** version 1 gäller från 1 januari 2026 med `autoSettleMax` 10 000 kr. Version 2 gäller från 1 juni med 1 000 kr. En öroninflammation 4 juni på 1 500 kr bedöms då med version 2 och går till handläggare. Samma skada behandlad 30 maj hade bedömts med version 1 och beslutats automatiskt.
 
-**Alla serier:** `GET /v1/rule-sets` (rättighet `rules:read`) listar varje serie med vad den innehåller (`claims-rules`, `tariff` eller `price-terms`) och versionernas status.
+**Alla serier:** `GET /v1/rule-sets` (rättighet `rules:read`) listar varje serie med vad den innehåller (`claims-rules`, `tariff`, `price-terms` eller `underwriting`, se [Teckning](teckning.md)) och versionernas status.
 
 **Simulering före publicering:** `POST /v1/rule-sets/{serie}/versions/{v}/simulations` med `{ "from": …, "to": … }` (rättighet `rules:simulate`). Versionens regler, vanligtvis ett utkast, körs mot de sparade underlagen för beslut i perioden. Det gäller varje ärendes senaste beslut, från samma serie och inom anroparens omfång. Inget sparas eller bokförs. Svaret visar:
 
