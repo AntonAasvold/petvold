@@ -1,6 +1,6 @@
 # 0026. Parter: personer och organisationer
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-15
 
 ## Sammanhang
