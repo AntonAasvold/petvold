@@ -83,6 +83,8 @@ export interface PriceInput {
   deductibleOption: string;
   /** The policyholder's postal code. Only the zone is kept (ADR 0030). Omitted: the default zone. */
   postalCode?: string;
+  /** The zone itself, instead of a postal code, e.g. when a stored price is recomputed. */
+  zone?: string;
   /** For price terms: the policy's group and its place in it, 1 = the first animal. */
   group?: { kind: 'litter' | 'household'; memberNo: number };
   /** For price terms: a campaign code the customer gave. */
@@ -184,7 +186,7 @@ export function price(
   if (breedBp === undefined) throw new PricingError(`The tariff has no factor for breed group ${breedGroup}`);
   const deductibleBp = t.deductibleFactors[input.deductibleOption];
   if (deductibleBp === undefined) throw new PricingError(`The tariff has no factor for deductible ${input.deductibleOption}`);
-  const zone = zoneFor(t, input.postalCode);
+  const zone = input.zone ?? zoneFor(t, input.postalCode);
   const zoneBp = t.zoneFactors[zone];
   if (zoneBp === undefined) throw new PricingError(`The tariff has no factor for zone ${zone}`);
 

@@ -36,6 +36,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `animals:lookup` | Slå upp ett djur på id-nummer, utan ägare eller historik. Hittar bara djur som är öppna för uppslagning (ADR 0025). | `GET /v1/animal-lookup` |
 | `policies:read` | Läsa policyer, termer och historik (ADR 0029) | `GET /v1/policies`, `.../{id}`, `.../history`, `.../snapshot` |
 | `policies:quote` | Prisindikation, utan att något sparas (ADR 0030) | `POST /v1/quotes` |
+| `policies:price-override` | Sätta en annan premie än tariffens, med motivering (ADR 0030) | `POST /v1/policies`, `.../changes`, `.../renewals` med `premium` och `priceOverride` |
 | `policies:write` | Teckna, ändra, förnya, avsluta och återkalla avslut av policyer, och besvara förslag, och hantera grupper | `POST /v1/policies`, `POST /v1/policy-groups`, `.../members`, `.../changes`, `.../renewals`, `.../cancellations`, `.../reinstatements`, `POST /v1/policy-proposals/{id}/acceptances`, `.../rejections` |
 | `policies:renew` | Schemalagda körningar: förnyelse, och avslut av överlåtelser som inte godkändes i tid | `POST /v1/renewal-runs`, `POST /v1/proposal-expiry-runs` |
 | `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/access/roles`, `.../versions` |
@@ -59,6 +60,7 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `animal-registrar` | `animals:read`, `animals:write`, `catalog:read`, `parties:read` | – | Registrerar djur och ägarbyten, till exempel kundservice |
 | `party-registrar` | `parties:read`, `parties:write` | – | Registrerar personer och organisationer, till exempel kundservice |
 | `policy-registrar` | `policies:read`, `policies:write`, `animals:read`, `parties:read`, `catalog:read` | – | Tecknar policyer, till exempel säljkanal eller kundservice |
+| `underwriter` | `policies:read`, `policies:write`, `policies:quote`, `policies:price-override`, `animals:read`, `parties:read`, `catalog:read` | – | Beslutar om ansökningar och priser som behöver en person, till exempel manuellt pris |
 | `renewal-job` | `policies:renew` | – | Schemalagd förnyelse och avslut av överlåtelser som inte godkändes i tid |
 | `privacy-officer` | `parties:read`, `parties:privacy`, `parties:erase`, `parties:retention` | – | Dataskyddsansvarig. Två personer behövs för att anonymisera. |
 | `retention-job` | `parties:retention` | – | Schemalagd gallringskörning. Begär bara, och en dataskyddsansvarig godkänner. |

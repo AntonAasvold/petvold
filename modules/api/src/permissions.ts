@@ -68,6 +68,8 @@ export const PERMISSIONS = [
   'policies:write',
   /** Scheduled policy jobs: renew every policy up for renewal, and end the ones whose transfer was not accepted in time (ADR 0029). */
   'policies:renew',
+  /** Set a premium other than the tariff's, with a reason (ADR 0030). The computed premium is kept next to it. */
+  'policies:price-override',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -135,6 +137,8 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   'policy-registrar': { permissions: ['policies:read', 'policies:write', 'policies:quote', 'animals:read', 'parties:read', 'catalog:read'] },
   /** The scheduled renewal run and expiry of transfers not accepted in time. */
   'renewal-job': { permissions: ['policies:renew'] },
+  /** Decides on applications and prices that need a person, e.g. a manual premium (ADR 0030). */
+  underwriter: { permissions: ['policies:read', 'policies:write', 'policies:quote', 'policies:price-override', 'animals:read', 'parties:read', 'catalog:read'] },
   /** Handles erasure and restriction of personal data (ADR 0028). Two people are needed to anonymize. */
   'privacy-officer': { permissions: ['parties:read', 'parties:privacy', 'parties:erase', 'parties:retention'] },
   /** The scheduled retention run. Only asks; a privacy officer approves each request. */

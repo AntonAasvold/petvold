@@ -724,6 +724,8 @@ export function createApp(d: AppDeps) {
       clock: d.clock,
       ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
     });
+  /** Whether the caller may set a premium other than the tariff's (ADR 0030). */
+  const priceRights = (c: Context<Env>) => ({ mayOverridePrice: permissionsOf(c.get('principal').roles, c.get('roles')).has('policies:price-override') });
   const seesPolicy = (scope: Scope, p: PolicyRecord) => !scope.clinicId && coversPolicy(scope, p.market, p.id);
   const visiblePolicy = async (c: Context<Env>) => {
     const id = c.req.param('policyId') ?? '';
@@ -742,7 +744,7 @@ export function createApp(d: AppDeps) {
     if (scope.clinicId || scope.policyIds || !(scope.markets === '*' || scope.markets.has(r.body.market))) {
       return problem(c, 403, 'Not permitted', 'The market is outside the caller\'s scope');
     }
-    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.issue(r.body, c.get('principal').subject) }));
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.issue(r.body, c.get('principal').subject, priceRights(c)) }));
   });
 
   app.get('/v1/policies', async (c) => {
@@ -779,14 +781,14 @@ export function createApp(d: AppDeps) {
     const p = await visiblePolicy(c);
     const r = await readJson(c, 'ChangePolicyRequest');
     if (!r.ok) return r.res;
-    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.change(p.id, r.body, c.get('principal').subject) }));
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.change(p.id, r.body, c.get('principal').subject, priceRights(c)) }));
   });
 
   app.post('/v1/policies/:policyId/renewals', async (c) => {
     const p = await visiblePolicy(c);
     const r = await readJson(c, 'RenewPolicyRequest');
     if (!r.ok) return r.res;
-    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.renew(p.id, r.body, c.get('principal').subject) }));
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.renew(p.id, r.body, c.get('principal').subject, priceRights(c)) }));
   });
 
   app.post('/v1/renewal-runs', async (c) => {
@@ -978,7 +980,8 @@ export function createApp(d: AppDeps) {
       return problem(c, status, err.message);
     }
     if (err instanceof PolicyError) {
-      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
+      const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
+      return problem(c, status, err.message);
     }
     if (err instanceof PartyError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;

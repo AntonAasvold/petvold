@@ -2,7 +2,7 @@
 
 Premien räknas med en **tariff** (ADR 0030). En tariff är tabeller som publiceras med fyra ögon, på samma sätt som skaderegler. Den ger grundpriset. Rabatter läggs på efter grundpriset som **prisvilkor**.
 
-Prisfunktionen, tariffer, prisvilkor, produktens koppling till dem och prisindikationen är byggda. Pris vid tecknande, ändring och förnyelse kommer i nästa steg. Till dess anges premien för hand när en policy tecknas.
+Prisfunktionen, tariffer, prisvilkor, produktens koppling till dem, prisindikationen och priset vid tecknande, ändring och förnyelse är byggda.
 
 ## Så räknas grundpriset
 
@@ -78,6 +78,16 @@ POST /v1/quotes
 - **Svaret** har termens datum, de valda villkoren och priset med `breakdown`. Där syns grundpriset (`basePremium`) och priset efter rabatter (`annualPremium`) var för sig. Postnumret finns aldrig i svaret, bara zonen.
 - **En produkt utan tariff** ger `409`.
 
+## Priset på policyn
+
+För en produkt med tariff räknas premien av Petvold när en policy tecknas, ändras eller förnyas. Samma funktion används som för prisindikationen.
+- **Tecknande:** djurets uppgifter kommer från djurregistret och postnumret från försäkringstagarens adress. Med `groupId` går policyn med i gruppen från start och får grupprabatt. `campaignCode` ger kampanjrabatt.
+- **Ändring under termen:** hela termen prissätts med de nya valen och djurets ålder vid termens början. Kampanjer gäller inte vid ändring.
+- **Förnyelse:** tariffen och prisvillkoren som gäller på förnyelsedagen, djurets nya ålder och policyns plats i en grupp. Kampanjer med `newPoliciesOnly` gäller inte. Om priset inte går att räkna listas policyn under `needsDecision` med orsaken `price-not-available`.
+- **Underlaget sparas** på termen (`pricing`) och på en ändring: priset med `breakdown`, tariffens och prisvillkorens versioner, `inputHash` och indata med zonen i stället för postnumret.
+- **Manuellt pris:** en premie som skiljer sig från tariffens kräver rättigheten `policies:price-override` (rollen `underwriter`) och `priceOverride.reason`. Det beräknade priset sparas bredvid (`pricing.override.computedPremium`). En premie som är lika med tariffens behöver ingen motivering.
+- **En produkt utan tariff** kräver premien från anroparen, som tidigare.
+
 ## Vad priset sparar
 
 Priset sparar inte postnumret, bara zonen (GDPR artikel 5.1 c). Svaret har:
@@ -104,4 +114,4 @@ En tariffversion skapas med `POST /v1/rule-sets/{serie}/versions` och `calculati
 
 Faktorer anges i baspunkter, där 10 000 betyder 1,0.
 
-*Inte byggt än:* pris vid tecknande, ändring och förnyelse, manuellt pris, skatt per marknad, och simulering av tariffer.
+*Inte byggt än:* skatt per marknad, och simulering av tariffer och prisvilkor mot sparade priser.

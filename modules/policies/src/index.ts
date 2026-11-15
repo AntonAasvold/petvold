@@ -19,7 +19,7 @@
  * and implements the claims engine's PolicyPort.
  */
 import type { ISODate, PolicyPort, PolicySnapshot, Rider, Timestamp, VetCareTerms } from '@petvold/claims-core';
-import { PricingError, price, type PriceResult, type PriceTermsContent, type TariffContent, type TariffRef } from '@petvold/pricing-core';
+import { PricingError, price, type PriceInput, type PriceResult, type PriceTermsContent, type TariffContent, type TariffRef } from '@petvold/pricing-core';
 
 export type { ISODate };
 
@@ -113,6 +113,20 @@ export interface Term {
   transactionId: string;
   /** Changes of the choices during the term, oldest first (ADR 0029). Each never changes. */
   changes?: TermChange[];
+  /** How the premium was priced by the tariff, if the product has one (ADR 0030). */
+  pricing?: TermPricing;
+}
+
+/**
+ * The evidence for a premium (ADR 0030): the tariff's price with its inputs,
+ * without the postal code (only its zone), so it can be recomputed. A manual
+ * price keeps the computed one next to it.
+ */
+export interface TermPricing {
+  result: PriceResult;
+  /** What the price was computed from; the zone instead of the postal code. */
+  input: Omit<PriceInput, 'postalCode'> & { zone: string };
+  override?: { computedPremium: number; reason: string; by: string };
 }
 
 /** New choices from a day during a term. The versions from that day carry its changeNo. */
@@ -125,6 +139,7 @@ export interface TermChange {
   /** The premium for a whole term at the new choices; the days from `from` are charged at this rate. */
   premium: number;
   transactionId: string;
+  pricing?: TermPricing;
 }
 
 export interface PolicyVersion {
@@ -348,7 +363,7 @@ export class PolicyConflictError extends Error {
   }
 }
 
-export type PolicyErrorCode = 'not_found' | 'validation' | 'conflict';
+export type PolicyErrorCode = 'not_found' | 'validation' | 'conflict' | 'forbidden';
 
 export class PolicyError extends Error {
   constructor(
@@ -398,7 +413,8 @@ export type RenewalIssue =
   | 'species-not-covered'
   | 'term-too-long'
   | 'animal-died'
-  | 'policyholder-unavailable';
+  | 'policyholder-unavailable'
+  | 'price-not-available';
 
 export interface RenewalRunResult {
   onDate: ISODate;
@@ -476,8 +492,22 @@ export interface IssueInput {
   productVersion: string;
   startDate: ISODate;
   vetCare?: { annualLimit?: number; deductible?: string };
-  /** The premium for the term. Given by the caller until the tariff exists (M4). */
-  premium: { amount: number; currency: string };
+  /**
+   * The premium for the term. Omitted: the product's tariff prices it (ADR 0030).
+   * Given for a product with a tariff: a manual price, which needs priceOverride.
+   */
+  premium?: { amount: number; currency: string };
+  /** Why the premium differs from the tariff's. Needs the permission policies:price-override. */
+  priceOverride?: { reason: string };
+  /** A group the policy joins from its start, for the group discount (ADR 0007). */
+  groupId?: string;
+  campaignCode?: string;
+}
+
+/** What the caller may do beyond the operation itself. */
+export interface CallerRights {
+  /** May set a premium other than the tariff's (policies:price-override). */
+  mayOverridePrice?: boolean;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -768,8 +798,13 @@ export class PolicyService implements PolicyPort {
    * exists, M4) the same premium unless one is given. Throws a validation error
    * with the RenewalIssue in the message when it cannot.
    */
-  async renew(policyId: string, input: { productVersion?: string; premium?: { amount: number; currency: string } }, by: string): Promise<PolicyTransaction> {
-    const plan = await this.planRenewal(await this.get(policyId), input);
+  async renew(
+    policyId: string,
+    input: { productVersion?: string; premium?: { amount: number; currency: string }; priceOverride?: { reason: string } },
+    by: string,
+    rights: CallerRights = {},
+  ): Promise<PolicyTransaction> {
+    const plan = await this.planRenewal(await this.get(policyId), input, rights, by);
     if ('issue' in plan) throw new PolicyError('validation', `${plan.issue}: ${plan.detail}`);
     const now = this.d.clock.now();
     const txId = this.d.ids.next('ptx');
@@ -791,7 +826,7 @@ export class PolicyService implements PolicyPort {
       type: 'renew',
       steps: [
         { step: 'draft', at: now },
-        { step: 'priced', at: now, note: input.premium ? 'Premium given by the caller' : 'Same premium as the last term (no tariff yet, M4)' },
+        { step: 'priced', at: now, note: term.pricing ? this.pricedNote(term.pricing) : input.premium ? 'Premium given by the caller' : 'Same premium as the last term (the product has no tariff)' },
         { step: 'underwritten', at: now, note: 'Accepted (no underwriting rules yet, M4)' },
         { step: 'issued', at: now },
       ],
@@ -845,7 +880,7 @@ export class PolicyService implements PolicyPort {
         result.notYet++;
         continue;
       }
-      const plan = await this.planRenewal(p, {});
+      const plan = await this.planRenewal(p, {}, {}, by);
       if ('issue' in plan) {
         result.needsDecision.push({ policyId: id, issue: plan.issue, detail: plan.detail });
         continue;
@@ -866,7 +901,9 @@ export class PolicyService implements PolicyPort {
 
   private async planRenewal(
     p: PolicyRecord,
-    input: { productVersion?: string; premium?: { amount: number; currency: string } },
+    input: { productVersion?: string; premium?: { amount: number; currency: string }; priceOverride?: { reason: string } },
+    rights: CallerRights = {},
+    by = 'renewal',
   ): Promise<{ term: Omit<Term, 'transactionId'>; policyholderPartyId: string } | { issue: RenewalIssue; detail: string }> {
     const last = p.versions.at(-1)!;
     if (last.status !== 'active') throw new PolicyError('conflict', `Policy ${p.id} is cancelled from ${last.validFrom}`);
@@ -896,24 +933,48 @@ export class PolicyService implements PolicyPort {
     } catch (e) {
       return { issue: 'option-not-offered', detail: (e as Error).message };
     }
-    const premium = input.premium ?? { amount: current.premium, currency: prev.currency };
-    if (premium.currency !== offer.currency || !Number.isSafeInteger(premium.amount) || premium.amount < 0) {
-      throw new PolicyError('validation', `The premium must be a whole number of minor units in ${offer.currency}`);
-    }
     const { deductibleOption, ...terms } = vetCare;
+    const end = addMonths(start, offer.termMonths);
+    // A product with a tariff gets a new price: the tariff in force on the renewal day and the animal's new age.
+    let premium: { amount: number; pricing?: TermPricing };
+    try {
+      const postalCode = (await this.d.parties.postalCodeOf?.(last.policyholderPartyId)) ?? undefined;
+      const group = await this.placeInGroup(p.id, last.validFrom);
+      const pricing = await this.priceFor(offer, {
+        market: p.market,
+        productVersion,
+        startDate: start,
+        endDate: end,
+        animal,
+        ...(postalCode ? { postalCode } : {}),
+        ...(group ? { group } : {}),
+        newPolicy: false,
+        annualLimit: terms.annualLimit,
+        deductibleOption,
+      });
+      premium = pricing
+        ? this.premiumFor(pricing, input.premium, input.priceOverride, rights, by, offer.currency)
+        : this.premiumFor(null, input.premium ?? { amount: current.premium, currency: prev.currency }, undefined, rights, by, offer.currency);
+    } catch (e) {
+      if (e instanceof PolicyError && (e.code === 'conflict' || e.code === 'validation') && !input.premium) {
+        return { issue: 'price-not-available', detail: e.message };
+      }
+      throw e;
+    }
     return {
       policyholderPartyId: last.policyholderPartyId,
       term: {
         policyId: p.id,
         termNo: prev.termNo + 1,
         startDate: start,
-        endDate: addMonths(start, offer.termMonths),
+        endDate: end,
         productVersion,
         currency: offer.currency,
         vetCare: terms,
         deductibleOption,
         premium: premium.amount,
         riders: structuredClone(prev.riders),
+        ...(premium.pricing ? { pricing: premium.pricing } : {}),
       },
     };
   }
@@ -1096,8 +1157,16 @@ export class PolicyService implements PolicyPort {
    */
   async change(
     policyId: string,
-    input: { from: ISODate; vetCare: { annualLimit?: number; deductible?: string }; premium: { amount: number; currency: string }; reason: string },
+    input: {
+      from: ISODate;
+      vetCare: { annualLimit?: number; deductible?: string };
+      /** Omitted: the tariff prices the term at the new choices. */
+      premium?: { amount: number; currency: string };
+      priceOverride?: { reason: string };
+      reason: string;
+    },
     by: string,
+    rights: CallerRights = {},
   ): Promise<PolicyTransaction> {
     const p = await this.get(policyId);
     const today = this.d.clock.now().slice(0, 10);
@@ -1120,19 +1189,43 @@ export class PolicyService implements PolicyPort {
     } catch (e) {
       throw new PolicyError('validation', (e as Error).message);
     }
-    if (input.premium?.currency !== term.currency || !Number.isSafeInteger(input.premium.amount) || input.premium.amount < 0) {
-      throw new PolicyError('validation', `The premium must be a whole number of minor units in ${term.currency}`);
-    }
-    const before = effectiveTerms(term, affected.find((v) => v.validFrom <= input.from)!);
+    const holderAt = affected.find((v) => v.validFrom <= input.from)!;
+    const before = effectiveTerms(term, holderAt);
     const { deductibleOption, ...terms } = vetCare;
-    if (deductibleOption === before.deductibleOption && terms.annualLimit === before.vetCare.annualLimit && input.premium.amount === before.premium) {
+    // The tariff prices the whole term at the new choices, with the animal's age at the term's start.
+    const animal = await this.d.animals.get(p.animalId);
+    if (!animal) throw new PolicyError('conflict', `The animal ${p.animalId} is gone`);
+    const postalCode = (await this.d.parties.postalCodeOf?.(holderAt.policyholderPartyId)) ?? undefined;
+    const group = await this.placeInGroup(policyId, input.from);
+    const pricing = await this.priceFor(offer, {
+      market: p.market,
+      productVersion: term.productVersion,
+      startDate: term.startDate,
+      endDate: term.endDate,
+      animal,
+      ...(postalCode ? { postalCode } : {}),
+      ...(group ? { group } : {}),
+      newPolicy: false,
+      annualLimit: terms.annualLimit,
+      deductibleOption,
+    });
+    const newPremium = this.premiumFor(pricing, input.premium, input.priceOverride, rights, by, term.currency);
+    if (deductibleOption === before.deductibleOption && terms.annualLimit === before.vetCare.annualLimit && newPremium.amount === before.premium) {
       throw new PolicyError('conflict', 'The change changes nothing');
     }
 
     const now = this.d.clock.now();
     const txId = this.d.ids.next('ptx');
     const changeNo = (term.changes?.at(-1)?.changeNo ?? 0) + 1;
-    const change: TermChange = { changeNo, from: input.from, vetCare: terms, deductibleOption, premium: input.premium.amount, transactionId: txId };
+    const change: TermChange = {
+      changeNo,
+      from: input.from,
+      vetCare: terms,
+      deductibleOption,
+      premium: newPremium.amount,
+      transactionId: txId,
+      ...(newPremium.pricing ? { pricing: newPremium.pricing } : {}),
+    };
     const add: PolicyVersion[] = [];
     for (const v of affected) {
       const { sysTo: _s, ...rest } = v;
@@ -1142,7 +1235,7 @@ export class PolicyService implements PolicyPort {
     const termDays = daysBetween(term.startDate, term.endDate);
     const adjustment = affected.reduce((sum, v) => {
       const start = v.validFrom > input.from ? v.validFrom : input.from;
-      return sum + (input.premium.amount - effectiveTerms(term, v).premium) * daysBetween(start, v.validTo);
+      return sum + (newPremium.amount - effectiveTerms(term, v).premium) * daysBetween(start, v.validTo);
     }, 0);
     const premiumAdjustment = Math.round(adjustment / termDays);
     const tx: PolicyTransaction = {
@@ -1151,7 +1244,7 @@ export class PolicyService implements PolicyPort {
       type: 'change',
       steps: [
         { step: 'draft', at: now },
-        { step: 'priced', at: now, note: 'Premium given by the caller (no tariff yet, M4)' },
+        { step: 'priced', at: now, note: this.pricedNote(newPremium.pricing) },
         { step: 'underwritten', at: now, note: 'Accepted (no underwriting rules yet, M4)' },
         { step: 'issued', at: now },
       ],
@@ -1164,7 +1257,7 @@ export class PolicyService implements PolicyPort {
         from: input.from,
         annualLimit: terms.annualLimit,
         deductibleOption,
-        premium: { amount: input.premium.amount, currency: term.currency },
+        premium: { amount: newPremium.amount, currency: term.currency },
         premiumAdjustment,
         reason,
       },
@@ -1305,44 +1398,124 @@ export class PolicyService implements PolicyPort {
       throw new PolicyError('validation', (e as Error).message);
     }
     if (!offer.tariffSeries) throw new PolicyError('conflict', `${input.productVersion} has no tariff; its premium is given by hand`);
-    const tariff = await this.d.tariffs?.tariffInForce(offer.tariffSeries, input.startDate);
-    if (!tariff) throw new PolicyError('conflict', `The tariff series ${offer.tariffSeries} has no published version in force on ${input.startDate}`);
     const endDate = addMonths(input.startDate, offer.termMonths);
     const { deductibleOption, ...vetCare } = chosen;
+    const pricing = (await this.priceFor(offer, {
+      market: input.market,
+      productVersion: input.productVersion,
+      startDate: input.startDate,
+      endDate,
+      animal,
+      ...(postalCode ? { postalCode } : {}),
+      ...(group ? { group } : {}),
+      ...(input.campaignCode ? { campaignCode: input.campaignCode } : {}),
+      newPolicy: true,
+      annualLimit: vetCare.annualLimit,
+      deductibleOption,
+    }))!;
+    return { market: input.market, productVersion: input.productVersion, startDate: input.startDate, endDate, vetCare, deductibleOption, price: pricing.result };
+  }
+
+  /**
+   * Prices a term with the product's tariff and price terms (ADR 0030), or null
+   * when the product has no tariff. The evidence keeps the zone, not the postal code.
+   */
+  private async priceFor(
+    offer: ProductOffer,
+    a: {
+      market: string;
+      productVersion: string;
+      startDate: ISODate;
+      endDate: ISODate;
+      animal: { species: string; breed?: string; birthDate: ISODate };
+      postalCode?: string;
+      group?: { kind: 'litter' | 'household'; memberNo: number };
+      campaignCode?: string;
+      newPolicy: boolean;
+      annualLimit: number;
+      deductibleOption: string;
+    },
+  ): Promise<TermPricing | null> {
+    if (!offer.tariffSeries) {
+      if (a.campaignCode) throw new PolicyError('validation', `${a.productVersion} has no tariff, so no campaign codes`);
+      return null;
+    }
+    const tariff = await this.d.tariffs?.tariffInForce(offer.tariffSeries, a.startDate);
+    if (!tariff) throw new PolicyError('conflict', `The tariff series ${offer.tariffSeries} has no published version in force on ${a.startDate}`);
     let terms: { content: PriceTermsContent; ref: TariffRef } | null = null;
     if (offer.priceTermsSeries) {
-      terms = (await this.d.tariffs?.priceTermsInForce?.(offer.priceTermsSeries, input.startDate)) ?? null;
-      if (!terms) throw new PolicyError('conflict', `The price terms series ${offer.priceTermsSeries} has no published version in force on ${input.startDate}`);
-    } else if (input.campaignCode) {
-      throw new PolicyError('validation', `${input.productVersion} has no price terms, so no campaign codes`);
+      terms = (await this.d.tariffs?.priceTermsInForce?.(offer.priceTermsSeries, a.startDate)) ?? null;
+      if (!terms) throw new PolicyError('conflict', `The price terms series ${offer.priceTermsSeries} has no published version in force on ${a.startDate}`);
+    } else if (a.campaignCode) {
+      throw new PolicyError('validation', `${a.productVersion} has no price terms, so no campaign codes`);
     }
+    const input: PriceInput = {
+      market: a.market,
+      species: a.animal.species,
+      ...(a.animal.breed ? { breed: a.animal.breed } : {}),
+      birthDate: a.animal.birthDate,
+      startDate: a.startDate,
+      endDate: a.endDate,
+      annualLimit: a.annualLimit,
+      deductibleOption: a.deductibleOption,
+      ...(a.postalCode ? { postalCode: a.postalCode } : {}),
+      ...(a.group ? { group: a.group } : {}),
+      ...(a.campaignCode ? { campaignCode: a.campaignCode } : {}),
+      newPolicy: a.newPolicy,
+    };
     try {
-      return {
-        market: input.market,
-        productVersion: input.productVersion,
-        startDate: input.startDate,
-        endDate,
-        vetCare,
-        deductibleOption,
-        price: price(tariff, {
-          market: input.market,
-          species: animal.species,
-          ...(animal.breed ? { breed: animal.breed } : {}),
-          birthDate: animal.birthDate,
-          startDate: input.startDate,
-          endDate,
-          annualLimit: vetCare.annualLimit,
-          deductibleOption,
-          ...(postalCode ? { postalCode } : {}),
-          ...(group ? { group } : {}),
-          ...(input.campaignCode ? { campaignCode: input.campaignCode } : {}),
-          newPolicy: true,
-        }, terms ?? undefined),
-      };
+      const result = price(tariff, input, terms ?? undefined);
+      const { postalCode: _p, ...kept } = input;
+      return { result, input: { ...kept, zone: result.facts.zone } };
     } catch (e) {
       if (e instanceof PricingError) throw new PolicyError('validation', e.message);
       throw e;
     }
+  }
+
+  /**
+   * The premium to store: the tariff's, or a manual one. A manual premium on a
+   * product with a tariff needs a reason and the right to set it; the computed
+   * premium is kept next to it.
+   */
+  private premiumFor(
+    pricing: TermPricing | null,
+    given: { amount: number; currency: string } | undefined,
+    override: { reason: string } | undefined,
+    rights: CallerRights,
+    by: string,
+    currency: string,
+  ): { amount: number; pricing?: TermPricing } {
+    if (given && (given.currency !== currency || !Number.isSafeInteger(given.amount) || given.amount < 0)) {
+      throw new PolicyError('validation', `The premium must be a whole number of minor units in ${currency}`);
+    }
+    if (!pricing) {
+      if (!given) throw new PolicyError('validation', 'premium is required: the product has no tariff');
+      return { amount: given.amount };
+    }
+    if (!given || given.amount === pricing.result.termPremium) return { amount: pricing.result.termPremium, pricing };
+    if (!rights.mayOverridePrice) throw new PolicyError('forbidden', 'A premium other than the tariff\'s needs the permission policies:price-override');
+    const reason = override?.reason?.trim();
+    if (!reason) throw new PolicyError('validation', 'A manual premium needs priceOverride.reason');
+    return { amount: given.amount, pricing: { ...pricing, override: { computedPremium: pricing.result.termPremium, reason, by } } };
+  }
+
+  /** The policy's group and its place there on the date, for the group discount. */
+  private async placeInGroup(policyId: string, onDate: ISODate): Promise<{ kind: 'litter' | 'household'; memberNo: number } | undefined> {
+    const inForce = (m: GroupMembership) => m.from <= onDate && (!m.to || onDate < m.to);
+    for (const g of await this.d.store.findGroups({ policyId })) {
+      const members = g.members.filter(inForce).sort((a, b) => (a.from === b.from ? (a.policyId < b.policyId ? -1 : 1) : a.from < b.from ? -1 : 1));
+      const i = members.findIndex((m) => m.policyId === policyId);
+      if (i >= 0) return { kind: g.kind, memberNo: i + 1 };
+    }
+    return undefined;
+  }
+
+  /** The note on the transaction's priced step. */
+  private pricedNote(p: TermPricing | undefined): string {
+    if (!p) return 'Premium given by the caller (the product has no tariff)';
+    const ref = p.result.tariff ? `${p.result.tariff.series}@${p.result.tariff.version}` : 'the tariff';
+    return p.override ? `Manual premium (${p.override.reason}); the tariff ${ref} gave ${p.override.computedPremium}` : `Priced by ${ref}`;
   }
 
   /** Cancellations that have not been reversed. */
@@ -1372,7 +1545,7 @@ export class PolicyService implements PolicyPort {
     throw e;
   };
 
-  async issue(input: IssueInput, by: string): Promise<PolicyRecord> {
+  async issue(input: IssueInput, by: string, rights: CallerRights = {}): Promise<PolicyRecord> {
     const profile = this.profile(input.market);
     const today = this.d.clock.now().slice(0, 10);
     if (!validDate(input.startDate)) throw new PolicyError('validation', 'startDate must be YYYY-MM-DD');
@@ -1399,15 +1572,35 @@ export class PolicyService implements PolicyPort {
     } catch (e) {
       throw new PolicyError('validation', (e as Error).message);
     }
-    const premium = input.premium;
-    if (!premium || premium.currency !== offer.currency) throw new PolicyError('validation', `The premium must be in ${offer.currency}`);
-    if (!Number.isSafeInteger(premium.amount) || premium.amount < 0) throw new PolicyError('validation', 'The premium is a whole number of minor units, at least 0');
+    const endDate = addMonths(input.startDate, offer.termMonths);
+    const { deductibleOption, ...terms } = vetCare;
+    let group: { kind: 'litter' | 'household'; memberNo: number } | undefined;
+    if (input.groupId !== undefined) {
+      const g = await this.getGroup(input.groupId);
+      if (g.market !== input.market || g.holderPartyId !== input.policyholderPartyId) {
+        throw new PolicyError('validation', `The group ${g.id} belongs to another policyholder or market`);
+      }
+      group = { kind: g.kind, memberNo: g.members.filter((m) => m.from <= input.startDate && (!m.to || input.startDate < m.to)).length + 1 };
+    }
+    const postalCode = (await this.d.parties.postalCodeOf?.(input.policyholderPartyId)) ?? undefined;
+    const pricing = await this.priceFor(offer, {
+      market: input.market,
+      productVersion: input.productVersion,
+      startDate: input.startDate,
+      endDate,
+      animal,
+      ...(postalCode ? { postalCode } : {}),
+      ...(group ? { group } : {}),
+      ...(input.campaignCode ? { campaignCode: input.campaignCode } : {}),
+      newPolicy: true,
+      annualLimit: terms.annualLimit,
+      deductibleOption,
+    });
+    const premium = this.premiumFor(pricing, input.premium, input.priceOverride, rights, by, offer.currency);
 
     const now = this.d.clock.now();
     const policyId = this.d.ids.next('pol');
     const txId = this.d.ids.next('ptx');
-    const endDate = addMonths(input.startDate, offer.termMonths);
-    const { deductibleOption, ...terms } = vetCare;
     const policy: Policy = { id: policyId, market: input.market, animalId: input.animalId, inceptionDate: input.startDate, createdBy: by, createdAt: now };
     const term: Term = {
       policyId,
@@ -1421,6 +1614,7 @@ export class PolicyService implements PolicyPort {
       premium: premium.amount,
       riders: [],
       transactionId: txId,
+      ...(premium.pricing ? { pricing: premium.pricing } : {}),
     };
     const version: PolicyVersion = {
       id: this.d.ids.next('pv'),
@@ -1439,7 +1633,7 @@ export class PolicyService implements PolicyPort {
       type: 'issue',
       steps: [
         { step: 'draft', at: now },
-        { step: 'priced', at: now, note: 'Premium given by the caller (no tariff yet, M4)' },
+        { step: 'priced', at: now, note: this.pricedNote(premium.pricing) },
         { step: 'underwritten', at: now, note: 'Accepted (no underwriting rules yet, M4)' },
         { step: 'issued', at: now },
       ],
@@ -1455,9 +1649,11 @@ export class PolicyService implements PolicyPort {
           productVersion: input.productVersion,
           startDate: input.startDate,
           endDate,
+          premium: { amount: premium.amount, currency: offer.currency },
         }),
       ])
       .catch(this.translate);
+    if (input.groupId !== undefined) await this.addMember(input.groupId, { policyId, from: input.startDate }, by);
     return this.get(policyId);
   }
 
