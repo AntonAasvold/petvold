@@ -27,5 +27,6 @@
 | [0023](0023-produktversioner.md) | Produktversioner: innehåll, livscykel och säljperiod | Beslutad |
 | [0024](0024-djurregister.md) | Djurregister: djur, id-nummer och ägarskap | Beslutad |
 | [0025](0025-uppslagning-av-djur.md) | Uppslagning av djur, till exempel för kliniker | Föreslagen |
+| [0026](0026-parter.md) | Parter: personer och organisationer | Föreslagen |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.

@@ -47,6 +47,10 @@ export const PERMISSIONS = [
    * Finds only animals open for lookup, and shows no owners or change history.
    */
   'animals:lookup',
+  /** Read persons and organizations (ADR 0026). Personal data; personal numbers are always masked. */
+  'parties:read',
+  /** Register persons and organizations, change their details and add identifiers. */
+  'parties:write',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -93,11 +97,12 @@ export const DEFAULT_ROLES: RoleDefinitions = {
       'limits:read',
       'catalog:read',
       'animals:read',
+      'parties:read',
     ],
     // SEK 25,000 and EUR 2,500 alone; above that, someone with claims:approve approves.
     decisionLimits: { SEK: 2_500_000, EUR: 250_000 },
   },
-  approver: { permissions: ['claims:read', 'claims:approve', 'limits:read', 'catalog:read', 'animals:read'] },
+  approver: { permissions: ['claims:read', 'claims:approve', 'limits:read', 'catalog:read', 'animals:read', 'parties:read'] },
   clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview', 'catalog:read', 'animals:lookup'], bindsTo: 'clinic' },
   'reassessment-job': { permissions: ['claims:read', 'claims:reassess'] },
   /** Writes rule set drafts and submits them for review. */
@@ -105,7 +110,9 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Reviews and publishes rule sets. */
   'rules-publisher': { permissions: ['rules:read', 'rules:publish', 'rules:simulate', 'catalog:read'] },
   /** Registers animals and changes of owner, e.g. the insurer's back office or sales channel. */
-  'animal-registrar': { permissions: ['animals:read', 'animals:write', 'catalog:read'] },
+  'animal-registrar': { permissions: ['animals:read', 'animals:write', 'catalog:read', 'parties:read'] },
+  /** Registers persons and organizations and keeps their details up to date, e.g. customer service. */
+  'party-registrar': { permissions: ['parties:read', 'parties:write'] },
   /** Maintains reference data and writes product drafts. */
   'catalog-manager': { permissions: ['catalog:read', 'catalog:write'] },
   /** Reviews and publishes product versions. */

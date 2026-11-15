@@ -8,7 +8,7 @@
  * products come from their modules, seeded on the first start.
  *
  * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-admin'
- * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals), 'dev-clinic'
+ * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals and parties), 'dev-clinic'
  * (clinic), 'dev-job' (reassessment job), 'dev-customer' (customer channel). Roles map to
  * permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
@@ -23,6 +23,8 @@ import { AccessService, InMemoryRoleConfigStore, type RoleConfigStore } from '@p
 import { PostgresRoleConfigStore } from '@petvold/access/postgres';
 import { DecisioningRulesPort, DecisioningService, InMemoryRuleSetStore, ruleSetChecksum, type RuleSetStore, type RuleSetVersion } from '@petvold/decisioning';
 import { PostgresRuleSetStore } from '@petvold/decisioning/postgres';
+import { InMemoryPartyStore, PartyService, type PartyStore } from '@petvold/parties';
+import { PostgresPartyStore } from '@petvold/parties/postgres';
 import {
   CatalogService,
   InMemoryProductStore,
@@ -173,6 +175,33 @@ async function seedReferenceData(): Promise<void> {
   }
 }
 
+// Parties (ADR 0026): in Postgres with PARTIES_DATABASE_URL, else in memory.
+const partiesUrl = process.env.PARTIES_DATABASE_URL;
+const partyStore: PartyStore = partiesUrl ? new PostgresPartyStore(createPool(partiesUrl, { max: 2 })) : new InMemoryPartyStore();
+const parties = new PartyService({ store: partyStore, clock, ids });
+await seedParties();
+
+/** Bella's owner, made up. No personal number in the sample data. */
+async function seedParties(): Promise<void> {
+  if (await partyStore.get('pty_owner001')) return;
+  await partyStore.register(
+    {
+      id: 'pty_owner001',
+      revision: 1,
+      kind: 'person',
+      market: 'SE',
+      givenName: 'Anna',
+      familyName: 'Example',
+      email: 'anna@example.test',
+      address: { street: 'Example Street 1', postalCode: '11122', city: 'Stockholm', country: 'SE' },
+      language: 'sv',
+      changedBy: 'petvold-seed',
+      changedAt: clock.now(),
+    },
+    [],
+  );
+}
+
 // The animal register (ADR 0024): in Postgres with ANIMALS_DATABASE_URL, else in memory.
 const animalsUrl = process.env.ANIMALS_DATABASE_URL;
 const animalStore: AnimalStore = animalsUrl ? new PostgresAnimalStore(createPool(animalsUrl, { max: 2 })) : new InMemoryAnimalStore();
@@ -216,7 +245,7 @@ const tokens: Record<string, Principal> = {
   'dev-publisher': { subject: 'publisher@example.test', roles: ['rules-publisher'] },
   'dev-catalog': { subject: 'catalog@example.test', roles: ['catalog-manager'] },
   'dev-catalog-publisher': { subject: 'catalog-publisher@example.test', roles: ['catalog-publisher'] },
-  'dev-registrar': { subject: 'registrar@example.test', roles: ['animal-registrar'], markets: ['SE'] },
+  'dev-registrar': { subject: 'registrar@example.test', roles: ['animal-registrar', 'party-registrar'], markets: ['SE'] },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
   // Acts for the customer who owns Bella's policy in the sample data.
@@ -232,6 +261,7 @@ const app = createApp({
   catalog,
   products,
   animals,
+  parties,
   auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) },
 });
 
@@ -250,8 +280,9 @@ console.log(`  Storage:   ${storage}`);
 console.log(`  Rules:     ${decisioningUrl ? 'Postgres' : 'memory'}, series ${SERIES} (GET /v1/rule-sets/${SERIES}/versions)`);
 console.log(`  Reference: ${catalogUrl ? 'Postgres' : 'memory'} (GET /v1/reference-data/breed?parent=dog)`);
 console.log(`  Animals:   ${animalsUrl ? 'Postgres' : 'memory'} (GET /v1/animals/ani_bella)`);
+console.log(`  Parties:   ${partiesUrl ? 'Postgres' : 'memory'} (GET /v1/parties/pty_owner001)`);
 console.log(`  Products:  ${catalogUrl ? 'Postgres' : 'memory'} (GET /v1/products/on-sale?date=2026-11-15)`);
 console.log(`  Roles:     ${accessUrl ? 'Postgres, versioned (GET /v1/access/roles)' : 'memory, versioned (GET /v1/access/roles)'}`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-catalog and dev-catalog-publisher (reference data and products), dev-registrar (animals), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-catalog and dev-catalog-publisher (reference data and products), dev-registrar (animals and parties), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);

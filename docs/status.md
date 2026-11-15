@@ -10,6 +10,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **`npm run site`** bygger `_site/` från all Markdown i `docs/` och README, med länkar mellan sidorna och länkar till koden på GitHub. Den stoppar vid trasiga länkar.
   - **API-sidan** (`api/`) är Scalar med `openapi.yaml`, samma som dev-serverns `/docs` men utan förifylld token.
   - **Arbetsflödet `Pages`** publicerar efter varje merge till `main`. CI bygger sajten i varje PR.
+- #36 mergad. Sajten är uppe på https://antonaasvold.github.io/petvold/.
+- Parter i den nya modulen `parties` (ADR 0026, Föreslagen), PR #37:
+  - **Personer och organisationer** med namn, kontaktuppgifter, adress och språk, som revisioner med motivering. Sort och marknad ändras aldrig.
+  - **Personnummer och organisationsnummer** med land, unika och aldrig borttagna. Svenska nummer kontrolleras (datum, kontrollsiffra, samordningsnummer).
+  - **Personnummer visas aldrig.** Svaren maskerar dem, och sökningen sker med `POST /v1/party-searches`, så att numret inte hamnar i adresser eller loggar.
+  - **Roller ligger i modulen som har relationen**, inte på parten.
+  - **API:** sex operationer. Nya rättigheter `parties:read` och `parties:write`, och ny roll `party-registrar`.
+  - **Migration 0017:** schemat `parties` och rollen `parties_service`. Provad ner och upp igen.
+  - **Dev-servern** registrerar Bellas ägare `pty_owner001`. `dev-registrar` får även rollen `party-registrar`. Lokal rollinställning är version 6.
+- 281 tester och 95 databastester.
 - #31 mergad: simulering och rättningen av outboxens ordning.
 - Referensdata i den nya modulen `catalog` (ADR 0022, Beslutad):
   - **Arter, raser och kön** med koder som aldrig ändras och etiketter per språk. `label` följer `Accept-Language`.
@@ -45,10 +55,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Kullar i djurregistret, eller partmodulen (personer, organisationer, roller), som ägarna pekar på.
+1. Djurregistret kontrollerar att ägaren finns som part.
+2. Kullar i djurregistret.
 
 **Öppet**
-- ADR 0025 väntar på ditt beslut.
+- ADR 0025 och 0026 väntar på ditt beslut.
+- Gallring och anonymisering av personuppgifter (GDPR artikel 17) behöver en ADR innan Petvold används med riktiga kunder.
+- `parties:read`, `parties:write` och `party-registrar` saknas i installationer som redan har en sparad rollinställning.
 - Det sparas inte vem som slagit upp ett djur.
 - `animals:lookup` saknas på `clinic` i installationer som redan har en sparad rollinställning.
 - `catalog:read`, `catalog-manager` och `catalog-publisher` saknas i installationer som redan har en sparad rollinställning. Lokalt måste de läggas till via API:et.

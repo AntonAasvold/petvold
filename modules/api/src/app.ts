@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
 import { DecisioningService, InMemoryRuleSetStore, RuleSetError, toClaimsRules } from '@petvold/decisioning';
 import { AnimalError, AnimalService, IDENTIFIER_TYPES, InMemoryAnimalStore, type AnimalRecord, type IdentifierType } from '@petvold/animals';
+import { InMemoryPartyStore, PartyError, PartyService, publicView, type PartyRecord } from '@petvold/parties';
 import {
   CatalogError,
   CatalogService,
@@ -87,6 +88,8 @@ export interface AppDeps {
   products?: ProductService;
   /** The animal register (ADR 0024). Omitted: kept in memory, with reference data from `catalog`. */
   animals?: AnimalService;
+  /** Parties: persons and organizations (ADR 0026). Omitted: kept in memory. */
+  parties?: PartyService;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
 }
@@ -560,6 +563,63 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await animals.transfer(a.id, r.body, c.get('principal').subject) }));
   });
 
+  // Parties (ADR 0026). Same scope as animals: the caller's markets, and no
+  // parties for roles bound to a clinic or to policies. Personal numbers are
+  // masked in every response and searched for in a request body, never in the URL.
+  const parties =
+    d.parties ??
+    new PartyService({
+      store: new InMemoryPartyStore(),
+      clock: d.clock,
+      ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
+    });
+  const seesParty = (scope: Scope, p: PartyRecord) =>
+    !scope.clinicId && !scope.policyIds && (scope.markets === '*' || scope.markets.has(p.market));
+  const visibleParty = async (c: Context<Env>) => {
+    const id = c.req.param('partyId') ?? '';
+    const p = await parties.get(id).catch((e: unknown) => {
+      if (e instanceof PartyError && e.code === 'not_found') return null;
+      throw e;
+    });
+    if (!p || !seesParty(c.get('scope'), p)) throw new PartyError('not_found', `Party ${id} does not exist`);
+    return p;
+  };
+
+  app.post('/v1/party-searches', async (c) => {
+    const r = await readJson(c, 'PartySearchRequest');
+    if (!r.ok) return r.res;
+    const found = await parties.findByIdentifier(r.body);
+    return send(c, { items: found.filter((p) => seesParty(c.get('scope'), p)).map(publicView) });
+  });
+
+  app.post('/v1/parties', async (c) => {
+    const r = await readJson(c, 'RegisterPartyRequest');
+    if (!r.ok) return r.res;
+    const scope = c.get('scope');
+    if (scope.clinicId || scope.policyIds || !(scope.markets === '*' || scope.markets.has(r.body.market))) {
+      return problem(c, 403, 'Not permitted', 'The market is outside the caller\'s scope');
+    }
+    return idempotent(c, r.body, async () => ({ status: 201, body: publicView(await parties.register(r.body, c.get('principal').subject)) }));
+  });
+
+  app.get('/v1/parties/:partyId', async (c) => send(c, publicView(await visibleParty(c))));
+
+  app.put('/v1/parties/:partyId', async (c) => {
+    const p = await visibleParty(c);
+    const r = await readJson(c, 'ChangePartyRequest');
+    if (!r.ok) return r.res;
+    return send(c, publicView(await parties.change(p.id, r.body, c.get('principal').subject)));
+  });
+
+  app.get('/v1/parties/:partyId/revisions', async (c) => send(c, { items: await parties.revisions((await visibleParty(c)).id) }));
+
+  app.post('/v1/parties/:partyId/identifiers', async (c) => {
+    const p = await visibleParty(c);
+    const r = await readJson(c, 'PartyIdentifierInput');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: publicView(await parties.addIdentifier(p.id, r.body, c.get('principal').subject)) }));
+  });
+
   app.get('/v1/access/roles', async (c) => send(c, await access.current()));
 
   app.get('/v1/access/roles/versions', async (c) => send(c, { items: await access.versions() }));
@@ -592,6 +652,9 @@ export function createApp(d: AppDeps) {
     if (err instanceof RuleSetError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
       return problem(c, status, err.message);
+    }
+    if (err instanceof PartyError) {
+      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
     }
     if (err instanceof AnimalError) {
       return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);

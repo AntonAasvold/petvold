@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [Parter: personer och organisationer](2026-11-15-parter.md) | #37 |
 | 2026-11-15 | [Dokumentationen och API-specen på GitHub Pages](2026-11-15-dokumentationssajt.md) | #36 |
 | 2026-11-15 | [Uppslagning av djur för kliniker](2026-11-15-uppslagning-av-djur.md) | #35 |
 | 2026-11-15 | [Djurregister: djur, id-nummer och ägarskap](2026-11-15-djurregister.md) | #34 |

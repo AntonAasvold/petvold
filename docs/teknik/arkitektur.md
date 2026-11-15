@@ -28,8 +28,9 @@ flowchart LR
 | `decisioning` | Regeluppsättningar med livscykel: `DecisioningService`, porten `RuleSetStore`, lagring i minnet och i Postgres (schemat `decisioning`), och `DecisioningRulesPort` som skademotorn läser regler genom (ADR 0021) | `claims-core` (typer och kontrollsumma), `pg` |
 | `catalog` | Produktkatalogen: referensdata (`CatalogService`, porten `ReferenceDataStore`, ADR 0022) och produktversioner (`ProductService`, porten `ProductStore`, `vetCareTermsFor`, ADR 0023), lagring i minnet och i Postgres (schemat `catalog`), och `labelFor` som väljer etikett efter språk | `claims-core` (typer och kontrollsumma), `pg` |
 | `animals` | Djurregistret: `AnimalService`, porten `AnimalStore`, lagring i minnet och i Postgres (schemat `animals`), `ownerOn` och `normalizeIdentifier` (ADR 0024). Läser referensdata via porten `ReferencePort`. | `pg` |
+| `parties` | Parter: `PartyService`, porten `PartyStore`, lagring i minnet och i Postgres (schemat `parties`), `normalizePartyIdentifier` med kontroll av svenska nummer, och `publicView` som maskerar personnummer (ADR 0026) | `pg` |
 | `access` | Rollinställningen som versioner: tjänsten `AccessService`, porten `RoleConfigStore`, lagring i minnet och i Postgres (schemat `access`, ADR 0020) | `pg` |
-| `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, `catalog`, `animals`, Hono |
+| `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, `catalog`, `animals`, `parties`, Hono |
 
 ## Portar och adaptrar
 
@@ -140,6 +141,13 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 - **Referensdata** läses via porten `ReferencePort.get(kind, code)`. `ReferenceDataStore` i `catalog` har samma form, så installationen skickar den direkt. `animals` beror inte på `catalog`.
 - **Omfång** kontrolleras i API-lagret: djurets marknad mot anroparens marknader. Roller bundna till klinik eller försäkringar ser inga hela djur.
 - **Uppslagning (ADR 0025):** kolumnen `allow_lookup` i `animal_revision` (migration 0016). `AnimalService.lookup` hittar djuret på id-nummer, filtrerar bort stängda djur och returnerar `summaryOf(record)` utan ägare och historik. API-lagret filtrerar på marknad men inte på bindning, eftersom svaret saknar personuppgifter.
+
+**Parter (ADR 0026):**
+- **Tabeller** (migration 0017):
+  - `parties.party_revision`, med en rad per revision. En constraint kräver namnfälten som hör till sorten, och en trigger kontrollerar att sort och marknad aldrig ändras. Adressen är `jsonb`.
+  - `parties.party_identifier`, med primärnyckeln `(type, country, value)`. Tjänsterollen får bara läsa och lägga till.
+- **Maskering i API-lagret.** Tjänsten returnerar hela numret, eftersom andra moduler kan behöva det, och `publicView(record)` maskerar det i varje svar. Sökningen är `POST /v1/party-searches` med numret i innehållet.
+- **Omfång** som för djuren: partens marknad mot anroparens marknader, och inga parter för roller bundna till klinik eller försäkringar.
 
 **Rollinställningen (ADR 0020):**
 - **Versioner.** Modulen `access` sparar hela rollinställningen som versioner i `access.role_config` (migration 0009). Den har en egen tjänsteroll, `access_service`, som bara får läsa och lägga till.
