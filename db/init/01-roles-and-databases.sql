@@ -7,6 +7,7 @@
 create role claims_service login password 'claims_service';
 create role access_service login password 'access_service';
 create role decisioning_service login password 'decisioning_service';
+create role catalog_service login password 'catalog_service';
 
 -- Separate database for tests, so tests never touch development data.
 create database petvold_test owner petvold;

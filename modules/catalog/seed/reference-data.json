@@ -1,0 +1,21 @@
+{
+  "species": [
+    { "code": "dog", "labels": { "en": "Dog", "sv": "Hund" } },
+    { "code": "cat", "labels": { "en": "Cat", "sv": "Katt" } },
+    { "code": "horse", "labels": { "en": "Horse", "sv": "Häst" } }
+  ],
+  "sex": [
+    { "code": "male", "labels": { "en": "Male", "sv": "Hane" } },
+    { "code": "female", "labels": { "en": "Female", "sv": "Hona" } }
+  ],
+  "breed": [
+    { "code": "dog-mixed", "parent": "dog", "labels": { "en": "Mixed breed", "sv": "Blandras" } },
+    { "code": "dog-labrador-retriever", "parent": "dog", "labels": { "en": "Labrador Retriever", "sv": "Labrador retriever" } },
+    { "code": "dog-german-shepherd", "parent": "dog", "labels": { "en": "German Shepherd", "sv": "Schäfer" } },
+    { "code": "dog-golden-retriever", "parent": "dog", "labels": { "en": "Golden Retriever", "sv": "Golden retriever" } },
+    { "code": "cat-domestic", "parent": "cat", "labels": { "en": "Domestic cat", "sv": "Huskatt" } },
+    { "code": "cat-maine-coon", "parent": "cat", "labels": { "en": "Maine Coon", "sv": "Maine coon" } },
+    { "code": "horse-swedish-warmblood", "parent": "horse", "labels": { "en": "Swedish Warmblood", "sv": "Svenskt varmblod" } },
+    { "code": "horse-icelandic", "parent": "horse", "labels": { "en": "Icelandic horse", "sv": "Islandshäst" } }
+  ]
+}

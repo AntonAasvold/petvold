@@ -32,7 +32,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 **M2 – Produkt och djur**
 - [x] Beslutsmotorn `decisioning` (ADR 0018, 0021): regelserier och versioner i databasen, publicering med fyra ögon, kontrollsumma i beviskedjan. Skademotorn läser regler från modulen.
 - [x] Simulering av regelutkast mot sparade underlag
-- [ ] Produktkatalog `catalog` (ADR 0021): referensdata (arter, raser, kön) med översättningar, produkter och produktversioner med säljperiod och villkorsalternativ
+- [x] Referensdata i `catalog` (ADR 0022): arter, raser och kön med översättningar och historik
+- [ ] Produkter och produktversioner i `catalog` (ADR 0021): säljperiod, villkorsalternativ, regelserie och publicering med fyra ögon
 - [ ] `assess` och `calculate` flyttas till `decisioning-core`
 - [ ] Djurregister: djur, kullar, ägarskap med giltighetstid
 - [ ] Part: person, organisation, roller

@@ -2,6 +2,27 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-15 (pass 24)
+
+**Gjort**
+- #31 mergad: simulering och rättningen av outboxens ordning.
+- Referensdata i den nya modulen `catalog` (ADR 0022, Föreslagen):
+  - **Arter, raser och kön** med koder som aldrig ändras och etiketter per språk. `label` följer `Accept-Language`.
+  - **Historik:** varje ändring blir en ny revision med vem, när och varför. Tjänsterollen `catalog_service` får bara läsa och lägga till. En kod avaktiveras i stället för att tas bort.
+  - **En ras tillhör en art** som måste finnas och vara aktiv, och arten ändras aldrig. Kontrolleras både i tjänsten och av en trigger.
+  - **API:** fyra operationer under `/v1/reference-data`. Nya rättigheter `catalog:read` och `catalog:write`, och ny roll `catalog-manager`. `catalog:read` har lagts till i standardrollerna som behöver listorna.
+  - **Migration 0013:** schemat `catalog`. Provad ner och upp igen.
+  - **Dev-servern** läser in exempeldata (3 arter, 2 kön, 8 raser på engelska och svenska). Ny token `dev-catalog`.
+- **Bygglogg** i `docs/logg/` med en post per PR om hur ändringen är byggd. Den har lagts till i `CLAUDE.md` och arbetssättet.
+- 241 tester och 82 databastester.
+
+**Nästa steg**
+1. Produkter och produktversioner i `catalog`: säljperiod, villkorsalternativ, regelserie och publicering med fyra ögon. Därefter läser skademotorn regelserien från produktversionen, och den tillfälliga funktionen i installationen försvinner.
+
+**Öppet**
+- ADR 0022 väntar på ditt beslut.
+- `catalog:read` och `catalog-manager` saknas i installationer som redan har en sparad rollinställning. Lokalt måste de läggas till via API:et.
+
 ## 2026-11-14 (pass 23)
 
 **Gjort**

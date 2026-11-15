@@ -32,6 +32,10 @@ export const PERMISSIONS = [
   'rules:publish',
   /** Run a rule set against stored decisions. Shows claim data within the caller's scope. */
   'rules:simulate',
+  /** Read reference data such as species and breeds (ADR 0022). Not sensitive. */
+  'catalog:read',
+  /** Create and change reference data. Every change is kept in the history. */
+  'catalog:write',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -76,21 +80,24 @@ export const DEFAULT_ROLES: RoleDefinitions = {
       'claims:request-review',
       'claims:preview',
       'limits:read',
+      'catalog:read',
     ],
     // SEK 25,000 and EUR 2,500 alone; above that, someone with claims:approve approves.
     decisionLimits: { SEK: 2_500_000, EUR: 250_000 },
   },
-  approver: { permissions: ['claims:read', 'claims:approve', 'limits:read'] },
-  clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview'], bindsTo: 'clinic' },
+  approver: { permissions: ['claims:read', 'claims:approve', 'limits:read', 'catalog:read'] },
+  clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview', 'catalog:read'], bindsTo: 'clinic' },
   'reassessment-job': { permissions: ['claims:read', 'claims:reassess'] },
   /** Writes rule set drafts and submits them for review. */
-  'rules-author': { permissions: ['rules:read', 'rules:write', 'rules:simulate'] },
+  'rules-author': { permissions: ['rules:read', 'rules:write', 'rules:simulate', 'catalog:read'] },
   /** Reviews and publishes rule sets. */
-  'rules-publisher': { permissions: ['rules:read', 'rules:publish', 'rules:simulate'] },
+  'rules-publisher': { permissions: ['rules:read', 'rules:publish', 'rules:simulate', 'catalog:read'] },
+  /** Maintains reference data: species, breeds, sexes. */
+  'catalog-manager': { permissions: ['catalog:read', 'catalog:write'] },
   /** Manages roles and limits. No permissions in claims. */
   admin: { permissions: ['access:read', 'access:manage'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */
-  'customer-channel': { permissions: ['claims:read', 'claims:request-review'], bindsTo: 'policies' },
+  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read'], bindsTo: 'policies' },
 };
 
 export function isPermission(value: unknown): value is Permission {
