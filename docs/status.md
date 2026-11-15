@@ -32,6 +32,9 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #43 mergad.
+- `npm run roles:sync`, PR #44: lägger till nya standardroller och standardrättigheter i en sparad rollinställning som en ny version med motivering. Visar ändringen först och sparar bara med `--apply`. Tar aldrig bort något. Ersätter mitt tillfälliga skript, och de öppna punkterna om rättigheter som saknas i sparade rollinställningar är borta.
+- 299 tester och 100 databastester.
 - #42 mergad.
 - Gallring (ADR 0028), PR #43:
   - **Lagringstider per marknad** som versioner, ändringsbara via API:et. Version 1 är tio år för Sverige.
@@ -91,12 +94,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 1. Flytten av `assess` och `calculate` till `decisioning-core`, eller policymodulen (M3).
 
 **Öppet**
-- `parties:privacy`, `parties:erase`, `parties:retention`, `privacy-officer` och `retention-job` saknas i installationer som redan har en sparad rollinställning.
 - Gallringen känner bara till djurregistret. Den ska inte köras skarpt förrän policyer och skador rapporterar sina relationer (M3).
-- `parties:read`, `parties:write` och `party-registrar` saknas i installationer som redan har en sparad rollinställning.
 - Det sparas inte vem som slagit upp ett djur.
-- `animals:lookup` saknas på `clinic` i installationer som redan har en sparad rollinställning.
-- `catalog:read`, `catalog-manager` och `catalog-publisher` saknas i installationer som redan har en sparad rollinställning. Lokalt måste de läggas till via API:et.
 
 ## 2026-11-14 (pass 23)
 

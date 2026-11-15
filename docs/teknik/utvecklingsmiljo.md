@@ -46,6 +46,7 @@ Exemplen finns i kontraktet (`components/examples`). Testerna kontrollerar att d
 | `npm run db:migrate` | Kör nya migreringar mot båda databaserna |
 | `npm run db:new <namn>` | Skapar en ny migreringsfil i `db/migrations/` |
 | `npm run test:db` | Databastester mot `TEST_DATABASE_URL` |
+| `npm run roles:sync` | Visar standardroller och standardrättigheter som saknas i den sparade rollinställningen. Med `-- --apply` sparas de som en ny version. |
 | `npm run erasures:reapply` | Kör alla godkända anonymiseringar igen, efter en återställning från säkerhetskopia (ADR 0028) |
 | `npm run site` | Bygger dokumentationssajten i `_site/`: all Markdown i `docs/` och README som HTML, och API-sidan från `openapi.yaml`. Stoppar vid trasiga länkar. |
 

@@ -29,6 +29,7 @@ npm run typecheck
 npm run lint:openapi
 npm run lint:lang
 npm run site           # bygger dokumentationssajten i _site/
+npm run roles:sync     # nya standardroller till sparad rollinställning (-- --apply sparar)
 npm run erasures:reapply  # efter återställning från säkerhetskopia (ADR 0028)
 npm run dev
 ```
