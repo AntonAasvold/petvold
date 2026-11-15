@@ -8,7 +8,7 @@
  * products come from their modules, seeded on the first start.
  *
  * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-admin'
- * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-clinic'
+ * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals), 'dev-clinic'
  * (clinic), 'dev-job' (reassessment job), 'dev-customer' (customer channel). Roles map to
  * permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
@@ -35,6 +35,8 @@ import {
   type ReferenceDataStore,
 } from '@petvold/catalog';
 import { PostgresProductStore, PostgresReferenceDataStore } from '@petvold/catalog/postgres';
+import { AnimalService, InMemoryAnimalStore, type AnimalStore } from '@petvold/animals';
+import { PostgresAnimalStore } from '@petvold/animals/postgres';
 import referenceSeed from '@petvold/catalog/seed/reference-data.json' with { type: 'json' };
 import productSeed from '@petvold/catalog/seed/products.json' with { type: 'json' };
 import { CALCULATION_MODEL, CALCULATION_MODELS } from '@petvold/claims-core';
@@ -171,6 +173,24 @@ async function seedReferenceData(): Promise<void> {
   }
 }
 
+// The animal register (ADR 0024): in Postgres with ANIMALS_DATABASE_URL, else in memory.
+const animalsUrl = process.env.ANIMALS_DATABASE_URL;
+const animalStore: AnimalStore = animalsUrl ? new PostgresAnimalStore(createPool(animalsUrl, { max: 2 })) : new InMemoryAnimalStore();
+const animals = new AnimalService({ store: animalStore, references: referenceStore, clock, ids });
+await seedAnimals();
+
+/** Bella from the sample policy, with a microchip and her owner since she was a puppy. */
+async function seedAnimals(): Promise<void> {
+  if (await animalStore.get('ani_bella')) return;
+  const now = clock.now();
+  const by = 'petvold-seed';
+  await animalStore.register(
+    { id: 'ani_bella', revision: 1, market: 'SE', species: 'dog', breed: 'dog-labrador-retriever', sex: 'female', neutered: true, name: 'Bella', birthDate: '2019-03-14', changedBy: by, changedAt: now },
+    [{ type: 'microchip', value: '752098100000001', addedBy: by, addedAt: now }],
+    { seq: 1, partyId: 'pty_owner001', validFrom: '2019-05-20', recordedBy: by, recordedAt: now },
+  );
+}
+
 const service = new ClaimsService({
   policies: new InMemoryPolicyPort([{ snapshot: fixtures.bellaPolicy(), sysFrom: '2026-03-03T00:00:00Z' }]),
   // The product version on the policy points at its rule series (ADR 0023).
@@ -196,6 +216,7 @@ const tokens: Record<string, Principal> = {
   'dev-publisher': { subject: 'publisher@example.test', roles: ['rules-publisher'] },
   'dev-catalog': { subject: 'catalog@example.test', roles: ['catalog-manager'] },
   'dev-catalog-publisher': { subject: 'catalog-publisher@example.test', roles: ['catalog-publisher'] },
+  'dev-registrar': { subject: 'registrar@example.test', roles: ['animal-registrar'], markets: ['SE'] },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
   // Acts for the customer who owns Bella's policy in the sample data.
@@ -210,6 +231,7 @@ const app = createApp({
   decisioning,
   catalog,
   products,
+  animals,
   auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) },
 });
 
@@ -227,8 +249,9 @@ console.log(`Petvold listening on http://localhost:${port}`);
 console.log(`  Storage:   ${storage}`);
 console.log(`  Rules:     ${decisioningUrl ? 'Postgres' : 'memory'}, series ${SERIES} (GET /v1/rule-sets/${SERIES}/versions)`);
 console.log(`  Reference: ${catalogUrl ? 'Postgres' : 'memory'} (GET /v1/reference-data/breed?parent=dog)`);
+console.log(`  Animals:   ${animalsUrl ? 'Postgres' : 'memory'} (GET /v1/animals/ani_bella)`);
 console.log(`  Products:  ${catalogUrl ? 'Postgres' : 'memory'} (GET /v1/products/on-sale?date=2026-11-15)`);
 console.log(`  Roles:     ${accessUrl ? 'Postgres, versioned (GET /v1/access/roles)' : 'memory, versioned (GET /v1/access/roles)'}`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-catalog and dev-catalog-publisher (reference data and products), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-catalog and dev-catalog-publisher (reference data and products), dev-registrar (animals), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);

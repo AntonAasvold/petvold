@@ -1,0 +1,14 @@
+{
+  "name": "@petvold/animals",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./postgres": "./src/postgres.ts",
+    "./test-suites/animal-store": "./test-suites/animal-store.ts"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}

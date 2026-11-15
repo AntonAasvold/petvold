@@ -27,8 +27,9 @@ flowchart LR
 | `claims-store-postgres` | Lagring i Postgres med ren SQL (ADR 0015) och idempotensnycklar | `claims-core`, `pg` |
 | `decisioning` | Regeluppsättningar med livscykel: `DecisioningService`, porten `RuleSetStore`, lagring i minnet och i Postgres (schemat `decisioning`), och `DecisioningRulesPort` som skademotorn läser regler genom (ADR 0021) | `claims-core` (typer och kontrollsumma), `pg` |
 | `catalog` | Produktkatalogen: referensdata (`CatalogService`, porten `ReferenceDataStore`, ADR 0022) och produktversioner (`ProductService`, porten `ProductStore`, `vetCareTermsFor`, ADR 0023), lagring i minnet och i Postgres (schemat `catalog`), och `labelFor` som väljer etikett efter språk | `claims-core` (typer och kontrollsumma), `pg` |
+| `animals` | Djurregistret: `AnimalService`, porten `AnimalStore`, lagring i minnet och i Postgres (schemat `animals`), `ownerOn` och `normalizeIdentifier` (ADR 0024). Läser referensdata via porten `ReferencePort`. | `pg` |
 | `access` | Rollinställningen som versioner: tjänsten `AccessService`, porten `RoleConfigStore`, lagring i minnet och i Postgres (schemat `access`, ADR 0020) | `pg` |
-| `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, `catalog`, Hono |
+| `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, `catalog`, `animals`, Hono |
 
 ## Portar och adaptrar
 
@@ -126,6 +127,18 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
   - högst en publicerad version per produkt och dag (`daterange(sales_from, sales_to) &&`)
 - **Kontroller mot andra moduler.** `ProductService` får `speciesActive` och `ruleSeriesInForce` som funktioner. Installationen (dev-servern, eller `createApp` om inget anges) kopplar dem till referensdatan och till `DecisioningService.rulesInForce`.
 - **Säljperioden utanför kontrollsumman.** Kontrollsumman täcker innehållet och `salesFrom`. `salesTo` kan ändras efter publicering, och varje sådan ändring sparas med vem, när och varför.
+
+**Djurregistret (ADR 0024):**
+- **Tabeller** (migration 0015):
+  - `animals.animal_revision`, med en rad per revision. Tjänsterollen får bara läsa och lägga till, och en trigger kontrollerar att marknad och art aldrig ändras.
+  - `animals.animal_identifier`, med primärnyckeln `(type, value)`, så att ett nummer bara kan höra till ett djur.
+  - `animals.ownership`, med en rad per ägarskap.
+- **Ägarkedjan.** Ett ägarbyte är `update … set valid_to` på det öppna ägarskapet och `insert` av nästa, i en transaktion. Databasen kontrollerar resten:
+  - högst ett öppet ägarskap per djur (unikt partiellt index)
+  - det nya börjar samma dag som det förra slutade (trigger)
+  - bara `valid_to` får uppdateras, och bara en gång (kolumnrättighet och trigger)
+- **Referensdata** läses via porten `ReferencePort.get(kind, code)`. `ReferenceDataStore` i `catalog` har samma form, så installationen skickar den direkt. `animals` beror inte på `catalog`.
+- **Omfång** kontrolleras i API-lagret: djurets marknad mot anroparens marknader. Roller bundna till klinik eller försäkringar ser inga djur.
 
 **Rollinställningen (ADR 0020):**
 - **Versioner.** Modulen `access` sparar hela rollinställningen som versioner i `access.role_config` (migration 0009). Den har en egen tjänsteroll, `access_service`, som bara får läsa och lägga till.

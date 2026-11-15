@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Petvold API
   version: 0.1.0
-  summary: Headless core for pet insurance – claims, rule sets, products, reference data and access.
+  summary: Headless core for pet insurance – claims, rule sets, products, reference data, animals and access.
   description: |
     The contract is the source of truth. The server validates incoming
     requests against the schemas here, and the contract tests validate the responses.
@@ -38,6 +38,7 @@ tags:
   - name: rule-sets
   - name: reference-data
   - name: products
+  - name: animals
   - name: previews
   - name: limits
 
@@ -694,6 +695,188 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/animals:
+    get:
+      tags: [animals]
+      operationId: findAnimals
+      x-permission: animals:read
+      summary: Find animals by identifier or owner
+      description: |
+        Requires the permission `animals:read`. Give exactly one of the filters.
+        Only animals in the caller's markets are returned. Roles bound to a
+        clinic or to policies see no animals (ADR 0024).
+      parameters:
+        - { name: microchip, in: query, schema: { type: string }, description: '15 digits (ISO 11784). Spaces and hyphens are ignored.' }
+        - { name: registration, in: query, schema: { type: string } }
+        - { name: passport, in: query, schema: { type: string } }
+        - { name: ownerPartyId, in: query, schema: { type: string }, description: 'Animals the party owns today.' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The animals found
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AnimalRecord' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    post:
+      tags: [animals]
+      operationId: registerAnimal
+      x-permission: animals:write
+      summary: Register an animal with its first owner
+      description: |
+        Requires the permission `animals:write`. Species, breed and sex are
+        codes from the reference data; the breed must belong to the species.
+        An identifier that another animal has gives `409`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterAnimalRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The animal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnimalRecord' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/animals/{animalId}:
+    get:
+      tags: [animals]
+      operationId: getAnimal
+      x-permission: animals:read
+      summary: An animal with its identifiers and owners
+      description: Requires the permission `animals:read`. An animal outside the caller's markets answers 404.
+      parameters:
+        - $ref: '#/components/parameters/AnimalId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The animal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnimalRecord' }
+    put:
+      tags: [animals]
+      operationId: correctAnimal
+      x-permission: animals:write
+      summary: Correct or update an animal's details
+      description: |
+        Requires the permission `animals:write`. A new revision with a reason,
+        e.g. neutered, a corrected breed or a date of death. `basedOnRevision`
+        must be the current revision. Market and species never change.
+      parameters:
+        - $ref: '#/components/parameters/AnimalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CorrectAnimalRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The animal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnimalRecord' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/animals/{animalId}/revisions:
+    get:
+      tags: [animals]
+      operationId: listAnimalRevisions
+      x-permission: animals:read
+      summary: Every revision of an animal's details
+      description: Requires the permission `animals:read`. Shows who changed what, when and why.
+      parameters:
+        - $ref: '#/components/parameters/AnimalId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: All revisions, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Animal' }
+
+  /v1/animals/{animalId}/identifiers:
+    post:
+      tags: [animals]
+      operationId: addAnimalIdentifier
+      x-permission: animals:write
+      summary: Add an identifier
+      description: Requires the permission `animals:write`. Identifiers are never removed. Adding one the animal already has returns it unchanged.
+      parameters:
+        - $ref: '#/components/parameters/AnimalId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IdentifierInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The animal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnimalRecord' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/animals/{animalId}/ownerships:
+    post:
+      tags: [animals]
+      operationId: transferAnimal
+      x-permission: animals:write
+      summary: Change owner from a date
+      description: Requires the permission `animals:write`. The current ownership ends the day the new one starts. Not after the animal died.
+      parameters:
+        - $ref: '#/components/parameters/AnimalId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferAnimalRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The animal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnimalRecord' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/access/roles:
     get:
       tags: [access]
@@ -1304,6 +1487,11 @@ components:
       required: true
       description: The version label, e.g. 2026.2.
       schema: { type: string, pattern: '^[0-9A-Za-z][0-9A-Za-z.-]{0,31}$' }
+    AnimalId:
+      name: animalId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
     Series:
       name: series
       in: path
@@ -1983,6 +2171,109 @@ components:
       properties:
         salesTo: { $ref: '#/components/schemas/Date' }
         reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    IdentifierInput:
+      type: object
+      additionalProperties: false
+      required: [type, value]
+      properties:
+        type: { type: string, enum: [microchip, registration, passport] }
+        value: { type: string, minLength: 1, maxLength: 60 }
+
+    Animal:
+      type: object
+      required: [id, revision, market, species, sex, neutered, name, birthDate, changedBy, changedAt]
+      properties:
+        id: { type: string }
+        revision: { type: integer, minimum: 1 }
+        market: { $ref: '#/components/schemas/Market' }
+        species: { type: string, description: Species code from the reference data. Never changes. }
+        breed: { type: string, description: Breed code from the reference data. Omitted when unknown. }
+        sex: { type: string }
+        neutered: { type: boolean }
+        name: { type: string }
+        birthDate: { $ref: '#/components/schemas/Date' }
+        deceasedOn: { $ref: '#/components/schemas/Date' }
+        changedBy: { type: string }
+        changedAt: { $ref: '#/components/schemas/DateTime' }
+        reason: { type: string }
+
+    AnimalRecord:
+      allOf:
+        - $ref: '#/components/schemas/Animal'
+        - type: object
+          required: [identifiers, ownerships]
+          properties:
+            identifiers:
+              type: array
+              items:
+                type: object
+                required: [type, value, addedBy, addedAt]
+                properties:
+                  type: { type: string, enum: [microchip, registration, passport] }
+                  value: { type: string }
+                  addedBy: { type: string }
+                  addedAt: { $ref: '#/components/schemas/DateTime' }
+            ownerships:
+              type: array
+              description: Every owner, oldest first. The one without validTo is the current owner.
+              items:
+                type: object
+                required: [seq, partyId, validFrom, recordedBy, recordedAt]
+                properties:
+                  seq: { type: integer, minimum: 1 }
+                  partyId: { type: string }
+                  validFrom: { $ref: '#/components/schemas/Date' }
+                  validTo: { $ref: '#/components/schemas/Date', description: First day the party no longer owns the animal. }
+                  recordedBy: { type: string }
+                  recordedAt: { $ref: '#/components/schemas/DateTime' }
+                  reason: { type: string }
+
+    RegisterAnimalRequest:
+      type: object
+      additionalProperties: false
+      required: [market, species, sex, name, birthDate, owner]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        species: { type: string }
+        breed: { type: string }
+        sex: { type: string }
+        neutered: { type: boolean, default: false }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        birthDate: { $ref: '#/components/schemas/Date' }
+        identifiers:
+          type: array
+          items: { $ref: '#/components/schemas/IdentifierInput' }
+        owner:
+          type: object
+          additionalProperties: false
+          required: [partyId, from]
+          properties:
+            partyId: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' }
+            from: { $ref: '#/components/schemas/Date' }
+
+    CorrectAnimalRequest:
+      type: object
+      additionalProperties: false
+      required: [basedOnRevision, reason, sex, neutered, name, birthDate]
+      properties:
+        basedOnRevision: { type: integer, minimum: 1 }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        breed: { type: string }
+        sex: { type: string }
+        neutered: { type: boolean }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        birthDate: { $ref: '#/components/schemas/Date' }
+        deceasedOn: { $ref: '#/components/schemas/Date' }
+
+    TransferAnimalRequest:
+      type: object
+      additionalProperties: false
+      required: [partyId, from]
+      properties:
+        partyId: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' }
+        from: { $ref: '#/components/schemas/Date' }
+        reason: { type: string, maxLength: 2000 }
 
     EmptyRequest:
       type: object

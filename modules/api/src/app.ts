@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
 import { DecisioningService, InMemoryRuleSetStore, RuleSetError, toClaimsRules } from '@petvold/decisioning';
+import { AnimalError, AnimalService, InMemoryAnimalStore, type AnimalRecord, type IdentifierType } from '@petvold/animals';
 import {
   CatalogError,
   CatalogService,
@@ -84,6 +85,8 @@ export interface AppDeps {
    * Give the same instance to the claims engine's RulesPort.
    */
   products?: ProductService;
+  /** The animal register (ADR 0024). Omitted: kept in memory, with reference data from `catalog`. */
+  animals?: AnimalService;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
 }
@@ -475,6 +478,74 @@ export function createApp(d: AppDeps) {
   productStep('publications', 'EmptyRequest', (p, v, by) => products.publish(p, v, by));
   productStep('sales-ends', 'SalesEndRequest', (p, v, by, b) => products.endSales(p, v, b.salesTo, by, b.reason));
 
+  // The animal register (ADR 0024). Scope: the caller's markets. A role bound to a
+  // clinic or to policies sees no animals, since the register cannot tell which are theirs.
+  const animals =
+    d.animals ??
+    new AnimalService({
+      store: new InMemoryAnimalStore(),
+      references: { get: (kind, code) => catalog.getReference(kind, code).catch(() => null) },
+      clock: d.clock,
+      ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
+    });
+  const sees = (scope: Scope, a: AnimalRecord) =>
+    !scope.clinicId && !scope.policyIds && (scope.markets === '*' || scope.markets.has(a.market));
+  const visibleAnimal = async (c: Context<Env>) => {
+    const id = c.req.param('animalId') ?? '';
+    const a = await animals.get(id).catch((e: unknown) => {
+      if (e instanceof AnimalError && e.code === 'not_found') return null;
+      throw e;
+    });
+    if (!a || !sees(c.get('scope'), a)) throw new AnimalError('not_found', `Animal ${id} does not exist`);
+    return a;
+  };
+
+  app.get('/v1/animals', async (c) => {
+    const filters = (['microchip', 'registration', 'passport', 'ownerPartyId'] as const).flatMap((k) => {
+      const v = c.req.query(k);
+      return v === undefined ? [] : [[k, v] as const];
+    });
+    if (filters.length !== 1) return problem(c, 422, 'Give exactly one of microchip, registration, passport or ownerPartyId');
+    const [key, value] = filters[0]!;
+    const found = key === 'ownerPartyId' ? await animals.findByOwner(value) : await animals.findByIdentifier({ type: key as IdentifierType, value });
+    return send(c, { items: found.filter((a) => sees(c.get('scope'), a)) });
+  });
+
+  app.post('/v1/animals', async (c) => {
+    const r = await readJson(c, 'RegisterAnimalRequest');
+    if (!r.ok) return r.res;
+    const scope = c.get('scope');
+    if (scope.clinicId || scope.policyIds || !(scope.markets === '*' || scope.markets.has(r.body.market))) {
+      return problem(c, 403, 'Not permitted', 'The market is outside the caller\'s scope');
+    }
+    return idempotent(c, r.body, async () => ({ status: 201, body: await animals.register(r.body, c.get('principal').subject) }));
+  });
+
+  app.get('/v1/animals/:animalId', async (c) => send(c, await visibleAnimal(c)));
+
+  app.put('/v1/animals/:animalId', async (c) => {
+    const a = await visibleAnimal(c);
+    const r = await readJson(c, 'CorrectAnimalRequest');
+    if (!r.ok) return r.res;
+    return send(c, await animals.correct(a.id, r.body, c.get('principal').subject));
+  });
+
+  app.get('/v1/animals/:animalId/revisions', async (c) => send(c, { items: await animals.revisions((await visibleAnimal(c)).id) }));
+
+  app.post('/v1/animals/:animalId/identifiers', async (c) => {
+    const a = await visibleAnimal(c);
+    const r = await readJson(c, 'IdentifierInput');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await animals.addIdentifier(a.id, r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/animals/:animalId/ownerships', async (c) => {
+    const a = await visibleAnimal(c);
+    const r = await readJson(c, 'TransferAnimalRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await animals.transfer(a.id, r.body, c.get('principal').subject) }));
+  });
+
   app.get('/v1/access/roles', async (c) => send(c, await access.current()));
 
   app.get('/v1/access/roles/versions', async (c) => send(c, { items: await access.versions() }));
@@ -507,6 +578,9 @@ export function createApp(d: AppDeps) {
     if (err instanceof RuleSetError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
       return problem(c, status, err.message);
+    }
+    if (err instanceof AnimalError) {
+      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
     }
     if (err instanceof CatalogError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;

@@ -12,7 +12,8 @@ Petvold installeras en gång per försäkringsbolag (ADR 0010). Varje kund har s
 | Regler | Produktens skaderegler som versionerade regeluppsättningar, publicerade med fyra ögon. | Byggd, se [Produktkonfiguration](produktkonfiguration.md#regeluppsättningar) |
 | Referensdata | Arter, raser och kön med översättningar och historik. | Byggd, se [Referensdata](referensdata.md) |
 | Produkt | Versionerade produkter med säljperiod, regelserie och valbara försäkringsbelopp och självrisker, publicerade med fyra ögon. | Byggd, se [Produktkonfiguration](produktkonfiguration.md#produkter-och-produktversioner) |
-| Djur och parter | Djur, ägare, kliniker och deras roller. | *(planerat, M2)* |
+| Djur | Djur med id-nummer, historik och ägare över tid. | Byggd, se [Djurregister](djurregister.md) |
+| Parter | Personer, organisationer, kliniker och deras roller. | *(planerat, M2)* |
 | Policy | Försäkringar med full historik: vad som gällde när, och vad som var känt när. | *(planerat, M3)* Skademotorn läser policyn via ett gränssnitt och kan kopplas till ett befintligt system. |
 | Pris och teckning | Premie och teckningsregler per produktversion. | *(planerat, M4)* |
 | Billing och betalningar | Premier in, ersättningar ut, via flera betaltjänster. | *(planerat, M5)* |
