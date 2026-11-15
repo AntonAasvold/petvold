@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [Ändring av val under termen](2026-11-15-andring.md) | #52 |
 | 2026-11-15 | [Gallringen känner till skador](2026-11-15-gallring-skador.md) | #51 |
 | 2026-11-15 | [Omprövning av skador när en policyversion ersätts](2026-11-15-omprovning-policy.md) | #50 |
 | 2026-11-15 | [Överlåtelse och dödsfall från djurregistrets händelser](2026-11-15-overlatelse.md) | #49 |

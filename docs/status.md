@@ -32,6 +32,12 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #51 mergad.
+- Ändring av val under termen (ADR 0029), PR #52:
+  - **`POST /v1/policies/{id}/changes`:** nytt försäkringsbelopp eller ny självrisk från i dag eller senare, i den senaste termen. Premien för resten av termen justeras per dag (`premiumAdjustment`).
+  - **Termen ändras inte.** Ändringen sparas som en egen rad (`policies.term_change`, migration 0026), och versionerna från dagen pekar på den.
+  - **Skademotorn, förnyelsen och avslut** följer den premie och de val som gällde varje dag.
+- 336 tester och 110 databastester.
 - #50 mergad.
 - Gallringen känner till skador (ADR 0028), PR #51:
   - `ClaimsService.claimActivity(policyId, från, till)` svarar om en skada med behandling under perioden är öppen (utan beslut, med förslag som väntar på attest, eller med begäran om omprövning), och när den senast togs emot eller beslutades.
@@ -143,7 +149,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Policygrupper för kullar och hushåll, eller ändring av policyns val under termen.
+1. Policygrupper för kullar och hushåll (ADR 0007), sedan M4: tariff, prisindikation och teckningsregler.
 
 **Öppet**
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).

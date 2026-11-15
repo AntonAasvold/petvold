@@ -4,7 +4,8 @@
  * the end of a version in system time. The database stops overlapping versions
  * of a policy and two active policies for one animal on the same day.
  * Migration 0022 adds cancellation fields and the outbox (ADR 0008, 0029), and
- * migration 0023 renewal, and migration 0025 proposals and transfer.
+ * migration 0023 renewal, migration 0025 proposals and transfer, and migration
+ * 0026 changes during a term.
  */
 import type pg from 'pg';
 import {
@@ -19,12 +20,13 @@ import {
   type PolicyTransaction,
   type PolicyVersion,
   type Term,
+  type TermChange,
 } from './index.ts';
 
 const EXCLUSION_VIOLATION = '23P01';
 const UNIQUE_VIOLATION = '23505';
 const VERSION = `version_id, policy_id, valid_from::text as valid_from, valid_to::text as valid_to, sys_from, sys_to,
-  policyholder_party_id, status, term_no, transaction_id`;
+  policyholder_party_id, status, term_no, change_no, transaction_id`;
 
 export class PostgresPolicyStore implements PolicyStore {
   constructor(private readonly pool: pg.Pool) {}
@@ -42,6 +44,11 @@ export class PostgresPolicyStore implements PolicyStore {
       [id],
     );
     const versions = await this.pool.query(`select ${VERSION} from policies.policy_version where policy_id = $1 and sys_to is null order by valid_from`, [id]);
+    const changes = await this.pool.query(
+      `select term_no, change_no, from_date::text as from_date, vet_care, deductible_option, premium, transaction_id
+       from policies.term_change where policy_id = $1 order by term_no, change_no`,
+      [id],
+    );
     return {
       id: p.policy_id,
       market: p.market,
@@ -49,7 +56,19 @@ export class PostgresPolicyStore implements PolicyStore {
       inceptionDate: p.inception_date,
       createdBy: p.created_by,
       createdAt: iso(p.created_at),
-      terms: terms.rows.map(toTerm),
+      terms: terms.rows.map(toTerm).map((t) => {
+        const own = changes.rows
+          .filter((c) => c.term_no === t.termNo)
+          .map((c): TermChange => ({
+            changeNo: c.change_no,
+            from: c.from_date,
+            vetCare: c.vet_care,
+            deductibleOption: c.deductible_option,
+            premium: Number(c.premium),
+            transactionId: c.transaction_id,
+          }));
+        return own.length ? { ...t, changes: own } : t;
+      }),
       versions: versions.rows.map(toVersion),
     };
   }
@@ -61,7 +80,7 @@ export class PostgresPolicyStore implements PolicyStore {
 
   async transactions(id: string): Promise<PolicyTransaction[]> {
     const { rows } = await this.pool.query(
-      `select transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note, renewal, transfer
+      `select transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note, renewal, transfer, change
        from policies.policy_transaction where policy_id = $1 order by requested_at, transaction_id`,
       [id],
     );
@@ -78,6 +97,7 @@ export class PostgresPolicyStore implements PolicyStore {
       ...(r.note === null ? {} : { note: r.note }),
       ...(r.renewal === null ? {} : { renewal: r.renewal }),
       ...(r.transfer === null ? {} : { transfer: r.transfer }),
+      ...(r.change === null ? {} : { change: r.change }),
     }));
   }
 
@@ -123,6 +143,7 @@ export class PostgresPolicyStore implements PolicyStore {
     events: PolicyEvent[],
     terms: Term[] = [],
     decision?: { proposalId: string; decision: ProposalDecision },
+    changes: (TermChange & { policyId: string; termNo: number })[] = [],
   ): Promise<void> {
     await this.tx(async (db) => {
       if (supersede.length) {
@@ -134,6 +155,13 @@ export class PostgresPolicyStore implements PolicyStore {
       }
       await insertTransaction(db, tx);
       for (const t of terms) await insertTerm(db, t);
+      for (const c of changes) {
+        await db.query(
+          `insert into policies.term_change (policy_id, term_no, change_no, from_date, vet_care, deductible_option, premium, transaction_id)
+           values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [c.policyId, c.termNo, c.changeNo, c.from, JSON.stringify(c.vetCare), c.deductibleOption, c.premium, c.transactionId],
+        );
+      }
       const { rows } = await db.query(`select animal_id from policies.policy where policy_id = $1`, [policyId]);
       for (const v of add) await insertVersion(db, v, rows[0].animal_id);
       await insertEvents(db, events);
@@ -260,8 +288,8 @@ async function insertTerm(db: pg.PoolClient, t: Term) {
 
 async function insertTransaction(db: pg.PoolClient, tx: PolicyTransaction) {
   await db.query(
-    `insert into policies.policy_transaction (transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note, renewal, transfer)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    `insert into policies.policy_transaction (transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note, renewal, transfer, change)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [
       tx.id,
       tx.policyId,
@@ -275,15 +303,16 @@ async function insertTransaction(db: pg.PoolClient, tx: PolicyTransaction) {
       tx.note ?? null,
       tx.renewal ? JSON.stringify(tx.renewal) : null,
       tx.transfer ? JSON.stringify(tx.transfer) : null,
+      tx.change ? JSON.stringify(tx.change) : null,
     ],
   );
 }
 
 async function insertVersion(db: pg.PoolClient, v: PolicyVersion, animalId: string) {
   await db.query(
-    `insert into policies.policy_version (version_id, policy_id, animal_id, valid_from, valid_to, sys_from, sys_to, policyholder_party_id, status, term_no, transaction_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-    [v.id, v.policyId, animalId, v.validFrom, v.validTo, v.sysFrom, v.sysTo ?? null, v.policyholderPartyId, v.status, v.termNo, v.transactionId],
+    `insert into policies.policy_version (version_id, policy_id, animal_id, valid_from, valid_to, sys_from, sys_to, policyholder_party_id, status, term_no, change_no, transaction_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [v.id, v.policyId, animalId, v.validFrom, v.validTo, v.sysFrom, v.sysTo ?? null, v.policyholderPartyId, v.status, v.termNo, v.changeNo ?? null, v.transactionId],
   );
 }
 
@@ -328,6 +357,7 @@ function toVersion(r: Record<string, any>): PolicyVersion {
     policyholderPartyId: r.policyholder_party_id,
     status: r.status,
     termNo: r.term_no,
+    ...(r.change_no === null ? {} : { changeNo: r.change_no }),
     transactionId: r.transaction_id,
   };
 }

@@ -35,7 +35,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `animals:write` | Registrera djur, rätta uppgifter, lägga till id-nummer och byta ägare | `POST /v1/animals`, `PUT .../{id}`, `.../identifiers`, `.../ownerships` |
 | `animals:lookup` | Slå upp ett djur på id-nummer, utan ägare eller historik. Hittar bara djur som är öppna för uppslagning (ADR 0025). | `GET /v1/animal-lookup` |
 | `policies:read` | Läsa policyer, termer och historik (ADR 0029) | `GET /v1/policies`, `.../{id}`, `.../history`, `.../snapshot` |
-| `policies:write` | Teckna, förnya, avsluta och återkalla avslut av policyer, och besvara förslag | `POST /v1/policies`, `.../renewals`, `.../cancellations`, `.../reinstatements`, `POST /v1/policy-proposals/{id}/acceptances`, `.../rejections` |
+| `policies:write` | Teckna, ändra, förnya, avsluta och återkalla avslut av policyer, och besvara förslag | `POST /v1/policies`, `.../changes`, `.../renewals`, `.../cancellations`, `.../reinstatements`, `POST /v1/policy-proposals/{id}/acceptances`, `.../rejections` |
 | `policies:renew` | Schemalagda körningar: förnyelse, och avslut av överlåtelser som inte godkändes i tid | `POST /v1/renewal-runs`, `POST /v1/proposal-expiry-runs` |
 | `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/access/roles`, `.../versions` |
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/access/roles/versions` |

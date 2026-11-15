@@ -183,6 +183,31 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
       assert.equal(await store.getProposal('ppr_none'), null);
     });
 
+    it('a change of a term is stored with the term, and versions point at it', async (store) => {
+      const t = issued();
+      await store.issue(t.policy, t.term, t.version, t.transaction, []);
+      const later = '2027-06-01T10:00:00.000Z';
+      const tx: PolicyTransaction = {
+        id: 'ptx_ch1',
+        policyId: 'pol_t1',
+        type: 'change',
+        steps: [{ step: 'issued', at: later }],
+        requestedBy: 'cs',
+        requestedAt: later,
+        supersedes: ['pv_t1'],
+        change: { termNo: 1, changeNo: 1, from: '2027-06-01', annualLimit: 3_000_000, deductibleOption: 'high', premium: { amount: 292_000, currency: 'SEK' }, premiumAdjustment: -36_600, reason: 'x' },
+      };
+      const change = { changeNo: 1, from: '2027-06-01', vetCare: { ...t.term.vetCare, annualLimit: 3_000_000 }, deductibleOption: 'high', premium: 292_000, transactionId: 'ptx_ch1' };
+      const cut: PolicyVersion = { ...t.version, id: 'pv_ch1', validTo: '2027-06-01', sysFrom: later, transactionId: 'ptx_ch1' };
+      const next: PolicyVersion = { ...t.version, id: 'pv_ch2', validFrom: '2027-06-01', changeNo: 1, sysFrom: later, transactionId: 'ptx_ch1' };
+      await store.apply('pol_t1', ['pv_t1'], [cut, next], tx, [], [], undefined, [{ ...change, policyId: 'pol_t1', termNo: 1 }]);
+      const p = (await store.get('pol_t1'))!;
+      assert.deepEqual(p.terms, [{ ...t.term, changes: [change] }]);
+      assert.deepEqual(p.versions, [cut, next]);
+      assert.deepEqual((await store.transactions('pol_t1')).at(-1), tx);
+      assert.equal((await store.versionAt('pol_t1', '2027-07-01'))?.changeNo, 1);
+    });
+
     it('an animal is never insured twice for the same day', async (store) => {
       const a = issued(1);
       await store.issue(a.policy, a.term, a.version, a.transaction, []);

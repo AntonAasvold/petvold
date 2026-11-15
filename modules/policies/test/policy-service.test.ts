@@ -414,3 +414,64 @@ test('a death becomes a cancellation proposal; accepted, the policy ends from th
   assert.deepEqual((await s.listProposals({ policyId: p.id })).map((x) => x.decision?.outcome), ['rejected', 'accepted']);
   await rejects(s.getProposal('ppr_none'), 'not_found');
 });
+
+function changeSetup() {
+  let now = '2026-11-15T10:00:00.000Z';
+  let n = 0;
+  const highOffer = offer({
+    vetCareTermsFor: (c) => {
+      const annualLimit = c.annualLimit ?? 6_000_000;
+      if (![3_000_000, 6_000_000].includes(annualLimit)) throw new Error(`No annual limit ${annualLimit}`);
+      const high = c.deductible === 'high';
+      return { ...vetCare, annualLimit, deductible: { ...vetCare.deductible, fixed: high ? 400_000 : 200_000 }, deductibleOption: c.deductible ?? 'standard' };
+    },
+  });
+  const s = new PolicyService({
+    store: new InMemoryPolicyStore(),
+    products: { offer: async () => highOffer, versionOnSale: async () => 'SE-HUND@1' },
+    animals: { get: async () => ({ market: 'SE', species: 'dog', birthDate: '2024-03-01' }) },
+    parties: { marketOf: async () => 'SE' },
+    clock: { now: () => now },
+    ids: { next: (p) => `${p}_${++n}` },
+  });
+  return { s, at: (iso: string) => (now = iso) };
+}
+
+test('a change during the term applies from a day, with the premium adjusted for the days left', async () => {
+  const { s, at } = changeSetup();
+  const p = await s.issue(yearly, by); // 365 000 a year, 2026-12-01 to 2027-12-01
+  at('2027-06-01T10:00:00.000Z');
+  await rejects(s.change(p.id, { from: '2027-05-31', vetCare: { deductible: 'high' }, premium: { amount: 292_000, currency: 'SEK' }, reason: 'x' }, 'cs'), 'validation', /before today/);
+  await rejects(s.change(p.id, { from: '2027-06-01', vetCare: { deductible: 'high' }, premium: { amount: 292_000, currency: 'SEK' }, reason: ' ' }, 'cs'), 'validation', /reason/);
+  await rejects(s.change(p.id, { from: '2027-06-01', vetCare: {}, premium: { amount: 365_000, currency: 'SEK' }, reason: 'x' }, 'cs'), 'conflict', /changes nothing/);
+  await rejects(s.change(p.id, { from: '2027-06-01', vetCare: { annualLimit: 1 }, premium: { amount: 365_000, currency: 'SEK' }, reason: 'x' }, 'cs'), 'validation', /annual limit/);
+
+  // A higher deductible for a lower premium: 292 000 a year from 2027-06-01, 183 days left of 365.
+  const tx = await s.change(p.id, { from: '2027-06-01', vetCare: { deductible: 'high' }, premium: { amount: 292_000, currency: 'SEK' }, reason: 'The customer chose a higher deductible' }, 'cs');
+  assert.deepEqual([tx.type, tx.change?.changeNo, tx.change?.deductibleOption, tx.change?.premiumAdjustment], ['change', 1, 'high', -36_600]);
+  const after = await s.get(p.id);
+  assert.deepEqual(after.versions.map((v) => [v.validFrom, v.validTo, v.changeNo ?? null]), [['2026-12-01', '2027-06-01', null], ['2027-06-01', '2027-12-01', 1]]);
+  assert.equal(after.terms[0]!.changes?.length, 1);
+  assert.equal((await s.getPolicyAt(p.id, '2027-05-31'))?.vetCare?.deductible.fixed, 200_000);
+  assert.equal((await s.getPolicyAt(p.id, '2027-06-15'))?.vetCare?.deductible.fixed, 400_000);
+  assert.equal((await s.getPolicyAt(p.id, '2027-06-15', '2027-05-01T00:00:00.000Z'))?.vetCare?.deductible.fixed, 200_000);
+
+  // A cancellation later refunds at the new rate: 2027-09-01 to 2027-12-01 is 91 days at 292 000 a year.
+  at('2027-08-31T10:00:00.000Z');
+  const c = await s.cancel(p.id, { reason: 'need-ceased', effectiveDate: '2027-09-01', note: 'Died' }, 'cs');
+  assert.equal(c.cancellation?.refund.amount, Math.round((292_000 * 91) / 365));
+});
+
+test('the renewal keeps the changed choices and premium, and a change is made in the latest term', async () => {
+  const { s, at } = changeSetup();
+  const p = await s.issue(yearly, by);
+  at('2027-06-01T10:00:00.000Z');
+  await s.change(p.id, { from: '2027-06-01', vetCare: { annualLimit: 3_000_000 }, premium: { amount: 300_000, currency: 'SEK' }, reason: 'Lower amount' }, 'cs');
+  at('2027-10-20T10:00:00.000Z');
+  await s.renewalRun({ dryRun: false, markets: '*' }, 'job');
+  const t2 = (await s.get(p.id)).terms[1]!;
+  assert.deepEqual([t2.vetCare.annualLimit, t2.premium], [3_000_000, 300_000]);
+  await rejects(s.change(p.id, { from: '2027-11-01', vetCare: {}, premium: { amount: 365_000, currency: 'SEK' }, reason: 'x' }, 'cs'), 'conflict', /already renewed to term 2/);
+  const tx = await s.change(p.id, { from: '2027-12-01', vetCare: { annualLimit: 6_000_000 }, premium: { amount: 365_000, currency: 'SEK' }, reason: 'Back' }, 'cs');
+  assert.equal(tx.change?.termNo, 2);
+});

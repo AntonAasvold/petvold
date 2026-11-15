@@ -186,3 +186,25 @@ test('a sale in the animal register becomes a transfer proposal, accepted throug
   assert.deepEqual((await call('POST', '/v1/proposal-expiry-runs', 'job')).body, { expired: [] });
   assert.equal((await call('POST', '/v1/proposal-expiry-runs', 'seller')).status, 403);
 });
+
+test('the choices are changed from a day during the term', async () => {
+  const call = await setup();
+  const p = (await call('POST', '/v1/policies', 'seller', apply)).body; // 3 000 000 limit, 480 000 a year
+  call.clock.set('2027-06-01T10:00:00.000Z');
+  const res = await call('POST', `/v1/policies/${p.id}/changes`, 'seller', {
+    from: '2027-06-01',
+    vetCare: { annualLimit: 6_000_000 },
+    premium: { amount: 600_000, currency: 'SEK' },
+    reason: 'Higher amount',
+  });
+  assert.equal(res.status, 201);
+  assert.ok(validatorFor('PolicyTransaction')(structuredClone(res.body)), JSON.stringify(validatorFor('PolicyTransaction').errors));
+  assert.equal(res.body.change.annualLimit, 6_000_000);
+  assert.ok(res.body.change.premiumAdjustment > 0);
+  assert.equal((await call('GET', `/v1/policies/${p.id}/snapshot?date=2027-07-01`, 'handler')).body.vetCare.annualLimit, 6_000_000);
+  assert.equal((await call('GET', `/v1/policies/${p.id}/snapshot?date=2027-05-01`, 'handler')).body.vetCare.annualLimit, 3_000_000);
+  const policy = (await call('GET', `/v1/policies/${p.id}`, 'handler')).body;
+  assert.ok(validatorFor('PolicyRecord')(structuredClone(policy)));
+  assert.equal((await call('POST', `/v1/policies/${p.id}/changes`, 'seller', { from: '2027-05-01', vetCare: {}, premium: { amount: 1, currency: 'SEK' }, reason: 'x' })).status, 422);
+  assert.equal((await call('POST', `/v1/policies/${p.id}/changes`, 'handler', { from: '2027-07-01', vetCare: {}, premium: { amount: 1, currency: 'SEK' }, reason: 'x' })).status, 403);
+});
