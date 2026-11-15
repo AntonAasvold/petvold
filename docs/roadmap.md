@@ -49,7 +49,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [ ] Ändring, reversering och ändring i fel ordning
 - [ ] PolicyGroup och överlåtelse
 - [ ] Policyer och skador rapporterar partens relationer till gallringen (`ActivitySource`, ADR 0028)
-- [ ] ADR om policyns livscykel: tecknande, ändring, förnyelse, avslut och överlåtelse, med legala ramar per marknad (försäkringsavtalslagen, regler för distansavtal) och källor
+- [x] ADR om policyns livscykel: tecknande, ändring, förnyelse, avslut och överlåtelse, med legala ramar per marknad (ADR 0029)
 - [ ] Förnyelse:
   - förnyelsekörning före förfallodagen
   - ny term med vald produktversion

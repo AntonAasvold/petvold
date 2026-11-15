@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [ADR om policyns livscykel](2026-11-15-policy-adr.md) | #45 |
 | 2026-11-15 | [Nya standardroller till en sparad rollinställning](2026-11-15-roles-sync.md) | #44 |
 | 2026-11-15 | [Gallring: lagringstider och gallringskörning](2026-11-15-gallring.md) | #43 |
 | 2026-11-15 | [Anonymisering och begränsning av parter](2026-11-15-anonymisering.md) | #42 |
