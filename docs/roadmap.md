@@ -41,11 +41,12 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Parter (ADR 0026): personer och organisationer, personnummer som aldrig visas, och historik. Roller ägs av modulen som har relationen.
 - [x] Djurregistret kontrollerar att ägaren finns som part, i djurets marknad
 - [x] ADR om gallring och anonymisering av personuppgifter (ADR 0028)
-- [ ] Gallring och anonymisering enligt ADR 0028:
+- [x] Anonymisering med fyra ögon, begäran om radering och begränsning (ADR 0028)
+- [ ] Gallring enligt ADR 0028:
   - lagringstider per marknad som inställning
   - `lastActivity` i djurregistret och skademotorn
-  - anonymisering med fyra ögon och en logg som körs igen efter återställning
-  - begäran om radering och begränsning
+  - ett jobb som begär anonymisering när lagringstiden har gått ut
+  - anonymiseringarna körs igen efter en återställning
 
 **M3 – Policy**
 - [ ] Bitemporala versioner, term, transaktionslivscykel

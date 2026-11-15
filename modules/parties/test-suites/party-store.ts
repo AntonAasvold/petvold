@@ -1,7 +1,7 @@
 /** Shared PartyStore tests, run against every implementation. */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PartyConflictError, PartyIdentifierTakenError, type Party, type PartyIdentifier, type PartyStore } from '../src/index.ts';
+import { PartyConflictError, PartyIdentifierTakenError, anonymize, type ErasureRequest, type Party, type PartyIdentifier, type PartyStore } from '../src/index.ts';
 
 export type PartyStoreFactory = () => Promise<{ store: PartyStore; cleanup?: () => Promise<void> }>;
 
@@ -72,6 +72,45 @@ export function partyStoreSuite(name: string, factory: PartyStoreFactory): void 
       await store.addIdentifier('pty_anna', second);
       await assert.rejects(store.addIdentifier('pty_anna', second), PartyIdentifierTakenError);
       assert.equal((await store.get('pty_anna'))!.identifiers.length, 2);
+    });
+
+    it('an approved erasure anonymizes every revision and removes the identifiers', async (store) => {
+      const request: ErasureRequest = {
+        id: 'era_1',
+        partyId: 'pty_anna',
+        market: 'XX',
+        basis: 'subject-request',
+        reason: 'The customer asked',
+        requestedBy: 'officer-a@example.test',
+        requestedAt: at,
+      };
+      await store.register(person(), [personalNumber()]);
+      const moved = person({ revision: 2, reason: 'Moved to Example Road 2', changedAt: '2026-11-16T10:00:00.000Z' });
+      await store.appendRevision(moved);
+      await store.addErasureRequest(request);
+      await assert.rejects(store.addErasureRequest({ ...request, id: 'era_2' }), PartyConflictError);
+      assert.deepEqual(await store.listErasureRequests({ pending: true }), [request]);
+
+      const decision = { outcome: 'approved' as const, decidedBy: 'officer-b@example.test', decidedAt: '2026-11-17T10:00:00.000Z' };
+      await store.decideErasure('era_1', decision);
+      await assert.rejects(store.decideErasure('era_1', decision), PartyConflictError);
+      assert.deepEqual(await store.revisions('pty_anna'), [anonymize(person()), anonymize(moved)]);
+      assert.deepEqual(await store.get('pty_anna'), { ...anonymize(moved), identifiers: [] });
+      assert.equal(await store.findByIdentifier('personal-number', 'SE', '209901011230'), null);
+      assert.deepEqual(await store.getErasureRequest('era_1'), { ...request, decision });
+      assert.deepEqual(await store.listErasureRequests({ pending: true }), []);
+      assert.deepEqual((await store.listErasureRequests({ partyId: 'pty_anna' })).map((r) => r.id), ['era_1']);
+      // Another request is allowed once the first is decided.
+      await store.addErasureRequest({ ...request, id: 'era_2' });
+    });
+
+    it('a rejected request can restrict the party until a date, and does not anonymize', async (store) => {
+      await store.register(person(), [personalNumber()]);
+      await store.addErasureRequest({ id: 'era_1', partyId: 'pty_anna', market: 'XX', basis: 'subject-request', reason: 'Asked', requestedBy: 'a', requestedAt: at });
+      await store.decideErasure('era_1', { outcome: 'rejected', reason: 'Open claim', restrictUntil: '2036-11-15', decidedBy: 'a', decidedAt: at });
+      const p = (await store.get('pty_anna'))!;
+      assert.deepEqual([p.restrictedUntil, p.givenName, p.anonymized, p.identifiers.length], ['2036-11-15', 'Anna', undefined, 1]);
+      assert.equal(await store.getErasureRequest('era_none'), null);
     });
 
     it('revisions follow each other and keep the history', async (store) => {

@@ -32,6 +32,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #41 mergad. ADR 0028 beslutad som den är skriven: tio år för Sverige och fyra ögon för varje anonymisering.
+- Anonymisering och begränsning (ADR 0028), PR #42:
+  - **Begäran, godkännande av någon annan, och avslag.** Godkännandet anonymiserar parten i samma transaktion: personfälten töms i alla revisioner, och id-numren tas bort.
+  - **Databasen spärrar:** bara funktionen `parties.anonymize` får skriva över historik, och bara med ett godkänt beslut. En trigger stoppar godkännande av den egna begäran.
+  - **Begränsning:** en avslagen begäran från personen själv döljer parten för alla utom `parties:privacy` till ett datum. En begränsad eller anonymiserad part kan inte bli ny ägare till ett djur.
+  - **API:** fem operationer, nya rättigheter `parties:privacy` och `parties:erase`, och ny roll `privacy-officer`.
+  - **Migration 0019.** Provad ner och upp igen.
+  - **Dev-servern:** tokens `dev-privacy` och `dev-privacy-2`. Lokal rollinställning är version 7.
+- 292 tester och 99 databastester.
 - #40 mergad.
 - ADR 0028 om gallring och anonymisering (Föreslagen), PR #41. Bara beslutet, ingen kod. Personuppgifter finns bara i partmodulen. De anonymiseras med fyra ögon när lagringstiden efter partens sista relation har gått ut, eller på begäran när inget måste sparas. Lagringstiderna är en inställning per marknad.
 - #39 mergad. ADR 0025, 0026 och 0027 beslutade: djur är stängda för kliniker från början, personnummer krypteras inte per fält, en ägare hör till djurets marknad och en kull ändras inte.
@@ -70,10 +79,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Bygga gallring och anonymisering när ADR 0028 är beslutad, eller flytten av `assess` och `calculate` till `decisioning-core`.
+1. Gallring enligt ADR 0028: lagringstider per marknad, `lastActivity` i djurregistret och skademotorn, och ett jobb som begär anonymisering.
 
 **Öppet**
-- ADR 0028 väntar på ditt beslut, särskilt den föreslagna lagringstiden för Sverige (tio år efter senaste försäkringsfallet) och fyra ögon för varje anonymisering.
+- `parties:privacy`, `parties:erase` och `privacy-officer` saknas i installationer som redan har en sparad rollinställning.
 - `parties:read`, `parties:write` och `party-registrar` saknas i installationer som redan har en sparad rollinställning.
 - Det sparas inte vem som slagit upp ett djur.
 - `animals:lookup` saknas på `clinic` i installationer som redan har en sparad rollinställning.

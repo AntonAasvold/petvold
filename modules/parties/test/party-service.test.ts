@@ -79,6 +79,50 @@ test('details change with the current revision and a reason; kind and market nev
   assert.deepEqual((await s.revisions(p.id)).map((r) => r.revision), [1, 2]);
 });
 
+test('erasure: a request, an approval by someone else, and the party is anonymized for good', async () => {
+  const s = setup();
+  const p = await s.register(anna(), by);
+  await rejects(s.requestErasure(p.id, { basis: 'subject-request', reason: ' ' }, 'officer-a'), 'validation', /reason/);
+  await rejects(s.requestErasure(p.id, { basis: 'whim' as never, reason: 'x' }, 'officer-a'), 'validation', /basis/);
+  const r = await s.requestErasure(p.id, { basis: 'subject-request', reason: 'The customer asked by phone' }, 'officer-a');
+  assert.deepEqual([r.partyId, r.market, r.decision], [p.id, 'SE', undefined]);
+  await rejects(s.requestErasure(p.id, { basis: 'subject-request', reason: 'Again' }, 'officer-a'), 'conflict', /undecided/);
+  await rejects(s.approveErasure(r.id, {}, 'officer-a'), 'forbidden', /cannot approve/);
+  const done = await s.approveErasure(r.id, { reason: 'No policy or claim left' }, 'officer-b');
+  assert.equal(done.decision?.outcome, 'approved');
+  await rejects(s.approveErasure(r.id, {}, 'officer-c'), 'conflict', /already approved/);
+
+  const gone = await s.get(p.id);
+  assert.deepEqual([gone.id, gone.kind, gone.market, gone.anonymized, gone.givenName, gone.email, gone.identifiers], [p.id, 'person', 'SE', true, undefined, undefined, []]);
+  assert.deepEqual(await s.findByIdentifier({ type: 'personal-number', country: 'SE', value: PNR }), []);
+  assert.equal(await s.marketOf(p.id), null);
+  await rejects(s.change(p.id, { basedOnRevision: 1, reason: 'x', givenName: 'A', familyName: 'B' }, by), 'conflict', /anonymized/);
+  await rejects(s.requestErasure(p.id, { basis: 'subject-request', reason: 'x' }, 'officer-a'), 'conflict', /already anonymized/);
+  // The number is free again, e.g. for a new customer relationship.
+  assert.equal((await s.register(anna({ givenName: 'Anna' }), by)).identifiers.length, 1);
+});
+
+test('erasure: a rejected request from the data subject restricts the party until a date', async () => {
+  const s = setup();
+  const p = await s.register(anna(), by);
+  const r = await s.requestErasure(p.id, { basis: 'subject-request', reason: 'Asked' }, 'officer-a');
+  await rejects(s.rejectErasure(r.id, { reason: 'Open claim' }, 'officer-a'), 'validation', /restrictUntil/);
+  await rejects(s.rejectErasure(r.id, { reason: 'Open claim', restrictUntil: '2026-11-15' }, 'officer-a'), 'validation', /after today/);
+  const rejected = await s.rejectErasure(r.id, { reason: 'Claim within the ten-year limit', restrictUntil: '2036-11-15' }, 'officer-a');
+  assert.deepEqual([rejected.decision?.outcome, rejected.decision?.restrictUntil], ['rejected', '2036-11-15']);
+  const restricted = await s.get(p.id);
+  assert.equal(s.isRestricted(restricted), true);
+  assert.equal(restricted.givenName, 'Anna');
+  assert.equal(await s.marketOf(p.id), null);
+  // A request because the retention ended is rejected without a restriction.
+  const job = await s.requestErasure(p.id, { basis: 'retention-expired', reason: 'Ten years passed' }, 'job');
+  await rejects(s.rejectErasure(job.id, { reason: 'x', restrictUntil: '2037-01-01' }, 'officer-a'), 'validation', /only for a request/);
+  await s.rejectErasure(job.id, { reason: 'New policy' }, 'officer-a');
+  assert.deepEqual((await s.listErasureRequests({ partyId: p.id })).map((x) => x.decision?.outcome), ['rejected', 'rejected']);
+  assert.deepEqual(await s.listErasureRequests({ pending: true }), []);
+  await rejects(s.getErasureRequest('era_none'), 'not_found');
+});
+
 test('invalid parties are refused', async () => {
   const s = setup();
   await rejects(s.register(anna({ kind: 'robot' as never }), by), 'validation', /kind/);

@@ -150,6 +150,12 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
   - `parties.party_identifier`, med primärnyckeln `(type, country, value)`. Tjänsterollen får bara läsa och lägga till.
 - **Maskering i API-lagret.** Tjänsten returnerar hela numret, eftersom andra moduler kan behöva det, och `publicView(record)` maskerar det i varje svar. Sökningen är `POST /v1/party-searches` med numret i innehållet.
 - **Omfång** som för djuren: partens marknad mot anroparens marknader, och inga parter för roller bundna till klinik eller försäkringar.
+- **Anonymisering (ADR 0028, migration 0019):**
+  - `parties.erasure_request` och `parties.erasure_decision` får bara läsas och läggas till. En trigger stoppar ett godkännande av den som begärde.
+  - Funktionen `parties.anonymize(party_id)` (`security definer`, ägd av migreringsrollen) tömmer personfälten i alla revisioner, sätter `anonymized` och tar bort id-numren. Den kräver ett godkänt beslut. `parties_service` får köra funktionen men kan inte uppdatera eller ta bort rader själv.
+  - `PostgresPartyStore.decideErasure` sparar beslutet och anropar funktionen i samma transaktion.
+  - En check-constraint garanterar att en anonymiserad revision saknar personuppgifter.
+  - Begränsning beräknas från `restrict_until` i avslagen. `PartyService.marketOf` svarar `null` för begränsade och anonymiserade parter, så att djurregistret inte kan peka nya ägarskap på dem.
 
 **Rollinställningen (ADR 0020):**
 - **Versioner.** Modulen `access` sparar hela rollinställningen som versioner i `access.role_config` (migration 0009). Den har en egen tjänsteroll, `access_service`, som bara får läsa och lägga till.

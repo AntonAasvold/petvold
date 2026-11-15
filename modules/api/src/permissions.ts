@@ -51,6 +51,13 @@ export const PERMISSIONS = [
   'parties:read',
   /** Register persons and organizations, change their details and add identifiers. */
   'parties:write',
+  /**
+   * Data protection (ADR 0028): see restricted parties, register erasure requests,
+   * reject them, and list them.
+   */
+  'parties:privacy',
+  /** Approve an erasure request someone else made, which anonymizes the party. Cannot be undone. */
+  'parties:erase',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -113,6 +120,8 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   'animal-registrar': { permissions: ['animals:read', 'animals:write', 'catalog:read', 'parties:read'] },
   /** Registers persons and organizations and keeps their details up to date, e.g. customer service. */
   'party-registrar': { permissions: ['parties:read', 'parties:write'] },
+  /** Handles erasure and restriction of personal data (ADR 0028). Two people are needed to anonymize. */
+  'privacy-officer': { permissions: ['parties:read', 'parties:privacy', 'parties:erase'] },
   /** Maintains reference data and writes product drafts. */
   'catalog-manager': { permissions: ['catalog:read', 'catalog:write'] },
   /** Reviews and publishes product versions. */

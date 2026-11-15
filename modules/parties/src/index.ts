@@ -11,6 +11,12 @@
  *
  * Personal numbers are personal data that need extra care. They can be stored
  * and searched for, but `publicView` masks them in everything shown.
+ *
+ * Erasure (ADR 0028): a party is anonymized, not deleted. Every revision loses
+ * its personal data and the identifiers are removed, but the id, kind and market
+ * stay so other modules' references hold. It takes a request and an approval by
+ * someone else (four eyes). A rejected request from the data subject restricts
+ * the party (GDPR article 18) until a date.
  */
 
 export type ISODate = string;
@@ -54,8 +60,10 @@ export interface Party extends PartyDetails {
   market: string;
   changedBy: string;
   changedAt: string;
-  /** Why the details changed. Required from revision 2. */
+  /** Why the details changed. Required from revision 2. Removed by anonymization. */
   reason?: string;
+  /** Set on every revision once the party is anonymized (ADR 0028). */
+  anonymized?: true;
 }
 
 export interface PartyIdentifier {
@@ -69,6 +77,33 @@ export interface PartyIdentifier {
 
 export interface PartyRecord extends Party {
   identifiers: PartyIdentifier[];
+  /** Restricted (GDPR article 18) up to and including this date, after a rejected erasure request. */
+  restrictedUntil?: ISODate;
+}
+
+export const ERASURE_BASES = ['subject-request', 'retention-expired'] as const;
+/** Why erasure is requested: the data subject asked, or the retention period ended. */
+export type ErasureBasis = (typeof ERASURE_BASES)[number];
+
+export interface ErasureDecision {
+  outcome: 'approved' | 'rejected';
+  reason?: string;
+  /** A rejected request from the data subject: the party is restricted until this date. */
+  restrictUntil?: ISODate;
+  decidedBy: string;
+  decidedAt: string;
+}
+
+export interface ErasureRequest {
+  id: string;
+  partyId: string;
+  /** The party's market, for scope. */
+  market: string;
+  basis: ErasureBasis;
+  reason: string;
+  requestedBy: string;
+  requestedAt: string;
+  decision?: ErasureDecision;
 }
 
 /** An identifier as shown: personal numbers are masked (ADR 0026). */
@@ -96,6 +131,31 @@ export interface PartyStore {
   appendRevision(party: Party): Promise<void>;
   /** Throws PartyIdentifierTakenError if any party already has it. */
   addIdentifier(partyId: string, identifier: PartyIdentifier): Promise<void>;
+  /** Throws PartyConflictError if the party already has an undecided request. */
+  addErasureRequest(request: ErasureRequest): Promise<void>;
+  getErasureRequest(id: string): Promise<ErasureRequest | null>;
+  /** Oldest first. */
+  listErasureRequests(filter: { partyId?: string; pending?: boolean }): Promise<ErasureRequest[]>;
+  /**
+   * Stores the decision; an approval also anonymizes the party, all or nothing.
+   * Throws PartyConflictError if the request is already decided.
+   */
+  decideErasure(requestId: string, decision: ErasureDecision): Promise<void>;
+}
+
+/** The fields anonymization removes from every revision (ADR 0028). */
+export const PERSONAL_FIELDS = ['givenName', 'familyName', 'birthDate', 'name', 'email', 'phone', 'address', 'language', 'reason'] as const;
+
+/** A revision without personal data. Pure. */
+export function anonymize(p: Party): Party {
+  const out: Record<string, unknown> = { ...p };
+  for (const f of PERSONAL_FIELDS) delete out[f];
+  return { ...(out as unknown as Party), anonymized: true };
+}
+
+/** Whether the party is restricted on the date (GDPR article 18). Pure. */
+export function restrictedOn(p: PartyRecord, date: ISODate): boolean {
+  return !p.anonymized && p.restrictedUntil !== undefined && date <= p.restrictedUntil;
 }
 
 export class PartyConflictError extends Error {
@@ -112,7 +172,7 @@ export class PartyIdentifierTakenError extends Error {
   }
 }
 
-export type PartyErrorCode = 'not_found' | 'validation' | 'conflict';
+export type PartyErrorCode = 'not_found' | 'validation' | 'conflict' | 'forbidden';
 
 export class PartyError extends Error {
   constructor(
@@ -222,9 +282,94 @@ export class PartyService {
     return p;
   }
 
-  /** The party's market, or null if it does not exist. For other modules that point at parties. */
+  /**
+   * The party's market, or null if it does not exist. For other modules that point
+   * at parties: an anonymized or restricted party counts as missing, so nothing new
+   * points at it (ADR 0028).
+   */
   async marketOf(id: string): Promise<string | null> {
-    return (await this.d.store.get(id))?.market ?? null;
+    const p = await this.d.store.get(id);
+    if (!p || p.anonymized || restrictedOn(p, this.today())) return null;
+    return p.market;
+  }
+
+  /** Whether the party is restricted today. */
+  isRestricted(p: PartyRecord): boolean {
+    return restrictedOn(p, this.today());
+  }
+
+  /** Asks for the party to be anonymized. Someone else approves or rejects it. */
+  async requestErasure(partyId: string, input: { basis: ErasureBasis; reason: string }, by: string): Promise<ErasureRequest> {
+    const p = await this.get(partyId);
+    if (p.anonymized) throw new PartyError('conflict', `Party ${partyId} is already anonymized`);
+    if (!(ERASURE_BASES as readonly string[]).includes(input.basis)) throw new PartyError('validation', `Unknown basis '${input.basis}'`);
+    const reason = (input.reason ?? '').trim();
+    if (!reason) throw new PartyError('validation', 'A reason is required');
+    const request: ErasureRequest = {
+      id: this.d.ids.next('era'),
+      partyId,
+      market: p.market,
+      basis: input.basis,
+      reason,
+      requestedBy: by,
+      requestedAt: this.d.clock.now(),
+    };
+    await this.d.store.addErasureRequest(request).catch(this.translate);
+    return this.getErasureRequest(request.id);
+  }
+
+  async getErasureRequest(id: string): Promise<ErasureRequest> {
+    const r = await this.d.store.getErasureRequest(id);
+    if (!r) throw new PartyError('not_found', `Erasure request ${id} does not exist`);
+    return r;
+  }
+
+  listErasureRequests(filter: { partyId?: string; pending?: boolean } = {}): Promise<ErasureRequest[]> {
+    return this.d.store.listErasureRequests(filter);
+  }
+
+  /** Approves the request and anonymizes the party. Not by the one who asked (four eyes). Cannot be undone. */
+  async approveErasure(requestId: string, input: { reason?: string }, by: string): Promise<ErasureRequest> {
+    const r = await this.pending(requestId);
+    if (r.requestedBy === by) throw new PartyError('forbidden', 'The one who asked for an erasure cannot approve it');
+    const reason = input.reason?.trim();
+    await this.d.store
+      .decideErasure(requestId, { outcome: 'approved', ...(reason ? { reason } : {}), decidedBy: by, decidedAt: this.d.clock.now() })
+      .catch(this.translate);
+    return this.getErasureRequest(requestId);
+  }
+
+  /**
+   * Rejects the request with a reason. A request from the data subject is rejected
+   * when the data must be kept; the party is then restricted until `restrictUntil`.
+   */
+  async rejectErasure(requestId: string, input: { reason: string; restrictUntil?: ISODate }, by: string): Promise<ErasureRequest> {
+    const r = await this.pending(requestId);
+    const reason = (input.reason ?? '').trim();
+    if (!reason) throw new PartyError('validation', 'A reason is required');
+    if (r.basis === 'subject-request') {
+      if (!isDate(input.restrictUntil) || input.restrictUntil <= this.today()) {
+        throw new PartyError('validation', 'A rejected request from the data subject needs restrictUntil, a date after today');
+      }
+    } else if (input.restrictUntil !== undefined) {
+      throw new PartyError('validation', 'restrictUntil is only for a request from the data subject');
+    }
+    await this.d.store
+      .decideErasure(requestId, {
+        outcome: 'rejected',
+        reason,
+        ...(input.restrictUntil ? { restrictUntil: input.restrictUntil } : {}),
+        decidedBy: by,
+        decidedAt: this.d.clock.now(),
+      })
+      .catch(this.translate);
+    return this.getErasureRequest(requestId);
+  }
+
+  private async pending(requestId: string): Promise<ErasureRequest> {
+    const r = await this.getErasureRequest(requestId);
+    if (r.decision) throw new PartyError('conflict', `Erasure request ${requestId} is already ${r.decision.outcome}`);
+    return r;
   }
 
   async revisions(id: string): Promise<Party[]> {
@@ -256,6 +401,7 @@ export class PartyService {
   /** Replaces the details with a new revision. Kind and market never change. */
   async change(id: string, input: ChangePartyInput, by: string): Promise<PartyRecord> {
     const cur = await this.get(id);
+    if (cur.anonymized) throw new PartyError('conflict', `Party ${id} is anonymized`);
     if (cur.revision !== input.basedOnRevision) {
       throw new PartyError('conflict', `Party ${id} is at revision ${cur.revision}, not ${input.basedOnRevision}`);
     }
@@ -277,6 +423,7 @@ export class PartyService {
 
   async addIdentifier(id: string, input: PartyIdentifierInput, by: string): Promise<PartyRecord> {
     const cur = await this.get(id);
+    if (cur.anonymized) throw new PartyError('conflict', `Party ${id} is anonymized`);
     const i = normalizePartyIdentifier(input);
     this.checkKind(cur.kind, i);
     if (cur.identifiers.some((x) => x.type === i.type && x.country === i.country && x.value === i.value)) return cur; // a retry
@@ -354,14 +501,21 @@ export class PartyService {
 
 /** In-memory store, for tests and the dev server without a database. */
 export class InMemoryPartyStore implements PartyStore {
+  private erasures: ErasureRequest[] = [];
   private parties: Party[] = [];
   private identifiers = new Map<string, PartyIdentifier & { partyId: string }>();
 
   async get(id: string): Promise<PartyRecord | null> {
     const latest = (await this.revisions(id)).at(-1);
     if (!latest) return null;
+    const until = this.erasures
+      .filter((r) => r.partyId === id && r.decision?.restrictUntil)
+      .map((r) => r.decision!.restrictUntil!)
+      .sort()
+      .at(-1);
     return structuredClone({
       ...latest,
+      ...(until ? { restrictedUntil: until } : {}),
       identifiers: [...this.identifiers.values()]
         .filter((i) => i.partyId === id)
         .sort((a, b) => (a.addedAt < b.addedAt ? -1 : a.addedAt > b.addedAt ? 1 : 0))
@@ -395,5 +549,34 @@ export class InMemoryPartyStore implements PartyStore {
     const key = `${i.type}:${i.country}:${i.value}`;
     if (this.identifiers.has(key)) throw new PartyIdentifierTakenError(i);
     this.identifiers.set(key, { ...structuredClone(i), partyId });
+  }
+
+  async addErasureRequest(request: ErasureRequest) {
+    if (this.erasures.some((r) => r.partyId === request.partyId && !r.decision)) {
+      throw new PartyConflictError(`Party ${request.partyId} already has an undecided erasure request`);
+    }
+    this.erasures.push(structuredClone(request));
+  }
+
+  async getErasureRequest(id: string) {
+    const r = this.erasures.find((x) => x.id === id);
+    return r ? structuredClone(r) : null;
+  }
+
+  async listErasureRequests(filter: { partyId?: string; pending?: boolean }) {
+    return structuredClone(
+      this.erasures.filter((r) => (!filter.partyId || r.partyId === filter.partyId) && (filter.pending === undefined || filter.pending === !r.decision)),
+    );
+  }
+
+  async decideErasure(requestId: string, decision: ErasureDecision) {
+    const r = this.erasures.find((x) => x.id === requestId);
+    if (!r || r.decision) throw new PartyConflictError(`Erasure request ${requestId} is already decided`);
+    if (decision.outcome === 'approved') {
+      if (decision.decidedBy === r.requestedBy) throw new Error('Four eyes: the requester cannot approve');
+      this.parties = this.parties.map((p) => (p.id === r.partyId ? anonymize(p) : p));
+      for (const [k, i] of this.identifiers) if (i.partyId === r.partyId) this.identifiers.delete(k);
+    }
+    r.decision = structuredClone(decision);
   }
 }
