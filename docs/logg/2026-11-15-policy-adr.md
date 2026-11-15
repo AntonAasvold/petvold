@@ -1,6 +1,6 @@
 # ADR om policyns livscykel (PR #45)
 
-**Datum:** 2026-11-15 **ADR:** 0029 (Föreslagen) **Moduler:** inga, bara dokumentation
+**Datum:** 2026-11-15 **ADR:** 0029 (Beslutad) **Moduler:** inga, bara dokumentation
 
 ## Vad
 
@@ -15,7 +15,9 @@ Ett förslag till hur policymodulen (M3) ska teckna, förnya, avsluta och överl
 
 ## Val och avvägningar
 
-- **Ny policy vid försäljning, med `continuityOf`,** i stället för byte av försäkringstagare. Den nya ägaren har inte godkänt den gamla ägarens avtal.
+- **Samma policy byter försäkringstagare vid försäljning**, enligt ditt beslut. Bytet är en ny version med giltighet från försäljningsdagen, så historiken visar vem som var försäkringstagare varje dag och när bytet registrerades. Den nya ägaren måste godkänna villkoren, och godkännandet sparas.
+- **Två sätt att avsluta under termen:** bindningstiden ut eller direkt uppsägning med premie tillbaka. Produkten väljer.
+- **Förnyelse 45 dagar före förfallodagen** som förval, inställbart per produkt.
 - **Pris som anges av anroparen tills M4.** Då kan policyer tecknas innan tariffen finns, och priset sparas på samma sätt som när det senare räknas fram.
 - **Avslut bakåt i tiden** när behovet föll bort tidigare. Det kräver att skademotorn kan ompröva skador efter ett retroaktivt avslut.
 

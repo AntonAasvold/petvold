@@ -1,6 +1,6 @@
 # 0029. Policyns livscykel: tecknande, förnyelse, avslut och överlåtelse
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-15
 
 ## Sammanhang
@@ -29,19 +29,28 @@ Om försäkringen tecknas på distans gäller distansavtalslagen (2005:59). Kund
 3. **Tecknande.**
    - Försäkringstagaren är en part och djuret är ett djur, båda i policyns marknad (ADR 0024, 0026).
    - Produktversionen ska vara till salu på startdagen och gälla djurets art (ADR 0023). Villkoren väljs bland produktversionens alternativ.
-   - Startdagen får inte ligga före dagen för tecknandet.
+   - Startdagen får inte ligga före dagen för tecknandet. En försäkring gäller aldrig retroaktivt.
    - Transaktionen går igenom stegen utkast, prissatt, riskbedömd och utfärdad. Pris och riskbedömning är portar. Tills tariffen och teckningsreglerna finns (M4) anger anroparen premien, och riskbedömningen godkänner allt.
 4. **Förnyelse.**
-   - En förnyelsekörning skapar nästa term ett antal dagar före förfallodagen. Antalet dagar ställs in per produkt.
+   - En förnyelsekörning skapar nästa term ett antal dagar före förfallodagen. Antalet dagar ställs in per produkt, och förvalet är 45 dagar.
    - Den nya termen får den version av produkten som är till salu på förnyelsedagen. Om produkten inte säljs längre förnyas policyn inte automatiskt, utan den markeras för beslut.
    - En förnyad term meddelas kunden genom en händelse, `policy.renewed`. Utskicket hör till kanalen.
 5. **Avslut.** Lagreglerna ovan ligger i en **marknadsprofil** i koden, per marknad och med källor. Den uppdateras med nya versioner av Petvold och kan inte försvagas av en produkt.
-   - **Kundens avslut:** till termens slut, när som helst. Avslut under termen styrs av en produktinställning: antingen när som helst med premie tillbaka, eller bara till termens slut. Avslut när behovet faller bort och ånger inom ångerfristen är alltid tillåtna, oavsett produktinställning. Petvold kontrollerar att en produkt inte stänger dem.
-   - **Behovet faller bort när djuret dör eller säljs.** Händelserna `animal.died` och `animal.ownership_changed` från djurregistret skapar ett förslag till avslut från den dagen. Det kan ligga bakåt i tiden, och då påverkar det skador efter den dagen (omprövning, ADR 0018).
+   - **Kundens avslut:** till termens slut, när som helst. För avslut under termen erbjuder Petvold två sätt, och produkten väljer:
+     - **bindningstiden ut:** avslutet gäller från termens slut
+     - **direkt uppsägning:** avslutet gäller från dagen efter att det kom fram, och premien för resten av termen betalas tillbaka
+
+     Avslut när behovet faller bort och ånger inom ångerfristen är alltid tillåtna, oavsett produktinställning. Petvold kontrollerar att en produkt inte stänger dem.
+   - **Behovet faller bort när djuret dör.** Händelsen `animal.died` från djurregistret skapar ett förslag till avslut från den dagen. Det kan ligga bakåt i tiden, och då påverkar det skador efter den dagen (omprövning, ADR 0018). När djuret säljs gäller i stället överlåtelse (punkt 6).
    - **Bolagets avslut:** till termens slut med minst en månads varsel. Under termen bara med skäl och fjorton dagars uppsägningstid. Vid obetald premie gäller fjorton dagar från att uppsägningen skickades, och den skickas från betalningsmodulen (M5).
    - **Premie tillbaka** räknas per dag för den tid som inte gällde och skickas som en händelse till betalningsmodulen (M5).
    - **Ett avslut kan återkallas** med en reversering, till exempel om ett dödsfall var felregistrerat.
-6. **Överlåtelse när djuret säljs.** Den gamla policyn avslutas från försäljningsdagen, eftersom behovet faller bort. Den nya ägaren kan få en ny policy med `continuityOf`, som pekar på den gamla. Då börjar ingen ny karenstid om den nya policyn startar inom ett antal dagar, som ställs in per produkt. Att byta försäkringstagare på samma policy är inte förvalt, eftersom avtalet då byter part.
+6. **Överlåtelse när djuret säljs: samma policy byter försäkringstagare.**
+   - Händelsen `animal.ownership_changed` skapar ett förslag till överlåtelse från försäljningsdagen. Överlåtelsen genomförs när den nya ägaren har godkänt villkoren. Godkännandet sparas med vem, när och via vilken kanal.
+   - Försäkringstagaren är en del av policyversionen. Överlåtelsen skapar en ny version med giltighet från försäljningsdagen. Historiken visar därför alltid vem som var försäkringstagare en viss dag och när bytet registrerades, även om det registrerades i efterhand (ADR 0006).
+   - Karenstid, självriskperioder och förbrukat försäkringsbelopp följer policyn och djuret, inte försäkringstagaren.
+   - Skador före försäljningsdagen hör till den förra försäkringstagaren, och skador från den dagen till den nya. Premien delas per dag. Den förra får tillbaka premien för tiden efter försäljningen, och den nya betalar från försäljningsdagen (M5).
+   - Om den nya ägaren inte godkänner inom en tid som ställs in per produkt, avslutas policyn från försäljningsdagen, eftersom behovet har fallit bort.
 7. **Grupper** (`PolicyGroup`, ADR 0007) samlar policyer för en kull eller ett hushåll. Gruppen påverkar signering, faktura och rabatt, men aldrig skaderegleringen. Den byggs efter enskilda policyer.
 8. **Händelser** via en outbox (ADR 0008): `policy.issued`, `policy.version_superseded` (som skademotorn redan lyssnar efter), `policy.renewed`, `policy.cancelled` och `policy.transferred`.
 9. **Gallring** (ADR 0028). Policymodulen är en `ActivitySource`. En försäkringstagare har en pågående relation så länge en term gäller eller en skada på policyn är öppen. Därefter gäller det senaste datumet av termens slut och skadans slutliga beslut.
@@ -56,9 +65,10 @@ Om försäkringen tecknas på distans gäller distansavtalslagen (2005:59). Kund
 
 ## Alternativ
 
-- **Byta försäkringstagare vid försäljning:** enklare, men den nya ägaren har inte godkänt villkoren, och historiken blandar två avtal. Det kan bli ett produktval senare.
+- **Ny policy till den nya ägaren, med `continuityOf`:** håller avtalen isär, men karenstid, självriskperioder och försäkringsbelopp måste föras över mellan policyer. Samma policy med en ny version ger samma spårbarhet med ett krav på godkännande.
 - **Lagregler som inställning per installation:** flexibelt, men ett försäkringsbolag skulle kunna stänga ångerrätten av misstag. Lagen ändras sällan och hör till Petvolds version.
 - **Förnyelse som en ny policy:** bryter historiken och karenstiden.
+- **Ett enda sätt att avsluta under termen:** enklare, men bolag erbjuder både bindningstid och fri uppsägning.
 - **Avslut bara framåt i tiden:** enklare, men ett djur som dog för två veckor sedan ger då premie för en tid utan försäkringsbehov.
 
 ## Källor
