@@ -6,7 +6,7 @@ Första modulen är skademotorn. Policy, produkt, tariff, billing och ledger kom
 
 ## Dokumentation
 
-All dokumentation samlas i [docs/](docs/README.md): funktion (hur systemet fungerar och konfigureras) och teknik (hur det är byggt).
+All dokumentation samlas i [docs/](docs/README.md): funktion (hur systemet fungerar och konfigureras) och teknik (hur det är byggt). Den publiceras tillsammans med API-specen på [antonaasvold.github.io/petvold](https://antonaasvold.github.io/petvold/) efter varje merge till `main`.
 
 - [Skadereglering](docs/funktion/skadereglering.md) – regler, beräkning och beslut med exempel
 - [Produktkonfiguration](docs/funktion/produktkonfiguration.md) – vad produkt och policy styr
