@@ -19,7 +19,7 @@
  * and implements the claims engine's PolicyPort.
  */
 import type { ISODate, PolicyPort, PolicySnapshot, Rider, Timestamp, VetCareTerms } from '@petvold/claims-core';
-import { PricingError, price, type PriceResult, type PriceTermsContent, type TariffContent, type TariffRef } from '@petvold/pricing-core';
+import { PricingError, price, type PriceInput, type PriceResult, type PriceTermsContent, type TariffContent, type TariffRef } from '@petvold/pricing-core';
 
 export type { ISODate };
 
@@ -113,6 +113,20 @@ export interface Term {
   transactionId: string;
   /** Changes of the choices during the term, oldest first (ADR 0029). Each never changes. */
   changes?: TermChange[];
+  /** How the premium was priced by the tariff, if the product has one (ADR 0030). */
+  pricing?: TermPricing;
+}
+
+/**
+ * The evidence for a premium (ADR 0030): the tariff's price with its inputs,
+ * without the postal code (only its zone), so it can be recomputed. A manual
+ * price keeps the computed one next to it.
+ */
+export interface TermPricing {
+  result: PriceResult;
+  /** What the price was computed from; the zone instead of the postal code. */
+  input: Omit<PriceInput, 'postalCode'> & { zone: string };
+  override?: { computedPremium: number; reason: string; by: string };
 }
 
 /** New choices from a day during a term. The versions from that day carry its changeNo. */
@@ -125,6 +139,7 @@ export interface TermChange {
   /** The premium for a whole term at the new choices; the days from `from` are charged at this rate. */
   premium: number;
   transactionId: string;
+  pricing?: TermPricing;
 }
 
 export interface PolicyVersion {
@@ -476,8 +491,22 @@ export interface IssueInput {
   productVersion: string;
   startDate: ISODate;
   vetCare?: { annualLimit?: number; deductible?: string };
-  /** The premium for the term. Given by the caller until the tariff exists (M4). */
-  premium: { amount: number; currency: string };
+  /**
+   * The premium for the term. Omitted: the product's tariff prices it (ADR 0030).
+   * Given for a product with a tariff: a manual price, which needs priceOverride.
+   */
+  premium?: { amount: number; currency: string };
+  /** Why the premium differs from the tariff's. Needs the permission policies:price-override. */
+  priceOverride?: { reason: string };
+  /** A group the policy joins from its start, for the group discount (ADR 0007). */
+  groupId?: string;
+  campaignCode?: string;
+}
+
+/** What the caller may do beyond the operation itself. */
+export interface CallerRights {
+  /** May set a premium other than the tariff's (policies:price-override). */
+  mayOverridePrice?: boolean;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
