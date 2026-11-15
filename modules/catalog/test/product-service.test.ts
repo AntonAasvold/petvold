@@ -163,3 +163,22 @@ test('a product with a tariff series needs a tariff in force that covers it (ADR
   assert.equal((await s.submit('XX-DOG-VC', '2026.1', author)).status, 'in_review');
   await rejects(s.createDraft('XX-DOG-X', draft({ content: { ...content(), tariffSeries: 'bad series' } }), author), 'validation', /tariff series/);
 });
+
+test('price terms need a tariff, and a version in force that fits the product', async () => {
+  let problems: string[] | null = null;
+  const s = new ProductService({
+    products: new InMemoryProductStore(),
+    clock: { now: () => '2026-11-15T10:00:00.000Z' },
+    speciesActive: async () => true,
+    ruleSeriesInForce: async () => true,
+    tariffProblems: async () => [],
+    priceTermsProblems: async () => problems,
+  });
+  await rejects(s.createDraft('XX-DOG-X', draft({ content: { ...content(), priceTermsSeries: 'XX-TERMS' } }), author), 'validation', /needs .* a tariffSeries/);
+  await s.createDraft('XX-DOG-VC', draft({ content: { ...content(), tariffSeries: 'XX-TARIFF', priceTermsSeries: 'XX-TERMS' } }), author);
+  await rejects(s.submit('XX-DOG-VC', '2026.1', author), 'validation', /price terms series XX-TERMS has no published version/);
+  problems = ['The price terms are for SE in SEK'];
+  await rejects(s.submit('XX-DOG-VC', '2026.1', author), 'validation', /does not fit the product/);
+  problems = [];
+  assert.equal((await s.submit('XX-DOG-VC', '2026.1', author)).status, 'in_review');
+});

@@ -32,6 +32,7 @@ export function productPort(products: ProductService): ProductPort {
         renewalLeadDays: settings.renewalLeadDays,
         transferAcceptanceDays: settings.transferAcceptanceDays,
         ...(v.content.tariffSeries ? { tariffSeries: v.content.tariffSeries } : {}),
+        ...(v.content.priceTermsSeries ? { priceTermsSeries: v.content.priceTermsSeries } : {}),
         vetCareTermsFor: (choice) => ({ ...vetCareTermsFor(v, choice), deductibleOption: choice.deductible ?? v.content.vetCare.defaultDeductible }),
       };
     },

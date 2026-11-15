@@ -1,8 +1,8 @@
 # Pris
 
-Premien räknas med en **tariff** (ADR 0030). En tariff är tabeller som publiceras med fyra ögon, på samma sätt som skaderegler. Den ger grundpriset. Rabatter läggs på efter grundpriset som prisvilkor (kommer i ett senare steg).
+Premien räknas med en **tariff** (ADR 0030). En tariff är tabeller som publiceras med fyra ögon, på samma sätt som skaderegler. Den ger grundpriset. Rabatter läggs på efter grundpriset som **prisvilkor**.
 
-Prisfunktionen, tariffserierna, produktens tariff och prisindikationen är byggda. Prisvilkor och pris vid tecknande, ändring och förnyelse kommer i nästa steg. Till dess anges premien för hand när en policy tecknas.
+Prisfunktionen, tariffer, prisvilkor, produktens koppling till dem och prisindikationen är byggda. Pris vid tecknande, ändring och förnyelse kommer i nästa steg. Till dess anges premien för hand när en policy tecknas.
 
 ## Så räknas grundpriset
 
@@ -33,6 +33,20 @@ All räkning sker med heltal, och avrundning sker bara på slutet, så priset bl
 | × 1,15 (zon storstad) | 4 933,50 kr |
 | Avrundat till hela kronor | **4 934 kr om året** |
 
+## Prisvilkor: rabatter efter grundpriset
+
+Prisvilkoren är en egen serie (`calculationModel: "price-terms.v1"`), med samma livscykel och fyra ögon som tariffen. De kan därför ändras utan att tariffen ändras, till exempel för en kampanj. Produkten pekar på dem med `priceTermsSeries`.
+
+| Fält | Betyder |
+| --- | --- |
+| `groupDiscounts` | Rabatt för en policy i en grupp (ADR 0007), med `kind` (`litter`, `household` eller `any`), `fromMember` (2 betyder andra djuret och senare) och `bp`. Den bästa rabatt som passar gäller. |
+| `campaigns` | Kampanjkoder med `code`, `validFrom`, eventuellt `validTo` (för termer som börjar före den dagen), `bp` och `newPoliciesOnly` (gäller inte vid förnyelse) |
+| `maxTotalDiscountBp` | Tak för alla rabatter tillsammans |
+
+Rabatterna räknas i baspunkter av grundpriset (1 000 = 10 %). En grupprabatt och en kampanj läggs ihop, men aldrig över taket. Priset blir aldrig lägre än tariffens lägsta premie. Efter rabatterna avrundas priset igen.
+
+**Exempel:** Bellas grundpris är 4 934 kr. Med kampanjkoden `PUPPY2026` (20 %) blir det 3 947,20 kr, avrundat till 3 947 kr. Om hon också var tredje djuret i en kull skulle 15 % + 20 % = 35 % begränsas till taket 30 %.
+
 ## Produktens tariff
 
 Produktversionen pekar på en tariffserie med `tariffSeries`. När versionen skickas till granskning kontrolleras att en tariffversion gäller när försäljningen börjar. Tariffen ska också täcka produkten:
@@ -41,7 +55,7 @@ Produktversionen pekar på en tariffserie med `tariffSeries`. När versionen ski
 - åldersband för varje art
 - en faktor för varje självriskalternativ
 
-Om något saknas blir svaret `422` med en lista. En produkt utan `tariffSeries` prissätts för hand.
+Om något saknas blir svaret `422` med en lista. En produkt utan `tariffSeries` prissätts för hand. En produkt kan ha `priceTermsSeries` bara om den har en tariff, och prisvillkoren ska gälla när försäljningen börjar och vara för samma marknad och valuta.
 
 ## Prisindikation
 
@@ -59,7 +73,9 @@ POST /v1/quotes
 - **Djuret:** ange ett registrerat djur (`animalId`) eller uppgifterna (`animal` med `species`, `breed` och `birthDate`).
 - **Orten:** ange försäkringstagaren (`policyholderPartyId`), så hämtas postnumret från adressen, eller `postalCode` direkt. Utan någon av dem gäller tariffens förvalda zon.
 - **Kundens egen portal,** och andra roller bundna till försäkringar eller kliniker, anger uppgifterna och postnumret direkt. De får inte läsa djur och parter.
-- **Svaret** har termens datum, de valda villkoren och priset med `breakdown`. Postnumret finns aldrig i svaret, bara zonen.
+- **Grupp:** ange `groupId` för en grupp som djuret skulle gå med i. Då blir djuret nästa medlem. En kundportal anger i stället `group` med `kind` och `memberNo`.
+- **Kampanj:** `campaignCode`. En kod som inte gäller ger `422`.
+- **Svaret** har termens datum, de valda villkoren och priset med `breakdown`. Där syns grundpriset (`basePremium`) och priset efter rabatter (`annualPremium`) var för sig. Postnumret finns aldrig i svaret, bara zonen.
 - **En produkt utan tariff** ger `409`.
 
 ## Vad priset sparar
@@ -88,4 +104,4 @@ En tariffversion skapas med `POST /v1/rule-sets/{serie}/versions` och `calculati
 
 Faktorer anges i baspunkter, där 10 000 betyder 1,0.
 
-*Inte byggt än:* prisvilkor (rabatter), pris vid tecknande, ändring och förnyelse, manuellt pris, skatt per marknad, och simulering av tariffer.
+*Inte byggt än:* pris vid tecknande, ändring och förnyelse, manuellt pris, skatt per marknad, och simulering av tariffer.

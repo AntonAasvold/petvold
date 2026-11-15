@@ -70,6 +70,7 @@
       },
       "ruleSeries": "SE-HUND-VV",
       "tariffSeries": "SE-HUND-TARIFF",
+      "priceTermsSeries": "SE-HUND-TERMS",
       "vetCare": {
         "annualLimits": [
           3000000,

@@ -77,6 +77,8 @@ export interface ProductContent {
   ruleSeries: string;
   /** The tariff series that prices it (ADR 0030). Omitted: the premium is given by hand. */
   tariffSeries?: string;
+  /** The price terms series: discounts after the base price (ADR 0030). Only with a tariff series. */
+  priceTermsSeries?: string;
   vetCare: VetCareCover;
   policy?: PolicySettings;
 }
@@ -151,6 +153,8 @@ export interface ProductDeps {
     onDate: ISODate,
     product: { market: string; currency: string; species: string[]; annualLimits: number[]; deductibleOptions: string[] },
   ): Promise<string[] | null>;
+  /** What is wrong with the price terms in force on the date for the product. null: none in force. */
+  priceTermsProblems?(series: string, onDate: ISODate, product: { market: string; currency: string }): Promise<string[] | null>;
 }
 
 export const productVersionId = (v: Pick<ProductVersion, 'product' | 'version'>) => `${v.product}@${v.version}`;
@@ -301,6 +305,12 @@ export class ProductService {
       if (problems === null) throw new CatalogError('validation', `The tariff series ${tariff} has no published version in force on ${v.salesFrom}`);
       if (problems.length) throw new CatalogError('validation', `The tariff series ${tariff} does not cover the product: ${problems.join('; ')}`);
     }
+    const terms = v.content.priceTermsSeries;
+    if (terms && this.d.priceTermsProblems) {
+      const problems = await this.d.priceTermsProblems(terms, v.salesFrom, { market: v.content.market, currency: v.content.currency });
+      if (problems === null) throw new CatalogError('validation', `The price terms series ${terms} has no published version in force on ${v.salesFrom}`);
+      if (problems.length) throw new CatalogError('validation', `The price terms series ${terms} does not fit the product: ${problems.join('; ')}`);
+    }
   }
 
   private async inStatus(product: string, version: string, status: ProductStatus): Promise<ProductVersion> {
@@ -340,6 +350,7 @@ export class ProductService {
     if (!c.names || Object.keys(c.names).length === 0) fail('The product needs a name');
     if (!PRODUCT.test(c.ruleSeries ?? '')) fail(`Invalid rule series '${c.ruleSeries}'`);
     if (c.tariffSeries !== undefined && !PRODUCT.test(c.tariffSeries)) fail(`Invalid tariff series '${c.tariffSeries}'`);
+    if (c.priceTermsSeries !== undefined && (!PRODUCT.test(c.priceTermsSeries) || !c.tariffSeries)) fail('priceTermsSeries needs a valid series name and a tariffSeries');
     const vc = c.vetCare;
     if (!vc) return fail('vetCare is required');
     if (!Array.isArray(vc.annualLimits) || vc.annualLimits.length === 0 || !vc.annualLimits.every(isAmount)) {

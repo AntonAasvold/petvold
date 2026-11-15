@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CALCULATION_MODELS, ClaimsService } from '@petvold/claims-core';
 import { FixedClock, InMemoryClaimsStore, InMemoryPolicyPort, SequentialIds, fixtures } from '@petvold/claims-store-memory';
-import { TARIFF } from '@petvold/pricing-core/fixtures';
+import { PRICE_TERMS, TARIFF } from '@petvold/pricing-core/fixtures';
 import {
   DecisioningRulesPort,
   DecisioningService,
@@ -138,4 +138,17 @@ test('a tariff series has the same lifecycle, and is never mixed with claims rul
   await publish(service, input());
   assert.equal(await service.tariffInForce('SE-HUND-VV', '2026-06-01'), null);
   await assert.rejects(service.createDraft('SE-HUND-VV', tariff, AUTHOR), /holds claims rules/);
+});
+
+test('price terms are a series of their own, with the same lifecycle (ADR 0030)', async () => {
+  const { service } = setup();
+  const terms = { content: PRICE_TERMS as never, calculationModel: 'price-terms.v1', effectiveFrom: '2026-01-01' };
+  await assert.rejects(service.createDraft('SE-HUND-TERMS', { ...terms, content: { ...PRICE_TERMS, maxTotalDiscountBp: 20_000 } as never }, AUTHOR), /maxTotalDiscountBp/);
+  const d = await service.createDraft('SE-HUND-TERMS', terms, AUTHOR);
+  await assert.rejects(service.createDraft('SE-HUND-TERMS', { content: TARIFF as never, calculationModel: 'tariff.v1', effectiveFrom: '2026-01-01' }, AUTHOR), /holds price terms/);
+  await service.submit('SE-HUND-TERMS', d.version, AUTHOR);
+  const p = await service.publish('SE-HUND-TERMS', d.version, PUBLISHER);
+  assert.deepEqual((await service.priceTermsInForce('SE-HUND-TERMS', '2026-06-01'))?.ref, { series: 'SE-HUND-TERMS', version: 1, checksum: p.checksum });
+  assert.equal(await service.tariffInForce('SE-HUND-TERMS', '2026-06-01'), null);
+  assert.equal(await service.rulesInForce('SE-HUND-TERMS', '2026-06-01'), null);
 });

@@ -1,5 +1,5 @@
 /** Example data for tests and the dev server. Made up (ADR 0009). */
-import type { TariffContent } from './index.ts';
+import type { PriceTermsContent, TariffContent } from './index.ts';
 
 /** A made-up Swedish dog tariff (ADR 0009). */
 export const TARIFF: TariffContent = {
@@ -24,4 +24,16 @@ export const TARIFF: TariffContent = {
   zoneFactors: { city: 11_500, centre: 12_000, rural: 9_500 },
   minimumAnnual: 120_000,
   roundTo: 100,
+};
+
+/** Made-up Swedish price terms: 10 % from the second animal in a group, and a campaign. */
+export const PRICE_TERMS: PriceTermsContent = {
+  market: 'SE',
+  currency: 'SEK',
+  groupDiscounts: [
+    { kind: 'any', fromMember: 2, bp: 1_000 },
+    { kind: 'litter', fromMember: 2, bp: 1_500 },
+  ],
+  campaigns: [{ code: 'PUPPY2026', validFrom: '2026-01-01', validTo: '2027-01-01', bp: 2_000, newPoliciesOnly: true }],
+  maxTotalDiscountBp: 3_000,
 };

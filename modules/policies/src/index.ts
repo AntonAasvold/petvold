@@ -19,7 +19,7 @@
  * and implements the claims engine's PolicyPort.
  */
 import type { ISODate, PolicyPort, PolicySnapshot, Rider, Timestamp, VetCareTerms } from '@petvold/claims-core';
-import { PricingError, price, type PriceResult, type TariffContent, type TariffRef } from '@petvold/pricing-core';
+import { PricingError, price, type PriceResult, type PriceTermsContent, type TariffContent, type TariffRef } from '@petvold/pricing-core';
 
 export type { ISODate };
 
@@ -372,6 +372,8 @@ export interface ProductOffer {
   transferAcceptanceDays: number;
   /** The tariff series that prices it (ADR 0030). Omitted: no tariff, the premium is given by hand. */
   tariffSeries?: string;
+  /** The price terms series (ADR 0030). */
+  priceTermsSeries?: string;
   /** The product's setting for the customer's cancellation during a term (ADR 0029). */
   midTermCancellation: 'term-end' | 'immediate';
   /** The length of a term in months. */
@@ -424,6 +426,7 @@ export interface PartyPort {
 /** The tariff in force, from the decisioning module (ADR 0030). */
 export interface TariffPort {
   tariffInForce(series: string, onDate: ISODate): Promise<{ content: TariffContent; ref: TariffRef } | null>;
+  priceTermsInForce?(series: string, onDate: ISODate): Promise<{ content: PriceTermsContent; ref: TariffRef } | null>;
 }
 
 export interface QuoteInput {
@@ -437,6 +440,10 @@ export interface QuoteInput {
   policyholderPartyId?: string;
   postalCode?: string;
   vetCare?: { annualLimit?: number; deductible?: string };
+  /** A group the policy would join (ADR 0007), for its discount; or the group's kind and the animal's place in it. */
+  groupId?: string;
+  group?: { kind: 'litter' | 'household'; memberNo: number };
+  campaignCode?: string;
 }
 
 /** A price indication (ADR 0030). Nothing is stored. */
@@ -1255,6 +1262,19 @@ export class PolicyService implements PolicyPort {
     if (input.startDate < today) throw new PolicyError('validation', 'A policy cannot start before today');
     if ((input.animalId === undefined) === (input.animal === undefined)) throw new PolicyError('validation', 'Give either animalId or animal');
     if (input.policyholderPartyId !== undefined && input.postalCode !== undefined) throw new PolicyError('validation', 'Give policyholderPartyId or postalCode, not both');
+    if (input.groupId !== undefined && input.group !== undefined) throw new PolicyError('validation', 'Give groupId or group, not both');
+    let group = input.group;
+    if (input.groupId !== undefined) {
+      const g = await this.getGroup(input.groupId);
+      if (g.market !== input.market) throw new PolicyError('validation', `The group ${g.id} is not in market ${input.market}`);
+      if (input.policyholderPartyId !== undefined && g.holderPartyId !== input.policyholderPartyId) {
+        throw new PolicyError('validation', `The group ${g.id} belongs to another policyholder`);
+      }
+      group = { kind: g.kind, memberNo: g.members.filter((m) => !m.to).length + 1 };
+    }
+    if (group && (!['litter', 'household'].includes(group.kind) || !Number.isSafeInteger(group.memberNo) || group.memberNo < 1)) {
+      throw new PolicyError('validation', 'group needs kind litter or household, and memberNo 1 or more');
+    }
     let animal: { species: string; breed?: string; birthDate: ISODate };
     if (input.animalId !== undefined) {
       const a = await this.d.animals.get(input.animalId);
@@ -1289,6 +1309,13 @@ export class PolicyService implements PolicyPort {
     if (!tariff) throw new PolicyError('conflict', `The tariff series ${offer.tariffSeries} has no published version in force on ${input.startDate}`);
     const endDate = addMonths(input.startDate, offer.termMonths);
     const { deductibleOption, ...vetCare } = chosen;
+    let terms: { content: PriceTermsContent; ref: TariffRef } | null = null;
+    if (offer.priceTermsSeries) {
+      terms = (await this.d.tariffs?.priceTermsInForce?.(offer.priceTermsSeries, input.startDate)) ?? null;
+      if (!terms) throw new PolicyError('conflict', `The price terms series ${offer.priceTermsSeries} has no published version in force on ${input.startDate}`);
+    } else if (input.campaignCode) {
+      throw new PolicyError('validation', `${input.productVersion} has no price terms, so no campaign codes`);
+    }
     try {
       return {
         market: input.market,
@@ -1307,7 +1334,10 @@ export class PolicyService implements PolicyPort {
           annualLimit: vetCare.annualLimit,
           deductibleOption,
           ...(postalCode ? { postalCode } : {}),
-        }),
+          ...(group ? { group } : {}),
+          ...(input.campaignCode ? { campaignCode: input.campaignCode } : {}),
+          newPolicy: true,
+        }, terms ?? undefined),
       };
     } catch (e) {
       if (e instanceof PricingError) throw new PolicyError('validation', e.message);

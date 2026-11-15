@@ -3000,10 +3000,11 @@ components:
         reason: { type: string, minLength: 1, maxLength: 2000 }
 
     RuleSetContent:
-      description: Claims rules, or a tariff when the calculation model is a tariff's, e.g. tariff.v1 (ADR 0030).
+      description: Claims rules, a tariff (calculation model tariff.v1) or price terms (price-terms.v1), ADR 0030.
       oneOf:
         - $ref: '#/components/schemas/ClaimsRulesContent'
         - $ref: '#/components/schemas/TariffContent'
+        - $ref: '#/components/schemas/PriceTermsContent'
 
     TariffContent:
       type: object
@@ -3049,6 +3050,42 @@ components:
         minimumAnnual: { $ref: '#/components/schemas/NonNegativeMoney' }
         roundTo: { type: integer, minimum: 1, description: 'e.g. 100: whole kronor.' }
 
+    PriceTermsContent:
+      type: object
+      additionalProperties: false
+      description: |
+        Price terms (ADR 0030): discounts after the tariff's base price, in
+        basis points of it (1 000 = 10 %). For a group, the best matching
+        discount applies; a campaign code adds its own. Together never more
+        than maxTotalDiscountBp, and never below the tariff's minimum premium.
+      required: [market, currency, groupDiscounts, campaigns, maxTotalDiscountBp]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        groupDiscounts:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, fromMember, bp]
+            properties:
+              kind: { type: string, enum: [litter, household, any] }
+              fromMember: { type: integer, minimum: 1, description: 'e.g. 2: the second animal in the group and later.' }
+              bp: { type: integer, minimum: 0, maximum: 10000 }
+        campaigns:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [code, validFrom, bp, newPoliciesOnly]
+            properties:
+              code: { type: string, pattern: '^[A-Z0-9][A-Z0-9-]{1,31}$' }
+              validFrom: { $ref: '#/components/schemas/Date' }
+              validTo: { $ref: '#/components/schemas/Date', description: 'Exclusive. For terms starting before it.' }
+              bp: { type: integer, minimum: 0, maximum: 10000 }
+              newPoliciesOnly: { type: boolean, description: Not at renewal. }
+        maxTotalDiscountBp: { type: integer, minimum: 0, maximum: 10000 }
+
     ClaimsRulesContent:
       type: object
       additionalProperties: false
@@ -3073,7 +3110,7 @@ components:
       required: [content, calculationModel, effectiveFrom]
       properties:
         content: { $ref: '#/components/schemas/RuleSetContent' }
-        calculationModel: { type: string, description: 'One of the engine''s calculation models, e.g. vet-care.v1, or a tariff''s, e.g. tariff.v1 (ADR 0030).' }
+        calculationModel: { type: string, description: 'One of the engine''s calculation models, e.g. vet-care.v1; tariff.v1 for a tariff; price-terms.v1 for price terms (ADR 0030).' }
         effectiveFrom: { $ref: '#/components/schemas/Date' }
 
     RuleSetVersion:
@@ -3233,6 +3270,7 @@ components:
           description: Species codes from the reference data.
         names: { $ref: '#/components/schemas/Labels' }
         ruleSeries: { type: string, pattern: '^[A-Z0-9][A-Z0-9-]{1,63}$', description: 'The rule series claims are assessed with, e.g. SE-HUND-VV.' }
+        priceTermsSeries: { type: string, description: 'The price terms series: discounts after the base price (ADR 0030). Only with tariffSeries. At review, a version must be in force when sales start.' }
         tariffSeries: { type: string, description: 'The tariff series that prices it (ADR 0030). Omitted: the premium is given by hand. At review, a version must be in force when sales start and cover every species, annual limit and deductible option.' }
         policy:
           type: object
@@ -3628,13 +3666,24 @@ components:
           properties:
             annualLimit: { $ref: '#/components/schemas/NonNegativeMoney' }
             deductible: { type: string }
+        groupId: { type: string, pattern: '^pgr_[A-Za-z0-9]+$', description: 'A group the policy would join, for its discount: the animal becomes the next member.' }
+        group:
+          type: object
+          additionalProperties: false
+          required: [kind, memberNo]
+          description: Instead of groupId, e.g. from a customer portal.
+          properties:
+            kind: { type: string, enum: [litter, household] }
+            memberNo: { type: integer, minimum: 1, description: The animal's place in the group, 1 = the first. }
+        campaignCode: { type: string, maxLength: 32 }
 
     PriceResult:
       type: object
-      required: [currency, annualPremium, termPremium, breakdown, facts, inputHash]
+      required: [currency, basePremium, annualPremium, termPremium, breakdown, facts, inputHash]
       properties:
         currency: { $ref: '#/components/schemas/Currency' }
-        annualPremium: { $ref: '#/components/schemas/NonNegativeMoney' }
+        basePremium: { $ref: '#/components/schemas/NonNegativeMoney', description: The yearly base price from the tariff, before price terms. }
+        annualPremium: { $ref: '#/components/schemas/NonNegativeMoney', description: The yearly premium after price terms. }
         termPremium: { $ref: '#/components/schemas/NonNegativeMoney' }
         breakdown:
           type: array
@@ -3643,20 +3692,28 @@ components:
             type: object
             required: [code, value, amount]
             properties:
-              code: { type: string, enum: [base, age, breed-group, deductible, zone, minimum, rounding, term] }
+              code: { type: string, enum: [base, age, breed-group, deductible, zone, minimum, rounding, group-discount, campaign, discount-cap, term] }
               value: { type: integer, description: A factor in basis points, or an amount in minor units. }
               basis: { description: 'What the factor came from, e.g. the age, the breed group or the zone.', oneOf: [{ type: string }, { type: integer }] }
               amount: { type: integer, description: The amount after the step. }
         facts:
           type: object
-          required: [ageYears, breedGroup, zone, termDays, yearDays]
+          required: [ageYears, breedGroup, zone, termDays, yearDays, discountBp]
           properties:
+            discountBp: { type: integer, description: The total discount in basis points. }
             ageYears: { type: integer }
             breedGroup: { type: string }
             zone: { type: string }
             termDays: { type: integer }
             yearDays: { type: integer }
         tariff:
+          type: object
+          required: [series, version, checksum]
+          properties:
+            series: { type: string }
+            version: { type: integer }
+            checksum: { type: string }
+        priceTerms:
           type: object
           required: [series, version, checksum]
           properties:

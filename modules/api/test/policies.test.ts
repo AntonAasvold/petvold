@@ -11,7 +11,7 @@ import { createApp, InMemoryIdempotencyStore, validatorFor, type Principal } fro
 import { animalPort, productPort } from '../src/wiring.ts';
 import { CALCULATION_MODELS } from '@petvold/claims-core';
 import { DecisioningService, InMemoryRuleSetStore } from '@petvold/decisioning';
-import { TARIFF } from '@petvold/pricing-core/fixtures';
+import { PRICE_TERMS, TARIFF } from '@petvold/pricing-core/fixtures';
 
 const tokens: Record<string, Principal> = {
   seller: { subject: 'seller@example.test', roles: ['policy-registrar'], markets: ['SE'] },
@@ -29,6 +29,7 @@ const content = {
   names: { en: 'Dog insurance' },
   ruleSeries: 'SE-HUND-VV',
   tariffSeries: 'SE-HUND-TARIFF',
+  priceTermsSeries: 'SE-HUND-TERMS',
   vetCare: {
     annualLimits: [3_000_000, 6_000_000],
     defaultAnnualLimit: 6_000_000,
@@ -46,6 +47,9 @@ async function setup() {
   await decisioning.createDraft('SE-HUND-TARIFF', { content: TARIFF as never, calculationModel: 'tariff.v1', effectiveFrom: '2026-01-01' }, 'author');
   await decisioning.submit('SE-HUND-TARIFF', 1, 'author');
   await decisioning.publish('SE-HUND-TARIFF', 1, 'publisher');
+  await decisioning.createDraft('SE-HUND-TERMS', { content: PRICE_TERMS as never, calculationModel: 'price-terms.v1', effectiveFrom: '2026-01-01' }, 'author');
+  await decisioning.submit('SE-HUND-TERMS', 1, 'author');
+  await decisioning.publish('SE-HUND-TERMS', 1, 'publisher');
   const products = new ProductService({ products: new InMemoryProductStore(), clock, speciesActive: async () => true, ruleSeriesInForce: async () => true });
   await products.createDraft('SE-HUND', { version: '1', salesFrom: '2026-11-01', content } as never, 'author');
   await products.submit('SE-HUND', '1', 'author');
@@ -254,4 +258,24 @@ test('a price indication from the product\'s tariff, with ids or with the facts'
   assert.equal((await call('POST', '/v1/quotes', 'sellerDe', body)).status, 403);
   assert.equal((await call('POST', '/v1/quotes', 'handler', body)).status, 403); // no policies:quote
   assert.equal((await call('POST', '/v1/quotes', 'seller', { ...body, animalId: undefined })).status, 422);
+});
+
+test('price terms in a quote: the second animal in a group, and a campaign code', async () => {
+  const call = await setup();
+  const p = (await call('POST', '/v1/policies', 'seller', apply)).body;
+  const g = (await call('POST', '/v1/policy-groups', 'seller', { market: 'SE', kind: 'household', holderPartyId: 'pty_anna' })).body;
+  await call('POST', `/v1/policy-groups/${g.id}/members`, 'seller', { policyId: p.id });
+  const body = { market: 'SE', productVersion: 'SE-HUND@1', startDate: '2026-12-01', animal: { species: 'dog', birthDate: '2024-03-01' }, policyholderPartyId: 'pty_anna' };
+  const alone = (await call('POST', '/v1/quotes', 'seller', body)).body.price;
+  const second = await call('POST', '/v1/quotes', 'seller', { ...body, groupId: g.id });
+  assert.equal(second.status, 200);
+  assert.ok(validatorFor('Quote')(structuredClone(second.body)), JSON.stringify(validatorFor('Quote').errors));
+  // 256 500 less 10 % (any group, from the second animal) = 230 850 -> 230 900.
+  assert.deepEqual([alone.annualPremium, second.body.price.basePremium, second.body.price.annualPremium, second.body.price.facts.discountBp], [256_500, 256_500, 230_900, 1_000]);
+  const campaign = (await call('POST', '/v1/quotes', 'seller', { ...body, campaignCode: 'PUPPY2026', startDate: '2026-12-01' })).body.price;
+  assert.equal(campaign.facts.discountBp, 2_000);
+  assert.equal((await call('POST', '/v1/quotes', 'seller', { ...body, campaignCode: 'NOPE' })).status, 422);
+  assert.equal((await call('POST', '/v1/quotes', 'portal', { ...body, policyholderPartyId: undefined, groupId: g.id })).status, 403);
+  const portal = await call('POST', '/v1/quotes', 'portal', { ...body, policyholderPartyId: undefined, postalCode: '90000', group: { kind: 'household', memberNo: 2 } });
+  assert.equal(portal.body.price.facts.discountBp, 1_000);
 });

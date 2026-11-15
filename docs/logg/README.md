@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [Prisvilkor: rabatter efter grundpriset](2026-11-15-prisvillkor.md) | #57 |
 | 2026-11-15 | [Produktens tariff och prisindikation](2026-11-15-prisindikation.md) | #56 |
 | 2026-11-15 | [Prisfunktion och tariffer](2026-11-15-prisfunktion.md) | #55 |
 | 2026-11-15 | [ADR om tariffen](2026-11-15-tariff-adr.md) | #54 |
