@@ -1463,6 +1463,134 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/policy-groups:
+    post:
+      tags: [policies]
+      operationId: createPolicyGroup
+      x-permission: policies:write
+      summary: Create a group for a litter or a household
+      description: |
+        Requires the permission `policies:write` (ADR 0007). A group has one
+        policyholder, who holds every member's policy while it is a member. A
+        litter group refers to the litter in the animal register. Later the
+        group gets one invoice and a group discount; it never affects claims.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePolicyGroupRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The group
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyGroup' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    get:
+      tags: [policies]
+      operationId: findPolicyGroups
+      x-permission: policies:read
+      summary: Groups of a policyholder, or that a policy is or was in
+      description: Requires the permission `policies:read`. Give exactly one filter.
+      parameters:
+        - { name: holderPartyId, in: query, schema: { type: string } }
+        - { name: policyId, in: query, schema: { type: string } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The groups
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/PolicyGroup' } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/policy-groups/{groupId}:
+    get:
+      tags: [policies]
+      operationId: getPolicyGroup
+      x-permission: policies:read
+      summary: A group with its members over time
+      description: Requires the permission `policies:read`.
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The group
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyGroup' }
+
+  /v1/policy-groups/{groupId}/members:
+    post:
+      tags: [policies]
+      operationId: addPolicyGroupMember
+      x-permission: policies:write
+      summary: Add a policy to the group from a day
+      description: |
+        Requires the permission `policies:write`. From `from` (default today,
+        or the policy's start if later). The group's policyholder must hold the
+        policy that day, and a policy is in one group at a time (`409`). When
+        the animal is sold, the policy leaves the group from the day of sale.
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddGroupMemberRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The group
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyGroup' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/policy-groups/{groupId}/members/{policyId}/ends:
+    post:
+      tags: [policies]
+      operationId: endPolicyGroupMember
+      x-permission: policies:write
+      summary: A policy leaves the group from a day
+      description: Requires the permission `policies:write`. From `to` (default today), with a reason.
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/PolicyIdPath'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EndGroupMemberRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The group
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyGroup' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/proposal-expiry-runs:
     post:
       tags: [policies]
@@ -2392,6 +2520,11 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: '^era_[A-Za-z0-9]+$' }
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^pgr_[A-Za-z0-9]+$' }
     PolicyProposalId:
       name: proposalId
       in: path
@@ -3408,6 +3541,58 @@ components:
             amount: { $ref: '#/components/schemas/NonNegativeMoney' }
             currency: { $ref: '#/components/schemas/Currency' }
         reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    CreatePolicyGroupRequest:
+      type: object
+      additionalProperties: false
+      required: [market, kind, holderPartyId]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        kind: { type: string, enum: [litter, household] }
+        holderPartyId: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' }
+        litterId: { type: string, pattern: '^lit_[A-Za-z0-9]+$', description: Required for a litter. }
+
+    AddGroupMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [policyId]
+      properties:
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        from: { $ref: '#/components/schemas/Date' }
+
+    EndGroupMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        to: { $ref: '#/components/schemas/Date' }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    PolicyGroup:
+      type: object
+      required: [id, market, kind, holderPartyId, createdBy, createdAt, members]
+      properties:
+        id: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        kind: { type: string, enum: [litter, household] }
+        holderPartyId: { type: string }
+        litterId: { type: string }
+        createdBy: { type: string }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        members:
+          type: array
+          items:
+            type: object
+            required: [policyId, from, addedBy, addedAt]
+            properties:
+              policyId: { type: string }
+              from: { $ref: '#/components/schemas/Date' }
+              to: { $ref: '#/components/schemas/Date', description: The first day it is no longer a member. }
+              addedBy: { type: string }
+              addedAt: { $ref: '#/components/schemas/DateTime' }
+              endedBy: { type: string }
+              endedAt: { $ref: '#/components/schemas/DateTime' }
+              endReason: { type: string }
 
     RenewPolicyRequest:
       type: object

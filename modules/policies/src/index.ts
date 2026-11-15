@@ -194,6 +194,43 @@ export interface PolicyTransaction {
   note?: string;
 }
 
+/**
+ * Policies grouped for a litter or a household (ADR 0007): one policyholder,
+ * later one invoice and a group discount. A group never affects claims.
+ */
+export interface PolicyGroup {
+  id: string;
+  market: string;
+  kind: 'litter' | 'household';
+  /** Every member's policyholder while it is a member. */
+  holderPartyId: string;
+  /** For a litter: the litter in the animal register. */
+  litterId?: string;
+  createdBy: string;
+  createdAt: Timestamp;
+  members: GroupMembership[];
+}
+
+export interface GroupMembership {
+  policyId: string;
+  from: ISODate;
+  /** The first day it is no longer a member. Omitted: still a member. */
+  to?: ISODate;
+  addedBy: string;
+  addedAt: Timestamp;
+  endedBy?: string;
+  endedAt?: Timestamp;
+  endReason?: string;
+}
+
+/** What a change stores besides versions, transaction and events, in the same transaction. */
+export interface ApplyExtra {
+  terms?: Term[];
+  decision?: { proposalId: string; decision: ProposalDecision };
+  changes?: (TermChange & { policyId: string; termNo: number })[];
+  endMemberships?: { groupId: string; policyId: string; to: ISODate; endedBy: string; endedAt: Timestamp; reason: string }[];
+}
+
 /** How the new policyholder accepted the terms (ADR 0029). */
 export interface Acceptance {
   /** e.g. 'web', 'app', 'phone', 'paper'. */
@@ -276,9 +313,7 @@ export interface PolicyStore {
     add: PolicyVersion[],
     tx: PolicyTransaction,
     events: PolicyEvent[],
-    terms?: Term[],
-    decision?: { proposalId: string; decision: ProposalDecision },
-    changes?: (TermChange & { policyId: string; termNo: number })[],
+    extra?: ApplyExtra,
   ): Promise<void>;
   /** Stores a proposal unless one for the same source event exists. Returns whether it was stored. */
   addProposal(p: Proposal): Promise<boolean>;
@@ -287,6 +322,14 @@ export interface PolicyStore {
   listProposals(filter: { policyId?: string; pending?: boolean }): Promise<Proposal[]>;
   /** Stores a decision that changes no policy. Throws PolicyConflictError if it is already decided. */
   decideProposal(proposalId: string, decision: ProposalDecision): Promise<void>;
+  createGroup(group: PolicyGroup): Promise<void>;
+  getGroup(id: string): Promise<PolicyGroup | null>;
+  /** Groups for a policyholder, or with the policy as a member now or before. */
+  findGroups(filter: { holderPartyId?: string; policyId?: string }): Promise<PolicyGroup[]>;
+  /** Throws PolicyConflictError if the policy is already a member of a group. */
+  addMember(groupId: string, m: GroupMembership): Promise<void>;
+  /** Ends the open membership. Throws PolicyConflictError if there is none. */
+  endMember(groupId: string, policyId: string, end: { to: ISODate; endedBy: string; endedAt: Timestamp; reason: string }): Promise<void>;
   /**
    * Policies with a current active version ending in [from, to] that no current
    * version follows: the ones that are up for renewal.
@@ -627,8 +670,7 @@ export class PolicyService implements PolicyPort {
           this.event('policy.cancelled', policyId, now, { transactionId: txId, reason: input.reason, effectiveDate: effective, refund }),
           ...this.superseded(policyId, now, tx.supersedes!, add),
         ],
-        [],
-        decision && { proposalId: decision.proposalId, decision: { ...decision.decision, transactionId: txId } },
+        { ...(decision ? { decision: { proposalId: decision.proposalId, decision: { ...decision.decision, transactionId: txId } } } : {}) },
       )
       .catch(this.translate);
     return tx;
@@ -731,7 +773,7 @@ export class PolicyService implements PolicyPort {
             premium: { amount: term.premium, currency: term.currency },
           }),
         ],
-        [term],
+        { terms: [term] },
       )
       .catch(this.translate);
     return tx;
@@ -947,8 +989,15 @@ export class PolicyService implements PolicyPort {
           this.event('policy.transferred', p.id, now, { transactionId: txId, fromPartyId: d.fromPartyId, toPartyId: d.toPartyId, from: d.from, premium }),
           ...this.superseded(p.id, now, tx.supersedes!, add),
         ],
-        [],
-        { proposalId: id, decision: { outcome: 'accepted', acceptance, transactionId: txId, decidedBy: by, decidedAt: now } },
+        {
+          decision: { proposalId: id, decision: { outcome: 'accepted', acceptance, transactionId: txId, decidedBy: by, decidedAt: now } },
+          // The policy leaves the previous policyholder's group from the day of sale.
+          endMemberships: (await this.d.store.findGroups({ policyId: p.id })).flatMap((g) =>
+            g.members
+              .filter((m) => m.policyId === p.id && !m.to && g.holderPartyId === d.fromPartyId)
+              .map((m) => ({ groupId: g.id, policyId: p.id, to: d.from > m.from ? d.from : m.from, endedBy: by, endedAt: now, reason: 'The animal was sold' })),
+          ),
+        },
       )
       .catch(this.translate);
     return this.getProposal(id);
@@ -1087,12 +1136,75 @@ export class PolicyService implements PolicyPort {
           this.event('policy.changed', policyId, now, { transactionId: txId, termNo: term.termNo, changeNo, from: input.from, premiumAdjustment, currency: term.currency }),
           ...this.superseded(policyId, now, tx.supersedes!, add),
         ],
-        [],
-        undefined,
-        [{ ...change, policyId, termNo: term.termNo }],
+        { changes: [{ ...change, policyId, termNo: term.termNo }] },
       )
       .catch(this.translate);
     return tx;
+  }
+
+  /** A group for a litter or a household (ADR 0007). */
+  async createGroup(input: { market: string; kind: 'litter' | 'household'; holderPartyId: string; litterId?: string }, by: string): Promise<PolicyGroup> {
+    if (!['litter', 'household'].includes(input.kind)) throw new PolicyError('validation', `Unknown kind '${input.kind}'`);
+    this.profile(input.market);
+    if ((await this.d.parties.marketOf(input.holderPartyId)) !== input.market) {
+      throw new PolicyError('validation', `The party ${input.holderPartyId} does not exist in market ${input.market}`);
+    }
+    if (input.kind === 'litter' && !/^lit_[A-Za-z0-9]+$/.test(input.litterId ?? '')) throw new PolicyError('validation', 'A litter group needs the litterId');
+    if (input.kind === 'household' && input.litterId !== undefined) throw new PolicyError('validation', 'A household group has no litterId');
+    const group: PolicyGroup = {
+      id: this.d.ids.next('pgr'),
+      market: input.market,
+      kind: input.kind,
+      holderPartyId: input.holderPartyId,
+      ...(input.litterId ? { litterId: input.litterId } : {}),
+      createdBy: by,
+      createdAt: this.d.clock.now(),
+      members: [],
+    };
+    await this.d.store.createGroup(group);
+    return this.getGroup(group.id);
+  }
+
+  async getGroup(id: string): Promise<PolicyGroup> {
+    const g = await this.d.store.getGroup(id);
+    if (!g) throw new PolicyError('not_found', `Policy group ${id} does not exist`);
+    return g;
+  }
+
+  findGroups(filter: { holderPartyId?: string; policyId?: string }): Promise<PolicyGroup[]> {
+    return this.d.store.findGroups(filter);
+  }
+
+  /**
+   * Adds a policy to the group from a day (default today, or the policy's start
+   * if later). The group's policyholder must hold the policy that day, and a
+   * policy is in one group at a time.
+   */
+  async addMember(groupId: string, input: { policyId: string; from?: ISODate }, by: string): Promise<PolicyGroup> {
+    const g = await this.getGroup(groupId);
+    const p = await this.get(input.policyId);
+    if (p.market !== g.market) throw new PolicyError('validation', `Policy ${p.id} is not in market ${g.market}`);
+    const today = this.d.clock.now().slice(0, 10);
+    const first = p.versions.find((v) => v.status === 'active')?.validFrom;
+    const from = input.from ?? (first && first > today ? first : today);
+    if (!validDate(from)) throw new PolicyError('validation', 'from must be YYYY-MM-DD');
+    const v = p.versions.find((x) => x.status === 'active' && x.validFrom <= from && from < x.validTo);
+    if (!v) throw new PolicyError('validation', `Policy ${p.id} is not in force on ${from}`);
+    if (v.policyholderPartyId !== g.holderPartyId) throw new PolicyError('validation', `Policy ${p.id} is held by another party on ${from}`);
+    await this.d.store.addMember(groupId, { policyId: p.id, from, addedBy: by, addedAt: this.d.clock.now() }).catch(this.translate);
+    return this.getGroup(groupId);
+  }
+
+  async endMember(groupId: string, policyId: string, input: { to?: ISODate; reason: string }, by: string): Promise<PolicyGroup> {
+    const g = await this.getGroup(groupId);
+    const m = g.members.find((x) => x.policyId === policyId && !x.to);
+    if (!m) throw new PolicyError('conflict', `Policy ${policyId} is not a member of group ${groupId}`);
+    const reason = (input.reason ?? '').trim();
+    if (!reason) throw new PolicyError('validation', 'A reason is required');
+    const to = input.to ?? this.d.clock.now().slice(0, 10);
+    if (!validDate(to) || to < m.from) throw new PolicyError('validation', `to must be a date from ${m.from}`);
+    await this.d.store.endMember(groupId, policyId, { to, endedBy: by, endedAt: this.d.clock.now(), reason }).catch(this.translate);
+    return this.getGroup(groupId);
   }
 
   /** Cancellations that have not been reversed. */
@@ -1244,6 +1356,37 @@ export class InMemoryPolicyStore implements PolicyStore {
   private txs: PolicyTransaction[] = [];
   private outbox: (PolicyEvent & { publishedAt?: string })[] = [];
   private proposals: Proposal[] = [];
+  private groups: PolicyGroup[] = [];
+
+  async createGroup(g: PolicyGroup) {
+    this.groups.push(structuredClone(g));
+  }
+
+  async getGroup(id: string) {
+    const g = this.groups.find((x) => x.id === id);
+    return g ? structuredClone(g) : null;
+  }
+
+  async findGroups(filter: { holderPartyId?: string; policyId?: string }) {
+    return structuredClone(
+      this.groups.filter(
+        (g) => (!filter.holderPartyId || g.holderPartyId === filter.holderPartyId) && (!filter.policyId || g.members.some((m) => m.policyId === filter.policyId)),
+      ),
+    );
+  }
+
+  async addMember(groupId: string, m: GroupMembership) {
+    if (this.groups.some((g) => g.members.some((x) => x.policyId === m.policyId && !x.to))) {
+      throw new PolicyConflictError(`Policy ${m.policyId} is already a member of a group`);
+    }
+    this.groups.find((g) => g.id === groupId)!.members.push(structuredClone(m));
+  }
+
+  async endMember(groupId: string, policyId: string, end: { to: ISODate; endedBy: string; endedAt: string; reason: string }) {
+    const m = this.groups.find((g) => g.id === groupId)?.members.find((x) => x.policyId === policyId && !x.to);
+    if (!m) throw new PolicyConflictError(`Policy ${policyId} is not a member of group ${groupId}`);
+    Object.assign(m, { to: end.to, endedBy: end.endedBy, endedAt: end.endedAt, endReason: end.reason });
+  }
 
   async addProposal(p: Proposal) {
     if (this.proposals.some((x) => x.sourceEventId === p.sourceEventId)) return false;
@@ -1322,9 +1465,7 @@ export class InMemoryPolicyStore implements PolicyStore {
     add: PolicyVersion[],
     tx: PolicyTransaction,
     events: PolicyEvent[],
-    terms: Term[] = [],
-    decision?: { proposalId: string; decision: ProposalDecision },
-    changes: (TermChange & { policyId: string; termNo: number })[] = [],
+    { terms = [], decision, changes = [], endMemberships = [] }: ApplyExtra = {},
   ) {
     if (decision && this.proposals.find((x) => x.id === decision.proposalId)?.decision) throw new PolicyConflictError(`Proposal ${decision.proposalId} is already decided`);
     if (terms.some((t) => this.terms.some((x) => x.policyId === t.policyId && x.termNo === t.termNo))) throw new PolicyConflictError(`Policy ${policyId} has changed`);
@@ -1340,6 +1481,10 @@ export class InMemoryPolicyStore implements PolicyStore {
     this.txs.push(structuredClone(tx));
     this.outbox.push(...structuredClone(events));
     if (decision) this.proposals.find((x) => x.id === decision.proposalId)!.decision = structuredClone(decision.decision);
+    for (const e of endMemberships) {
+      const m = this.groups.find((g) => g.id === e.groupId)?.members.find((x) => x.policyId === e.policyId && !x.to);
+      if (m) Object.assign(m, { to: e.to, endedBy: e.endedBy, endedAt: e.endedAt, endReason: e.reason });
+    }
   }
 
   async pendingEvents(limit: number) {

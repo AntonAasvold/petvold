@@ -12,7 +12,7 @@ import {
   type ErasureRequest,
   type PartyRecord,
 } from '@petvold/parties';
-import { InMemoryPolicyStore, PolicyError, PolicyService, type PolicyRecord, type Proposal } from '@petvold/policies';
+import { InMemoryPolicyStore, PolicyError, PolicyService, type PolicyGroup, type PolicyRecord, type Proposal } from '@petvold/policies';
 import { animalPort, claimsActivity, productPort } from './wiring.ts';
 import {
   CatalogError,
@@ -803,6 +803,52 @@ export function createApp(d: AppDeps) {
     const r = await readJson(c, 'ReasonRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => ({ status: 201, body: await policies.rejectProposal(pr.id, r.body, c.get('principal').subject) }));
+  });
+
+  // Policy groups for a litter or a household (ADR 0007). The caller's markets;
+  // none for roles bound to a clinic or to policies.
+  const seesGroup = (c: Context<Env>, g: PolicyGroup) => {
+    const scope = c.get('scope');
+    return !scope.clinicId && !scope.policyIds && (scope.markets === '*' || scope.markets.has(g.market));
+  };
+  const visibleGroup = async (c: Context<Env>) => {
+    const g = await policies.getGroup(c.req.param('groupId') ?? '');
+    if (!seesGroup(c, g)) throw new PolicyError('not_found', `Policy group ${g.id} does not exist`);
+    return g;
+  };
+
+  app.post('/v1/policy-groups', async (c) => {
+    const r = await readJson(c, 'CreatePolicyGroupRequest');
+    if (!r.ok) return r.res;
+    const scope = c.get('scope');
+    if (scope.clinicId || scope.policyIds || !(scope.markets === '*' || scope.markets.has(r.body.market))) {
+      return problem(c, 403, 'Not permitted', 'The market is outside the caller\'s scope');
+    }
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.createGroup(r.body, c.get('principal').subject) }));
+  });
+
+  app.get('/v1/policy-groups', async (c) => {
+    const holderPartyId = c.req.query('holderPartyId');
+    const policyId = c.req.query('policyId');
+    if ((holderPartyId === undefined) === (policyId === undefined)) return problem(c, 422, 'Give exactly one of holderPartyId or policyId');
+    const found = await policies.findGroups(holderPartyId !== undefined ? { holderPartyId } : { policyId: policyId! });
+    return send(c, { items: found.filter((g) => seesGroup(c, g)) });
+  });
+
+  app.get('/v1/policy-groups/:groupId', async (c) => send(c, await visibleGroup(c)));
+
+  app.post('/v1/policy-groups/:groupId/members', async (c) => {
+    const g = await visibleGroup(c);
+    const r = await readJson(c, 'AddGroupMemberRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.addMember(g.id, r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/policy-groups/:groupId/members/:policyId/ends', async (c) => {
+    const g = await visibleGroup(c);
+    const r = await readJson(c, 'EndGroupMemberRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.endMember(g.id, c.req.param('policyId'), r.body, c.get('principal').subject) }));
   });
 
   app.post('/v1/proposal-expiry-runs', async (c) => {

@@ -45,32 +45,29 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Gallring enligt ADR 0028: lagringstider per marknad, relationer från djurregistret, gallringskörning och omkörning efter återställning
 
 **M3 – Policy**
-- [x] Tecknande med term, bitemporala versioner och transaktion. Skademotorn läser policyer från modulen (ADR 0029).
-- [x] Avslut enligt marknadsprofil och produktinställning, med premie tillbaka, återkallelse och händelser (ADR 0029)
-- [x] Förnyelse: körning inom produktens framförhållning, termlängd per produkt, lista för beslut, och förnyelse för hand (ADR 0029)
-- [x] Ändring av val under termen, med premiejustering för resten av termen (ADR 0029)
-- [ ] Ändring, reversering och ändring i fel ordning
-- [x] Överlåtelse vid försäljning och förslag till avslut vid dödsfall, från djurregistrets händelser (ADR 0029)
-- [ ] PolicyGroup
-- [ ] Policyer och skador rapporterar partens relationer till gallringen (`ActivitySource`, ADR 0028)
 - [x] ADR om policyns livscykel: tecknande, ändring, förnyelse, avslut och överlåtelse, med legala ramar per marknad (ADR 0029)
-- [ ] Förnyelse:
-  - förnyelsekörning före förfallodagen
-  - ny term med vald produktversion
-  - nytt pris och prövning (åldersgränser, nya undantag)
-  - avisering till kunden
-  - händelse `policy.renewed`
-- [ ] Avslut:
-  - kundens uppsägning
-  - ånger inom ångerfristen
-  - bolagets uppsägning vid utebliven betalning
-  - djuret dött eller sålt
-  - avslutsdatum bakåt i tiden (bitemporalt)
-  - reversering av avslut
-  - händelse `policy.cancelled`
-  - produktinställning för avslut under avtalstiden: tillåtet när som helst eller bara till förfallodagen (avtalet löper ut), uppsägningstid och premieåterbetalning
-  - avslut som alltid är tillåtna oavsett inställning, per marknad: ånger inom ångerfristen (distansavtal) och när försäkringsbehovet faller bort, till exempel när djuret dör eller säljs. Petvold validerar att en produkt inte stänger dem.
-- [x] Omprövning av skador när en policyversion ersätts, till exempel efter ett avslut bakåt i tiden (ADR 0029)
+- [x] Tecknande med term, bitemporala versioner och transaktion. Skademotorn läser policyer från modulen.
+- [x] Ändring av val under termen, med premiejustering för resten av termen
+- [x] Förnyelse:
+  - [x] förnyelsekörning före förfallodagen, med framförhållning och termlängd per produkt
+  - [x] ny term med den produktversion som säljs, och lista för beslut när det inte går
+  - [ ] nytt pris och ny prövning (åldersgränser, nya undantag): kommer med tariff och teckningsregler (M4)
+  - [x] händelse `policy.renewed`, som kanalen använder för att meddela kunden
+- [x] Avslut:
+  - [x] kundens uppsägning, med bindningstiden ut eller direkt med premie tillbaka (produktinställning)
+  - [x] ånger inom ångerfristen
+  - [x] bolagets uppsägning, och vid utebliven betalning
+  - [x] djuret dött eller sålt
+  - [x] avslutsdatum bakåt i tiden (bitemporalt)
+  - [x] reversering av avslut
+  - [x] händelse `policy.cancelled`
+  - [x] avslut som alltid är tillåtna oavsett produkt: ånger och när försäkringsbehovet faller bort
+- [x] Överlåtelse vid försäljning och förslag till avslut vid dödsfall, från djurregistrets händelser
+- [x] Omprövning av skador när en policyversion ersätts
+- [x] Policyer och skador rapporterar partens relationer till gallringen (ADR 0028)
+- [x] PolicyGroup: kull och hushåll, med medlemskap över tid och utträde vid försäljning (ADR 0007)
+- [ ] Teckna en hel kull i ett anrop, med en policy per djur och en kullgrupp
+- [ ] Ändring i fel ordning (en ändring registreras bakåt i tiden efter en senare ändring, ADR 0006)
 - [ ] Självriskperiod och försäkringsbelopp över termgränsen
 
 **M4 – Pris och teckning**

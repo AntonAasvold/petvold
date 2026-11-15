@@ -19,6 +19,9 @@ import {
   type PolicyStore,
   type PolicyTransaction,
   type PolicyVersion,
+  type ApplyExtra,
+  type GroupMembership,
+  type PolicyGroup,
   type Term,
   type TermChange,
 } from './index.ts';
@@ -141,9 +144,7 @@ export class PostgresPolicyStore implements PolicyStore {
     add: PolicyVersion[],
     tx: PolicyTransaction,
     events: PolicyEvent[],
-    terms: Term[] = [],
-    decision?: { proposalId: string; decision: ProposalDecision },
-    changes: (TermChange & { policyId: string; termNo: number })[] = [],
+    { terms = [], decision, changes = [], endMemberships = [] }: ApplyExtra = {},
   ): Promise<void> {
     await this.tx(async (db) => {
       if (supersede.length) {
@@ -166,7 +167,83 @@ export class PostgresPolicyStore implements PolicyStore {
       for (const v of add) await insertVersion(db, v, rows[0].animal_id);
       await insertEvents(db, events);
       if (decision) await insertDecision(db, decision.proposalId, decision.decision);
+      for (const e of endMemberships) await endMembership(db, e.groupId, e.policyId, e);
     }, policyId);
+  }
+
+  async createGroup(g: PolicyGroup): Promise<void> {
+    await this.pool.query(
+      `insert into policies.policy_group (group_id, market, kind, holder_party_id, litter_id, created_by, created_at) values ($1, $2, $3, $4, $5, $6, $7)`,
+      [g.id, g.market, g.kind, g.holderPartyId, g.litterId ?? null, g.createdBy, g.createdAt],
+    );
+  }
+
+  async getGroup(id: string): Promise<PolicyGroup | null> {
+    return (await this.groups(`where g.group_id = $1`, [id]))[0] ?? null;
+  }
+
+  async findGroups(filter: { holderPartyId?: string; policyId?: string }): Promise<PolicyGroup[]> {
+    return this.groups(
+      `where ($1::text is null or g.holder_party_id = $1)
+         and ($2::text is null or exists (select 1 from policies.group_membership m where m.group_id = g.group_id and m.policy_id = $2))`,
+      [filter.holderPartyId ?? null, filter.policyId ?? null],
+    );
+  }
+
+  async addMember(groupId: string, m: GroupMembership): Promise<void> {
+    await this.pool
+      .query(`insert into policies.group_membership (group_id, policy_id, from_date, added_by, added_at) values ($1, $2, $3, $4, $5)`, [
+        groupId,
+        m.policyId,
+        m.from,
+        m.addedBy,
+        m.addedAt,
+      ])
+      .catch((e: { code?: string }) => {
+        if (e.code === UNIQUE_VIOLATION) throw new PolicyConflictError(`Policy ${m.policyId} is already a member of a group`);
+        throw e;
+      });
+  }
+
+  async endMember(groupId: string, policyId: string, end: { to: string; endedBy: string; endedAt: string; reason: string }): Promise<void> {
+    const db = await this.pool.connect();
+    try {
+      await endMembership(db, groupId, policyId, end, true);
+    } finally {
+      db.release();
+    }
+  }
+
+  private async groups(where: string, params: unknown[]): Promise<PolicyGroup[]> {
+    const { rows } = await this.pool.query(
+      `select group_id, market, kind, holder_party_id, litter_id, created_by, created_at from policies.policy_group g ${where} order by g.created_at, g.group_id`,
+      params,
+    );
+    if (!rows.length) return [];
+    const members = await this.pool.query(
+      `select group_id, policy_id, from_date::text as from_date, to_date::text as to_date, added_by, added_at, ended_by, ended_at, end_reason
+       from policies.group_membership where group_id = any($1) order by from_date, policy_id`,
+      [rows.map((r) => r.group_id)],
+    );
+    return rows.map((r) => ({
+      id: r.group_id,
+      market: r.market,
+      kind: r.kind,
+      holderPartyId: r.holder_party_id,
+      ...(r.litter_id === null ? {} : { litterId: r.litter_id }),
+      createdBy: r.created_by,
+      createdAt: iso(r.created_at),
+      members: members.rows
+        .filter((m) => m.group_id === r.group_id)
+        .map((m) => ({
+          policyId: m.policy_id,
+          from: m.from_date,
+          ...(m.to_date === null ? {} : { to: m.to_date }),
+          addedBy: m.added_by,
+          addedAt: iso(m.added_at),
+          ...(m.ended_by === null ? {} : { endedBy: m.ended_by, endedAt: iso(m.ended_at), endReason: m.end_reason }),
+        })),
+    }));
   }
 
   async addProposal(p: Proposal): Promise<boolean> {
@@ -276,6 +353,21 @@ async function insertDecision(db: pg.PoolClient, proposalId: string, d: Proposal
     `insert into policies.proposal_decision (proposal_id, outcome, acceptance, reason, transaction_id, decided_by, decided_at) values ($1, $2, $3, $4, $5, $6, $7)`,
     [proposalId, d.outcome, d.acceptance ? JSON.stringify(d.acceptance) : null, d.reason ?? null, d.transactionId ?? null, d.decidedBy, d.decidedAt],
   );
+}
+
+async function endMembership(
+  db: pg.PoolClient,
+  groupId: string,
+  policyId: string,
+  end: { to: string; endedBy: string; endedAt: string; reason: string },
+  mustExist = false,
+) {
+  const res = await db.query(
+    `update policies.group_membership set to_date = $3, ended_by = $4, ended_at = $5, end_reason = $6
+     where group_id = $1 and policy_id = $2 and to_date is null`,
+    [groupId, policyId, end.to, end.endedBy, end.endedAt, end.reason],
+  );
+  if (mustExist && res.rowCount !== 1) throw new PolicyConflictError(`Policy ${policyId} is not a member of group ${groupId}`);
 }
 
 async function insertTerm(db: pg.PoolClient, t: Term) {
