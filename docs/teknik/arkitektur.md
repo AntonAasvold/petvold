@@ -168,6 +168,7 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 - **Validering.** Modulen känner inte till rättigheterna. `api` skickar med sin validering (`assertRoleDefinitions`).
 - **Optimistisk låsning.** En ny version sparas bara om den är exakt nästa nummer. Två samtidiga ändringar ger en vinnare och en 409.
 - **Utan databas.** Utan `access` i `createApp` ligger inställningen i minnet, med `roles` som version 1.
+- **Uppgradering.** `syncWithDefaults(current)` i `permissions.ts` är ren och räknar ut vad som saknas jämfört med `DEFAULT_ROLES`. Skriptet `modules/api/scripts/sync-roles.ts` (`npm run roles:sync`) visar det och sparar med `--apply` via `AccessService.change`, så samma validering och versionskontroll gäller.
 
 ## Ledgern
 

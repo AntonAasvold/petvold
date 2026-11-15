@@ -229,3 +229,38 @@ export function coversPolicy(scope: Scope, market: string, policyId: string): bo
 export function coversClaim(scope: Scope, claim: { market: string; policyId: string; clinicId?: string }): boolean {
   return coversPolicy(scope, claim.market, claim.policyId) && (!scope.clinicId || claim.clinicId === scope.clinicId);
 }
+
+export interface RoleSync {
+  roles: RoleDefinitions;
+  /** Default roles the installation did not have, added as they are. */
+  addedRoles: string[];
+  /** Permissions added to roles the installation already had. */
+  addedPermissions: { role: string; permissions: Permission[] }[];
+}
+
+/**
+ * Brings an installation's roles up to date with the defaults in a new Petvold
+ * version: adds missing default roles and the default permissions an existing
+ * role of the same name lacks. Never removes anything, and keeps bindings and
+ * limits as they are. Note: a default permission the installation removed on
+ * purpose comes back, so review the result before applying it. Pure.
+ */
+export function syncWithDefaults(current: RoleDefinitions, defaults: RoleDefinitions = DEFAULT_ROLES): RoleSync {
+  const roles: RoleDefinitions = structuredClone(current);
+  const addedRoles: string[] = [];
+  const addedPermissions: RoleSync['addedPermissions'] = [];
+  for (const [name, def] of Object.entries(defaults)) {
+    const have = roles[name];
+    if (!have) {
+      roles[name] = structuredClone(def);
+      addedRoles.push(name);
+      continue;
+    }
+    const missing = def.permissions.filter((p) => !have.permissions.includes(p));
+    if (missing.length) {
+      roles[name] = { ...have, permissions: [...have.permissions, ...missing] };
+      addedPermissions.push({ role: name, permissions: missing });
+    }
+  }
+  return { roles, addedRoles, addedPermissions };
+}

@@ -21,6 +21,7 @@
     "db:new": "dbmate new",
     "lint:lang": "tsx scripts/check-language.ts",
     "site": "tsx scripts/build-site.ts",
+    "roles:sync": "node --env-file-if-exists=.env --import tsx modules/api/scripts/sync-roles.ts",
     "erasures:reapply": "node --env-file-if-exists=.env --import tsx modules/parties/scripts/reapply-erasures.ts",
     "scenarios:golden": "tsx scripts/scenarios-golden.ts"
   },

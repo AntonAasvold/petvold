@@ -158,6 +158,11 @@ Spärrar:
 
 Första gången Petvold startar skapas version 1 från standardrollerna. **Standardroller som tillkommer i en senare version av Petvold läggs inte till automatiskt** i en installation som redan har en sparad inställning. En administratör lägger till dem som en ny version. Det är medvetet: inställningen ändras bara av någon som tar ansvar för ändringen.
 
+**`npm run roles:sync`** gör det enklare efter en uppgradering. Det jämför den sparade inställningen med standardrollerna och visar vad som saknas: hela roller och rättigheter som en roll med samma namn saknar. Med `npm run roles:sync -- --apply` sparas ändringen som en ny version, med `roles-sync` som ändrare och en motivering som räknar upp tilläggen.
+- Inget tas bort, och bindningar och beloppsgränser är oförändrade.
+- **Läs listan innan du kör `--apply`.** En standardrättighet som installationen medvetet har tagit bort kommer tillbaka.
+- Skriptet använder `ACCESS_DATABASE_URL`.
+
 *Inte byggt än:* fyra ögon för ändringar av inställningen. I dag kan en administratör ändra andra rollers gränser ensam, men varje ändring spåras.
 
 ## Lokalt
