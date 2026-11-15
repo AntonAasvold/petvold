@@ -26,7 +26,7 @@ flowchart LR
 | `claims-store-memory` | Lagring i minnet och exempeldata, för tester och snabb utveckling | `claims-core` |
 | `claims-store-postgres` | Lagring i Postgres med ren SQL (ADR 0015) och idempotensnycklar | `claims-core`, `pg` |
 | `decisioning` | Regeluppsättningar med livscykel: `DecisioningService`, porten `RuleSetStore`, lagring i minnet och i Postgres (schemat `decisioning`), och `DecisioningRulesPort` som skademotorn läser regler genom (ADR 0021) | `claims-core` (typer och kontrollsumma), `pg` |
-| `catalog` | Produktkatalogen, i dag referensdata: `CatalogService`, porten `ReferenceDataStore`, lagring i minnet och i Postgres (schemat `catalog`), och `labelFor` som väljer etikett efter språk (ADR 0022) | `pg` |
+| `catalog` | Produktkatalogen: referensdata (`CatalogService`, porten `ReferenceDataStore`, ADR 0022) och produktversioner (`ProductService`, porten `ProductStore`, `vetCareTermsFor`, ADR 0023), lagring i minnet och i Postgres (schemat `catalog`), och `labelFor` som väljer etikett efter språk | `claims-core` (typer och kontrollsumma), `pg` |
 | `access` | Rollinställningen som versioner: tjänsten `AccessService`, porten `RoleConfigStore`, lagring i minnet och i Postgres (schemat `access`, ADR 0020) | `pg` |
 | `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, `catalog`, Hono |
 
@@ -101,7 +101,7 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
   - en version i granskning är låst
   - fyra ögon (check-constraint)
   - en publicerad version per serie och datum (unikt partiellt index)
-- **Skademotorn** läser regler via `RulesPort.getRules(productVersion, treatmentDate)`. `DecisioningRulesPort` översätter produktversionen till en serie. Tills katalogen finns görs det med en funktion i installationen. Saknas regler svarar tjänsten `conflict`. En skada utan policy bedöms utan produktregler (`rulesVersion: 'none'`).
+- **Skademotorn** läser regler via `RulesPort.getRules(productVersion, treatmentDate)`. `DecisioningRulesPort` översätter produktversionen till en serie med en funktion som installationen ger, normalt katalogens `ProductService.ruleSeriesOf`. Okänd produktversion ger `null`. Saknas regler svarar tjänsten `conflict`. En skada utan policy bedöms utan produktregler (`rulesVersion: 'none'`).
 - **Kontrollsumma.** `rulesChecksum` (sha256 över innehåll, beräkningsmodell och datum) följer med reglerna in i underlaget och därmed i `inputHash`.
 
 **Simulering (ADR 0018):** `simulate()` i `claims-core/src/simulate.ts` är en ren funktion. Den kör sparade underlag med andra regler genom `CALCULATION_MODELS` och jämför med besluten.
@@ -116,6 +116,16 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 - **Databasen upprätthåller reglerna:** en ras har en art som finns, och arten ändras aldrig (trigger). Andra sorter har ingen förälder, och en ändring har en motivering (check-constraints).
 - **Upprepning är säker.** Skickas samma ändring igen returnerar tjänsten den sparade revisionen och skapar ingen ny. Därför behöver `PUT` ingen `Idempotency-Key`.
 - **Språk.** `labelFor(labels, acceptLanguage)` är ren: exakt tagg, sedan språket utan region, sedan engelska, sedan första taggen i bokstavsordning. API-lagret lägger till `label` i svaret.
+
+**Produktversioner (ADR 0023):**
+- **Tabell.** `catalog.product_version` (migration 0014), med primärnyckeln `(product, version)` och samma optimistiska låsning som regeluppsättningar (`revision`).
+- **Databasen upprätthåller reglerna** (trigger och check-constraints):
+  - en publicerad version får bara ett tidigare `sales_to`
+  - en version i granskning är låst
+  - fyra ögon
+  - högst en publicerad version per produkt och dag (`daterange(sales_from, sales_to) &&`)
+- **Kontroller mot andra moduler.** `ProductService` får `speciesActive` och `ruleSeriesInForce` som funktioner. Installationen (dev-servern, eller `createApp` om inget anges) kopplar dem till referensdatan och till `DecisioningService.rulesInForce`.
+- **Säljperioden utanför kontrollsumman.** Kontrollsumman täcker innehållet och `salesFrom`. `salesTo` kan ändras efter publicering, och varje sådan ändring sparas med vem, när och varför.
 
 **Rollinställningen (ADR 0020):**
 - **Versioner.** Modulen `access` sparar hela rollinställningen som versioner i `access.role_config` (migration 0009). Den har en egen tjänsteroll, `access_service`, som bara får läsa och lägga till.

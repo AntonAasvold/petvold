@@ -2,7 +2,7 @@
 
 Vad en produkt och en policy styr i skaderegleringen, och hur det ställs in.
 
-> **Läge:** Produktens skaderegler är versionerade regeluppsättningar i modulen `decisioning`. De ändras via API och publiceras med fyra ögon (se [Regeluppsättningar](#regeluppsättningar) nedan). Produktkatalogen, med produkter, villkorsalternativ och referensdata, byggs senare i M2. Tills den finns använder alla exempelprodukter regelserien `SE-HUND-VV`.
+> **Läge:** Produkter och produktversioner finns i modulen `catalog` (se [Produkter och produktversioner](#produkter-och-produktversioner)). Produktens skaderegler är versionerade regeluppsättningar i modulen `decisioning`, och produktversionen pekar på deras serie. Båda ändras via API och publiceras med fyra ögon.
 
 Inställningarna ligger på två ställen:
 
@@ -128,7 +128,40 @@ Varje beslut simuleras för sig, med den självriskperiod och det förbrukade be
 
 **Spårbarhet:** bedömningen visar `rulesVersion` (till exempel `SE-HUND-VV@2`) och `rulesChecksum`. Hela regelinnehållet sparas i beslutets underlag, så ett gammalt beslut räknas om med exakt de regler det fattades med, även efter att versionen avvecklats.
 
-## När katalogen finns *(planerat, M2)*
+## Produkter och produktversioner
 
-- Produkter och produktversioner med moment, villkorsalternativ och säljperiod. Produktversionen pekar på en regelserie.
-- Referensdata: arter, raser och kön är byggda, se [Referensdata](referensdata.md). Diagnoskoder och fakturakategorier kan läggas till som nya sorter.
+En produktversion säger vad som kan säljas och med vilka val (ADR 0023). Id:t är `<produkt>@<version>`, till exempel `SE-HUND-VV-LIV@2026.2`, och det är detta id som policyn sparar.
+
+| Fält | Betyder | Exempel |
+| --- | --- | --- |
+| `market`, `currency` | Marknad och valuta | `SE`, `SEK` |
+| `species` | Arter ur [referensdatan](referensdata.md) | `["dog"]` |
+| `names` | Namn per språk | `{ "en": "Dog insurance, vet care and life", "sv": "Hundförsäkring, veterinärvård och liv" }` |
+| `ruleSeries` | Regelserien skador bedöms med | `SE-HUND-VV` |
+| `salesFrom`, `salesTo` | Säljperiod, där `salesTo` är första dagen den inte säljs. Utan `salesTo` säljs den tills vidare. | `2026-01-01` |
+| `vetCare.annualLimits` | Valbara försäkringsbelopp | 30 000, 60 000 och 120 000 kr |
+| `vetCare.deductibles` | Valbara självrisker, var och en med kod, namn och villkor (se [Policyns villkor](#policyns-villkor-för-veterinärvård)) | `standard`: 2 000 kr per period och 25 %. `high`: 4 000 kr per period och 25 %. |
+| `vetCare.defaultAnnualLimit`, `defaultDeductible` | Standardval | 60 000 kr, `standard` |
+| `vetCare.waitingPeriodDays` | Karenstid | 30 dagar |
+
+**Livscykel:**
+
+| Steg | Anrop | Rättighet | Gör |
+| --- | --- | --- | --- |
+| Utkast | `POST /v1/products/{produkt}/versions` med `version`, `content`, `salesFrom` | `catalog:write` | Skapar ett utkast. Det kan ändras med `PUT .../versions/{v}`. |
+| Granskning | `POST .../versions/{v}/submissions` | `catalog:write` | Låser innehållet. Arterna måste vara aktiva, och regelserien måste ha en publicerad version som gäller när försäljningen börjar. |
+| Tillbaka | `POST .../versions/{v}/returns` | `catalog:publish` | Tillbaka till utkast, med motivering |
+| Publicering | `POST .../versions/{v}/publications` | `catalog:publish` | En annan person än den som skickade till granskning. Ingen annan version av produkten får säljas under samma period. |
+| Avsluta försäljning | `POST .../versions/{v}/sales-ends` med `salesTo` och `reason` | `catalog:publish` | Tidigast i dag och bara tidigare än ett befintligt slutdatum |
+
+En publicerad version ändras aldrig utom slutdatumet för försäljningen. Policyer som redan har versionen behåller den, och skademotorn hittar fortfarande dess regelserie.
+
+**Läsa:**
+- `GET /v1/products/on-sale?date=2026-11-15&market=SE&species=dog` ger versionerna som säljs den dagen. Det är högst en per produkt.
+- `GET /v1/products/{produkt}/versions/{v}/vet-care-terms?annualLimit=3000000&deductible=high` ger de villkor en policy får med kundens val. Ett val som utelämnas ger standardvalet. Ett val som inte finns i produkten ger `422`.
+
+**Exempel:** version `2026.2` säljs från 1 januari 2026. Version `2027.1` med högre självrisk ska börja säljas 1 januari 2027. Den som publicerar avslutar först försäljningen av `2026.2` till `2027-01-01` och publicerar sedan `2027.1` med `salesFrom` `2027-01-01`. Bella, som har `2026.2`, får fortfarande sina skador bedömda med regelserien `SE-HUND-VV`.
+
+**Så hittar skademotorn reglerna:** policyns produktversion ger regelserien, och regelserien ger den version som gäller på behandlingsdatumet. Om produktversionen inte finns eller inte är publicerad svarar skademotorn `409`.
+
+*Inte byggt än:* andra moment än veterinärvård, och pris (M4).

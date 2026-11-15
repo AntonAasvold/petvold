@@ -3,11 +3,12 @@
  *
  * Storage: Postgres when CLAIMS_DATABASE_URL is set (in .env after
  * `npm run dev:up`), so claims, decisions and the ledger survive restarts.
- * Without it everything lives in memory. Policies and rules are always the
- * in-memory sample data until the policy and product modules exist.
+ * Without it everything lives in memory. Policies are always the
+ * in-memory sample data until the policy module exists. Rules, reference data and
+ * products come from their modules, seeded on the first start.
  *
  * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-admin'
- * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' (reference data), 'dev-clinic'
+ * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-clinic'
  * (clinic), 'dev-job' (reassessment job), 'dev-customer' (customer channel). Roles map to
  * permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
@@ -22,9 +23,20 @@ import { AccessService, InMemoryRoleConfigStore, type RoleConfigStore } from '@p
 import { PostgresRoleConfigStore } from '@petvold/access/postgres';
 import { DecisioningRulesPort, DecisioningService, InMemoryRuleSetStore, ruleSetChecksum, type RuleSetStore, type RuleSetVersion } from '@petvold/decisioning';
 import { PostgresRuleSetStore } from '@petvold/decisioning/postgres';
-import { CatalogService, InMemoryReferenceDataStore, isReferenceKind, type ReferenceDataStore } from '@petvold/catalog';
-import { PostgresReferenceDataStore } from '@petvold/catalog/postgres';
+import {
+  CatalogService,
+  InMemoryProductStore,
+  InMemoryReferenceDataStore,
+  isReferenceKind,
+  productChecksum,
+  ProductService,
+  type ProductStore,
+  type ProductVersion,
+  type ReferenceDataStore,
+} from '@petvold/catalog';
+import { PostgresProductStore, PostgresReferenceDataStore } from '@petvold/catalog/postgres';
 import referenceSeed from '@petvold/catalog/seed/reference-data.json' with { type: 'json' };
+import productSeed from '@petvold/catalog/seed/products.json' with { type: 'json' };
 import { CALCULATION_MODEL, CALCULATION_MODELS } from '@petvold/claims-core';
 import { createApp, InMemoryIdempotencyStore, type IdempotencyStore, type Principal } from './index.ts';
 import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './permissions.ts';
@@ -111,9 +123,42 @@ async function seedRules(store: RuleSetStore): Promise<void> {
 
 // Reference data (ADR 0022): in Postgres with CATALOG_DATABASE_URL, else in memory.
 const catalogUrl = process.env.CATALOG_DATABASE_URL;
-const referenceStore: ReferenceDataStore = catalogUrl ? new PostgresReferenceDataStore(createPool(catalogUrl, { max: 2 })) : new InMemoryReferenceDataStore();
+const catalogPool = catalogUrl ? createPool(catalogUrl, { max: 2 }) : null;
+const referenceStore: ReferenceDataStore = catalogPool ? new PostgresReferenceDataStore(catalogPool) : new InMemoryReferenceDataStore();
+const productStore: ProductStore = catalogPool ? new PostgresProductStore(catalogPool) : new InMemoryProductStore();
 const catalog = new CatalogService({ references: referenceStore, clock });
+const products = new ProductService({
+  products: productStore,
+  clock,
+  speciesActive: async (code) => (await referenceStore.get('species', code))?.active === true,
+  ruleSeriesInForce: async (series, onDate) => (await decisioning.rulesInForce(series, onDate)) !== null,
+});
 await seedReferenceData();
+await seedProducts();
+
+/**
+ * The first start publishes the sample product SE-HUND-VV-LIV@2026.2, the
+ * product of Bella's policy. An installation seed, like the rules: in
+ * production a version goes through draft, review and publication.
+ */
+async function seedProducts(): Promise<void> {
+  const now = clock.now();
+  for (const p of productSeed as Pick<ProductVersion, 'product' | 'version' | 'salesFrom' | 'content'>[]) {
+    if (await productStore.get(p.product, p.version)) continue;
+    const draft: ProductVersion = { ...p, status: 'draft', revision: 1, createdBy: 'petvold-seed', createdAt: now };
+    await productStore.create(draft);
+    await productStore.update({
+      ...draft,
+      status: 'published',
+      checksum: productChecksum(draft),
+      revision: 2,
+      submittedBy: 'petvold-seed',
+      submittedAt: now,
+      publishedBy: 'petvold-install',
+      publishedAt: now,
+    });
+  }
+}
 
 /** Sample species, sexes and breeds, created once. Parents come first in the file. */
 async function seedReferenceData(): Promise<void> {
@@ -128,8 +173,8 @@ async function seedReferenceData(): Promise<void> {
 
 const service = new ClaimsService({
   policies: new InMemoryPolicyPort([{ snapshot: fixtures.bellaPolicy(), sysFrom: '2026-03-03T00:00:00Z' }]),
-  // Until the product catalog exists: every sample product uses the SE-HUND-VV series.
-  rules: new DecisioningRulesPort(decisioning, () => SERIES),
+  // The product version on the policy points at its rule series (ADR 0023).
+  rules: new DecisioningRulesPort(decisioning, (pv) => products.ruleSeriesOf(pv)),
   store,
   clock,
   ids,
@@ -150,6 +195,7 @@ const tokens: Record<string, Principal> = {
   'dev-author': { subject: 'author@example.test', roles: ['rules-author'] },
   'dev-publisher': { subject: 'publisher@example.test', roles: ['rules-publisher'] },
   'dev-catalog': { subject: 'catalog@example.test', roles: ['catalog-manager'] },
+  'dev-catalog-publisher': { subject: 'catalog-publisher@example.test', roles: ['catalog-publisher'] },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
   // Acts for the customer who owns Bella's policy in the sample data.
@@ -163,6 +209,7 @@ const app = createApp({
   access,
   decisioning,
   catalog,
+  products,
   auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) },
 });
 
@@ -180,7 +227,8 @@ console.log(`Petvold listening on http://localhost:${port}`);
 console.log(`  Storage:   ${storage}`);
 console.log(`  Rules:     ${decisioningUrl ? 'Postgres' : 'memory'}, series ${SERIES} (GET /v1/rule-sets/${SERIES}/versions)`);
 console.log(`  Reference: ${catalogUrl ? 'Postgres' : 'memory'} (GET /v1/reference-data/breed?parent=dog)`);
+console.log(`  Products:  ${catalogUrl ? 'Postgres' : 'memory'} (GET /v1/products/on-sale?date=2026-11-15)`);
 console.log(`  Roles:     ${accessUrl ? 'Postgres, versioned (GET /v1/access/roles)' : 'memory, versioned (GET /v1/access/roles)'}`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-catalog (reference data), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-catalog and dev-catalog-publisher (reference data and products), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);

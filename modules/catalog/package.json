@@ -7,9 +7,12 @@
     ".": "./src/index.ts",
     "./postgres": "./src/postgres.ts",
     "./test-suites/reference-data-store": "./test-suites/reference-data-store.ts",
-    "./seed/reference-data.json": "./seed/reference-data.json"
+    "./test-suites/product-store": "./test-suites/product-store.ts",
+    "./seed/reference-data.json": "./seed/reference-data.json",
+    "./seed/products.json": "./seed/products.json"
   },
   "dependencies": {
+    "@petvold/claims-core": "^0.1.0",
     "pg": "^8.23.1"
   }
 }

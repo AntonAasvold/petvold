@@ -14,14 +14,22 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Migration 0013:** schemat `catalog`. Provad ner och upp igen.
   - **Dev-servern** läser in exempeldata (3 arter, 2 kön, 8 raser på engelska och svenska). Ny token `dev-catalog`.
 - **Bygglogg** i `docs/logg/` med en post per PR om hur ändringen är byggd. Den har lagts till i `CLAUDE.md` och arbetssättet.
-- 241 tester och 82 databastester.
+- #32 mergad.
+- Produkter och produktversioner i `catalog` (ADR 0023, Föreslagen):
+  - **Produktversioner** som `SE-HUND-VV-LIV@2026.2` har marknad, valuta, arter, namn, regelserie, säljperiod och valbara försäkringsbelopp och självrisker för veterinärvård.
+  - **Livscykel:** utkast, granskning och publicering med fyra ögon. Vid granskning kontrolleras arter och att regelserien gäller när försäljningen börjar. Försäljningen kan avslutas tidigare, med motivering. Högst en version av en produkt säljs samma dag, och databasen spärrar det också.
+  - **Skademotorn** hittar regelserien via policyns produktversion (`ProductService.ruleSeriesOf`). Den tillfälliga funktionen i dev-servern är borta.
+  - **API:** nio operationer under `/v1/products`, bland annat produkter till salu ett visst datum och villkor för kundens val. Ny rättighet `catalog:publish` och ny roll `catalog-publisher`.
+  - **Migration 0014:** `catalog.product_version`. Provad ner och upp igen.
+  - **Dev-servern** publicerar exempelprodukten (Bellas). Ny token `dev-catalog-publisher`.
+- 254 tester och 86 databastester.
 
 **Nästa steg**
-1. Produkter och produktversioner i `catalog`: säljperiod, villkorsalternativ, regelserie och publicering med fyra ögon. Därefter läser skademotorn regelserien från produktversionen, och den tillfälliga funktionen i installationen försvinner.
+1. `assess` och `calculate` flyttas till `decisioning-core` (ADR 0021, steg 4), eller djurregistret, beroende på vad du prioriterar.
 
 **Öppet**
-- ADR 0022 väntar på ditt beslut.
-- `catalog:read` och `catalog-manager` saknas i installationer som redan har en sparad rollinställning. Lokalt måste de läggas till via API:et.
+- ADR 0022 och 0023 väntar på ditt beslut.
+- `catalog:read`, `catalog-manager` och `catalog-publisher` saknas i installationer som redan har en sparad rollinställning. Lokalt måste de läggas till via API:et.
 
 ## 2026-11-14 (pass 23)
 
