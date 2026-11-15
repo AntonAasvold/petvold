@@ -43,6 +43,7 @@ async function setup() {
   await products.publish('SE-HUND', '1', 'publisher');
   const partyStore = new InMemoryPartyStore();
   await partyStore.register({ id: 'pty_anna', revision: 1, kind: 'person', market: 'SE', givenName: 'Anna', familyName: 'Example', changedBy: 't', changedAt: clock.now() }, []);
+  await partyStore.register({ id: 'pty_bo', revision: 1, kind: 'person', market: 'SE', givenName: 'Bo', familyName: 'Example', changedBy: 't', changedAt: clock.now() }, []);
   const parties = new PartyService({ store: partyStore, clock, ids });
   const animalStore = new InMemoryAnimalStore();
   const animals = new AnimalService({ store: animalStore, references: { get: async () => ({ active: true, parent: 'dog' }) }, clock, ids });
@@ -66,7 +67,13 @@ async function setup() {
     });
     return { status: res.status, body: (await res.json()) as any };
   };
-  return Object.assign(call, { clock });
+  /** Delivers the animal register's events to the policy module, as the installation's relay does. */
+  const relay = async () => {
+    const events = await animalStore.pendingEvents(100);
+    for (const e of events) await policies.handleAnimalEvent(e);
+    await animalStore.markPublished(events.map((e) => e.id), clock.now());
+  };
+  return Object.assign(call, { clock, animals, relay });
 }
 
 const apply = {
@@ -155,4 +162,27 @@ test('the renewal run renews with the version on sale, and a policy can be renew
   const manual = await call('POST', `/v1/policies/${p.id}/renewals`, 'seller', { premium: { amount: 500_000, currency: 'SEK' } });
   assert.equal(manual.status, 201);
   assert.deepEqual(manual.body.renewal, { termNo: 3, productVersion: 'SE-HUND@1', premium: { amount: 500_000, currency: 'SEK' } });
+});
+
+test('a sale in the animal register becomes a transfer proposal, accepted through the API', async () => {
+  const call = await setup();
+  const p = (await call('POST', '/v1/policies', 'seller', apply)).body;
+  call.clock.set('2027-06-10T10:00:00.000Z');
+  await call.animals.transfer('ani_rex', { partyId: 'pty_bo', from: '2027-06-01', reason: 'Sold' }, 'registrar');
+  await call.relay();
+  const list = await call('GET', '/v1/policy-proposals?status=pending', 'handler');
+  assert.equal(list.status, 200);
+  const [pr] = list.body.items;
+  assert.ok(validatorFor('PolicyProposal')(structuredClone(pr)));
+  assert.deepEqual([pr.kind, pr.policyId, pr.details.toPartyId, pr.deadline], ['transfer', p.id, 'pty_bo', '2027-07-10']);
+  assert.equal((await call('GET', '/v1/policy-proposals', 'sellerDe')).body.items.length, 0);
+  assert.equal((await call('POST', `/v1/policy-proposals/${pr.id}/acceptances`, 'handler', { channel: 'web' })).status, 403);
+  const ok = await call('POST', `/v1/policy-proposals/${pr.id}/acceptances`, 'seller', { channel: 'web', reference: 'sign-1' });
+  assert.equal(ok.status, 201);
+  assert.equal(ok.body.decision.outcome, 'accepted');
+  const now = (await call('GET', `/v1/policies/${p.id}`, 'handler')).body;
+  assert.deepEqual(now.versions.map((v: any) => v.policyholderPartyId), ['pty_anna', 'pty_bo']);
+  assert.equal((await call('POST', `/v1/policy-proposals/${pr.id}/rejections`, 'seller', { reason: 'x' })).status, 409);
+  assert.deepEqual((await call('POST', '/v1/proposal-expiry-runs', 'job')).body, { expired: [] });
+  assert.equal((await call('POST', '/v1/proposal-expiry-runs', 'seller')).status, 403);
 });

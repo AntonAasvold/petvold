@@ -10,8 +10,9 @@
  *   old one in system time and adds new ones.
  * - A **transaction** records each change with its steps and who made it.
  *
- * Policies are issued, renewed and cancelled, and a cancellation can be
- * reversed. Transfer comes next. Every change writes events to an outbox in
+ * Policies are issued, renewed, transferred and cancelled, and a cancellation
+ * can be reversed. Events from the animal register become proposals: a
+ * transfer when the animal is sold, a cancellation when it dies. Every change writes events to an outbox in
  * the same transaction (ADR 0008).
  * The module reads products, animals and parties only through ports (ADR 0001),
  * and implements the claims engine's PolicyPort.
@@ -130,7 +131,7 @@ export const TRANSACTION_STEPS = ['draft', 'priced', 'underwritten', 'issued'] a
 export interface PolicyTransaction {
   id: string;
   policyId: string;
-  type: 'issue' | 'cancel' | 'reinstate' | 'renew';
+  type: 'issue' | 'cancel' | 'reinstate' | 'renew' | 'transfer';
   steps: { step: (typeof TRANSACTION_STEPS)[number]; at: Timestamp; note?: string }[];
   requestedBy: string;
   requestedAt: Timestamp;
@@ -151,15 +152,65 @@ export interface PolicyTransaction {
     productVersion: string;
     premium: { amount: number; currency: string };
   };
+  transfer?: {
+    fromPartyId: string;
+    toPartyId: string;
+    /** The first day the new policyholder holds the policy: the day of sale. */
+    from: ISODate;
+    acceptance: Acceptance;
+    /** Premium for the days from the sale: back to the previous policyholder, and due from the new one (M5). */
+    premium: { amount: number; currency: string };
+  };
   /** A reinstatement: the cancellation it reverses. */
   reverses?: string;
   note?: string;
 }
 
+/** How the new policyholder accepted the terms (ADR 0029). */
+export interface Acceptance {
+  /** e.g. 'web', 'app', 'phone', 'paper'. */
+  channel: string;
+  /** e.g. a signing or recording reference in the channel. */
+  reference?: string;
+  acceptedAt: Timestamp;
+}
+
+/** What the policy module proposes after an event from the animal register (ADR 0029). */
+export interface Proposal {
+  id: string;
+  policyId: string;
+  market: string;
+  kind: 'transfer' | 'cancel-death';
+  sourceEventId: string;
+  details: { fromPartyId: string; toPartyId: string; from: ISODate } | { deceasedOn: ISODate };
+  /** A transfer the new owner has not accepted by this day ends the policy from the day of sale. */
+  deadline?: ISODate;
+  createdAt: Timestamp;
+  decision?: ProposalDecision;
+}
+
+export interface ProposalDecision {
+  outcome: 'accepted' | 'rejected' | 'expired';
+  acceptance?: Acceptance;
+  reason?: string;
+  /** The change it led to, if any. */
+  transactionId?: string;
+  decidedBy: string;
+  decidedAt: Timestamp;
+}
+
+/** An event from the animal register, as the policy module reads it. */
+export interface AnimalEventInput {
+  id: string;
+  type: string;
+  animalId: string;
+  data: Record<string, unknown>;
+}
+
 /** What the policy module tells others, written in the same transaction as the change (ADR 0008). */
 export interface PolicyEvent {
   id: string;
-  type: 'policy.issued' | 'policy.renewed' | 'policy.cancelled' | 'policy.reinstated' | 'policy.version_superseded';
+  type: 'policy.issued' | 'policy.renewed' | 'policy.transferred' | 'policy.cancelled' | 'policy.reinstated' | 'policy.version_superseded';
   policyId: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;
@@ -191,7 +242,22 @@ export interface PolicyStore {
    * Ends `supersede` in system time at tx.requestedAt and adds `add`, all or
    * nothing. Throws PolicyConflictError if any of them is no longer current.
    */
-  apply(policyId: string, supersede: string[], add: PolicyVersion[], tx: PolicyTransaction, events: PolicyEvent[], terms?: Term[]): Promise<void>;
+  apply(
+    policyId: string,
+    supersede: string[],
+    add: PolicyVersion[],
+    tx: PolicyTransaction,
+    events: PolicyEvent[],
+    terms?: Term[],
+    decision?: { proposalId: string; decision: ProposalDecision },
+  ): Promise<void>;
+  /** Stores a proposal unless one for the same source event exists. Returns whether it was stored. */
+  addProposal(p: Proposal): Promise<boolean>;
+  getProposal(id: string): Promise<Proposal | null>;
+  /** Oldest first. */
+  listProposals(filter: { policyId?: string; pending?: boolean }): Promise<Proposal[]>;
+  /** Stores a decision that changes no policy. Throws PolicyConflictError if it is already decided. */
+  decideProposal(proposalId: string, decision: ProposalDecision): Promise<void>;
   /**
    * Policies with a current active version ending in [from, to] that no current
    * version follows: the ones that are up for renewal.
@@ -229,6 +295,8 @@ export interface ProductOffer {
   currency: string;
   species: string[];
   onSale: boolean;
+  /** Days a new owner has to accept a transferred policy. */
+  transferAcceptanceDays: number;
   /** The product's setting for the customer's cancellation during a term (ADR 0029). */
   midTermCancellation: 'term-end' | 'immediate';
   /** The length of a term in months. */
@@ -419,6 +487,7 @@ export class PolicyService implements PolicyPort {
     policyId: string,
     input: { reason: CancellationReason; receivedOn?: ISODate; effectiveDate?: ISODate; note?: string },
     by: string,
+    decision?: { proposalId: string; decision: ProposalDecision },
   ): Promise<PolicyTransaction> {
     const p = await this.get(policyId);
     const profile = this.profile(p.market);
@@ -514,10 +583,18 @@ export class PolicyService implements PolicyPort {
       cancellation: { reason: input.reason, receivedOn, effectiveDate: effective, refund, ...(note ? { note } : {}) },
     };
     await this.d.store
-      .apply(policyId, tx.supersedes!, add, tx, [
-        this.event('policy.cancelled', policyId, now, { transactionId: txId, reason: input.reason, effectiveDate: effective, refund }),
-        ...this.superseded(policyId, now, tx.supersedes!, add),
-      ])
+      .apply(
+        policyId,
+        tx.supersedes!,
+        add,
+        tx,
+        [
+          this.event('policy.cancelled', policyId, now, { transactionId: txId, reason: input.reason, effectiveDate: effective, refund }),
+          ...this.superseded(policyId, now, tx.supersedes!, add),
+        ],
+        [],
+        decision && { proposalId: decision.proposalId, decision: { ...decision.decision, transactionId: txId } },
+      )
       .catch(this.translate);
     return tx;
   }
@@ -720,6 +797,168 @@ export class PolicyService implements PolicyPort {
     };
   }
 
+  /**
+   * Turns an event from the animal register into a proposal (ADR 0029):
+   * a sale into a transfer of the policy in force on the day of sale, a death
+   * into a cancellation. Returns the proposal, or null if no policy is affected
+   * or the event was handled before.
+   */
+  async handleAnimalEvent(e: AnimalEventInput): Promise<Proposal | null> {
+    const now = this.d.clock.now();
+    if (e.type === 'animal.ownership_changed') {
+      const from = String(e.data.from);
+      const toPartyId = String(e.data.toPartyId);
+      const p = await this.policyInForce(e.animalId, from);
+      if (!p) return null;
+      const v = p.versions.find((x) => x.status === 'active' && x.validFrom <= from && from < x.validTo) ?? p.versions.find((x) => x.status === 'active' && x.validFrom >= from)!;
+      if (v.policyholderPartyId === toPartyId) return null;
+      const term = p.terms.find((t) => t.termNo === v.termNo)!;
+      const days = (await this.d.products.offer(term.productVersion, from))?.transferAcceptanceDays ?? 30;
+      const proposal: Proposal = {
+        id: this.d.ids.next('ppr'),
+        policyId: p.id,
+        market: p.market,
+        kind: 'transfer',
+        sourceEventId: e.id,
+        details: { fromPartyId: v.policyholderPartyId, toPartyId, from },
+        deadline: addDays(from > now.slice(0, 10) ? from : now.slice(0, 10), days),
+        createdAt: now,
+      };
+      return (await this.d.store.addProposal(proposal)) ? proposal : null;
+    }
+    if (e.type === 'animal.died') {
+      const deceasedOn = String(e.data.deceasedOn);
+      const p = await this.policyInForce(e.animalId, deceasedOn);
+      if (!p) return null;
+      const proposal: Proposal = { id: this.d.ids.next('ppr'), policyId: p.id, market: p.market, kind: 'cancel-death', sourceEventId: e.id, details: { deceasedOn }, createdAt: now };
+      return (await this.d.store.addProposal(proposal)) ? proposal : null;
+    }
+    return null;
+  }
+
+  /** The animal's policy with an active version on or after the date. */
+  private async policyInForce(animalId: string, date: ISODate): Promise<PolicyRecord | null> {
+    for (const p of await this.findByAnimal(animalId)) {
+      if (p.versions.some((v) => v.status === 'active' && v.validTo > date)) return p;
+    }
+    return null;
+  }
+
+  async getProposal(id: string): Promise<Proposal> {
+    const p = await this.d.store.getProposal(id);
+    if (!p) throw new PolicyError('not_found', `Proposal ${id} does not exist`);
+    return p;
+  }
+
+  listProposals(filter: { policyId?: string; pending?: boolean } = {}): Promise<Proposal[]> {
+    return this.d.store.listProposals(filter);
+  }
+
+  /**
+   * Accepts a proposal. A transfer needs the new policyholder's acceptance of
+   * the terms, by the deadline: the policy then changes policyholder from the
+   * day of sale, as a new version, so the history shows both. A death cancels
+   * the policy from the day of death.
+   */
+  async acceptProposal(id: string, input: { channel: string; reference?: string }, by: string): Promise<Proposal> {
+    const pr = await this.pendingProposal(id);
+    const now = this.d.clock.now();
+    if (pr.kind === 'cancel-death') {
+      const { deceasedOn } = pr.details as { deceasedOn: ISODate };
+      await this.cancel(pr.policyId, { reason: 'need-ceased', effectiveDate: deceasedOn, note: `The animal died (${pr.sourceEventId})` }, by, {
+        proposalId: id,
+        decision: { outcome: 'accepted', decidedBy: by, decidedAt: now },
+      });
+      return this.getProposal(id);
+    }
+    const channel = (input.channel ?? '').trim();
+    if (!channel) throw new PolicyError('validation', 'The channel the new policyholder accepted in is required');
+    if (pr.deadline! < now.slice(0, 10)) throw new PolicyError('conflict', `The proposal expired ${pr.deadline}`);
+    const d = pr.details as { fromPartyId: string; toPartyId: string; from: ISODate };
+    const p = await this.get(pr.policyId);
+    if ((await this.d.parties.marketOf(d.toPartyId)) !== p.market) {
+      throw new PolicyError('validation', `The party ${d.toPartyId} does not exist in market ${p.market}`);
+    }
+    const affected = p.versions.filter((v) => v.status === 'active' && v.validTo > d.from && v.policyholderPartyId === d.fromPartyId);
+    if (!affected.length) throw new PolicyError('conflict', `Policy ${p.id} has no active version held by ${d.fromPartyId} after ${d.from}`);
+    const txId = this.d.ids.next('ptx');
+    const add: PolicyVersion[] = [];
+    for (const v of affected) {
+      const { sysTo: _s, ...rest } = v;
+      if (v.validFrom < d.from) add.push({ ...rest, id: this.d.ids.next('pv'), validTo: d.from, sysFrom: now, transactionId: txId });
+      add.push({ ...rest, id: this.d.ids.next('pv'), validFrom: v.validFrom > d.from ? v.validFrom : d.from, policyholderPartyId: d.toPartyId, sysFrom: now, transactionId: txId });
+    }
+    const acceptance: Acceptance = { channel, ...(input.reference?.trim() ? { reference: input.reference.trim() } : {}), acceptedAt: now };
+    const term = p.terms.find((t) => t.termNo === affected[0]!.termNo)!;
+    const premium = { amount: refundFor(p.terms, affected, d.from), currency: term.currency };
+    const tx: PolicyTransaction = {
+      id: txId,
+      policyId: p.id,
+      type: 'transfer',
+      steps: [{ step: 'issued', at: now }],
+      requestedBy: by,
+      requestedAt: now,
+      supersedes: affected.map((v) => v.id),
+      transfer: { fromPartyId: d.fromPartyId, toPartyId: d.toPartyId, from: d.from, acceptance, premium },
+    };
+    await this.d.store
+      .apply(
+        p.id,
+        tx.supersedes!,
+        add,
+        tx,
+        [
+          this.event('policy.transferred', p.id, now, { transactionId: txId, fromPartyId: d.fromPartyId, toPartyId: d.toPartyId, from: d.from, premium }),
+          ...this.superseded(p.id, now, tx.supersedes!, add),
+        ],
+        [],
+        { proposalId: id, decision: { outcome: 'accepted', acceptance, transactionId: txId, decidedBy: by, decidedAt: now } },
+      )
+      .catch(this.translate);
+    return this.getProposal(id);
+  }
+
+  /**
+   * Rejects a proposal. A rejected transfer (the new owner does not want the
+   * policy) ends the policy from the day of sale, since the need ceased then. A
+   * rejected death, e.g. registered on the wrong animal, changes nothing.
+   */
+  async rejectProposal(id: string, input: { reason: string }, by: string): Promise<Proposal> {
+    const pr = await this.pendingProposal(id);
+    const reason = (input.reason ?? '').trim();
+    if (!reason) throw new PolicyError('validation', 'A reason is required');
+    const decision: ProposalDecision = { outcome: 'rejected', reason, decidedBy: by, decidedAt: this.d.clock.now() };
+    if (pr.kind === 'transfer') {
+      const { from } = pr.details as { from: ISODate };
+      await this.cancel(pr.policyId, { reason: 'need-ceased', effectiveDate: from, note: `The animal was sold; the new owner did not take over the policy (${pr.sourceEventId})` }, by, { proposalId: id, decision });
+    } else {
+      await this.d.store.decideProposal(id, decision).catch(this.translate);
+    }
+    return this.getProposal(id);
+  }
+
+  /** Ends every policy whose transfer was not accepted by its deadline, from the day of sale. */
+  async expireProposals(markets: '*' | ReadonlySet<string>, by: string): Promise<Proposal[]> {
+    const today = this.d.clock.now().slice(0, 10);
+    const out: Proposal[] = [];
+    for (const pr of await this.d.store.listProposals({ pending: true })) {
+      if (pr.kind !== 'transfer' || pr.deadline! >= today || (markets !== '*' && !markets.has(pr.market))) continue;
+      const { from } = pr.details as { from: ISODate };
+      await this.cancel(pr.policyId, { reason: 'need-ceased', effectiveDate: from, note: `The animal was sold; the new owner did not accept by ${pr.deadline} (${pr.sourceEventId})` }, by, {
+        proposalId: pr.id,
+        decision: { outcome: 'expired', reason: `Not accepted by ${pr.deadline}`, decidedBy: by, decidedAt: this.d.clock.now() },
+      });
+      out.push(await this.getProposal(pr.id));
+    }
+    return out;
+  }
+
+  private async pendingProposal(id: string): Promise<Proposal> {
+    const pr = await this.getProposal(id);
+    if (pr.decision) throw new PolicyError('conflict', `Proposal ${id} is already ${pr.decision.outcome}`);
+    return pr;
+  }
+
   /** Cancellations that have not been reversed. */
   async cancellationsInForce(policyId: string): Promise<PolicyTransaction[]> {
     const txs = await this.d.store.transactions(policyId);
@@ -861,6 +1100,30 @@ export class InMemoryPolicyStore implements PolicyStore {
   private versions: PolicyVersion[] = [];
   private txs: PolicyTransaction[] = [];
   private outbox: (PolicyEvent & { publishedAt?: string })[] = [];
+  private proposals: Proposal[] = [];
+
+  async addProposal(p: Proposal) {
+    if (this.proposals.some((x) => x.sourceEventId === p.sourceEventId)) return false;
+    this.proposals.push(structuredClone(p));
+    return true;
+  }
+
+  async getProposal(id: string) {
+    const p = this.proposals.find((x) => x.id === id);
+    return p ? structuredClone(p) : null;
+  }
+
+  async listProposals(filter: { policyId?: string; pending?: boolean }) {
+    return structuredClone(
+      this.proposals.filter((p) => (!filter.policyId || p.policyId === filter.policyId) && (filter.pending === undefined || filter.pending === !p.decision)),
+    );
+  }
+
+  async decideProposal(proposalId: string, decision: ProposalDecision) {
+    const p = this.proposals.find((x) => x.id === proposalId);
+    if (!p || p.decision) throw new PolicyConflictError(`Proposal ${proposalId} is already decided`);
+    p.decision = structuredClone(decision);
+  }
 
   async get(id: string): Promise<PolicyRecord | null> {
     const p = this.policies.find((x) => x.id === id);
@@ -910,7 +1173,16 @@ export class InMemoryPolicyStore implements PolicyStore {
     ].sort();
   }
 
-  async apply(policyId: string, supersede: string[], add: PolicyVersion[], tx: PolicyTransaction, events: PolicyEvent[], terms: Term[] = []) {
+  async apply(
+    policyId: string,
+    supersede: string[],
+    add: PolicyVersion[],
+    tx: PolicyTransaction,
+    events: PolicyEvent[],
+    terms: Term[] = [],
+    decision?: { proposalId: string; decision: ProposalDecision },
+  ) {
+    if (decision && this.proposals.find((x) => x.id === decision.proposalId)?.decision) throw new PolicyConflictError(`Proposal ${decision.proposalId} is already decided`);
     if (terms.some((t) => this.terms.some((x) => x.policyId === t.policyId && x.termNo === t.termNo))) throw new PolicyConflictError(`Policy ${policyId} has changed`);
     const current = supersede.map((id) => this.versions.find((v) => v.id === id && v.policyId === policyId && !v.sysTo));
     if (current.some((v) => !v)) throw new PolicyConflictError(`Policy ${policyId} has changed`);
@@ -919,6 +1191,7 @@ export class InMemoryPolicyStore implements PolicyStore {
     this.versions.push(...structuredClone(add));
     this.txs.push(structuredClone(tx));
     this.outbox.push(...structuredClone(events));
+    if (decision) this.proposals.find((x) => x.id === decision.proposalId)!.decision = structuredClone(decision.decision);
   }
 
   async pendingEvents(limit: number) {

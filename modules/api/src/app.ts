@@ -12,7 +12,7 @@ import {
   type ErasureRequest,
   type PartyRecord,
 } from '@petvold/parties';
-import { InMemoryPolicyStore, PolicyError, PolicyService, type PolicyRecord } from '@petvold/policies';
+import { InMemoryPolicyStore, PolicyError, PolicyService, type PolicyRecord, type Proposal } from '@petvold/policies';
 import { animalPort, productPort } from './wiring.ts';
 import {
   CatalogError,
@@ -761,6 +761,47 @@ export function createApp(d: AppDeps) {
     const scope = c.get('scope');
     if (scope.clinicId || scope.policyIds) return problem(c, 403, 'Not permitted', 'A role bound to a clinic or to policies cannot run renewals');
     return send(c, await policies.renewalRun({ dryRun: r.body.dryRun ?? false, markets: scope.markets }, c.get('principal').subject));
+  });
+
+  // Proposals from the animal register's events (ADR 0029). Same scope as policies.
+  const inScope = (c: Context<Env>, pr: Proposal) => {
+    const scope = c.get('scope');
+    return !scope.clinicId && coversPolicy(scope, pr.market, pr.policyId);
+  };
+  const visibleProposal = async (c: Context<Env>) => {
+    const pr = await policies.getProposal(c.req.param('proposalId') ?? '');
+    if (!inScope(c, pr)) throw new PolicyError('not_found', `Proposal ${pr.id} does not exist`);
+    return pr;
+  };
+
+  app.get('/v1/policy-proposals', async (c) => {
+    const status = c.req.query('status');
+    if (status !== undefined && status !== 'pending' && status !== 'decided') return problem(c, 422, 'status is pending or decided');
+    const policyId = c.req.query('policyId');
+    const items = await policies.listProposals({ ...(policyId ? { policyId } : {}), ...(status ? { pending: status === 'pending' } : {}) });
+    return send(c, { items: items.filter((pr) => inScope(c, pr)) });
+  });
+
+  app.get('/v1/policy-proposals/:proposalId', async (c) => send(c, await visibleProposal(c)));
+
+  app.post('/v1/policy-proposals/:proposalId/acceptances', async (c) => {
+    const pr = await visibleProposal(c);
+    const r = await readJson(c, 'AcceptProposalRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.acceptProposal(pr.id, r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/policy-proposals/:proposalId/rejections', async (c) => {
+    const pr = await visibleProposal(c);
+    const r = await readJson(c, 'ReasonRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.rejectProposal(pr.id, r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/proposal-expiry-runs', async (c) => {
+    const scope = c.get('scope');
+    if (scope.clinicId || scope.policyIds) return problem(c, 403, 'Not permitted', 'A role bound to a clinic or to policies cannot run this');
+    return send(c, { expired: await policies.expireProposals(scope.markets, c.get('principal').subject) });
   });
 
   app.post('/v1/policies/:policyId/reinstatements', async (c) => {

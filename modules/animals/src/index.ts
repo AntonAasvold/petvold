@@ -13,6 +13,10 @@
  * Litters (ADR 0027): animals born together, registered at once with the
  * breeder as owner from the birth date. A litter never changes.
  *
+ * Events (ADR 0008, 0029): a change of owner and a death are written to an
+ * outbox in the same transaction, so the policy module can propose a transfer
+ * or a cancellation.
+ *
  * Lookup (ADR 0025): an animal can be open for lookup by identifier, e.g. by a
  * clinic. A lookup returns a summary without owners or change history.
  */
@@ -112,6 +116,15 @@ export interface NewAnimal {
   owner: Ownership;
 }
 
+/** What the register tells others, e.g. the policy module (ADR 0029). */
+export interface AnimalEvent {
+  id: string;
+  type: 'animal.ownership_changed' | 'animal.died';
+  animalId: string;
+  occurredAt: string;
+  data: Record<string, unknown>;
+}
+
 export interface AnimalStore {
   get(id: string): Promise<AnimalRecord | null>;
   /** Every revision of the details, oldest first. */
@@ -123,8 +136,8 @@ export interface AnimalStore {
   ownershipsOfParty(partyId: string): Promise<Ownership[]>;
   /** Stores a new animal with its first revision, identifiers and owner, all or nothing. */
   register(animal: Animal, identifiers: AnimalIdentifier[], owner: Ownership): Promise<void>;
-  /** Throws AnimalConflictError unless it is the next revision. */
-  appendRevision(animal: Animal): Promise<void>;
+  /** Throws AnimalConflictError unless it is the next revision. Writes `events` in the same transaction. */
+  appendRevision(animal: Animal, events?: AnimalEvent[]): Promise<void>;
   /** Throws IdentifierTakenError if any animal already has it. */
   addIdentifier(animalId: string, identifier: AnimalIdentifier): Promise<void>;
   /** Stores the litter and all its animals, all or nothing. */
@@ -133,8 +146,12 @@ export interface AnimalStore {
   /**
    * Closes ownership `closesSeq` on `next.validFrom` and adds `next`, all or nothing.
    * Throws AnimalConflictError if `closesSeq` is not the open ownership.
+   * Writes `events` in the same transaction.
    */
-  transfer(animalId: string, closesSeq: number, next: Ownership): Promise<void>;
+  transfer(animalId: string, closesSeq: number, next: Ownership, events?: AnimalEvent[]): Promise<void>;
+  /** Events not yet published, oldest first. */
+  pendingEvents(limit: number): Promise<AnimalEvent[]>;
+  markPublished(ids: string[], at: string): Promise<void>;
 }
 
 export class AnimalConflictError extends Error {
@@ -467,7 +484,11 @@ export class AnimalService {
       changedAt: this.d.clock.now(),
       reason,
     };
-    await this.d.store.appendRevision(next).catch(this.translate);
+    const events: AnimalEvent[] =
+      next.deceasedOn && next.deceasedOn !== cur.deceasedOn
+        ? [{ id: this.d.ids.next('aev'), type: 'animal.died', animalId: id, occurredAt: next.changedAt, data: { market: cur.market, deceasedOn: next.deceasedOn } }]
+        : [];
+    await this.d.store.appendRevision(next, events).catch(this.translate);
     return this.get(id);
   }
 
@@ -499,7 +520,14 @@ export class AnimalService {
       recordedAt: this.d.clock.now(),
       ...(reason ? { reason } : {}),
     };
-    await this.d.store.transfer(id, open.seq, next).catch(this.translate);
+    const event: AnimalEvent = {
+      id: this.d.ids.next('aev'),
+      type: 'animal.ownership_changed',
+      animalId: id,
+      occurredAt: next.recordedAt,
+      data: { market: cur.market, fromPartyId: open.partyId, toPartyId: next.partyId, from: next.validFrom, ...(reason ? { reason } : {}) },
+    };
+    await this.d.store.transfer(id, open.seq, next, [event]).catch(this.translate);
     return this.get(id);
   }
 
@@ -553,6 +581,15 @@ export class AnimalService {
 /** In-memory store, for tests and the dev server without a database. */
 export class InMemoryAnimalStore implements AnimalStore {
   private litters: Litter[] = [];
+  private outbox: (AnimalEvent & { publishedAt?: string })[] = [];
+
+  async pendingEvents(limit: number) {
+    return structuredClone(this.outbox.filter((e) => !e.publishedAt).slice(0, limit)).map(({ publishedAt: _p, ...e }) => e);
+  }
+
+  async markPublished(ids: string[], at: string) {
+    for (const e of this.outbox) if (ids.includes(e.id)) e.publishedAt = at;
+  }
   private animals: Animal[] = [];
   private identifiers = new Map<string, AnimalIdentifier & { animalId: string }>();
   private owners: (Ownership & { animalId: string })[] = [];
@@ -617,11 +654,12 @@ export class InMemoryAnimalStore implements AnimalStore {
     this.owners.push({ ...structuredClone(owner), animalId: animal.id });
   }
 
-  async appendRevision(animal: Animal) {
+  async appendRevision(animal: Animal, events: AnimalEvent[] = []) {
     const last = (await this.revisions(animal.id)).at(-1);
     if (!last || animal.revision !== last.revision + 1) throw new AnimalConflictError(`Animal ${animal.id} has changed`);
     if (animal.market !== last.market || animal.species !== last.species) throw new Error('Market and species never change');
     this.animals.push(structuredClone(animal));
+    this.outbox.push(...structuredClone(events));
   }
 
   async addIdentifier(animalId: string, i: AnimalIdentifier) {
@@ -629,12 +667,13 @@ export class InMemoryAnimalStore implements AnimalStore {
     this.identifiers.set(`${i.type}:${i.value}`, { ...structuredClone(i), animalId });
   }
 
-  async transfer(animalId: string, closesSeq: number, next: Ownership) {
+  async transfer(animalId: string, closesSeq: number, next: Ownership, events: AnimalEvent[] = []) {
     const open = this.owners.find((o) => o.animalId === animalId && o.seq === closesSeq && !o.validTo);
     const last = Math.max(0, ...this.owners.filter((o) => o.animalId === animalId).map((o) => o.seq));
     if (!open || next.seq !== last + 1) throw new AnimalConflictError(`The owner of animal ${animalId} has changed`);
     if (next.validFrom <= open.validFrom) throw new Error('A new ownership starts after the previous one');
     open.validTo = next.validFrom;
     this.owners.push({ ...structuredClone(next), animalId });
+    this.outbox.push(...structuredClone(events));
   }
 }

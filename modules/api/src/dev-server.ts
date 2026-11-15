@@ -269,6 +269,21 @@ async function seedPolicies(): Promise<void> {
   );
 }
 
+// The animal register's outbox (ADR 0008): delivered to the policy module, which
+// turns a sale into a transfer proposal and a death into a cancellation proposal (ADR 0029).
+setInterval(
+  () =>
+    void (async () => {
+      const events = await animalStore.pendingEvents(100);
+      for (const e of events) {
+        const proposal = await policies.handleAnimalEvent(e);
+        console.log(`[event] ${e.type} ${e.animalId}${proposal ? ` -> ${proposal.kind} proposal ${proposal.id}` : ''}`);
+      }
+      if (events.length) await animalStore.markPublished(events.map((e) => e.id), clock.now());
+    })().catch((err) => console.error('[animal relay]', err)),
+  1_000,
+).unref();
+
 // The policy module's outbox (ADR 0008). Here the events are just logged.
 setInterval(
   () =>

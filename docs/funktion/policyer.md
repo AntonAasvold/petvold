@@ -2,7 +2,7 @@
 
 En policy försäkrar ett djur. Den har en försäkringstagare, en produkt och hela sin historik. Besluten bakom finns i ADR 0006, 0007 och 0029.
 
-Policyer kan tecknas, förnyas och avslutas, och ett avslut kan återkallas. Ändring och överlåtelse kommer i nästa steg.
+Policyer kan tecknas, förnyas, överlåtas och avslutas, och ett avslut kan återkallas. När ett djur säljs eller dör i djurregistret får policyn ett förslag. Ändring av villkor under termen kommer i ett senare steg.
 
 ## Vad en policy har
 
@@ -68,6 +68,28 @@ Med `"dryRun": true` visas vad som skulle hända utan att något sparas.
 
 **Exempel:** Rex policy gäller till 1 december 2027. Den 17 oktober, 45 dagar före, förnyar körningen den till 1 december 2028 med den produktversion som säljs då. Om Anna redan har sagt upp till termens slut, förnyas den inte.
 
+## När djuret säljs eller dör
+
+Djurregistret skickar händelser när ett djur byter ägare (`animal.ownership_changed`) och när det dör (`animal.died`). Policymodulen gör om dem till **förslag** för den policy som gäller den dagen. En händelse som kommer två gånger ger bara ett förslag.
+
+**Försäljning: förslag om överlåtelse (ADR 0029).** Samma policy byter försäkringstagare från försäljningsdagen, när den nya ägaren har godkänt villkoren.
+- Förslaget har en **sista dag** (`deadline`): försäljningsdagen, eller i dag om den är senare, plus produktens `transferAcceptanceDays` (förval 30 dagar).
+- **Godkänn:** `POST /v1/policy-proposals/{id}/acceptances` med `channel` (till exempel `web` eller `phone`) och eventuellt `reference`, till exempel en signering.
+  - Policyn får nya versioner. Den förra ägaren står som försäkringstagare före försäljningsdagen, och den nya från den dagen.
+  - Historiken visar båda, och med `knownAt` syns vad som var känt före bytet.
+  - Karenstid, självriskperioder och förbrukat försäkringsbelopp följer policyn.
+  - Premien för dagarna efter försäljningen flyttas: den förra ägaren får tillbaka den, och den nya ska betala den (M5).
+- **Avböj:** `POST /v1/policy-proposals/{id}/rejections` med `reason`. Policyn avslutas från försäljningsdagen, eftersom behovet föll bort då.
+- **Ingen svarar:** `POST /v1/proposal-expiry-runs`, som är tänkt att köras varje dag, avslutar policyer vars förslag inte godkändes senast sista dagen.
+
+**Dödsfall: förslag om avslut.**
+- **Godkänn:** policyn avslutas från dödsdagen, med premie tillbaka.
+- **Avböj:** om dödsfallet registrerades på fel djur ändras inget.
+
+`GET /v1/policy-proposals?status=pending` visar obesvarade förslag, äldst först.
+
+**Exempel:** Anna säljer Rex till Bo 1 juni 2027 och registrerar det 10 juni. Policyn får ett förslag med sista dag 10 juli. Bo godkänner villkoren på webben 12 juni. Bo är då försäkringstagare från 1 juni, och premien för 1 juni till 1 december flyttas från Anna till Bo.
+
 ## Avsluta en policy
 
 `POST /v1/policies/{id}/cancellations` med `reason`, och vid behov `receivedOn` (dagen uppsägningen kom fram, eller skickades av bolaget, förvalt i dag), `effectiveDate` och `note`. Skälet styr från vilken dag policyn upphör. Reglerna kommer från marknadsprofilen, alltså lagen, och från produktens inställning.
@@ -90,7 +112,7 @@ Med `"dryRun": true` visas vad som skulle hända utan att något sparas.
 
 **Återkalla ett avslut:** `POST /v1/policies/{id}/reinstatements` med `cancellationId` och `note`. Det går bara om avslutet är policyns senaste transaktion, till exempel om ett dödsfall registrerades på fel djur. De ersatta versionerna gäller då igen, och premien tillbaka återkallas.
 
-**Händelser:** varje ändring skriver händelser i samma transaktion: `policy.issued`, `policy.renewed`, `policy.cancelled` (med upphörandedag och premie tillbaka), `policy.reinstated` och `policy.version_superseded` för varje ersatt version. Dev-servern skriver ut dem i loggen.
+**Händelser:** varje ändring skriver händelser i samma transaktion: `policy.issued`, `policy.renewed`, `policy.transferred`, `policy.cancelled` (med upphörandedag och premie tillbaka), `policy.reinstated` och `policy.version_superseded` för varje ersatt version. Dev-servern skriver ut dem i loggen.
 
 **Exempel:** Rex dör 1 mars 2027, och Anna hör av sig 20 mars. Kundservice skickar `{ "reason": "need-ceased", "effectiveDate": "2027-03-01", "note": "Djuret har dött" }`. Policyn upphör från 1 mars, och premien för 1 mars till 1 december betalas tillbaka. En skada på Rex efter 1 mars avslås, eftersom policyn är avslutad.
 
@@ -102,6 +124,10 @@ Med `"dryRun": true` visas vad som skulle hända utan att något sparas.
 | `POST /v1/policies/{id}/renewals` | `policies:write` | Förnyar en policy för hand |
 | `POST /v1/renewal-runs` | `policies:renew` | Förnyelsekörningen |
 | `POST /v1/policies/{id}/cancellations` | `policies:write` | Avslutar en policy |
+| `GET /v1/policy-proposals` | `policies:read` | Förslag efter försäljning och dödsfall |
+| `POST /v1/policy-proposals/{id}/acceptances` | `policies:write` | Godkänner ett förslag |
+| `POST /v1/policy-proposals/{id}/rejections` | `policies:write` | Avböjer ett förslag |
+| `POST /v1/proposal-expiry-runs` | `policies:renew` | Avslutar policyer vars överlåtelse inte godkändes i tid |
 | `POST /v1/policies/{id}/reinstatements` | `policies:write` | Återkallar det senaste avslutet |
 | `GET /v1/policies?animalId=…` | `policies:read` | Policyer för ett djur. Det går också att använda `policyholderPartyId`. |
 | `GET /v1/policies/{id}` | `policies:read` | Policyn med termer och gällande versioner |
@@ -137,4 +163,4 @@ Svaret har en term från 1 december 2026 till 1 december 2027 (slutdagen räknas
 
 Dev-servern lägger in Bellas policy `pol_bella` första gången, med ägaren `pty_owner001` och förbehållet för hälta. Exemplet har bara den gällande termen. Token `dev-seller` tecknar policyer. Skademotorn läser policyerna från modulen.
 
-*Inte byggt än:* nytt pris vid förnyelse (M4), ändring, överlåtelse, policygrupper, förslag till avslut när djuret dör (händelser från djurregistret), och omprövning av skador efter ett avslut bakåt i tiden (ADR 0029).
+*Inte byggt än:* nytt pris vid förnyelse (M4), ändring av villkor under termen, policygrupper, och omprövning av skador efter ett avslut bakåt i tiden (ADR 0029).

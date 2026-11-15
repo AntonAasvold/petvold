@@ -175,6 +175,12 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 - **Avslut (migration 0022):** `PolicyService.cancel` räknar fram upphörandedagen från skälet, marknadsprofilen och produktens `midTermCancellation` (via `ProductPort`). `PolicyStore.apply(policyId, supersede, add, tx, events)` sätter `sys_to` på de ersatta versionerna och lägger till nya, i en transaktion. Samma metod används för återkallelse och kommer att användas för förnyelse och överlåtelse.
 - **Outbox:** `policies.outbox` får händelserna i samma transaktion. `pendingEvents` och `markPublished` används av en relay, som i dev-servern skriver ut dem i loggen.
 - **Premie tillbaka** räknas av den rena funktionen `refundFor(terms, versionerFöre, från)`.
+- **Förslag (migration 0024 och 0025):**
+  - Djurregistret har en egen outbox (`animals.outbox`). `AnimalService.transfer` och `correct` skriver `animal.ownership_changed` och `animal.died` i samma transaktion.
+  - Installationens relay lämnar dem till `PolicyService.handleAnimalEvent`, som skapar ett förslag i `policies.proposal`. `source_event_id` är unik, så en händelse som kommer två gånger ger bara ett förslag. I dev-servern är relayn en `setInterval`.
+  - `acceptProposal` för en överlåtelse delar versionerna vid försäljningsdagen och byter försäkringstagare i delen efter.
+  - Ett avslut för ett dödsfall, ett avböjt förslag eller ett förslag som löpt ut går genom `cancel`.
+  - Beslutet sparas i `policies.proposal_decision` i samma transaktion som ändringen (`PolicyStore.apply(…, decision)`).
 - **Förnyelse (migration 0023):** `PolicyStore.endingBetween(från, till)` ger policyer vars aktiva version slutar i perioden utan att någon version följer. `PolicyService.renewalRun` tar produktens `renewalLeadDays` via `ProductPort.offer` och den version som säljs via `ProductPort.versionOnSale`. `planRenewal` kontrollerar och bygger nästa term, och `renew` sparar den med `PolicyStore.apply(…, terms)`.
 
 **Rollinställningen (ADR 0020):**

@@ -64,7 +64,7 @@ export const PERMISSIONS = [
   'policies:read',
   /** Issue, renew and cancel policies, and reverse a cancellation. */
   'policies:write',
-  /** Run the renewal of every policy up for renewal (ADR 0029). */
+  /** Scheduled policy jobs: renew every policy up for renewal, and end the ones whose transfer was not accepted in time (ADR 0029). */
   'policies:renew',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
@@ -131,7 +131,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   'party-registrar': { permissions: ['parties:read', 'parties:write'] },
   /** Issues policies, e.g. the insurer's sales channel or customer service (ADR 0029). */
   'policy-registrar': { permissions: ['policies:read', 'policies:write', 'animals:read', 'parties:read', 'catalog:read'] },
-  /** The scheduled renewal run. */
+  /** The scheduled renewal run and expiry of transfers not accepted in time. */
   'renewal-job': { permissions: ['policies:renew'] },
   /** Handles erasure and restriction of personal data (ADR 0028). Two people are needed to anonymize. */
   'privacy-officer': { permissions: ['parties:read', 'parties:privacy', 'parties:erase', 'parties:retention'] },

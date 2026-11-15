@@ -1320,6 +1320,138 @@ paths:
               schema: { $ref: '#/components/schemas/RenewalRunResult' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/policy-proposals:
+    get:
+      tags: [policies]
+      operationId: listPolicyProposals
+      x-permission: policies:read
+      summary: Proposals from the animal register's events
+      description: |
+        Requires the permission `policies:read` (ADR 0029). When an animal is
+        sold, its policy gets a transfer proposal; when it dies, a cancellation
+        proposal. Oldest first, only in the caller's scope.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, decided] } }
+        - { name: policyId, in: query, schema: { type: string } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The proposals
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/PolicyProposal' } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/policy-proposals/{proposalId}:
+    get:
+      tags: [policies]
+      operationId: getPolicyProposal
+      x-permission: policies:read
+      summary: A proposal with its decision
+      description: Requires the permission `policies:read`.
+      parameters:
+        - $ref: '#/components/parameters/PolicyProposalId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The proposal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyProposal' }
+
+  /v1/policy-proposals/{proposalId}/acceptances:
+    post:
+      tags: [policies]
+      operationId: acceptPolicyProposal
+      x-permission: policies:write
+      summary: Accept a proposal
+      description: |
+        Requires the permission `policies:write`. A transfer is accepted when
+        the new owner has accepted the terms, by the deadline: give the
+        `channel` and any `reference`. The policy then changes policyholder
+        from the day of sale, as a new version, and the premium for the days
+        from the sale is moved to the new policyholder. A death ends the policy
+        from the day of death.
+      parameters:
+        - $ref: '#/components/parameters/PolicyProposalId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcceptProposalRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The decided proposal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyProposal' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/policy-proposals/{proposalId}/rejections:
+    post:
+      tags: [policies]
+      operationId: rejectPolicyProposal
+      x-permission: policies:write
+      summary: Reject a proposal
+      description: |
+        Requires the permission `policies:write`. A rejected transfer (the new
+        owner does not want the policy) ends it from the day of sale. A
+        rejected death, e.g. registered on the wrong animal, changes nothing.
+      parameters:
+        - $ref: '#/components/parameters/PolicyProposalId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The decided proposal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyProposal' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/proposal-expiry-runs:
+    post:
+      tags: [policies]
+      operationId: expirePolicyProposals
+      x-permission: policies:renew
+      summary: End policies whose transfer was not accepted in time
+      description: |
+        Requires the permission `policies:renew`. Every pending transfer whose
+        deadline has passed ends the policy from the day of sale, since the
+        need for insurance ceased. Meant to run daily.
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The proposals that expired
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [expired]
+                properties:
+                  expired: { type: array, items: { $ref: '#/components/schemas/PolicyProposal' } }
+
   /v1/policies/{policyId}/reinstatements:
     post:
       tags: [policies]
@@ -2226,6 +2358,11 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: '^era_[A-Za-z0-9]+$' }
+    PolicyProposalId:
+      name: proposalId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^ppr_[A-Za-z0-9]+$' }
     PolicyIdPath:
       name: policyId
       in: path
@@ -3066,7 +3203,7 @@ components:
       properties:
         id: { type: string }
         policyId: { type: string }
-        type: { type: string, enum: [issue, cancel, reinstate, renew] }
+        type: { type: string, enum: [issue, cancel, reinstate, renew, transfer] }
         steps:
           type: array
           items:
@@ -3106,6 +3243,21 @@ components:
               properties:
                 amount: { $ref: '#/components/schemas/NonNegativeMoney' }
                 currency: { $ref: '#/components/schemas/Currency' }
+        transfer:
+          type: object
+          required: [fromPartyId, toPartyId, from, acceptance, premium]
+          properties:
+            fromPartyId: { type: string }
+            toPartyId: { type: string }
+            from: { $ref: '#/components/schemas/Date', description: The day of sale. }
+            acceptance: { $ref: '#/components/schemas/Acceptance' }
+            premium:
+              type: object
+              required: [amount, currency]
+              description: Premium for the days from the sale, back to the previous policyholder and due from the new one.
+              properties:
+                amount: { $ref: '#/components/schemas/NonNegativeMoney' }
+                currency: { $ref: '#/components/schemas/Currency' }
         reverses: { type: string, description: A reinstatement's cancellation. }
         note: { type: string }
 
@@ -3122,6 +3274,52 @@ components:
         receivedOn: { $ref: '#/components/schemas/Date', description: 'The day the notice reached the insurer, or the insurer sent it. Default today.' }
         effectiveDate: { $ref: '#/components/schemas/Date', description: 'For need-ceased the day the need ceased; for customer-immediate a later day than the day after notice.' }
         note: { type: string, maxLength: 2000, description: 'Required for need-ceased and insurer-breach. Must not contain personal data.' }
+
+    Acceptance:
+      type: object
+      required: [channel, acceptedAt]
+      properties:
+        channel: { type: string, description: 'Where the new policyholder accepted the terms, e.g. web, app or phone.' }
+        reference: { type: string, description: e.g. a signing reference. }
+        acceptedAt: { $ref: '#/components/schemas/DateTime' }
+
+    AcceptProposalRequest:
+      type: object
+      additionalProperties: false
+      required: [channel]
+      properties:
+        channel: { type: string, minLength: 1, maxLength: 40 }
+        reference: { type: string, maxLength: 200 }
+
+    PolicyProposal:
+      type: object
+      required: [id, policyId, market, kind, sourceEventId, details, createdAt]
+      properties:
+        id: { type: string }
+        policyId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        kind: { type: string, enum: [transfer, cancel-death] }
+        sourceEventId: { type: string, description: The event from the animal register. }
+        details:
+          type: object
+          description: 'A transfer: fromPartyId, toPartyId and from (the day of sale). A death: deceasedOn.'
+          properties:
+            fromPartyId: { type: string }
+            toPartyId: { type: string }
+            from: { $ref: '#/components/schemas/Date' }
+            deceasedOn: { $ref: '#/components/schemas/Date' }
+        deadline: { $ref: '#/components/schemas/Date', description: A transfer not accepted by this day ends the policy from the day of sale. }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        decision:
+          type: object
+          required: [outcome, decidedBy, decidedAt]
+          properties:
+            outcome: { type: string, enum: [accepted, rejected, expired] }
+            acceptance: { $ref: '#/components/schemas/Acceptance' }
+            reason: { type: string }
+            transactionId: { type: string }
+            decidedBy: { type: string }
+            decidedAt: { $ref: '#/components/schemas/DateTime' }
 
     RenewPolicyRequest:
       type: object

@@ -4,7 +4,7 @@
  * end of an open ownership. The database also checks that market and species
  * never change and that ownerships follow each other without gaps.
  * Migration 0016 adds whether the animal is open for lookup (ADR 0025), and
- * migration 0018 adds litters (ADR 0027).
+ * migration 0018 adds litters (ADR 0027), and migration 0024 the outbox (ADR 0029).
  */
 import type pg from 'pg';
 import {
@@ -12,6 +12,7 @@ import {
   IdentifierTakenError,
   type Animal,
   type AnimalIdentifier,
+  type AnimalEvent,
   type AnimalRecord,
   type AnimalStore,
   type IdentifierType,
@@ -128,23 +129,38 @@ export class PostgresAnimalStore implements AnimalStore {
     };
   }
 
-  async appendRevision(animal: Animal): Promise<void> {
-    const res = await this.pool
-      .query(
+  async appendRevision(animal: Animal, events: AnimalEvent[] = []): Promise<void> {
+    await this.tx(async (db) => {
+      const res = await db
+        .query(
         `insert into animals.animal_revision (animal_id, revision, market, species, breed, sex, neutered, name, birth_date, deceased_on, allow_lookup, changed_by, changed_at, reason)
          select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
          where $2 = (select max(revision) + 1 from animals.animal_revision where animal_id = $1)`,
         revisionParams(animal),
-      )
-      .catch(conflict(`Animal ${animal.id} has changed`));
-    if (res.rowCount !== 1) throw new AnimalConflictError(`Animal ${animal.id} has changed`);
+        )
+        .catch(conflict(`Animal ${animal.id} has changed`));
+      if (res.rowCount !== 1) throw new AnimalConflictError(`Animal ${animal.id} has changed`);
+      await insertEvents(db, events);
+    });
+  }
+
+  async pendingEvents(limit: number): Promise<AnimalEvent[]> {
+    const { rows } = await this.pool.query(
+      `select event_id, type, animal_id, occurred_at, data from animals.outbox where published_at is null order by seq limit $1`,
+      [limit],
+    );
+    return rows.map((r) => ({ id: r.event_id, type: r.type, animalId: r.animal_id, occurredAt: iso(r.occurred_at), data: r.data }));
+  }
+
+  async markPublished(ids: string[], at: string): Promise<void> {
+    await this.pool.query(`update animals.outbox set published_at = $2 where event_id = any($1) and published_at is null`, [ids, at]);
   }
 
   async addIdentifier(animalId: string, identifier: AnimalIdentifier): Promise<void> {
     await insertIdentifier(this.pool, animalId, identifier);
   }
 
-  async transfer(animalId: string, closesSeq: number, next: Ownership): Promise<void> {
+  async transfer(animalId: string, closesSeq: number, next: Ownership, events: AnimalEvent[] = []): Promise<void> {
     await this.tx(async (db) => {
       const closed = await db.query(
         `update animals.ownership set valid_to = $3 where animal_id = $1 and seq = $2 and valid_to is null`,
@@ -152,6 +168,7 @@ export class PostgresAnimalStore implements AnimalStore {
       );
       if (closed.rowCount !== 1) throw new AnimalConflictError(`The owner of animal ${animalId} has changed`);
       await insertOwnership(db, animalId, next);
+      await insertEvents(db, events);
     });
   }
 
@@ -189,6 +206,18 @@ function revisionParams(a: Animal) {
     a.changedAt,
     a.reason ?? null,
   ];
+}
+
+async function insertEvents(db: Db, events: AnimalEvent[]) {
+  for (const e of events) {
+    await db.query(`insert into animals.outbox (event_id, animal_id, type, occurred_at, data) values ($1, $2, $3, $4, $5)`, [
+      e.id,
+      e.animalId,
+      e.type,
+      e.occurredAt,
+      JSON.stringify(e.data),
+    ]);
+  }
 }
 
 async function insertRevision(db: Db, a: Animal) {

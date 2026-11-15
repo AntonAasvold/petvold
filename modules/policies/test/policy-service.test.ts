@@ -7,6 +7,7 @@ const offer = (o: Partial<ProductOffer> = {}): ProductOffer => ({
   product: 'SE-HUND',
   termMonths: 12,
   renewalLeadDays: 45,
+  transferAcceptanceDays: 30,
   market: 'SE',
   currency: 'SEK',
   species: ['dog'],
@@ -323,4 +324,91 @@ test('the term length comes from the product, within the market\'s maximum', asy
   assert.deepEqual((await monthly.s.renewalRun({ dryRun: false, markets: '*' }, 'job')).renewed.map((x) => x.endDate), ['2027-02-01']);
   const long = renewalSetup({ offers: { 'SE-HUND@1': offer({ termMonths: 24 }) } });
   await rejects(long.s.issue(input(), by), 'validation', /at most 12/);
+});
+
+function transferSetup() {
+  let now = '2026-11-15T10:00:00.000Z';
+  let n = 0;
+  const store = new InMemoryPolicyStore();
+  const markets: Record<string, string> = { pty_anna: 'SE', pty_bo: 'SE' };
+  const s = new PolicyService({
+    store,
+    products: { offer: async () => offer(), versionOnSale: async () => 'SE-HUND@1' },
+    animals: { get: async () => ({ market: 'SE', species: 'dog', birthDate: '2024-03-01' }) },
+    parties: { marketOf: async (id) => markets[id] ?? null },
+    clock: { now: () => now },
+    ids: { next: (p) => `${p}_${++n}` },
+  });
+  return { s, store, at: (iso: string) => (now = iso) };
+}
+const sold = (id: string, from: string) => ({ id, type: 'animal.ownership_changed', animalId: 'ani_rex', data: { fromPartyId: 'pty_anna', toPartyId: 'pty_bo', from } });
+
+test('a sale becomes a transfer proposal; accepted, the policy changes policyholder from the day of sale', async () => {
+  const { s, store, at } = transferSetup();
+  const p = await s.issue(yearly, by); // 2026-12-01 to 2027-12-01, 365 000 a year
+  at('2027-06-10T10:00:00.000Z');
+  const pr = await s.handleAnimalEvent(sold('aev_1', '2027-06-01'));
+  assert.deepEqual([pr?.kind, pr?.deadline, pr?.details], ['transfer', '2027-07-10', { fromPartyId: 'pty_anna', toPartyId: 'pty_bo', from: '2027-06-01' }]);
+  assert.equal(await s.handleAnimalEvent(sold('aev_1', '2027-06-01')), null); // handled before
+  assert.equal(await s.handleAnimalEvent({ id: 'aev_x', type: 'animal.ownership_changed', animalId: 'ani_other', data: { toPartyId: 'pty_bo', from: '2027-06-01' } }), null);
+
+  await rejects(s.acceptProposal(pr!.id, { channel: ' ' }, 'cs'), 'validation', /channel/);
+  const done = await s.acceptProposal(pr!.id, { channel: 'web', reference: 'sign-123' }, 'cs');
+  assert.equal(done.decision?.outcome, 'accepted');
+  await rejects(s.acceptProposal(pr!.id, { channel: 'web' }, 'cs'), 'conflict', /already accepted/);
+
+  const after = await s.get(p.id);
+  assert.deepEqual(after.versions.map((v) => [v.validFrom, v.validTo, v.policyholderPartyId]), [['2026-12-01', '2027-06-01', 'pty_anna'], ['2027-06-01', '2027-12-01', 'pty_bo']]);
+  // What was known before the transfer still shows Anna on 1 July.
+  assert.equal((await store.versionAt(p.id, '2027-07-01', '2027-06-09T00:00:00.000Z'))?.policyholderPartyId, 'pty_anna');
+  const tx = (await s.transactions(p.id)).at(-1)!;
+  // From 2027-06-01 to 2027-12-01: 183 days.
+  assert.deepEqual([tx.type, tx.transfer?.premium, tx.transfer?.acceptance.channel], ['transfer', { amount: 183_000, currency: 'SEK' }, 'web']);
+  assert.equal((await s.getPolicyAt(p.id, '2027-03-01'))?.inceptionDate, '2026-12-01'); // the waiting period does not restart
+  assert.deepEqual((await s.findByPolicyholder('pty_bo')).map((x) => x.id), [p.id]);
+  assert.ok((await store.pendingEvents(100)).some((e) => e.type === 'policy.transferred'));
+});
+
+test('a transfer the new owner rejects, or does not accept in time, ends the policy from the day of sale', async () => {
+  const a = transferSetup();
+  const p = await a.s.issue(yearly, by);
+  a.at('2027-06-10T10:00:00.000Z');
+  const pr = (await a.s.handleAnimalEvent(sold('aev_1', '2027-06-01')))!;
+  await rejects(a.s.rejectProposal(pr.id, { reason: ' ' }, 'cs'), 'validation', /reason/);
+  const no = await a.s.rejectProposal(pr.id, { reason: 'Bo has his own insurance' }, 'cs');
+  assert.equal(no.decision?.outcome, 'rejected');
+  const tx = (await a.s.transactions(p.id)).at(-1)!;
+  assert.deepEqual([tx.cancellation?.reason, tx.cancellation?.effectiveDate, no.decision?.transactionId], ['need-ceased', '2027-06-01', tx.id]);
+
+  const b = transferSetup();
+  const q = await b.s.issue(yearly, by);
+  b.at('2027-06-10T10:00:00.000Z');
+  const late = (await b.s.handleAnimalEvent(sold('aev_2', '2027-06-01')))!;
+  b.at('2027-07-10T10:00:00.000Z');
+  assert.deepEqual(await b.s.expireProposals('*', 'job'), []); // the deadline day still counts
+  b.at('2027-07-11T10:00:00.000Z');
+  await rejects(b.s.acceptProposal(late.id, { channel: 'web' }, 'cs'), 'conflict', /expired 2027-07-10/);
+  const expired = await b.s.expireProposals('*', 'job');
+  assert.deepEqual(expired.map((x) => [x.id, x.decision?.outcome]), [[late.id, 'expired']]);
+  assert.equal((await b.s.getPolicyAt(q.id, '2027-06-15'))?.status, 'cancelled');
+});
+
+test('a death becomes a cancellation proposal; accepted, the policy ends from the day of death; rejected, nothing changes', async () => {
+  const { s, at } = transferSetup();
+  const p = await s.issue(yearly, by);
+  at('2027-03-20T10:00:00.000Z');
+  const died = { id: 'aev_9', type: 'animal.died', animalId: 'ani_rex', data: { deceasedOn: '2027-03-01' } };
+  const pr = (await s.handleAnimalEvent(died))!;
+  assert.deepEqual([pr.kind, pr.details, pr.deadline], ['cancel-death', { deceasedOn: '2027-03-01' }, undefined]);
+  assert.deepEqual((await s.listProposals({ pending: true })).map((x) => x.id), [pr.id]);
+  const wrong = await s.rejectProposal(pr.id, { reason: 'Registered on the wrong animal' }, 'cs');
+  assert.deepEqual([wrong.decision?.outcome, wrong.decision?.transactionId], ['rejected', undefined]);
+  assert.equal((await s.get(p.id)).versions.length, 1);
+
+  const again = (await s.handleAnimalEvent({ ...died, id: 'aev_10' }))!;
+  const yes = await s.acceptProposal(again.id, { channel: 'n/a' }, 'cs');
+  const tx = (await s.transactions(p.id)).at(-1)!;
+  assert.deepEqual([yes.decision?.transactionId, tx.cancellation?.effectiveDate, tx.cancellation?.refund.amount], [tx.id, '2027-03-01', 275_000]);
+  assert.deepEqual((await s.listProposals({ policyId: p.id })).map((x) => x.decision?.outcome), ['rejected', 'accepted']);
+  await rejects(s.getProposal('ppr_none'), 'not_found');
 });

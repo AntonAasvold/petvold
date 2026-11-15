@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [Överlåtelse och dödsfall från djurregistrets händelser](2026-11-15-overlatelse.md) | #49 |
 | 2026-11-15 | [Förnyelse av policyer](2026-11-15-fornyelse.md) | #48 |
 | 2026-11-15 | [Avslut av policyer](2026-11-15-avslut.md) | #47 |
 | 2026-11-15 | [Policymodulen: tecknande](2026-11-15-policyer.md) | #46 |
