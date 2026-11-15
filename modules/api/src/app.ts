@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
 import { DecisioningService, InMemoryRuleSetStore, RuleSetError, toClaimsRules } from '@petvold/decisioning';
-import { AnimalError, AnimalService, InMemoryAnimalStore, type AnimalRecord, type IdentifierType } from '@petvold/animals';
+import { AnimalError, AnimalService, IDENTIFIER_TYPES, InMemoryAnimalStore, type AnimalRecord, type IdentifierType } from '@petvold/animals';
 import {
   CatalogError,
   CatalogService,
@@ -509,6 +509,20 @@ export function createApp(d: AppDeps) {
     const [key, value] = filters[0]!;
     const found = key === 'ownerPartyId' ? await animals.findByOwner(value) : await animals.findByIdentifier({ type: key as IdentifierType, value });
     return send(c, { items: found.filter((a) => sees(c.get('scope'), a)) });
+  });
+
+  // Lookup by identifier (ADR 0025): only animals open for lookup, as a summary
+  // without owners, so bindings to a clinic or to policies do not limit it. Markets do.
+  app.get('/v1/animal-lookup', async (c) => {
+    const filters = IDENTIFIER_TYPES.flatMap((k) => {
+      const v = c.req.query(k);
+      return v === undefined ? [] : [[k, v] as const];
+    });
+    if (filters.length !== 1) return problem(c, 422, 'Give exactly one of microchip, registration or passport');
+    const [type, value] = filters[0]!;
+    const scope = c.get('scope');
+    const found = await animals.lookup({ type, value });
+    return send(c, { items: found.filter((a) => scope.markets === '*' || scope.markets.has(a.market)) });
   });
 
   app.post('/v1/animals', async (c) => {

@@ -11,6 +11,7 @@ const tokens: Record<string, Principal> = {
   handler: { subject: 'h@example.test', roles: ['handler'], markets: '*' },
   catalog: { subject: 'catalog@example.test', roles: ['catalog-manager'] },
   clinic: { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
+  clinicDe: { subject: 'klinik-de', roles: ['clinic'], markets: ['DE'], clinicId: 'clinic_de' },
   boundRegistrar: { subject: 'portal', roles: ['animal-registrar', 'customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
 };
 
@@ -68,7 +69,7 @@ test('an animal is registered, found by chip and owner, corrected and sold', asy
   const byOwner = (await (await call('GET', '/v1/animals?ownerPartyId=pty_anna', 'registrar')).json()) as any;
   assert.deepEqual(byOwner.items.map((x: any) => x.id), [a.id]);
 
-  const fix = { basedOnRevision: 1, reason: 'Neutered', sex: 'male', neutered: true, name: 'Rex', birthDate: '2024-03-01', breed: 'dog-beagle' };
+  const fix = { basedOnRevision: 1, reason: 'Neutered', sex: 'male', neutered: true, name: 'Rex', birthDate: '2024-03-01', breed: 'dog-beagle', allowLookup: false };
   assert.equal((await call('PUT', `/v1/animals/${a.id}`, 'registrar', fix)).status, 200);
   assert.equal((await call('PUT', `/v1/animals/${a.id}`, 'registrar', fix)).status, 409);
   const revs = (await (await call('GET', `/v1/animals/${a.id}/revisions`, 'handler')).json()) as any;
@@ -96,6 +97,7 @@ test('scope: markets, bound roles and permissions', async () => {
   assert.equal((await call('GET', `/v1/animals/${a.id}`, 'boundRegistrar')).status, 404);
   assert.equal((await call('POST', '/v1/animals', 'boundRegistrar', { ...rex, identifiers: [] })).status, 403);
   assert.equal((await call('GET', `/v1/animals/${a.id}`, 'clinic')).status, 403); // no animals:read
+  assert.equal((await call('GET', '/v1/animal-lookup?microchip=752098100000042', 'handler')).status, 403); // no animals:lookup
   assert.equal((await call('POST', '/v1/animals', 'handler', rex)).status, 403); // no animals:write
   assert.equal((await call('GET', `/v1/animals/${a.id}`, 'handler')).status, 200);
 });
@@ -111,4 +113,39 @@ test('errors: duplicate chip, bad filters, unknown animals', async () => {
   assert.equal((await call('GET', '/v1/animals?microchip=123', 'handler')).status, 422);
   assert.equal((await call('GET', '/v1/animals/ani_none', 'handler')).status, 404);
   assert.equal((await call('POST', '/v1/animals/ani_none/ownerships', 'registrar', { partyId: 'pty_bo', from: '2026-06-01' })).status, 404);
+});
+
+test('a clinic looks up an animal by chip only when the animal is open for lookup', async () => {
+  const call = setup();
+  await references(call);
+  const a = (await (await call('POST', '/v1/animals', 'registrar', rex)).json()) as any;
+  assert.equal(a.allowLookup, false);
+  const lookup = async (token: string, q = 'microchip=752 098 100 000 042') => {
+    const res = await call('GET', `/v1/animal-lookup?${q}`, token);
+    assert.equal(res.status, 200);
+    return ((await res.json()) as any).items;
+  };
+  assert.deepEqual(await lookup('clinic'), []);
+
+  const open = { basedOnRevision: 1, reason: 'The owner allows lookup', sex: 'male', neutered: false, name: 'Rex', birthDate: '2024-03-01', breed: 'dog-beagle', allowLookup: true };
+  assert.equal((await call('PUT', `/v1/animals/${a.id}`, 'registrar', open)).status, 200);
+  const items = await lookup('clinic');
+  assert.ok(validatorFor('AnimalSummary')(items[0]));
+  assert.deepEqual(items, [
+    { id: a.id, market: 'SE', species: 'dog', breed: 'dog-beagle', sex: 'male', neutered: false, name: 'Rex', birthDate: '2024-03-01', identifiers: [{ type: 'microchip', value: '752098100000042' }] },
+  ]);
+  assert.deepEqual(await lookup('clinicDe'), []); // another market
+  assert.deepEqual(await lookup('clinic', 'microchip=752098100000099'), []);
+
+  // Still no owners, history or search by owner for a clinic.
+  assert.equal((await call('GET', `/v1/animals/${a.id}`, 'clinic')).status, 403);
+  assert.equal((await call('GET', '/v1/animals?ownerPartyId=pty_anna', 'clinic')).status, 403);
+  assert.equal((await call('GET', '/v1/animal-lookup', 'clinic')).status, 422);
+  assert.equal((await call('GET', '/v1/animal-lookup?microchip=1&passport=x', 'clinic')).status, 422);
+  assert.equal((await call('GET', '/v1/animal-lookup?microchip=123', 'clinic')).status, 422);
+
+  assert.equal((await call('PUT', `/v1/animals/${a.id}`, 'registrar', { ...open, basedOnRevision: 2, allowLookup: false, reason: 'Withdrawn' })).status, 200);
+  assert.deepEqual(await lookup('clinic'), []);
+  const { allowLookup: _a, ...missing } = open;
+  assert.equal((await call('PUT', `/v1/animals/${a.id}`, 'registrar', { ...missing, basedOnRevision: 3 })).status, 422);
 });

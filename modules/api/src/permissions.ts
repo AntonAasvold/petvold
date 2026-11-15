@@ -42,6 +42,11 @@ export const PERMISSIONS = [
   'animals:read',
   /** Register animals, correct their details, add identifiers and change owners. */
   'animals:write',
+  /**
+   * Look up an animal by identifier, e.g. a clinic reading a microchip (ADR 0025).
+   * Finds only animals open for lookup, and shows no owners or change history.
+   */
+  'animals:lookup',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -93,7 +98,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
     decisionLimits: { SEK: 2_500_000, EUR: 250_000 },
   },
   approver: { permissions: ['claims:read', 'claims:approve', 'limits:read', 'catalog:read', 'animals:read'] },
-  clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview', 'catalog:read'], bindsTo: 'clinic' },
+  clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview', 'catalog:read', 'animals:lookup'], bindsTo: 'clinic' },
   'reassessment-job': { permissions: ['claims:read', 'claims:reassess'] },
   /** Writes rule set drafts and submits them for review. */
   'rules-author': { permissions: ['rules:read', 'rules:write', 'rules:simulate', 'catalog:read'] },

@@ -61,7 +61,7 @@ test('a chip belongs to one animal', async () => {
 test('details are corrected with the current revision and a reason; species never changes', async () => {
   const s = setup();
   const a = await s.register(input(), by);
-  const base = { sex: 'male', neutered: true, name: 'Rex', birthDate: '2024-03-01', breed: 'dog-beagle' };
+  const base = { sex: 'male', neutered: true, name: 'Rex', birthDate: '2024-03-01', breed: 'dog-beagle', allowLookup: false };
   await rejects(s.correct(a.id, { ...base, basedOnRevision: 1, reason: '' }, by), 'validation', /reason/);
   const c = await s.correct(a.id, { ...base, basedOnRevision: 1, reason: 'Neutered at the clinic' }, by);
   assert.deepEqual([c.revision, c.neutered, c.reason], [2, true, 'Neutered at the clinic']);
@@ -84,9 +84,28 @@ test('a change of owner ends the previous ownership the same day', async () => {
   assert.equal(ownerOn(t.ownerships, '2026-05-31')!.partyId, 'pty_anna');
   assert.equal(ownerOn(t.ownerships, '2026-06-01')!.partyId, 'pty_bo');
   assert.equal(ownerOn(t.ownerships, '2024-04-30'), null);
-  const base = { sex: 'male', neutered: false, name: 'Rex', birthDate: '2024-03-01', breed: 'dog-beagle' };
+  const base = { sex: 'male', neutered: false, name: 'Rex', birthDate: '2024-03-01', breed: 'dog-beagle', allowLookup: false };
   await s.correct(a.id, { ...base, deceasedOn: '2026-11-01', basedOnRevision: 1, reason: 'Died' }, by);
   await rejects(s.transfer(a.id, { partyId: 'pty_cy', from: '2026-11-02' }, by), 'validation', /died/);
+});
+
+test('a lookup finds only animals open for lookup, and shows no owners or history', async () => {
+  const s = setup();
+  const a = await s.register(input(), by);
+  assert.equal(a.allowLookup, false);
+  const chip = { type: 'microchip' as const, value: '752098100000001' };
+  assert.deepEqual(await s.lookup(chip), []);
+  const base = { sex: 'male', neutered: false, name: 'Rex', birthDate: '2024-03-01', breed: 'dog-beagle' };
+  await s.correct(a.id, { ...base, allowLookup: true, basedOnRevision: 1, reason: 'The owner allows lookup' }, by);
+  assert.deepEqual(await s.lookup(chip), [
+    { id: a.id, market: 'SE', species: 'dog', breed: 'dog-beagle', sex: 'male', neutered: false, name: 'Rex', birthDate: '2024-03-01', identifiers: [chip] },
+  ]);
+  await s.correct(a.id, { ...base, allowLookup: false, basedOnRevision: 2, reason: 'The owner withdrew it' }, by);
+  assert.deepEqual(await s.lookup(chip), []);
+  assert.deepEqual((await s.revisions(a.id)).map((r) => r.allowLookup), [false, true, false]);
+  const open = await s.register(input({ identifiers: [{ type: 'passport', value: 'se 1' }], allowLookup: true }), by);
+  assert.deepEqual((await s.lookup({ type: 'passport', value: 'SE 1' })).map((x) => x.id), [open.id]);
+  await rejects(s.register(input({ identifiers: [], allowLookup: 'yes' as never }), by), 'validation', /allowLookup/);
 });
 
 test('invalid registrations are refused', async () => {

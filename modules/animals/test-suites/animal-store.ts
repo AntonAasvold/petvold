@@ -14,6 +14,7 @@ export const animal = (overrides: Partial<Animal> = {}): Animal => ({
   breed: 'dog-beagle',
   sex: 'male',
   neutered: false,
+  allowLookup: false,
   name: 'Rex',
   birthDate: '2024-03-01',
   changedBy: 'registrar@example.test',
@@ -64,11 +65,12 @@ export function animalStoreSuite(name: string, factory: AnimalStoreFactory): voi
 
     it('revisions follow each other and keep the history', async (store) => {
       await store.register(animal(), [], owner());
-      const neutered = animal({ revision: 2, neutered: true, reason: 'Neutered', changedAt: '2026-11-16T10:00:00.000Z' });
+      const neutered = animal({ revision: 2, neutered: true, allowLookup: true, reason: 'Neutered', changedAt: '2026-11-16T10:00:00.000Z' });
       await store.appendRevision(neutered);
       await assert.rejects(store.appendRevision(neutered), AnimalConflictError);
       await assert.rejects(store.appendRevision(animal({ revision: 4, reason: 'x' })), AnimalConflictError);
       assert.deepEqual(await store.revisions('ani_rex'), [animal(), neutered]);
+      assert.equal((await store.get('ani_rex'))!.allowLookup, true);
       assert.equal((await store.get('ani_rex'))!.neutered, true);
     });
 

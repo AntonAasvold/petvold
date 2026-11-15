@@ -704,7 +704,8 @@ paths:
       description: |
         Requires the permission `animals:read`. Give exactly one of the filters.
         Only animals in the caller's markets are returned. Roles bound to a
-        clinic or to policies see no animals (ADR 0024).
+        clinic or to policies see no animals (ADR 0024); a clinic uses
+        `GET /v1/animal-lookup` instead (ADR 0025).
       parameters:
         - { name: microchip, in: query, schema: { type: string }, description: '15 digits (ISO 11784). Spaces and hyphens are ignored.' }
         - { name: registration, in: query, schema: { type: string } }
@@ -750,6 +751,39 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AnimalRecord' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/animal-lookup:
+    get:
+      tags: [animals]
+      operationId: lookupAnimal
+      x-permission: animals:lookup
+      summary: Look up an animal by identifier, e.g. a clinic reading a microchip
+      description: |
+        Requires the permission `animals:lookup`. Give exactly one identifier.
+        Finds the animal only if it is open for lookup (`allowLookup`) and in
+        one of the caller's markets. Shows the details and identifiers, never
+        the owners or the change history (ADR 0025). An animal that is not
+        found, closed or outside the markets all give an empty list.
+      parameters:
+        - { name: microchip, in: query, schema: { type: string }, description: '15 digits (ISO 11784). Spaces and hyphens are ignored.' }
+        - { name: registration, in: query, schema: { type: string } }
+        - { name: passport, in: query, schema: { type: string } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The animal, or an empty list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    maxItems: 1
+                    items: { $ref: '#/components/schemas/AnimalSummary' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   /v1/animals/{animalId}:
@@ -2182,7 +2216,7 @@ components:
 
     Animal:
       type: object
-      required: [id, revision, market, species, sex, neutered, name, birthDate, changedBy, changedAt]
+      required: [id, revision, market, species, sex, neutered, name, birthDate, allowLookup, changedBy, changedAt]
       properties:
         id: { type: string }
         revision: { type: integer, minimum: 1 }
@@ -2194,9 +2228,33 @@ components:
         name: { type: string }
         birthDate: { $ref: '#/components/schemas/Date' }
         deceasedOn: { $ref: '#/components/schemas/Date' }
+        allowLookup: { type: boolean, description: 'Whether a lookup by identifier, e.g. by a clinic, finds the animal (ADR 0025).' }
         changedBy: { type: string }
         changedAt: { $ref: '#/components/schemas/DateTime' }
         reason: { type: string }
+
+    AnimalSummary:
+      type: object
+      description: What a lookup shows. No owners and no change history (ADR 0025).
+      required: [id, market, species, sex, neutered, name, birthDate, identifiers]
+      properties:
+        id: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        species: { type: string }
+        breed: { type: string }
+        sex: { type: string }
+        neutered: { type: boolean }
+        name: { type: string }
+        birthDate: { $ref: '#/components/schemas/Date' }
+        deceasedOn: { $ref: '#/components/schemas/Date' }
+        identifiers:
+          type: array
+          items:
+            type: object
+            required: [type, value]
+            properties:
+              type: { type: string, enum: [microchip, registration, passport] }
+              value: { type: string }
 
     AnimalRecord:
       allOf:
@@ -2241,6 +2299,7 @@ components:
         neutered: { type: boolean, default: false }
         name: { type: string, minLength: 1, maxLength: 100 }
         birthDate: { $ref: '#/components/schemas/Date' }
+        allowLookup: { type: boolean, default: false, description: 'Open for lookup by identifier (ADR 0025). Closed unless given.' }
         identifiers:
           type: array
           items: { $ref: '#/components/schemas/IdentifierInput' }
@@ -2255,7 +2314,7 @@ components:
     CorrectAnimalRequest:
       type: object
       additionalProperties: false
-      required: [basedOnRevision, reason, sex, neutered, name, birthDate]
+      required: [basedOnRevision, reason, sex, neutered, name, birthDate, allowLookup]
       properties:
         basedOnRevision: { type: integer, minimum: 1 }
         reason: { type: string, minLength: 1, maxLength: 2000 }
@@ -2265,6 +2324,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 100 }
         birthDate: { $ref: '#/components/schemas/Date' }
         deceasedOn: { $ref: '#/components/schemas/Date' }
+        allowLookup: { type: boolean }
 
     TransferAnimalRequest:
       type: object
