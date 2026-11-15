@@ -1259,6 +1259,40 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/policies/{policyId}/changes:
+    post:
+      tags: [policies]
+      operationId: changePolicy
+      x-permission: policies:write
+      summary: Change the choices from a day during the term
+      description: |
+        Requires the permission `policies:write` (ADR 0029). New annual limit
+        or deductible from `from`, today or later, in the policy's latest term.
+        `premium` is the premium for a whole term at the new choices (given by
+        the caller until the tariff exists); the days left are charged at the
+        new rate, and `change.premiumAdjustment` says what that costs or refunds.
+        The term never changes: the change is stored with it, and the versions
+        from `from` follow it. A renewal keeps the changed choices.
+      parameters:
+        - $ref: '#/components/parameters/PolicyIdPath'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePolicyRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The change
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyTransaction' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/policies/{policyId}/renewals:
     post:
       tags: [policies]
@@ -3181,6 +3215,19 @@ components:
         premium: { $ref: '#/components/schemas/NonNegativeMoney' }
         riders: { type: array, items: { type: object } }
         transactionId: { type: string }
+        changes:
+          type: array
+          description: Changes of the choices during the term, oldest first.
+          items:
+            type: object
+            required: [changeNo, from, vetCare, deductibleOption, premium, transactionId]
+            properties:
+              changeNo: { type: integer }
+              from: { $ref: '#/components/schemas/Date' }
+              vetCare: { $ref: '#/components/schemas/VetCareTerms' }
+              deductibleOption: { type: string }
+              premium: { $ref: '#/components/schemas/NonNegativeMoney' }
+              transactionId: { type: string }
 
     PolicyVersion:
       type: object
@@ -3195,6 +3242,7 @@ components:
         policyholderPartyId: { type: string }
         status: { type: string, enum: [active, cancelled] }
         termNo: { type: integer }
+        changeNo: { type: integer, description: The change of the term this version follows. }
         transactionId: { type: string }
 
     PolicyTransaction:
@@ -3203,7 +3251,7 @@ components:
       properties:
         id: { type: string }
         policyId: { type: string }
-        type: { type: string, enum: [issue, cancel, reinstate, renew, transfer] }
+        type: { type: string, enum: [issue, cancel, reinstate, renew, transfer, change] }
         steps:
           type: array
           items:
@@ -3258,6 +3306,23 @@ components:
               properties:
                 amount: { $ref: '#/components/schemas/NonNegativeMoney' }
                 currency: { $ref: '#/components/schemas/Currency' }
+        change:
+          type: object
+          required: [termNo, changeNo, from, annualLimit, deductibleOption, premium, premiumAdjustment, reason]
+          properties:
+            termNo: { type: integer }
+            changeNo: { type: integer }
+            from: { $ref: '#/components/schemas/Date' }
+            annualLimit: { $ref: '#/components/schemas/NonNegativeMoney' }
+            deductibleOption: { type: string }
+            premium:
+              type: object
+              required: [amount, currency]
+              properties:
+                amount: { $ref: '#/components/schemas/NonNegativeMoney' }
+                currency: { $ref: '#/components/schemas/Currency' }
+            premiumAdjustment: { type: integer, description: 'What the change costs for the rest of the term: positive to pay, negative to refund.' }
+            reason: { type: string }
         reverses: { type: string, description: A reinstatement's cancellation. }
         note: { type: string }
 
@@ -3320,6 +3385,29 @@ components:
             transactionId: { type: string }
             decidedBy: { type: string }
             decidedAt: { $ref: '#/components/schemas/DateTime' }
+
+    ChangePolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [from, vetCare, premium, reason]
+      properties:
+        from: { $ref: '#/components/schemas/Date' }
+        vetCare:
+          type: object
+          additionalProperties: false
+          description: The new choices. Omitted ones get the product's defaults.
+          properties:
+            annualLimit: { $ref: '#/components/schemas/NonNegativeMoney' }
+            deductible: { type: string }
+        premium:
+          type: object
+          additionalProperties: false
+          required: [amount, currency]
+          description: The premium for a whole term at the new choices.
+          properties:
+            amount: { $ref: '#/components/schemas/NonNegativeMoney' }
+            currency: { $ref: '#/components/schemas/Currency' }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
 
     RenewPolicyRequest:
       type: object

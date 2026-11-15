@@ -10,8 +10,9 @@
  *   old one in system time and adds new ones.
  * - A **transaction** records each change with its steps and who made it.
  *
- * Policies are issued, renewed, transferred and cancelled, and a cancellation
- * can be reversed. Events from the animal register become proposals: a
+ * Policies are issued, changed, renewed, transferred and cancelled, and a
+ * cancellation can be reversed. A change of the choices during a term is a
+ * TermChange from a date; the versions from that date point at it. Events from the animal register become proposals: a
  * transfer when the animal is sold, a cancellation when it dies. Every change writes events to an outbox in
  * the same transaction (ADR 0008).
  * The module reads products, animals and parties only through ports (ADR 0001),
@@ -109,6 +110,20 @@ export interface Term {
   premium: number;
   riders: Rider[];
   transactionId: string;
+  /** Changes of the choices during the term, oldest first (ADR 0029). Each never changes. */
+  changes?: TermChange[];
+}
+
+/** New choices from a day during a term. The versions from that day carry its changeNo. */
+export interface TermChange {
+  /** 1, 2, 3 … within the term. */
+  changeNo: number;
+  from: ISODate;
+  vetCare: VetCareTerms;
+  deductibleOption: string;
+  /** The premium for a whole term at the new choices; the days from `from` are charged at this rate. */
+  premium: number;
+  transactionId: string;
 }
 
 export interface PolicyVersion {
@@ -123,6 +138,8 @@ export interface PolicyVersion {
   policyholderPartyId: string;
   status: 'active' | 'cancelled';
   termNo: number;
+  /** The change of the term this version follows, if any. */
+  changeNo?: number;
   transactionId: string;
 }
 
@@ -131,7 +148,7 @@ export const TRANSACTION_STEPS = ['draft', 'priced', 'underwritten', 'issued'] a
 export interface PolicyTransaction {
   id: string;
   policyId: string;
-  type: 'issue' | 'cancel' | 'reinstate' | 'renew' | 'transfer';
+  type: 'issue' | 'cancel' | 'reinstate' | 'renew' | 'transfer' | 'change';
   steps: { step: (typeof TRANSACTION_STEPS)[number]; at: Timestamp; note?: string }[];
   requestedBy: string;
   requestedAt: Timestamp;
@@ -160,6 +177,17 @@ export interface PolicyTransaction {
     acceptance: Acceptance;
     /** Premium for the days from the sale: back to the previous policyholder, and due from the new one (M5). */
     premium: { amount: number; currency: string };
+  };
+  change?: {
+    termNo: number;
+    changeNo: number;
+    from: ISODate;
+    annualLimit: number;
+    deductibleOption: string;
+    premium: { amount: number; currency: string };
+    /** What the change costs for the rest of the term: positive to pay, negative to refund (M5). */
+    premiumAdjustment: number;
+    reason: string;
   };
   /** A reinstatement: the cancellation it reverses. */
   reverses?: string;
@@ -210,7 +238,7 @@ export interface AnimalEventInput {
 /** What the policy module tells others, written in the same transaction as the change (ADR 0008). */
 export interface PolicyEvent {
   id: string;
-  type: 'policy.issued' | 'policy.renewed' | 'policy.transferred' | 'policy.cancelled' | 'policy.reinstated' | 'policy.version_superseded';
+  type: 'policy.issued' | 'policy.changed' | 'policy.renewed' | 'policy.transferred' | 'policy.cancelled' | 'policy.reinstated' | 'policy.version_superseded';
   policyId: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;
@@ -250,6 +278,7 @@ export interface PolicyStore {
     events: PolicyEvent[],
     terms?: Term[],
     decision?: { proposalId: string; decision: ProposalDecision },
+    changes?: (TermChange & { policyId: string; termNo: number })[],
   ): Promise<void>;
   /** Stores a proposal unless one for the same source event exists. Returns whether it was stored. */
   addProposal(p: Proposal): Promise<boolean>;
@@ -404,11 +433,17 @@ export function refundFor(terms: Term[], activeBefore: PolicyVersion[], from: IS
     let lost = 0;
     for (const v of activeBefore.filter((x) => x.status === 'active' && x.termNo === t.termNo)) {
       const start = v.validFrom > from ? v.validFrom : from;
-      if (start < v.validTo) lost += daysBetween(start, v.validTo);
+      if (start < v.validTo) lost += effectiveTerms(t, v).premium * daysBetween(start, v.validTo);
     }
-    total += Math.round((t.premium * lost) / termDays);
+    total += Math.round(lost / termDays);
   }
   return total;
+}
+
+/** The choices and premium a version follows: the term's, or a change's. Pure. */
+export function effectiveTerms(t: Term, v: Pick<PolicyVersion, 'changeNo'>): { vetCare: VetCareTerms; deductibleOption: string; premium: number } {
+  const c = v.changeNo === undefined ? undefined : t.changes?.find((x) => x.changeNo === v.changeNo);
+  return c ? { vetCare: c.vetCare, deductibleOption: c.deductibleOption, premium: c.premium } : { vetCare: t.vetCare, deductibleOption: t.deductibleOption, premium: t.premium };
 }
 
 /** The claims engine's view of a version: the term it belongs to and the policy year. Pure. */
@@ -427,7 +462,7 @@ export function toSnapshot(p: Policy, term: Term, v: PolicyVersion, animalBirthD
     inceptionDate: p.inceptionDate,
     policyYearStart: term.startDate,
     policyYearEnd: term.endDate,
-    vetCare: structuredClone(term.vetCare),
+    vetCare: structuredClone(effectiveTerms(term, v).vetCare),
     riders: structuredClone(term.riders),
   };
 }
@@ -752,6 +787,7 @@ export class PolicyService implements PolicyPort {
     if (last.status !== 'active') throw new PolicyError('conflict', `Policy ${p.id} is cancelled from ${last.validFrom}`);
     const prev = p.terms.find((t) => t.termNo === last.termNo)!;
     if (last.validTo !== prev.endDate) throw new PolicyError('conflict', `Policy ${p.id} ends ${last.validTo}, before its term`);
+    const current = effectiveTerms(prev, last);
     const start = prev.endDate;
     const ending = (await this.cancellationsInForce(p.id)).find((c) => c.cancellation!.effectiveDate <= start);
     if (ending) throw new PolicyError('conflict', `Policy ${p.id} is cancelled from ${ending.cancellation!.effectiveDate}`);
@@ -771,11 +807,11 @@ export class PolicyService implements PolicyPort {
     if (offer.termMonths > profile.maxTermMonths) return { issue: 'term-too-long', detail: `${productVersion} has terms of ${offer.termMonths} months` };
     let vetCare: VetCareTerms & { deductibleOption: string };
     try {
-      vetCare = offer.vetCareTermsFor({ annualLimit: prev.vetCare.annualLimit, deductible: prev.deductibleOption });
+      vetCare = offer.vetCareTermsFor({ annualLimit: current.vetCare.annualLimit, deductible: current.deductibleOption });
     } catch (e) {
       return { issue: 'option-not-offered', detail: (e as Error).message };
     }
-    const premium = input.premium ?? { amount: prev.premium, currency: prev.currency };
+    const premium = input.premium ?? { amount: current.premium, currency: prev.currency };
     if (premium.currency !== offer.currency || !Number.isSafeInteger(premium.amount) || premium.amount < 0) {
       throw new PolicyError('validation', `The premium must be a whole number of minor units in ${offer.currency}`);
     }
@@ -957,6 +993,106 @@ export class PolicyService implements PolicyPort {
     const pr = await this.getProposal(id);
     if (pr.decision) throw new PolicyError('conflict', `Proposal ${id} is already ${pr.decision.outcome}`);
     return pr;
+  }
+
+  /**
+   * Changes the choices from a day during the term, e.g. a higher deductible
+   * (ADR 0029). Not back in time, and only in the policy's latest term. The
+   * versions from that day are superseded by ones that follow the change.
+   * `premium` is the premium for a whole term at the new choices (given by the
+   * caller until the tariff exists, M4); the days left are charged at the new rate.
+   */
+  async change(
+    policyId: string,
+    input: { from: ISODate; vetCare: { annualLimit?: number; deductible?: string }; premium: { amount: number; currency: string }; reason: string },
+    by: string,
+  ): Promise<PolicyTransaction> {
+    const p = await this.get(policyId);
+    const today = this.d.clock.now().slice(0, 10);
+    if (!validDate(input.from)) throw new PolicyError('validation', 'from must be YYYY-MM-DD');
+    if (input.from < today) throw new PolicyError('validation', 'A change cannot apply before today');
+    const reason = (input.reason ?? '').trim();
+    if (!reason) throw new PolicyError('validation', 'A reason is required');
+    const term = p.terms.find((t) => t.startDate <= input.from && input.from < t.endDate);
+    if (!term) throw new PolicyError('validation', `Policy ${policyId} has no term on ${input.from}`);
+    if (term.termNo !== p.terms.at(-1)!.termNo) {
+      throw new PolicyError('conflict', `Policy ${policyId} is already renewed to term ${p.terms.at(-1)!.termNo}; change it from ${p.terms.at(-1)!.startDate} instead`);
+    }
+    const affected = p.versions.filter((v) => v.termNo === term.termNo && v.status === 'active' && v.validTo > input.from);
+    if (!affected.some((v) => v.validFrom <= input.from)) throw new PolicyError('conflict', `Policy ${policyId} is not in force on ${input.from}`);
+    const offer = await this.d.products.offer(term.productVersion, input.from);
+    if (!offer) throw new PolicyError('validation', `The product version ${term.productVersion} does not exist`);
+    let vetCare: VetCareTerms & { deductibleOption: string };
+    try {
+      vetCare = offer.vetCareTermsFor(input.vetCare ?? {});
+    } catch (e) {
+      throw new PolicyError('validation', (e as Error).message);
+    }
+    if (input.premium?.currency !== term.currency || !Number.isSafeInteger(input.premium.amount) || input.premium.amount < 0) {
+      throw new PolicyError('validation', `The premium must be a whole number of minor units in ${term.currency}`);
+    }
+    const before = effectiveTerms(term, affected.find((v) => v.validFrom <= input.from)!);
+    const { deductibleOption, ...terms } = vetCare;
+    if (deductibleOption === before.deductibleOption && terms.annualLimit === before.vetCare.annualLimit && input.premium.amount === before.premium) {
+      throw new PolicyError('conflict', 'The change changes nothing');
+    }
+
+    const now = this.d.clock.now();
+    const txId = this.d.ids.next('ptx');
+    const changeNo = (term.changes?.at(-1)?.changeNo ?? 0) + 1;
+    const change: TermChange = { changeNo, from: input.from, vetCare: terms, deductibleOption, premium: input.premium.amount, transactionId: txId };
+    const add: PolicyVersion[] = [];
+    for (const v of affected) {
+      const { sysTo: _s, ...rest } = v;
+      if (v.validFrom < input.from) add.push({ ...rest, id: this.d.ids.next('pv'), validTo: input.from, sysFrom: now, transactionId: txId });
+      add.push({ ...rest, id: this.d.ids.next('pv'), validFrom: v.validFrom > input.from ? v.validFrom : input.from, changeNo, sysFrom: now, transactionId: txId });
+    }
+    const termDays = daysBetween(term.startDate, term.endDate);
+    const adjustment = affected.reduce((sum, v) => {
+      const start = v.validFrom > input.from ? v.validFrom : input.from;
+      return sum + (input.premium.amount - effectiveTerms(term, v).premium) * daysBetween(start, v.validTo);
+    }, 0);
+    const premiumAdjustment = Math.round(adjustment / termDays);
+    const tx: PolicyTransaction = {
+      id: txId,
+      policyId,
+      type: 'change',
+      steps: [
+        { step: 'draft', at: now },
+        { step: 'priced', at: now, note: 'Premium given by the caller (no tariff yet, M4)' },
+        { step: 'underwritten', at: now, note: 'Accepted (no underwriting rules yet, M4)' },
+        { step: 'issued', at: now },
+      ],
+      requestedBy: by,
+      requestedAt: now,
+      supersedes: affected.map((v) => v.id),
+      change: {
+        termNo: term.termNo,
+        changeNo,
+        from: input.from,
+        annualLimit: terms.annualLimit,
+        deductibleOption,
+        premium: { amount: input.premium.amount, currency: term.currency },
+        premiumAdjustment,
+        reason,
+      },
+    };
+    await this.d.store
+      .apply(
+        policyId,
+        tx.supersedes!,
+        add,
+        tx,
+        [
+          this.event('policy.changed', policyId, now, { transactionId: txId, termNo: term.termNo, changeNo, from: input.from, premiumAdjustment, currency: term.currency }),
+          ...this.superseded(policyId, now, tx.supersedes!, add),
+        ],
+        [],
+        undefined,
+        [{ ...change, policyId, termNo: term.termNo }],
+      )
+      .catch(this.translate);
+    return tx;
   }
 
   /** Cancellations that have not been reversed. */
@@ -1188,6 +1324,7 @@ export class InMemoryPolicyStore implements PolicyStore {
     events: PolicyEvent[],
     terms: Term[] = [],
     decision?: { proposalId: string; decision: ProposalDecision },
+    changes: (TermChange & { policyId: string; termNo: number })[] = [],
   ) {
     if (decision && this.proposals.find((x) => x.id === decision.proposalId)?.decision) throw new PolicyConflictError(`Proposal ${decision.proposalId} is already decided`);
     if (terms.some((t) => this.terms.some((x) => x.policyId === t.policyId && x.termNo === t.termNo))) throw new PolicyConflictError(`Policy ${policyId} has changed`);
@@ -1195,6 +1332,10 @@ export class InMemoryPolicyStore implements PolicyStore {
     if (current.some((v) => !v)) throw new PolicyConflictError(`Policy ${policyId} has changed`);
     for (const v of current) v!.sysTo = tx.requestedAt;
     this.terms.push(...structuredClone(terms));
+    for (const { policyId: pid, termNo, ...c } of structuredClone(changes)) {
+      const t = this.terms.find((x) => x.policyId === pid && x.termNo === termNo)!;
+      t.changes = [...(t.changes ?? []), c];
+    }
     this.versions.push(...structuredClone(add));
     this.txs.push(structuredClone(tx));
     this.outbox.push(...structuredClone(events));

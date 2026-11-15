@@ -748,6 +748,13 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await policies.cancel(p.id, r.body, c.get('principal').subject) }));
   });
 
+  app.post('/v1/policies/:policyId/changes', async (c) => {
+    const p = await visiblePolicy(c);
+    const r = await readJson(c, 'ChangePolicyRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.change(p.id, r.body, c.get('principal').subject) }));
+  });
+
   app.post('/v1/policies/:policyId/renewals', async (c) => {
     const p = await visiblePolicy(c);
     const r = await readJson(c, 'RenewPolicyRequest');
