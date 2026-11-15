@@ -47,3 +47,41 @@ export function rangeContains(r: DateRange, d: ISODate): boolean {
 export function rangesOverlap(a: DateRange, b: DateRange): boolean {
   return (a.to === undefined || dateLt(b.from, a.to)) && (b.to === undefined || dateLt(a.from, b.to));
 }
+
+/**
+ * The time zone each market's calendar follows (IANA names). "Today", deadlines
+ * and notice periods count in the market's own days, not in UTC: at 00:30 in
+ * Stockholm it is already the next day there, but not in UTC.
+ */
+export const MARKET_TIME_ZONES: Readonly<Record<string, string>> = {
+  SE: 'Europe/Stockholm',
+  NO: 'Europe/Oslo',
+  DK: 'Europe/Copenhagen',
+  FI: 'Europe/Helsinki',
+  DE: 'Europe/Berlin',
+  NL: 'Europe/Amsterdam',
+  BE: 'Europe/Brussels',
+  FR: 'Europe/Paris',
+  ES: 'Europe/Madrid',
+  IT: 'Europe/Rome',
+  AT: 'Europe/Vienna',
+  CH: 'Europe/Zurich',
+  IE: 'Europe/Dublin',
+  GB: 'Europe/London',
+  PL: 'Europe/Warsaw',
+};
+
+/** The calendar date of a point in time in a time zone. Pure. */
+export function dateInTimeZone(at: Timestamp, timeZone: string): ISODate {
+  // en-CA formats as YYYY-MM-DD.
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(at));
+}
+
+/**
+ * The market's date at a point in time. A market without a known time zone, or
+ * none, counts in UTC. Pure.
+ */
+export function marketDate(market: string | undefined, at: Timestamp): ISODate {
+  const zone = market ? MARKET_TIME_ZONES[market] : undefined;
+  return zone ? dateInTimeZone(at, zone) : new Date(at).toISOString().slice(0, 10);
+}

@@ -21,6 +21,8 @@
  * clinic. A lookup returns a summary without owners or change history.
  */
 
+import { marketDate } from '@petvold/common';
+
 export type ISODate = string;
 
 export const IDENTIFIER_TYPES = ['microchip', 'registration', 'passport'] as const;
@@ -332,6 +334,7 @@ export class AnimalService {
   /** Animals the party owns today. */
   async findByOwner(partyId: string): Promise<AnimalRecord[]> {
     if (!PARTY.test(partyId)) throw new AnimalError('validation', `Invalid party id '${partyId}'`);
+    // The party's market is not known here; ownership on a date in UTC is at most hours off.
     const ids = await this.d.store.findByOwner(partyId, this.today());
     return Promise.all(ids.map((id) => this.get(id)));
   }
@@ -339,7 +342,7 @@ export class AnimalService {
   async register(input: RegisterInput, by: string): Promise<AnimalRecord> {
     if (!/^[A-Z]{2}$/.test(input.market)) throw new AnimalError('validation', `Invalid market '${input.market}'`);
     await this.reference('species', input.species);
-    await this.checkDetails(input.species, input);
+    await this.checkDetails(input.market, input.species, input);
     if (!PARTY.test(input.owner?.partyId ?? '')) throw new AnimalError('validation', `Invalid party id '${input.owner?.partyId}'`);
     await this.checkOwner(input.owner.partyId, input.market);
     if (!isDate(input.owner.from) || input.owner.from < input.birthDate) {
@@ -387,7 +390,7 @@ export class AnimalService {
   async registerLitter(input: LitterInput, by: string): Promise<Litter> {
     if (!/^[A-Z]{2}$/.test(input.market ?? '')) throw new AnimalError('validation', `Invalid market '${input.market}'`);
     await this.reference('species', input.species);
-    if (!isDate(input.birthDate) || input.birthDate > this.today()) throw new AnimalError('validation', 'birthDate must be a date not after today');
+    if (!isDate(input.birthDate) || input.birthDate > this.today(input.market)) throw new AnimalError('validation', 'birthDate must be a date not after today');
     if (!PARTY.test(input.breederPartyId ?? '')) throw new AnimalError('validation', `Invalid party id '${input.breederPartyId}'`);
     await this.checkOwner(input.breederPartyId, input.market);
     const list = input.animals ?? [];
@@ -402,7 +405,7 @@ export class AnimalService {
     const animals: NewAnimal[] = [];
     for (const a of list) {
       const breed = a.breed ?? inherited;
-      await this.checkDetails(input.species, { ...a, ...(breed ? { breed } : {}), birthDate: input.birthDate });
+      await this.checkDetails(input.market, input.species, { ...a, ...(breed ? { breed } : {}), birthDate: input.birthDate });
       const animal: Animal = {
         id: this.d.ids.next('ani'),
         revision: 1,
@@ -460,9 +463,9 @@ export class AnimalService {
     }
     const reason = (input.reason ?? '').trim();
     if (!reason) throw new AnimalError('validation', 'A reason is required');
-    await this.checkDetails(cur.species, input);
+    await this.checkDetails(cur.market, cur.species, input);
     if (input.deceasedOn !== undefined) {
-      if (!isDate(input.deceasedOn) || input.deceasedOn < input.birthDate || input.deceasedOn > this.today()) {
+      if (!isDate(input.deceasedOn) || input.deceasedOn < input.birthDate || input.deceasedOn > this.today(cur.market)) {
         throw new AnimalError('validation', 'deceasedOn must be a date from the birth date up to today');
       }
     }
@@ -532,6 +535,7 @@ export class AnimalService {
   }
 
   private async checkDetails(
+    market: string,
     species: string,
     input: { breed?: string; sex: string; name: string; birthDate: ISODate; neutered?: boolean; allowLookup?: boolean },
   ) {
@@ -542,7 +546,7 @@ export class AnimalService {
     await this.reference('sex', input.sex);
     const name = (input.name ?? '').trim();
     if (!name || name.length > 100) throw new AnimalError('validation', 'The name must be 1-100 characters');
-    if (!isDate(input.birthDate) || input.birthDate > this.today()) throw new AnimalError('validation', 'birthDate must be a date not after today');
+    if (!isDate(input.birthDate) || input.birthDate > this.today(market)) throw new AnimalError('validation', 'birthDate must be a date not after today');
     if (input.neutered !== undefined && typeof input.neutered !== 'boolean') throw new AnimalError('validation', 'neutered must be true or false');
     if (input.allowLookup !== undefined && typeof input.allowLookup !== 'boolean') throw new AnimalError('validation', 'allowLookup must be true or false');
   }
@@ -568,8 +572,9 @@ export class AnimalService {
     return out;
   }
 
-  private today(): ISODate {
-    return this.d.clock.now().slice(0, 10);
+  /** Today in the market's time zone (common), or in UTC when the market is not known. */
+  private today(market?: string): ISODate {
+    return marketDate(market, this.d.clock.now());
   }
 
   private translate = (e: unknown): never => {

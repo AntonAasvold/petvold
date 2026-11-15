@@ -19,6 +19,7 @@
  * and implements the claims engine's PolicyPort.
  */
 import type { ISODate, PolicyPort, PolicySnapshot, Rider, Timestamp, VetCareTerms } from '@petvold/claims-core';
+import { marketDate } from '@petvold/common';
 import { PricingError, price, type PriceInput, type PriceResult, type PriceTermsContent, type TariffContent, type TariffRef } from '@petvold/pricing-core';
 
 export type { ISODate };
@@ -642,7 +643,7 @@ export class PolicyService implements PolicyPort {
   ): Promise<PolicyTransaction> {
     const p = await this.get(policyId);
     const profile = this.profile(p.market);
-    const today = this.d.clock.now().slice(0, 10);
+    const today = marketDate(p.market, this.d.clock.now());
     if (!(CANCELLATION_REASONS as readonly string[]).includes(input.reason)) throw new PolicyError('validation', `Unknown reason '${input.reason}'`);
     const receivedOn = input.receivedOn ?? today;
     if (!validDate(receivedOn) || receivedOn > today) throw new PolicyError('validation', 'receivedOn must be a date not after today');
@@ -863,11 +864,15 @@ export class PolicyService implements PolicyPort {
    * of the term. Policies that cannot be renewed as they are are listed for a decision.
    */
   async renewalRun(input: { dryRun: boolean; markets: '*' | ReadonlySet<string> }, by: string): Promise<RenewalRunResult> {
-    const today = this.d.clock.now().slice(0, 10);
-    const result: RenewalRunResult = { onDate: today, dryRun: input.dryRun, checked: 0, renewed: [], cancelled: 0, notYet: 0, needsDecision: [] };
-    for (const id of await this.d.store.endingBetween(today, addDays(today, 120))) {
+    const now = this.d.clock.now();
+    // Candidates by the UTC date, one day wider; each policy then counts in its market's date.
+    const utc = marketDate(undefined, now);
+    const result: RenewalRunResult = { onDate: utc, dryRun: input.dryRun, checked: 0, renewed: [], cancelled: 0, notYet: 0, needsDecision: [] };
+    for (const id of await this.d.store.endingBetween(addDays(utc, -1), addDays(utc, 121))) {
       const p = await this.get(id);
       if (input.markets !== '*' && !input.markets.has(p.market)) continue;
+      const today = marketDate(p.market, now);
+      if (p.versions.at(-1)!.validTo < today) continue;
       result.checked++;
       const last = p.versions.at(-1)!;
       if ((await this.cancellationsInForce(id)).some((c) => c.cancellation!.effectiveDate <= last.validTo)) {
@@ -1003,7 +1008,7 @@ export class PolicyService implements PolicyPort {
         kind: 'transfer',
         sourceEventId: e.id,
         details: { fromPartyId: v.policyholderPartyId, toPartyId, from },
-        deadline: addDays(from > now.slice(0, 10) ? from : now.slice(0, 10), days),
+        deadline: addDays(from > marketDate(p.market, now) ? from : marketDate(p.market, now), days),
         createdAt: now,
       };
       return (await this.d.store.addProposal(proposal)) ? proposal : null;
@@ -1055,7 +1060,7 @@ export class PolicyService implements PolicyPort {
     }
     const channel = (input.channel ?? '').trim();
     if (!channel) throw new PolicyError('validation', 'The channel the new policyholder accepted in is required');
-    if (pr.deadline! < now.slice(0, 10)) throw new PolicyError('conflict', `The proposal expired ${pr.deadline}`);
+    if (pr.deadline! < marketDate(pr.market, now)) throw new PolicyError('conflict', `The proposal expired ${pr.deadline}`);
     const d = pr.details as { fromPartyId: string; toPartyId: string; from: ISODate };
     const p = await this.get(pr.policyId);
     if ((await this.d.parties.marketOf(d.toPartyId)) !== p.market) {
@@ -1128,10 +1133,10 @@ export class PolicyService implements PolicyPort {
 
   /** Ends every policy whose transfer was not accepted by its deadline, from the day of sale. */
   async expireProposals(markets: '*' | ReadonlySet<string>, by: string): Promise<Proposal[]> {
-    const today = this.d.clock.now().slice(0, 10);
+    const now = this.d.clock.now();
     const out: Proposal[] = [];
     for (const pr of await this.d.store.listProposals({ pending: true })) {
-      if (pr.kind !== 'transfer' || pr.deadline! >= today || (markets !== '*' && !markets.has(pr.market))) continue;
+      if (pr.kind !== 'transfer' || pr.deadline! >= marketDate(pr.market, now) || (markets !== '*' && !markets.has(pr.market))) continue;
       const { from } = pr.details as { from: ISODate };
       await this.cancel(pr.policyId, { reason: 'need-ceased', effectiveDate: from, note: `The animal was sold; the new owner did not accept by ${pr.deadline} (${pr.sourceEventId})` }, by, {
         proposalId: pr.id,
@@ -1169,7 +1174,7 @@ export class PolicyService implements PolicyPort {
     rights: CallerRights = {},
   ): Promise<PolicyTransaction> {
     const p = await this.get(policyId);
-    const today = this.d.clock.now().slice(0, 10);
+    const today = marketDate(p.market, this.d.clock.now());
     if (!validDate(input.from)) throw new PolicyError('validation', 'from must be YYYY-MM-DD');
     if (input.from < today) throw new PolicyError('validation', 'A change cannot apply before today');
     const reason = (input.reason ?? '').trim();
@@ -1320,7 +1325,7 @@ export class PolicyService implements PolicyPort {
     const g = await this.getGroup(groupId);
     const p = await this.get(input.policyId);
     if (p.market !== g.market) throw new PolicyError('validation', `Policy ${p.id} is not in market ${g.market}`);
-    const today = this.d.clock.now().slice(0, 10);
+    const today = marketDate(p.market, this.d.clock.now());
     const first = p.versions.find((v) => v.status === 'active')?.validFrom;
     const from = input.from ?? (first && first > today ? first : today);
     if (!validDate(from)) throw new PolicyError('validation', 'from must be YYYY-MM-DD');
@@ -1337,7 +1342,7 @@ export class PolicyService implements PolicyPort {
     if (!m) throw new PolicyError('conflict', `Policy ${policyId} is not a member of group ${groupId}`);
     const reason = (input.reason ?? '').trim();
     if (!reason) throw new PolicyError('validation', 'A reason is required');
-    const to = input.to ?? this.d.clock.now().slice(0, 10);
+    const to = input.to ?? marketDate(g.market, this.d.clock.now());
     if (!validDate(to) || to < m.from) throw new PolicyError('validation', `to must be a date from ${m.from}`);
     await this.d.store.endMember(groupId, policyId, { to, endedBy: by, endedAt: this.d.clock.now(), reason }).catch(this.translate);
     return this.getGroup(groupId);
@@ -1350,7 +1355,7 @@ export class PolicyService implements PolicyPort {
    */
   async quote(input: QuoteInput): Promise<Quote> {
     const profile = this.profile(input.market);
-    const today = this.d.clock.now().slice(0, 10);
+    const today = marketDate(input.market, this.d.clock.now());
     if (!validDate(input.startDate)) throw new PolicyError('validation', 'startDate must be YYYY-MM-DD');
     if (input.startDate < today) throw new PolicyError('validation', 'A policy cannot start before today');
     if ((input.animalId === undefined) === (input.animal === undefined)) throw new PolicyError('validation', 'Give either animalId or animal');
@@ -1547,7 +1552,7 @@ export class PolicyService implements PolicyPort {
 
   async issue(input: IssueInput, by: string, rights: CallerRights = {}): Promise<PolicyRecord> {
     const profile = this.profile(input.market);
-    const today = this.d.clock.now().slice(0, 10);
+    const today = marketDate(input.market, this.d.clock.now());
     if (!validDate(input.startDate)) throw new PolicyError('validation', 'startDate must be YYYY-MM-DD');
     if (input.startDate < today) throw new PolicyError('validation', 'A policy cannot start before the day it is issued');
 
@@ -1669,9 +1674,10 @@ export class PolicyService implements PolicyPort {
    * the policyholder of a version that has not ended, else the end of the last one.
    */
   async activityOf(partyId: string): Promise<{ ongoing: true } | { lastDate: ISODate } | null> {
-    const today = this.d.clock.now().slice(0, 10);
+    const now = this.d.clock.now();
     const ends: ISODate[] = [];
     for (const p of await this.findByPolicyholder(partyId)) {
+      const today = marketDate(p.market, now);
       for (const v of p.versions.filter((x) => x.policyholderPartyId === partyId && x.status === 'active')) {
         if (v.validTo > today) return { ongoing: true };
         ends.push(v.validTo);

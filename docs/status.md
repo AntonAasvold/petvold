@@ -32,6 +32,12 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #59 mergad.
+- Datum i marknadens tidszon (granskningen, A3), PR #60:
+  - `marketDate(market, tidpunkt)` och `MARKET_TIME_ZONES` i `common`, med 15 europeiska marknader. En okänd marknad räknar i UTC.
+  - Alla 18 ställen som räknade "i dag" i UTC använder nu objektets marknad: djurregistret, katalogen, parter, gallringen och policyer (tecknande, ändring, avslut, förnyelse, överlåtelse och grupper).
+  - Test: klockan 00:30 i Stockholm går det att teckna från samma dag, trots att det fortfarande är dagen innan i UTC.
+- 359 tester och 111 databastester.
 - #58 mergad.
 - Granskning av arkitektur och funktion, PR #59 (`docs/granskning/2026-11-15-arkitektur-och-funktion.md`). Modulgränserna håller, och principerna skyddas av databasen. Före första kund behövs:
   - kompositionsrot för drift, inloggning med JWT, datum i marknadens tidszon och sidindelning
@@ -197,7 +203,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Enligt granskningen: tidszon (A3) och kompositionsrot med inloggning (A1, A2), sedan teckningsregler (F1, ny ADR) och godkännande vid tecknande (F3). Simulering av tariffer och provision kommer därefter.
+1. Enligt granskningen: kompositionsrot för drift med relä (A1, A5) och inloggning med JWT (A2), sedan teckningsregler (F1, ny ADR) och godkännande vid tecknande (F3).
 
 **Öppet**
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).

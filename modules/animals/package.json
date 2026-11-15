@@ -9,6 +9,7 @@
     "./test-suites/animal-store": "./test-suites/animal-store.ts"
   },
   "dependencies": {
+    "@petvold/common": "^0.1.0",
     "pg": "^8.23.1"
   }
 }

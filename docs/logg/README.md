@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [Datum i marknadens tidszon](2026-11-15-tidszon.md) | #60 |
 | 2026-11-15 | [Granskning av arkitektur och funktion](2026-11-15-granskning.md) | #59 |
 | 2026-11-15 | [Priset på policyn](2026-11-15-pris-pa-policyn.md) | #58 |
 | 2026-11-15 | [Prisvilkor: rabatter efter grundpriset](2026-11-15-prisvillkor.md) | #57 |

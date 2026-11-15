@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@petvold/claims-core": "^0.1.0",
+    "@petvold/common": "^0.1.0",
     "pg": "^8.23.1"
   }
 }
