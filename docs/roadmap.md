@@ -73,7 +73,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 **Före första kund** (från [granskningen 2026-11-15](granskning/2026-11-15-arkitektur-och-funktion.md))
 - [ ] Kompositionsrot för drift: `server.ts` utan exempeldata, med relä för händelser (A1, A5)
 - [ ] Inloggning med JWT och OIDC mot försäkringsbolagets identitetstjänst (A2)
-- [ ] "I dag" i marknadens tidszon (A3)
+- [x] "I dag" i marknadens tidszon (A3)
 - [ ] Markörbaserad sidindelning på alla listor, enligt ADR 0002 (A4)
 - [ ] Godkännande av villkoren sparas vid tecknande (F3)
 - [ ] ADR om dokument och meddelanden till kunden: förköpsinformation, villkor, försäkringsbrev, besked om förnyelse och uppsägning (F2)

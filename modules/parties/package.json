@@ -9,6 +9,7 @@
     "./test-suites/party-store": "./test-suites/party-store.ts"
   },
   "dependencies": {
+    "@petvold/common": "^0.1.0",
     "pg": "^8.23.1"
   }
 }

@@ -6,6 +6,7 @@
  * Other modules tell when a party last had a relation through ActivitySource,
  * so this module never reads their tables (ADR 0001).
  */
+import { marketDate } from '@petvold/common';
 import { PartyConflictError, PartyError, type ISODate, type PartyService } from './index.ts';
 
 export interface RetentionRule {
@@ -52,6 +53,7 @@ export interface ActivitySource {
 }
 
 export interface RetentionRunResult {
+  /** The run's date in UTC; each party is checked against its own market's date. */
   onDate: ISODate;
   dryRun: boolean;
   settingsVersion: number;
@@ -143,7 +145,7 @@ export class RetentionService {
   /** When the party last had a relation anywhere, including changes to the party itself. */
   async activityOf(partyId: string): Promise<Activity> {
     const p = await this.d.parties.get(partyId);
-    const own: Activity = { lastDate: p.changedAt.slice(0, 10) };
+    const own: Activity = { lastDate: marketDate(p.market, p.changedAt) };
     return combine([own, ...(await Promise.all(this.d.sources.map((s) => s.activityOf(partyId))))]);
   }
 
@@ -153,7 +155,8 @@ export class RetentionService {
    */
   async run(input: { dryRun: boolean; markets: '*' | ReadonlySet<string> }, by: string): Promise<RetentionRunResult> {
     const settings = await this.current();
-    const onDate = this.d.clock.now().slice(0, 10);
+    const now = this.d.clock.now();
+    const onDate = marketDate(undefined, now);
     const pending = new Set((await this.d.parties.listErasureRequests({ pending: true })).map((r) => r.partyId));
     const result: RetentionRunResult = {
       onDate,
@@ -185,9 +188,9 @@ export class RetentionService {
         result.ongoing++;
         continue;
       }
-      const lastActivity = activity?.lastDate ?? p.changedAt.slice(0, 10);
+      const lastActivity = activity?.lastDate ?? marketDate(p.market, p.changedAt);
       const retainedUntil = addYears(lastActivity, rule.years);
-      if (retainedUntil >= onDate) {
+      if (retainedUntil >= marketDate(p.market, now)) {
         result.withinRetention++;
         continue;
       }

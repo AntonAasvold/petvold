@@ -8,6 +8,7 @@
  * needs someone other than the submitter. A published version never changes,
  * except that its sales can be ended earlier, with a reason.
  */
+import { marketDate } from '@petvold/common';
 import { canonicalJson, sha256, type DeductibleTerms, type ISODate, type MinorUnits, type VetCareTerms } from '@petvold/claims-core';
 import { CatalogError } from './errors.ts';
 
@@ -278,7 +279,7 @@ export class ProductService {
   async endSales(product: string, version: string, salesTo: ISODate, by: string, reason: string): Promise<ProductVersion> {
     const v = await this.inStatus(product, version, 'published');
     if (!isDate(salesTo)) throw new CatalogError('validation', 'salesTo must be YYYY-MM-DD');
-    const today = this.d.clock.now().slice(0, 10);
+    const today = marketDate(v.content.market, this.d.clock.now());
     if (salesTo < today) throw new CatalogError('validation', `Sales cannot end before today (${today})`);
     if (salesTo < v.salesFrom) throw new CatalogError('validation', 'Sales cannot end before they start');
     if (v.salesTo && salesTo >= v.salesTo) throw new CatalogError('validation', `Sales already end ${v.salesTo}; they can only be brought forward`);

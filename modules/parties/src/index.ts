@@ -19,6 +19,8 @@
  * the party (GDPR article 18) until a date.
  */
 
+import { marketDate } from '@petvold/common';
+
 export type ISODate = string;
 
 export const PARTY_KINDS = ['person', 'organization'] as const;
@@ -291,7 +293,7 @@ export class PartyService {
    */
   async marketOf(id: string): Promise<string | null> {
     const p = await this.d.store.get(id);
-    if (!p || p.anonymized || restrictedOn(p, this.today())) return null;
+    if (!p || p.anonymized || restrictedOn(p, this.today(p.market))) return null;
     return p.market;
   }
 
@@ -303,13 +305,13 @@ export class PartyService {
   /** The postal code of the party's address, for a tariff's zone (ADR 0030). null for an anonymized or restricted party. */
   async postalCodeOf(id: string): Promise<string | null> {
     const p = await this.d.store.get(id);
-    if (!p || p.anonymized || restrictedOn(p, this.today())) return null;
+    if (!p || p.anonymized || restrictedOn(p, this.today(p.market))) return null;
     return p.address?.postalCode ?? null;
   }
 
   /** Whether the party is restricted today. */
   isRestricted(p: PartyRecord): boolean {
-    return restrictedOn(p, this.today());
+    return restrictedOn(p, this.today(p.market));
   }
 
   /** Asks for the party to be anonymized. Someone else approves or rejects it. */
@@ -362,7 +364,7 @@ export class PartyService {
     const reason = (input.reason ?? '').trim();
     if (!reason) throw new PartyError('validation', 'A reason is required');
     if (r.basis === 'subject-request') {
-      if (!isDate(input.restrictUntil) || input.restrictUntil <= this.today()) {
+      if (!isDate(input.restrictUntil) || input.restrictUntil <= this.today(r.market)) {
         throw new PartyError('validation', 'A rejected request from the data subject needs restrictUntil, a date after today');
       }
     } else if (input.restrictUntil !== undefined) {
@@ -400,7 +402,7 @@ export class PartyService {
   async register(input: RegisterPartyInput, by: string): Promise<PartyRecord> {
     if (!(PARTY_KINDS as readonly string[]).includes(input.kind)) throw new PartyError('validation', `Unknown kind '${input.kind}'`);
     if (!COUNTRY.test(input.market ?? '')) throw new PartyError('validation', `Invalid market '${input.market}'`);
-    const details = this.details(input.kind, input);
+    const details = this.details(input.kind, input, input.market);
     const identifiers = (input.identifiers ?? []).map(normalizePartyIdentifier);
     for (const i of identifiers) this.checkKind(input.kind, i);
     if (new Set(identifiers.map((i) => `${i.type}:${i.country}:${i.value}`)).size !== identifiers.length) {
@@ -426,7 +428,7 @@ export class PartyService {
       revision: cur.revision + 1,
       kind: cur.kind,
       market: cur.market,
-      ...this.details(cur.kind, input),
+      ...this.details(cur.kind, input, cur.market),
       changedBy: by,
       changedAt: this.d.clock.now(),
       reason,
@@ -451,7 +453,7 @@ export class PartyService {
   }
 
   /** Checks and trims the details for the kind, and drops empty ones. */
-  private details(kind: PartyKind, input: PartyDetails): PartyDetails {
+  private details(kind: PartyKind, input: PartyDetails, market: string): PartyDetails {
     const text = (field: string, v: unknown, max: number): string | undefined => {
       if (v === undefined || v === null) return undefined;
       if (typeof v !== 'string') throw new PartyError('validation', `${field} must be text`);
@@ -466,7 +468,7 @@ export class PartyService {
       out.familyName = text('familyName', input.familyName, 100);
       if (!out.givenName || !out.familyName) throw new PartyError('validation', 'A person needs givenName and familyName');
       if (input.birthDate !== undefined) {
-        if (!isDate(input.birthDate) || input.birthDate > this.today()) throw new PartyError('validation', 'birthDate must be a date not after today');
+        if (!isDate(input.birthDate) || input.birthDate > this.today(market)) throw new PartyError('validation', 'birthDate must be a date not after today');
         out.birthDate = input.birthDate;
       }
     } else {
@@ -503,8 +505,9 @@ export class PartyService {
     return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined)) as PartyDetails;
   }
 
-  private today(): ISODate {
-    return this.d.clock.now().slice(0, 10);
+  /** Today in the market's time zone (common). */
+  private today(market: string): ISODate {
+    return marketDate(market, this.d.clock.now());
   }
 
   private translate = (e: unknown): never => {

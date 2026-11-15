@@ -591,3 +591,19 @@ test('a product with a tariff is priced at issue, change and renewal; a manual p
   const t2 = (await s.get(p.id)).terms[1]!;
   assert.deepEqual([t2.pricing?.input.newPolicy, t2.pricing?.result.facts.ageYears], [false, 8]);
 });
+
+test("'today' is the market's date: at 00:30 in Stockholm a policy can start that day, though it is still yesterday in UTC", async () => {
+  let n = 0;
+  const now = '2026-11-14T23:30:00.000Z'; // 00:30 on 15 November in Stockholm
+  const s = new PolicyService({
+    store: new InMemoryPolicyStore(),
+    products: { offer: async () => offer(), versionOnSale: async () => 'SE-HUND@1' },
+    animals: { get: async () => ({ market: 'SE', species: 'dog', birthDate: '2024-03-01' }) },
+    parties: { marketOf: async () => 'SE' },
+    clock: { now: () => now },
+    ids: { next: (p) => `${p}_${++n}` },
+  });
+  const p = await s.issue(input({ startDate: '2026-11-15' }), by);
+  assert.equal(p.terms[0]!.startDate, '2026-11-15');
+  await rejects(s.issue(input({ animalId: 'ani_other', startDate: '2026-11-14' }), by), 'validation', /before the day it is issued/);
+});
