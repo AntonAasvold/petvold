@@ -33,6 +33,29 @@ export interface VetCareCover {
   waitingPeriodDays: number;
 }
 
+/** How the product's policies behave over time (ADR 0029). Each has a default. */
+export interface PolicySettings {
+  /**
+   * The customer's cancellation during a term: 'term-end' keeps the term (the
+   * binding period) and ends the policy when it runs out; 'immediate' ends it
+   * the day after notice and refunds the rest of the premium. Cancelling when
+   * the need for insurance ceases, and withdrawal, are always allowed.
+   * Default 'term-end'.
+   */
+  midTermCancellation?: 'term-end' | 'immediate';
+  /** Days before the term ends that the renewal run renews it. Default 45. */
+  renewalLeadDays?: number;
+  /** Days a new owner has to accept a transferred policy. Default 30. */
+  transferAcceptanceDays?: number;
+}
+
+export const POLICY_SETTING_DEFAULTS: Required<PolicySettings> = { midTermCancellation: 'term-end', renewalLeadDays: 45, transferAcceptanceDays: 30 };
+
+/** The product's policy settings with defaults filled in. Pure. */
+export function policySettingsOf(c: ProductContent): Required<PolicySettings> {
+  return { ...POLICY_SETTING_DEFAULTS, ...(c.policy ?? {}) };
+}
+
 /** What an author writes, and what review and publication lock. */
 export interface ProductContent {
   market: string;
@@ -43,6 +66,7 @@ export interface ProductContent {
   /** The rule series the claims engine assesses claims on this version with (ADR 0021). */
   ruleSeries: string;
   vetCare: VetCareCover;
+  policy?: PolicySettings;
 }
 
 export interface ProductVersion {
@@ -300,6 +324,18 @@ export class ProductService {
       validateDeductible(o.code, o.terms, fail);
     }
     if (!codes.has(vc.defaultDeductible)) fail('defaultDeductible must be one of the deductible options');
+    const ps = c.policy;
+    if (ps !== undefined) {
+      if (ps.midTermCancellation !== undefined && !['term-end', 'immediate'].includes(ps.midTermCancellation)) {
+        fail('policy.midTermCancellation must be term-end or immediate');
+      }
+      if (ps.renewalLeadDays !== undefined && (!Number.isSafeInteger(ps.renewalLeadDays) || ps.renewalLeadDays < 31 || ps.renewalLeadDays > 120)) {
+        fail('policy.renewalLeadDays must be 31-120, so that the customer hears of the renewal more than a month ahead');
+      }
+      if (ps.transferAcceptanceDays !== undefined && (!Number.isSafeInteger(ps.transferAcceptanceDays) || ps.transferAcceptanceDays < 1 || ps.transferAcceptanceDays > 90)) {
+        fail('policy.transferAcceptanceDays must be 1-90');
+      }
+    }
   }
 }
 

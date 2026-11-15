@@ -32,6 +32,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #46 mergad.
+- Avslut av policyer (ADR 0029), PR #47:
+  - **Sju skäl** med regler från marknadsprofilen (FAL och distansavtalslagen, med källor i koden) och produktens inställning.
+  - **Bakåt i tiden** när behovet har fallit bort, till exempel när djuret har dött. Versionerna från den dagen ersätts av en avslutad version, och historiken behåller vad som var känt före.
+  - **Premie tillbaka** per dag, och **återkallelse** av det senaste avslutet.
+  - **Produktinställningar** under `policy`: `midTermCancellation` (`term-end` som förval, eller `immediate`), `renewalLeadDays` (45 som förval, minst 31) och `transferAcceptanceDays` (30 som förval).
+  - **Outbox** för policymodulen med `policy.issued`, `policy.cancelled`, `policy.reinstated` och `policy.version_superseded`.
+  - **Migration 0022.** Provad ner och upp igen, även med avslut i tabellerna.
+- 316 tester och 105 databastester.
 - #45 mergad.
 - Policymodulen, första delen (ADR 0029), PR #46:
   - **Tecknande** med kontroll av djur, försäkringstagare, produkt till salu, val, valuta och startdag. En term på ett år och en bitemporal version. Transaktionen visar stegen, och premien anges av anroparen tills M4.
@@ -107,9 +116,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Policymodulen, andra delen: avslut (kundens, bolagets, när djuret dör och ånger), med premie tillbaka och händelser.
+1. Förnyelse (körning 45 dagar före förfallodagen, inställbart per produkt), sedan överlåtelse vid försäljning.
 
 **Öppet**
+- Skademotorn omprövar inte skador automatiskt när en policy avslutas bakåt i tiden. Händelsen `policy.version_superseded` finns, men ingen lyssnar på den än.
 - Gallringen känner till djurregistret och policyerna, men inte öppna skador. Den ska inte köras skarpt förrän skador rapporterar sina relationer.
 - Det sparas inte vem som slagit upp ett djur.
 

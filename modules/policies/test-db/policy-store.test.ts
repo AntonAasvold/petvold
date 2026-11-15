@@ -15,7 +15,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate policies.policy_version, policies.term, policies.policy_transaction, policies.policy cascade');
+const clean = () => admin.query('truncate policies.outbox, policies.policy_version, policies.term, policies.policy_transaction, policies.policy cascade');
 
 policyStoreSuite('PostgresPolicyStore', async () => {
   await clean();
@@ -26,7 +26,7 @@ test('the database keeps terms and versions', async () => {
   await clean();
   const store = new PostgresPolicyStore(pool);
   const t = issued();
-  await store.issue(t.policy, t.term, t.version, t.transaction);
+  await store.issue(t.policy, t.term, t.version, t.transaction, []);
   await assert.rejects(pool.query(`update policies.term set premium = 1`), /permission denied/);
   await assert.rejects(pool.query(`delete from policies.policy_version`), /permission denied/);
   await assert.rejects(pool.query(`update policies.policy_version set sys_to = sys_from`), /check/);

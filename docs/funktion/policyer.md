@@ -2,7 +2,7 @@
 
 En policy försäkrar ett djur. Den har en försäkringstagare, en produkt och hela sin historik. Besluten bakom finns i ADR 0006, 0007 och 0029.
 
-Den här första delen tecknar policyer. Avslut, förnyelse, ändring och överlåtelse kommer i nästa steg.
+Policyer kan tecknas och avslutas, och ett avslut kan återkallas. Förnyelse, ändring och överlåtelse kommer i nästa steg.
 
 ## Vad en policy har
 
@@ -36,11 +36,39 @@ Petvold kontrollerar att:
 
 Den första termen är ett år, eftersom försäkringstiden är högst ett år i Sverige (FAL 3 kap. 2 §). Transaktionen går igenom stegen utkast, prissatt, riskbedömd och utfärdad. Tills tariffen och teckningsreglerna finns (M4) anger anroparen premien, och alla ansökningar godkänns. Stegen visar det.
 
+## Avsluta en policy
+
+`POST /v1/policies/{id}/cancellations` med `reason`, och vid behov `receivedOn` (dagen uppsägningen kom fram, eller skickades av bolaget, förvalt i dag), `effectiveDate` och `note`. Skälet styr från vilken dag policyn upphör. Reglerna kommer från marknadsprofilen, alltså lagen, och från produktens inställning.
+
+| Skäl | Upphör | Regel i Sverige |
+| --- | --- | --- |
+| `customer-term-end` | När termen slutar. Inget ändras nu, men policyn förnyas inte. | Alltid tillåtet (FAL 3 kap. 3 §) |
+| `customer-immediate` | Dagen efter uppsägningen, eller ett senare `effectiveDate`. Premien för resten av termen betalas tillbaka. | Bara om produkten har `midTermCancellation: immediate` |
+| `withdrawal` | Dagen efter, eller från start om policyn inte börjat gälla | Inom 14 dagar från tecknandet (distansavtalslagen 3 kap. 13 §) |
+| `need-ceased` | Från `effectiveDate`, även bakåt i tiden, till exempel dagen djuret dog. Kräver `note`. | Alltid tillåtet (FAL 3 kap. 6 §) |
+| `insurer-term-end` | När termen slutar | Bolaget säger upp minst en månad före (FAL 3 kap. 3 §) |
+| `insurer-breach` | 14 dagar efter att uppsägningen skickades. Kräver `note`. | Bara vid grovt åsidosättande eller synnerliga skäl (FAL 3 kap. 7 §) |
+| `unpaid-premium` | 14 dagar efter att uppsägningen skickades | FAL 5 kap. 2 § |
+
+**Det här händer:** de versioner som gällde från upphörandedagen ersätts. Den del som gällde före dagen finns kvar som aktiv, och resten blir en version med status `cancelled`. Skademotorn ser då att policyn är avslutad på de dagarna. Det som var känt före avslutet går fortfarande att se med `knownAt`.
+
+**Premie tillbaka:** `refund` är termens premie per dag för de dagar som inte längre gäller, avrundat till närmaste öre (FAL 5 kap. 6 §). Utbetalningen görs av betalningsmodulen (M5).
+
+**Ett tidigare avslut gäller redan:** ett nytt avslut som börjar samma dag eller senare ger `409`. Ett tidigare avslut är fortfarande möjligt, till exempel om djuret dör under uppsägningstiden.
+
+**Återkalla ett avslut:** `POST /v1/policies/{id}/reinstatements` med `cancellationId` och `note`. Det går bara om avslutet är policyns senaste transaktion, till exempel om ett dödsfall registrerades på fel djur. De ersatta versionerna gäller då igen, och premien tillbaka återkallas.
+
+**Händelser:** varje ändring skriver händelser i samma transaktion: `policy.issued`, `policy.cancelled` (med upphörandedag och premie tillbaka), `policy.reinstated` och `policy.version_superseded` för varje ersatt version. Dev-servern skriver ut dem i loggen.
+
+**Exempel:** Rex dör 1 mars 2027, och Anna hör av sig 20 mars. Kundservice skickar `{ "reason": "need-ceased", "effectiveDate": "2027-03-01", "note": "Djuret har dött" }`. Policyn upphör från 1 mars, och premien för 1 mars till 1 december betalas tillbaka. En skada på Rex efter 1 mars avslås, eftersom policyn är avslutad.
+
 ## Anrop
 
 | Anrop | Rättighet | Gör |
 | --- | --- | --- |
 | `POST /v1/policies` | `policies:write` | Tecknar en policy |
+| `POST /v1/policies/{id}/cancellations` | `policies:write` | Avslutar en policy |
+| `POST /v1/policies/{id}/reinstatements` | `policies:write` | Återkallar det senaste avslutet |
 | `GET /v1/policies?animalId=…` | `policies:read` | Policyer för ett djur. Det går också att använda `policyholderPartyId`. |
 | `GET /v1/policies/{id}` | `policies:read` | Policyn med termer och gällande versioner |
 | `GET /v1/policies/{id}/history` | `policies:read` | Alla versioner, även ersatta, och alla transaktioner |
@@ -75,4 +103,4 @@ Svaret har en term från 1 december 2026 till 1 december 2027 (slutdagen räknas
 
 Dev-servern lägger in Bellas policy `pol_bella` första gången, med ägaren `pty_owner001` och förbehållet för hälta. Exemplet har bara den gällande termen. Token `dev-seller` tecknar policyer. Skademotorn läser policyerna från modulen.
 
-*Inte byggt än:* avslut, förnyelse, ändring, överlåtelse, policygrupper och händelser (ADR 0029).
+*Inte byggt än:* förnyelse, ändring, överlåtelse, policygrupper, förslag till avslut när djuret dör (händelser från djurregistret), och omprövning av skador efter ett avslut bakåt i tiden (ADR 0029).

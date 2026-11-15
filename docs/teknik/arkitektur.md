@@ -172,6 +172,9 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 - **Marknadsprofilen** `MARKET_PROFILES` i koden har lagreglerna med källor. Än så länge finns bara längsta termen för Sverige.
 - **Skademotorn** får `PolicyService` som `PolicyPort`. `getPolicyAt(policyId, onDate, knownAt)` hittar versionen, termen och djurets födelsedatum och bygger en `PolicySnapshot` med `toSnapshot`.
 - **Gallringen** får `PolicyService.activityOf` som `ActivitySource`.
+- **Avslut (migration 0022):** `PolicyService.cancel` räknar fram upphörandedagen från skälet, marknadsprofilen och produktens `midTermCancellation` (via `ProductPort`). `PolicyStore.apply(policyId, supersede, add, tx, events)` sätter `sys_to` på de ersatta versionerna och lägger till nya, i en transaktion. Samma metod används för återkallelse och kommer att användas för förnyelse och överlåtelse.
+- **Outbox:** `policies.outbox` får händelserna i samma transaktion. `pendingEvents` och `markPublished` används av en relay, som i dev-servern skriver ut dem i loggen.
+- **Premie tillbaka** räknas av den rena funktionen `refundFor(terms, versionerFöre, från)`.
 
 **Rollinställningen (ADR 0020):**
 - **Versioner.** Modulen `access` sparar hela rollinställningen som versioner i `access.role_config` (migration 0009). Den har en egen tjänsteroll, `access_service`, som bara får läsa och lägga till.

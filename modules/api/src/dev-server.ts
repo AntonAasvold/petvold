@@ -265,8 +265,20 @@ async function seedPolicies(): Promise<void> {
       transactionId: 'ptx_bellaseed',
     },
     { id: 'ptx_bellaseed', policyId: 'pol_bella', type: 'issue', steps: [{ step: 'issued', at, note: 'Sample data' }], requestedBy: 'petvold-seed', requestedAt: at },
+    [],
   );
 }
+
+// The policy module's outbox (ADR 0008). Here the events are just logged.
+setInterval(
+  () =>
+    void (async () => {
+      const events = await policyStore.pendingEvents(100);
+      for (const e of events) console.log(`[event] ${e.type} ${e.policyId}`);
+      if (events.length) await policyStore.markPublished(events.map((e) => e.id), clock.now());
+    })().catch((err) => console.error('[policy relay]', err)),
+  1_000,
+).unref();
 
 // Retention (ADR 0028): settings in Postgres with the parties, activity from the animal register and the policies.
 const retention = new RetentionService({
