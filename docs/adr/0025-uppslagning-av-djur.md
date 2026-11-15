@@ -1,6 +1,6 @@
 # 0025. Uppslagning av djur, till exempel för kliniker
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-15
 
 ## Sammanhang

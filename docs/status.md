@@ -11,7 +11,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **API-sidan** (`api/`) är Scalar med `openapi.yaml`, samma som dev-serverns `/docs` men utan förifylld token.
   - **Arbetsflödet `Pages`** publicerar efter varje merge till `main`. CI bygger sajten i varje PR.
 - #36 mergad. Sajten är uppe på https://antonaasvold.github.io/petvold/.
-- Parter i den nya modulen `parties` (ADR 0026, Föreslagen), PR #37:
+- Parter i den nya modulen `parties` (ADR 0026, Beslutad), PR #37:
   - **Personer och organisationer** med namn, kontaktuppgifter, adress och språk, som revisioner med motivering. Sort och marknad ändras aldrig.
   - **Personnummer och organisationsnummer** med land, unika och aldrig borttagna. Svenska nummer kontrolleras (datum, kontrollsiffra, samordningsnummer).
   - **Personnummer visas aldrig.** Svaren maskerar dem, och sökningen sker med `POST /v1/party-searches`, så att numret inte hamnar i adresser eller loggar.
@@ -26,12 +26,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Porten `PartyPort`** i `animals`, som `PartyService.marketOf` uppfyller. API-lagret och dev-servern kopplar ihop dem.
 - 282 tester och 95 databastester.
 - #38 mergad.
-- Kullar i djurregistret (ADR 0027, Föreslagen), PR #39:
+- Kullar i djurregistret (ADR 0027, Beslutad), PR #39:
   - **`POST /v1/litters`** registrerar alla djur i kullen på en gång, ägda av uppfödaren från födelsedatumet. `GET /v1/litters/{id}` visar kullen.
   - **Föräldrarna kontrolleras:** samma art och marknad, mor hona och far hane, födda före kullen. Rasen ärvs om båda har samma.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #39 mergad. ADR 0025, 0026 och 0027 beslutade: djur är stängda för kliniker från början, personnummer krypteras inte per fält, en ägare hör till djurets marknad och en kull ändras inte.
 - #31 mergad: simulering och rättningen av outboxens ordning.
 - Referensdata i den nya modulen `catalog` (ADR 0022, Beslutad):
   - **Arter, raser och kön** med koder som aldrig ändras och etiketter per språk. `label` följer `Accept-Language`.
@@ -58,7 +59,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Migration 0015:** schemat `animals` och rollen `animals_service`. Provad ner och upp igen.
   - **Dev-servern** registrerar Bella. Ny token `dev-registrar`. Lokal rollinställning är version 4.
 - ADR 0022, 0023 och 0024 beslutade.
-- Uppslagning av djur för kliniker (ADR 0025, Föreslagen), PR #35:
+- Uppslagning av djur för kliniker (ADR 0025, Beslutad), PR #35:
   - **Flaggan `allowLookup`** per djur, som en del av revisionerna. Stängt om inget anges, och måste alltid anges vid en rättelse.
   - **`GET /v1/animal-lookup`** på chip, registrering eller pass. Visar djuret utan ägare och historik, och bara i anroparens marknader. Stängt, okänt och fel marknad ger samma tomma lista.
   - **Ny rättighet `animals:lookup`**, som rollen `clinic` får.
@@ -70,7 +71,6 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 1. ADR om gallring och anonymisering (GDPR artikel 17), eller flytten av `assess` och `calculate` till `decisioning-core`.
 
 **Öppet**
-- ADR 0025, 0026 och 0027 väntar på ditt beslut.
 - Gallring och anonymisering av personuppgifter (GDPR artikel 17) behöver en ADR innan Petvold används med riktiga kunder.
 - `parties:read`, `parties:write` och `party-registrar` saknas i installationer som redan har en sparad rollinställning.
 - Det sparas inte vem som slagit upp ett djur.

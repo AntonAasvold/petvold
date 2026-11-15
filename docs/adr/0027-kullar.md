@@ -1,6 +1,6 @@
 # 0027. Kullar i djurregistret
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-15
 
 ## Sammanhang
