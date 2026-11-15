@@ -109,6 +109,34 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
       assert.deepEqual((await store.pendingEvents(10)).map((e) => e.id), ['pev_2']);
     });
 
+    it('a renewal adds the next term and version, and the policy is no longer up for renewal', async (store) => {
+      const t = issued();
+      await store.issue(t.policy, t.term, t.version, t.transaction, []);
+      assert.deepEqual(await store.endingBetween('2027-11-01', '2027-12-31'), ['pol_t1']);
+      assert.deepEqual(await store.endingBetween('2028-01-01', '2028-12-31'), []);
+      const later = '2027-10-17T03:00:00.000Z';
+      const term2: Term = { ...t.term, termNo: 2, startDate: '2027-12-01', endDate: '2028-12-01', productVersion: 'SE-TEST@2', transactionId: 'ptx_r1' };
+      const v2: PolicyVersion = { ...t.version, id: 'pv_r1', validFrom: '2027-12-01', validTo: '2028-12-01', sysFrom: later, termNo: 2, transactionId: 'ptx_r1' };
+      const tx: PolicyTransaction = {
+        id: 'ptx_r1',
+        policyId: 'pol_t1',
+        type: 'renew',
+        steps: [{ step: 'issued', at: later }],
+        requestedBy: 'renewal-job',
+        requestedAt: later,
+        supersedes: [],
+        renewal: { termNo: 2, productVersion: 'SE-TEST@2', premium: { amount: 480_000, currency: 'SEK' } },
+      };
+      await store.apply('pol_t1', [], [v2], tx, [], [term2]);
+      await assert.rejects(store.apply('pol_t1', [], [], { ...tx, id: 'ptx_r2' }, [], [term2]), PolicyConflictError);
+      const p = (await store.get('pol_t1'))!;
+      assert.deepEqual(p.terms, [t.term, term2]);
+      assert.deepEqual(p.versions, [t.version, v2]);
+      assert.deepEqual((await store.transactions('pol_t1')).at(-1), tx);
+      assert.deepEqual(await store.endingBetween('2027-11-01', '2027-12-31'), []);
+      assert.deepEqual(await store.endingBetween('2028-11-01', '2028-12-31'), ['pol_t1']);
+    });
+
     it('an animal is never insured twice for the same day', async (store) => {
       const a = issued(1);
       await store.issue(a.policy, a.term, a.version, a.transaction, []);

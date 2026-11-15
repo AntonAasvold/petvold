@@ -175,6 +175,7 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 - **Avslut (migration 0022):** `PolicyService.cancel` räknar fram upphörandedagen från skälet, marknadsprofilen och produktens `midTermCancellation` (via `ProductPort`). `PolicyStore.apply(policyId, supersede, add, tx, events)` sätter `sys_to` på de ersatta versionerna och lägger till nya, i en transaktion. Samma metod används för återkallelse och kommer att användas för förnyelse och överlåtelse.
 - **Outbox:** `policies.outbox` får händelserna i samma transaktion. `pendingEvents` och `markPublished` används av en relay, som i dev-servern skriver ut dem i loggen.
 - **Premie tillbaka** räknas av den rena funktionen `refundFor(terms, versionerFöre, från)`.
+- **Förnyelse (migration 0023):** `PolicyStore.endingBetween(från, till)` ger policyer vars aktiva version slutar i perioden utan att någon version följer. `PolicyService.renewalRun` tar produktens `renewalLeadDays` via `ProductPort.offer` och den version som säljs via `ProductPort.versionOnSale`. `planRenewal` kontrollerar och bygger nästa term, och `renew` sparar den med `PolicyStore.apply(…, terms)`.
 
 **Rollinställningen (ADR 0020):**
 - **Versioner.** Modulen `access` sparar hela rollinställningen som versioner i `access.role_config` (migration 0009). Den har en egen tjänsteroll, `access_service`, som bara får läsa och lägga till.

@@ -4,6 +4,9 @@ import { InMemoryPolicyStore, PolicyError, PolicyService, addMonths, type IssueI
 
 const vetCare = { code: 'vet_care' as const, annualLimit: 6_000_000, deductible: { fixed: 200_000, fixedPer: 'period' as const, periodDays: 125, variableBp: 2500 }, waitingPeriodDays: 30 };
 const offer = (o: Partial<ProductOffer> = {}): ProductOffer => ({
+  product: 'SE-HUND',
+  termMonths: 12,
+  renewalLeadDays: 45,
   market: 'SE',
   currency: 'SEK',
   species: ['dog'],
@@ -20,7 +23,7 @@ function setup(offers: Record<string, ProductOffer | null> = { 'SE-HUND@1': offe
   let n = 0;
   return new PolicyService({
     store: new InMemoryPolicyStore(),
-    products: { offer: async (pv) => offers[pv] ?? null },
+    products: { offer: async (pv) => offers[pv] ?? null, versionOnSale: async () => 'SE-HUND@1' },
     animals: {
       get: async (id) =>
         ({
@@ -111,7 +114,7 @@ function cancelSetup(midTermCancellation: 'term-end' | 'immediate' = 'term-end')
   const store = new InMemoryPolicyStore();
   const s = new PolicyService({
     store,
-    products: { offer: async () => offer({ midTermCancellation }) },
+    products: { offer: async () => offer({ midTermCancellation }), versionOnSale: async () => 'SE-HUND@1' },
     animals: { get: async () => ({ market: 'SE', species: 'dog', birthDate: '2024-03-01' }) },
     parties: { marketOf: async () => 'SE' },
     clock: { now: () => now },
@@ -222,4 +225,102 @@ test('the insurer cancels with notice, for breach, or for unpaid premium', async
   await rejects(c.s.cancel(r.id, { reason: 'whim' as never }, 'cs'), 'validation', /Unknown reason/);
   // An earlier death still moves the end earlier.
   assert.equal((await c.s.cancel(r.id, { reason: 'need-ceased', effectiveDate: '2027-02-20', note: 'Died' }, 'cs')).cancellation?.effectiveDate, '2027-02-20');
+});
+
+function renewalSetup(o: { onSale?: Record<string, string | null>; offers?: Record<string, ProductOffer>; state?: { dead?: boolean; holder?: string | null } } = {}) {
+  const state = o.state ?? {};
+  let now = '2026-11-15T10:00:00.000Z';
+  let n = 0;
+  const store = new InMemoryPolicyStore();
+  const offers = o.offers ?? { 'SE-HUND@1': offer(), 'SE-HUND@2': offer() };
+  const s = new PolicyService({
+    store,
+    products: { offer: async (pv) => offers[pv] ?? null, versionOnSale: async (product, date) => (o.onSale && date in o.onSale ? o.onSale[date]! : product === 'SE-HUND' ? 'SE-HUND@1' : null) },
+    animals: { get: async () => ({ market: 'SE', species: 'dog', birthDate: '2024-03-01', ...(state.dead ? { deceasedOn: '2027-06-01' } : {}) }) },
+    parties: { marketOf: async () => (state.holder === undefined ? 'SE' : state.holder) },
+    clock: { now: () => now },
+    ids: { next: (p) => `${p}_${++n}` },
+  });
+  return { s, store, at: (iso: string) => (now = iso) };
+}
+
+test('the renewal run renews within the lead time, with the version on sale and the same choices and premium', async () => {
+  const { s, store, at } = renewalSetup({ onSale: { '2027-12-01': 'SE-HUND@2' } });
+  const p = await s.issue(input({ vetCare: { deductible: 'high' } }), by); // term to 2027-12-01
+  at('2027-10-01T03:00:00.000Z'); // 61 days before: not yet
+  const early = await s.renewalRun({ dryRun: false, markets: '*' }, 'renewal-job');
+  assert.deepEqual([early.checked, early.notYet, early.renewed], [1, 1, []]);
+
+  at('2027-10-17T03:00:00.000Z'); // 45 days before
+  const dry = await s.renewalRun({ dryRun: true, markets: '*' }, 'renewal-job');
+  assert.deepEqual(dry.renewed.map((r) => [r.termNo, r.startDate, r.endDate, r.productVersion, r.premium, r.transactionId]), [[2, '2027-12-01', '2028-12-01', 'SE-HUND@2', 480_000, undefined]]);
+  assert.equal((await s.get(p.id)).terms.length, 1);
+
+  const run = await s.renewalRun({ dryRun: false, markets: '*' }, 'renewal-job');
+  assert.equal(run.renewed.length, 1);
+  const after = await s.get(p.id);
+  assert.deepEqual(after.terms.map((t) => [t.termNo, t.startDate, t.productVersion, t.deductibleOption]), [[1, '2026-12-01', 'SE-HUND@1', 'high'], [2, '2027-12-01', 'SE-HUND@2', 'high']]);
+  assert.deepEqual(after.versions.map((v) => [v.validFrom, v.validTo, v.termNo]), [['2026-12-01', '2027-12-01', 1], ['2027-12-01', '2028-12-01', 2]]);
+  assert.equal((await s.getPolicyAt(p.id, '2028-01-01'))?.policyYearStart, '2027-12-01');
+  assert.equal((await s.getPolicyAt(p.id, '2028-01-01'))?.inceptionDate, '2026-12-01'); // the waiting period does not restart
+  // Renewed once: the next run finds nothing.
+  assert.equal((await s.renewalRun({ dryRun: false, markets: '*' }, 'renewal-job')).checked, 0);
+  assert.ok((await store.pendingEvents(100)).some((e) => e.type === 'policy.renewed'));
+});
+
+test('a cancellation at the end of the term stops the renewal; a later one ends the renewed term', async () => {
+  const a = renewalSetup();
+  const p = await a.s.issue(input(), by);
+  a.at('2027-10-20T10:00:00.000Z');
+  await a.s.cancel(p.id, { reason: 'customer-term-end' }, 'cs');
+  const run = await a.s.renewalRun({ dryRun: false, markets: '*' }, 'job');
+  assert.deepEqual([run.cancelled, run.renewed.length], [1, 0]);
+  await rejects(a.s.renew(p.id, {}, 'cs'), 'conflict', /cancelled from 2027-12-01/);
+
+  const b = renewalSetup();
+  const q = await b.s.issue(input(), by);
+  b.at('2027-10-20T10:00:00.000Z');
+  await b.s.renewalRun({ dryRun: false, markets: '*' }, 'job');
+  b.at('2027-11-10T10:00:00.000Z');
+  const c = await b.s.cancel(q.id, { reason: 'customer-term-end' }, 'cs'); // after the renewal, before the new term
+  assert.deepEqual([c.cancellation?.effectiveDate, c.cancellation?.refund.amount], ['2027-12-01', 480_000]);
+  assert.deepEqual((await b.s.get(q.id)).versions.map((v) => [v.validFrom, v.status]), [['2026-12-01', 'active'], ['2027-12-01', 'cancelled']]);
+});
+
+test('what the run cannot renew is listed for a decision, and can be renewed by hand', async () => {
+  const offers = { 'SE-HUND@1': offer(), 'SE-HUND@2': offer({ vetCareTermsFor: () => { throw new Error('No deductible standard'); } }), 'SE-HUND@3': offer() };
+  const changed = renewalSetup({ onSale: { '2027-12-01': 'SE-HUND@2' }, offers });
+  const r = await changed.s.issue(input(), by);
+  changed.at('2027-11-01T10:00:00.000Z');
+  const run = await changed.s.renewalRun({ dryRun: false, markets: '*' }, 'job');
+  assert.deepEqual(run.needsDecision.map((x) => [x.policyId, x.issue]), [[r.id, 'option-not-offered']]);
+  await rejects(changed.s.renew(r.id, {}, 'cs'), 'validation', /option-not-offered/);
+  const manual = await changed.s.renew(r.id, { productVersion: 'SE-HUND@3', premium: { amount: 500_000, currency: 'SEK' } }, 'cs');
+  assert.deepEqual(manual.renewal, { termNo: 2, productVersion: 'SE-HUND@3', premium: { amount: 500_000, currency: 'SEK' } });
+
+  const none = renewalSetup({ onSale: { '2027-12-01': null } });
+  const q = await none.s.issue(input(), by);
+  none.at('2027-11-01T10:00:00.000Z');
+  assert.deepEqual((await none.s.renewalRun({ dryRun: true, markets: '*' }, 'job')).needsDecision.map((x) => [x.policyId, x.issue]), [[q.id, 'product-not-on-sale']]);
+
+  const state: { dead?: boolean; holder?: string | null } = {};
+  const other = renewalSetup({ state });
+  const d = await other.s.issue(input(), by);
+  other.at('2027-11-01T10:00:00.000Z');
+  state.dead = true;
+  assert.deepEqual((await other.s.renewalRun({ dryRun: true, markets: '*' }, 'job')).needsDecision.map((x) => [x.policyId, x.issue]), [[d.id, 'animal-died']]);
+  state.dead = false;
+  state.holder = null;
+  assert.deepEqual((await other.s.renewalRun({ dryRun: true, markets: '*' }, 'job')).needsDecision.map((x) => x.issue), ['policyholder-unavailable']);
+  assert.equal((await other.s.renewalRun({ dryRun: true, markets: new Set(['NO']) }, 'job')).checked, 0);
+});
+
+test('the term length comes from the product, within the market\'s maximum', async () => {
+  const monthly = renewalSetup({ offers: { 'SE-HUND@1': offer({ termMonths: 1, renewalLeadDays: 10 }) } });
+  const p = await monthly.s.issue(input(), by);
+  assert.deepEqual([p.terms[0]!.startDate, p.terms[0]!.endDate], ['2026-12-01', '2027-01-01']);
+  monthly.at('2026-12-22T10:00:00.000Z');
+  assert.deepEqual((await monthly.s.renewalRun({ dryRun: false, markets: '*' }, 'job')).renewed.map((x) => x.endDate), ['2027-02-01']);
+  const long = renewalSetup({ offers: { 'SE-HUND@1': offer({ termMonths: 24 }) } });
+  await rejects(long.s.issue(input(), by), 'validation', /at most 12/);
 });

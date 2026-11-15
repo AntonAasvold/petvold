@@ -2,7 +2,7 @@
 
 En policy försäkrar ett djur. Den har en försäkringstagare, en produkt och hela sin historik. Besluten bakom finns i ADR 0006, 0007 och 0029.
 
-Policyer kan tecknas och avslutas, och ett avslut kan återkallas. Förnyelse, ändring och överlåtelse kommer i nästa steg.
+Policyer kan tecknas, förnyas och avslutas, och ett avslut kan återkallas. Ändring och överlåtelse kommer i nästa steg.
 
 ## Vad en policy har
 
@@ -34,7 +34,39 @@ Petvold kontrollerar att:
 - **startdagen inte ligger före dagen för tecknandet**
 - **djuret inte redan har en policy** för någon av dagarna (`409`)
 
-Den första termen är ett år, eftersom försäkringstiden är högst ett år i Sverige (FAL 3 kap. 2 §). Transaktionen går igenom stegen utkast, prissatt, riskbedömd och utfärdad. Tills tariffen och teckningsreglerna finns (M4) anger anroparen premien, och alla ansökningar godkänns. Stegen visar det.
+Termens längd kommer från produkten (`policy.termMonths`, förval 12 månader). Den får inte vara längre än marknaden tillåter, i Sverige ett år (FAL 3 kap. 2 §). Transaktionen går igenom stegen utkast, prissatt, riskbedömd och utfärdad. Tills tariffen och teckningsreglerna finns (M4) anger anroparen premien, och alla ansökningar godkänns. Stegen visar det.
+
+## Förnyelse
+
+En policy förnyas på samma villkor om ingen har sagt upp den (FAL 3 kap. 4 §).
+
+**Förnyelsekörningen** (`POST /v1/renewal-runs`, rättigheten `policies:renew`) är tänkt att köras varje dag med rollen `renewal-job`. Den går igenom policyer vars term slutar inom produktens `renewalLeadDays` (förval 45 dagar) och skapar nästa term för var och en:
+- Termen börjar dagen den förra slutar och är `termMonths` lång.
+- Produktversionen är den version av samma produkt som säljs den dagen.
+- Försäkringsbeloppet och självrisken är samma som förut.
+- Premien är samma som förut, tills tariffen finns (M4).
+- `inceptionDate` ändras inte, så karenstiden börjar inte om.
+
+Med `"dryRun": true` visas vad som skulle hända utan att något sparas.
+
+**Det som inte förnyas:**
+- **Avslutade policyer.** Policyer med ett avslut som gäller vid termens slut, till exempel kundens uppsägning med bindningstiden ut, räknas under `cancelled`.
+- **Policyer som behöver ett beslut.** De listas under `needsDecision` med orsak:
+
+| Orsak | Betyder |
+| --- | --- |
+| `product-not-on-sale` | Ingen version av produkten säljs på förnyelsedagen |
+| `option-not-offered` | Den nya versionen saknar försäkringsbeloppet eller självrisken |
+| `species-not-covered` | Den nya versionen gäller inte djurets art |
+| `term-too-long` | Den nya versionens term är längre än marknaden tillåter |
+| `animal-died` | Djuret har dött |
+| `policyholder-unavailable` | Försäkringstagaren finns inte, är begränsad eller anonymiserad |
+
+**Förnya för hand:** `POST /v1/policies/{id}/renewals`, med `productVersion` och `premium` om de ska vara andra än förvalen. Den används för policyer som körningen har listat under `needsDecision`.
+
+**Uppsägning efter förnyelsen:** om kunden säger upp till termens slut efter att förnyelsen har körts, avslutas den nya termen från början och hela dess premie betalas tillbaka.
+
+**Exempel:** Rex policy gäller till 1 december 2027. Den 17 oktober, 45 dagar före, förnyar körningen den till 1 december 2028 med den produktversion som säljs då. Om Anna redan har sagt upp till termens slut, förnyas den inte.
 
 ## Avsluta en policy
 
@@ -58,7 +90,7 @@ Den första termen är ett år, eftersom försäkringstiden är högst ett år i
 
 **Återkalla ett avslut:** `POST /v1/policies/{id}/reinstatements` med `cancellationId` och `note`. Det går bara om avslutet är policyns senaste transaktion, till exempel om ett dödsfall registrerades på fel djur. De ersatta versionerna gäller då igen, och premien tillbaka återkallas.
 
-**Händelser:** varje ändring skriver händelser i samma transaktion: `policy.issued`, `policy.cancelled` (med upphörandedag och premie tillbaka), `policy.reinstated` och `policy.version_superseded` för varje ersatt version. Dev-servern skriver ut dem i loggen.
+**Händelser:** varje ändring skriver händelser i samma transaktion: `policy.issued`, `policy.renewed`, `policy.cancelled` (med upphörandedag och premie tillbaka), `policy.reinstated` och `policy.version_superseded` för varje ersatt version. Dev-servern skriver ut dem i loggen.
 
 **Exempel:** Rex dör 1 mars 2027, och Anna hör av sig 20 mars. Kundservice skickar `{ "reason": "need-ceased", "effectiveDate": "2027-03-01", "note": "Djuret har dött" }`. Policyn upphör från 1 mars, och premien för 1 mars till 1 december betalas tillbaka. En skada på Rex efter 1 mars avslås, eftersom policyn är avslutad.
 
@@ -67,6 +99,8 @@ Den första termen är ett år, eftersom försäkringstiden är högst ett år i
 | Anrop | Rättighet | Gör |
 | --- | --- | --- |
 | `POST /v1/policies` | `policies:write` | Tecknar en policy |
+| `POST /v1/policies/{id}/renewals` | `policies:write` | Förnyar en policy för hand |
+| `POST /v1/renewal-runs` | `policies:renew` | Förnyelsekörningen |
 | `POST /v1/policies/{id}/cancellations` | `policies:write` | Avslutar en policy |
 | `POST /v1/policies/{id}/reinstatements` | `policies:write` | Återkallar det senaste avslutet |
 | `GET /v1/policies?animalId=…` | `policies:read` | Policyer för ett djur. Det går också att använda `policyholderPartyId`. |
@@ -103,4 +137,4 @@ Svaret har en term från 1 december 2026 till 1 december 2027 (slutdagen räknas
 
 Dev-servern lägger in Bellas policy `pol_bella` första gången, med ägaren `pty_owner001` och förbehållet för hälta. Exemplet har bara den gällande termen. Token `dev-seller` tecknar policyer. Skademotorn läser policyerna från modulen.
 
-*Inte byggt än:* förnyelse, ändring, överlåtelse, policygrupper, förslag till avslut när djuret dör (händelser från djurregistret), och omprövning av skador efter ett avslut bakåt i tiden (ADR 0029).
+*Inte byggt än:* nytt pris vid förnyelse (M4), ändring, överlåtelse, policygrupper, förslag till avslut när djuret dör (händelser från djurregistret), och omprövning av skador efter ett avslut bakåt i tiden (ADR 0029).

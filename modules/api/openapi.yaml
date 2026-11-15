@@ -1259,6 +1259,67 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/policies/{policyId}/renewals:
+    post:
+      tags: [policies]
+      operationId: renewPolicy
+      x-permission: policies:write
+      summary: Renew a policy with its next term
+      description: |
+        Requires the permission `policies:write` (ADR 0029). The next term
+        starts the day the last one ends, with the product's version on sale
+        that day (or `productVersion`), the same choices, and the same premium
+        unless `premium` is given (no tariff yet, M4). Used for the policies the
+        renewal run lists for a decision. A cancellation that applies at the end
+        of the term gives `409`.
+      parameters:
+        - $ref: '#/components/parameters/PolicyIdPath'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RenewPolicyRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The renewal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyTransaction' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/renewal-runs:
+    post:
+      tags: [policies]
+      operationId: runRenewals
+      x-permission: policies:renew
+      summary: Renew every policy up for renewal
+      description: |
+        Requires the permission `policies:renew`. Every policy in the caller's
+        markets whose term ends within its product's `renewalLeadDays` is
+        renewed, unless a cancellation applies at the end of the term. What
+        cannot be renewed as it is, e.g. because the product is no longer sold
+        or the animal has died, is listed under `needsDecision`. With `dryRun`
+        nothing is stored. Meant to run daily.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RenewalRunRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: What the run did
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RenewalRunResult' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/policies/{policyId}/reinstatements:
     post:
       tags: [policies]
@@ -2795,7 +2856,8 @@ components:
               enum: [term-end, immediate]
               default: term-end
               description: 'The customer''s cancellation during a term: at the end of the term (binding period), or the day after notice with the rest of the premium refunded.'
-            renewalLeadDays: { type: integer, minimum: 31, maximum: 120, default: 45, description: Days before the term ends that it is renewed. }
+            termMonths: { type: integer, minimum: 1, maximum: 12, default: 12, description: 'The length of a term in months, at issue and at each renewal. The market''s law sets the maximum.' }
+            renewalLeadDays: { type: integer, minimum: 1, maximum: 120, default: 45, description: 'Days before the term ends that it is renewed. Shorter than the term.' }
             transferAcceptanceDays: { type: integer, minimum: 1, maximum: 90, default: 30, description: Days a new owner has to accept a transferred policy. }
         vetCare:
           type: object
@@ -3004,7 +3066,7 @@ components:
       properties:
         id: { type: string }
         policyId: { type: string }
-        type: { type: string, enum: [issue, cancel, reinstate] }
+        type: { type: string, enum: [issue, cancel, reinstate, renew] }
         steps:
           type: array
           items:
@@ -3032,6 +3094,18 @@ components:
                 amount: { $ref: '#/components/schemas/NonNegativeMoney' }
                 currency: { $ref: '#/components/schemas/Currency' }
             note: { type: string }
+        renewal:
+          type: object
+          required: [termNo, productVersion, premium]
+          properties:
+            termNo: { type: integer }
+            productVersion: { type: string }
+            premium:
+              type: object
+              required: [amount, currency]
+              properties:
+                amount: { $ref: '#/components/schemas/NonNegativeMoney' }
+                currency: { $ref: '#/components/schemas/Currency' }
         reverses: { type: string, description: A reinstatement's cancellation. }
         note: { type: string }
 
@@ -3048,6 +3122,58 @@ components:
         receivedOn: { $ref: '#/components/schemas/Date', description: 'The day the notice reached the insurer, or the insurer sent it. Default today.' }
         effectiveDate: { $ref: '#/components/schemas/Date', description: 'For need-ceased the day the need ceased; for customer-immediate a later day than the day after notice.' }
         note: { type: string, maxLength: 2000, description: 'Required for need-ceased and insurer-breach. Must not contain personal data.' }
+
+    RenewPolicyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        productVersion: { type: string, description: 'Default: the version of the product on sale the day the term starts.' }
+        premium:
+          type: object
+          additionalProperties: false
+          required: [amount, currency]
+          description: 'Default: the same as the last term.'
+          properties:
+            amount: { $ref: '#/components/schemas/NonNegativeMoney' }
+            currency: { $ref: '#/components/schemas/Currency' }
+
+    RenewalRunRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        dryRun: { type: boolean, default: false }
+
+    RenewalRunResult:
+      type: object
+      required: [onDate, dryRun, checked, renewed, cancelled, notYet, needsDecision]
+      properties:
+        onDate: { $ref: '#/components/schemas/Date' }
+        dryRun: { type: boolean }
+        checked: { type: integer }
+        renewed:
+          type: array
+          items:
+            type: object
+            required: [policyId, termNo, startDate, endDate, productVersion, premium]
+            properties:
+              policyId: { type: string }
+              termNo: { type: integer }
+              startDate: { $ref: '#/components/schemas/Date' }
+              endDate: { $ref: '#/components/schemas/Date' }
+              productVersion: { type: string }
+              premium: { $ref: '#/components/schemas/NonNegativeMoney' }
+              transactionId: { type: string, description: Omitted in a dry run. }
+        cancelled: { type: integer, description: Not renewed because a cancellation applies at the end of the term. }
+        notYet: { type: integer, description: Up for renewal later, by the product's lead time. }
+        needsDecision:
+          type: array
+          items:
+            type: object
+            required: [policyId, issue, detail]
+            properties:
+              policyId: { type: string }
+              issue: { type: string, enum: [product-not-on-sale, option-not-offered, species-not-covered, term-too-long, animal-died, policyholder-unavailable] }
+              detail: { type: string }
 
     ReinstatePolicyRequest:
       type: object

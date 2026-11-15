@@ -15,6 +15,7 @@ const tokens: Record<string, Principal> = {
   sellerDe: { subject: 'seller-de@example.test', roles: ['policy-registrar'], markets: ['DE'] },
   handler: { subject: 'h@example.test', roles: ['handler'], markets: '*' },
   clinic: { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
+  job: { subject: 'renewal-job', roles: ['renewal-job'], markets: '*' },
 };
 
 const content = {
@@ -53,7 +54,7 @@ async function setup() {
   const policies = new PolicyService({ store: new InMemoryPolicyStore(), products: productPort(products), animals: animalPort(animals), parties, clock, ids });
   const service = new ClaimsService({ policies: new InMemoryPolicyPort([]), rules: new StaticRulesPort({}, fixtures.RULES_SE_DOG), store: new InMemoryClaimsStore(), clock, ids: new SequentialIds() });
   const app = createApp({ service, clock, products, animals, parties, policies, idempotency: new InMemoryIdempotencyStore(), auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
-  return async (method: string, path: string, token: string, body?: unknown) => {
+  const call = async (method: string, path: string, token: string, body?: unknown) => {
     const res = await app.request(path, {
       method,
       headers: {
@@ -65,6 +66,7 @@ async function setup() {
     });
     return { status: res.status, body: (await res.json()) as any };
   };
+  return Object.assign(call, { clock });
 }
 
 const apply = {
@@ -136,4 +138,21 @@ test('a policy is cancelled and the cancellation reversed', async () => {
   assert.equal((await call('GET', `/v1/policies/${p.id}/snapshot?date=2027-01-01`, 'handler')).body.status, 'active');
   const history = (await call('GET', `/v1/policies/${p.id}/history`, 'handler')).body;
   assert.deepEqual(history.transactions.map((t: any) => t.type), ['issue', 'cancel', 'reinstate']);
+});
+
+test('the renewal run renews with the version on sale, and a policy can be renewed by hand', async () => {
+  const call = await setup();
+  const p = (await call('POST', '/v1/policies', 'seller', apply)).body;
+  assert.equal((await call('POST', '/v1/renewal-runs', 'seller', {})).status, 403); // no policies:renew
+  call.clock.set('2027-10-20T03:00:00.000Z');
+  const dry = await call('POST', '/v1/renewal-runs', 'job', { dryRun: true });
+  assert.equal(dry.status, 200);
+  assert.ok(validatorFor('RenewalRunResult')(structuredClone(dry.body)));
+  assert.deepEqual(dry.body.renewed.map((r: any) => [r.policyId, r.startDate, r.endDate, r.productVersion]), [[p.id, '2027-12-01', '2028-12-01', 'SE-HUND@1']]);
+  const run = await call('POST', '/v1/renewal-runs', 'job', {});
+  assert.equal(run.body.renewed.length, 1);
+  assert.equal((await call('GET', `/v1/policies/${p.id}`, 'handler')).body.terms.length, 2);
+  const manual = await call('POST', `/v1/policies/${p.id}/renewals`, 'seller', { premium: { amount: 500_000, currency: 'SEK' } });
+  assert.equal(manual.status, 201);
+  assert.deepEqual(manual.body.renewal, { termNo: 3, productVersion: 'SE-HUND@1', premium: { amount: 500_000, currency: 'SEK' } });
 });

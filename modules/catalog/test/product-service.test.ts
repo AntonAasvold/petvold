@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CatalogError, InMemoryProductStore, ProductService, vetCareTermsFor, type ProductDraft } from '../src/index.ts';
+import { CatalogError, InMemoryProductStore, ProductService, policySettingsOf, vetCareTermsFor, type ProductDraft } from '../src/index.ts';
 import { content } from '../test-suites/product-store.ts';
 
 function setup(opts: { species?: string[]; series?: Record<string, string> } = {}) {
@@ -129,4 +129,18 @@ test('the vet care terms follow the customer choices, with defaults', async () =
   assert.deepEqual([chosen.annualLimit, chosen.deductible.fixedPer, chosen.deductible.periodDays], [600_000, 'period', 120]);
   assert.throws(() => vetCareTermsFor(v, { annualLimit: 400_000 }), /no annual limit 400000/);
   assert.throws(() => vetCareTermsFor(v, { deductible: 'zero' }), /no deductible 'zero'/);
+});
+
+test('policy settings have defaults and limits (ADR 0029)', async () => {
+  const s = setup();
+  const withPolicy = (policy: Record<string, unknown>) => draft({ content: { ...content(), policy } as never });
+  const v = await s.createDraft('XX-DOG-VC', draft(), author);
+  assert.deepEqual(policySettingsOf(v.content), { midTermCancellation: 'term-end', termMonths: 12, renewalLeadDays: 45, transferAcceptanceDays: 30 });
+  const monthly = await s.createDraft('XX-DOG-M', withPolicy({ termMonths: 1, renewalLeadDays: 10, midTermCancellation: 'immediate' }), author);
+  assert.deepEqual(policySettingsOf(monthly.content).termMonths, 1);
+  await rejects(s.createDraft('XX-DOG-X', withPolicy({ termMonths: 13 }), author), 'validation', /termMonths/);
+  await rejects(s.createDraft('XX-DOG-X', withPolicy({ termMonths: 1 }), author), 'validation', /shorter than a term of 1 months/); // 45 days by default
+  await rejects(s.createDraft('XX-DOG-X', withPolicy({ renewalLeadDays: 0 }), author), 'validation', /renewalLeadDays/);
+  await rejects(s.createDraft('XX-DOG-X', withPolicy({ midTermCancellation: 'never' }), author), 'validation', /midTermCancellation/);
+  await rejects(s.createDraft('XX-DOG-X', withPolicy({ transferAcceptanceDays: 91 }), author), 'validation', /transferAcceptanceDays/);
 });

@@ -32,6 +32,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #47 mergad.
+- Förnyelse av policyer (ADR 0029), PR #48:
+  - **Förnyelsekörning** (`POST /v1/renewal-runs`, med provkörning) inom produktens `renewalLeadDays`. Den använder produktversionen som säljs på förnyelsedagen och samma val och premie, tills M4. Avslut till termens slut stoppar den.
+  - **Lista för beslut** när produkten inte säljs, valet saknas, djuret har dött eller försäkringstagaren inte går att nå. **Förnyelse för hand** med annan produktversion eller premie.
+  - **Termens längd per produkt** (`policy.termMonths`, 1–12 månader, förval 12) inom marknadens tak. `renewalLeadDays` är nu 1–120 och kortare än termen, i stället för minst 31.
+  - Ny rättighet `policies:renew` och ny roll `renewal-job`. **Migration 0023.** Rollinställningen lokalt är version 10.
+- 323 tester och 106 databastester.
 - #46 mergad.
 - Avslut av policyer (ADR 0029), PR #47:
   - **Sju skäl** med regler från marknadsprofilen (FAL och distansavtalslagen, med källor i koden) och produktens inställning.
@@ -116,7 +123,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Förnyelse (körning 45 dagar före förfallodagen, inställbart per produkt), sedan överlåtelse vid försäljning.
+1. Överlåtelse vid försäljning: händelser från djurregistret, förslag till byte av försäkringstagare, godkännande och avslut om det inte godkänns.
 
 **Öppet**
 - Skademotorn omprövar inte skador automatiskt när en policy avslutas bakåt i tiden. Händelsen `policy.version_superseded` finns, men ingen lyssnar på den än.
