@@ -748,6 +748,21 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await policies.cancel(p.id, r.body, c.get('principal').subject) }));
   });
 
+  app.post('/v1/policies/:policyId/renewals', async (c) => {
+    const p = await visiblePolicy(c);
+    const r = await readJson(c, 'RenewPolicyRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.renew(p.id, r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/renewal-runs', async (c) => {
+    const r = await readJson(c, 'RenewalRunRequest');
+    if (!r.ok) return r.res;
+    const scope = c.get('scope');
+    if (scope.clinicId || scope.policyIds) return problem(c, 403, 'Not permitted', 'A role bound to a clinic or to policies cannot run renewals');
+    return send(c, await policies.renewalRun({ dryRun: r.body.dryRun ?? false, markets: scope.markets }, c.get('principal').subject));
+  });
+
   app.post('/v1/policies/:policyId/reinstatements', async (c) => {
     const p = await visiblePolicy(c);
     const r = await readJson(c, 'ReinstatePolicyRequest');

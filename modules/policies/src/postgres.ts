@@ -3,7 +3,8 @@
  * service role `policies_service`: it may insert and read, and may only set
  * the end of a version in system time. The database stops overlapping versions
  * of a policy and two active policies for one animal on the same day.
- * Migration 0022 adds cancellation fields and the outbox (ADR 0008, 0029).
+ * Migration 0022 adds cancellation fields and the outbox (ADR 0008, 0029), and
+ * migration 0023 renewal.
  */
 import type pg from 'pg';
 import {
@@ -58,7 +59,7 @@ export class PostgresPolicyStore implements PolicyStore {
 
   async transactions(id: string): Promise<PolicyTransaction[]> {
     const { rows } = await this.pool.query(
-      `select transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note
+      `select transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note, renewal
        from policies.policy_transaction where policy_id = $1 order by requested_at, transaction_id`,
       [id],
     );
@@ -73,6 +74,7 @@ export class PostgresPolicyStore implements PolicyStore {
       ...(r.cancellation === null ? {} : { cancellation: r.cancellation }),
       ...(r.reverses === null ? {} : { reverses: r.reverses }),
       ...(r.note === null ? {} : { note: r.note }),
+      ...(r.renewal === null ? {} : { renewal: r.renewal }),
     }));
   }
 
@@ -99,7 +101,18 @@ export class PostgresPolicyStore implements PolicyStore {
     return rows.map((r) => r.policy_id);
   }
 
-  async apply(policyId: string, supersede: string[], add: PolicyVersion[], tx: PolicyTransaction, events: PolicyEvent[]): Promise<void> {
+  async endingBetween(from: ISODate, to: ISODate): Promise<string[]> {
+    const { rows } = await this.pool.query(
+      `select distinct v.policy_id from policies.policy_version v
+       where v.sys_to is null and v.status = 'active' and v.valid_to between $1 and $2
+         and not exists (select 1 from policies.policy_version n where n.policy_id = v.policy_id and n.sys_to is null and n.valid_from = v.valid_to)
+       order by v.policy_id`,
+      [from, to],
+    );
+    return rows.map((r) => r.policy_id);
+  }
+
+  async apply(policyId: string, supersede: string[], add: PolicyVersion[], tx: PolicyTransaction, events: PolicyEvent[], terms: Term[] = []): Promise<void> {
     await this.tx(async (db) => {
       if (supersede.length) {
         const res = await db.query(
@@ -109,6 +122,7 @@ export class PostgresPolicyStore implements PolicyStore {
         if (res.rowCount !== supersede.length) throw new PolicyConflictError(`Policy ${policyId} has changed`);
       }
       await insertTransaction(db, tx);
+      for (const t of terms) await insertTerm(db, t);
       const { rows } = await db.query(`select animal_id from policies.policy where policy_id = $1`, [policyId]);
       for (const v of add) await insertVersion(db, v, rows[0].animal_id);
       await insertEvents(db, events);
@@ -138,11 +152,7 @@ export class PostgresPolicyStore implements PolicyStore {
         p.createdAt,
       ]);
       await insertTransaction(db, tx);
-      await db.query(
-        `insert into policies.term (policy_id, term_no, start_date, end_date, product_version, currency, vet_care, deductible_option, premium, riders, transaction_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [t.policyId, t.termNo, t.startDate, t.endDate, t.productVersion, t.currency, JSON.stringify(t.vetCare), t.deductibleOption, t.premium, JSON.stringify(t.riders), t.transactionId],
-      );
+      await insertTerm(db, t);
       await insertVersion(db, v, p.animalId);
       await insertEvents(db, events);
     }, p.id, p.animalId);
@@ -166,10 +176,18 @@ export class PostgresPolicyStore implements PolicyStore {
   }
 }
 
+async function insertTerm(db: pg.PoolClient, t: Term) {
+  await db.query(
+    `insert into policies.term (policy_id, term_no, start_date, end_date, product_version, currency, vet_care, deductible_option, premium, riders, transaction_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [t.policyId, t.termNo, t.startDate, t.endDate, t.productVersion, t.currency, JSON.stringify(t.vetCare), t.deductibleOption, t.premium, JSON.stringify(t.riders), t.transactionId],
+  );
+}
+
 async function insertTransaction(db: pg.PoolClient, tx: PolicyTransaction) {
   await db.query(
-    `insert into policies.policy_transaction (transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    `insert into policies.policy_transaction (transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note, renewal)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       tx.id,
       tx.policyId,
@@ -181,6 +199,7 @@ async function insertTransaction(db: pg.PoolClient, tx: PolicyTransaction) {
       tx.cancellation ? JSON.stringify(tx.cancellation) : null,
       tx.reverses ?? null,
       tx.note ?? null,
+      tx.renewal ? JSON.stringify(tx.renewal) : null,
     ],
   );
 }

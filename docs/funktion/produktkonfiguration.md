@@ -144,7 +144,8 @@ En produktversion säger vad som kan säljas och med vilka val (ADR 0023). Id:t 
 | `vetCare.defaultAnnualLimit`, `defaultDeductible` | Standardval | 60 000 kr, `standard` |
 | `vetCare.waitingPeriodDays` | Karenstid | 30 dagar |
 | `policy.midTermCancellation` | Kundens uppsägning under termen (ADR 0029). `term-end`: bindningstiden ut, och policyn upphör när termen slutar. `immediate`: dagen efter uppsägningen, med premien för resten av termen tillbaka. Uppsägning när behovet faller bort och ånger är alltid tillåtna. | `term-end` (förval) |
-| `policy.renewalLeadDays` | Dagar före förfallodagen som förnyelsen körs. Minst 31, så att kunden får besked mer än en månad i förväg. | 45 (förval) |
+| `policy.termMonths` | Termens längd i månader, vid tecknande och varje förnyelse. Marknaden sätter taket, i Sverige 12 (FAL 3 kap. 2 §). | 12 (förval) |
+| `policy.renewalLeadDays` | Dagar före förfallodagen som förnyelsen körs, 1–120 och kortare än termen. Om pris eller villkor ändras vid förnyelsen bör kunden få besked mer än en månad före förfallodagen. | 45 (förval) |
 | `policy.transferAcceptanceDays` | Dagar som en ny ägare har på sig att godkänna en överlåten policy | 30 (förval) |
 
 Inställningarna under `policy` kan utelämnas, och då gäller förvalen. De låses med resten av innehållet när versionen publiceras.

@@ -10,8 +10,8 @@
  *   old one in system time and adds new ones.
  * - A **transaction** records each change with its steps and who made it.
  *
- * Policies are issued and cancelled, and a cancellation can be reversed.
- * Renewal and transfer come next. Every change writes events to an outbox in
+ * Policies are issued, renewed and cancelled, and a cancellation can be
+ * reversed. Transfer comes next. Every change writes events to an outbox in
  * the same transaction (ADR 0008).
  * The module reads products, animals and parties only through ports (ADR 0001),
  * and implements the claims engine's PolicyPort.
@@ -130,7 +130,7 @@ export const TRANSACTION_STEPS = ['draft', 'priced', 'underwritten', 'issued'] a
 export interface PolicyTransaction {
   id: string;
   policyId: string;
-  type: 'issue' | 'cancel' | 'reinstate';
+  type: 'issue' | 'cancel' | 'reinstate' | 'renew';
   steps: { step: (typeof TRANSACTION_STEPS)[number]; at: Timestamp; note?: string }[];
   requestedBy: string;
   requestedAt: Timestamp;
@@ -146,6 +146,11 @@ export interface PolicyTransaction {
     refund: { amount: number; currency: string };
     note?: string;
   };
+  renewal?: {
+    termNo: number;
+    productVersion: string;
+    premium: { amount: number; currency: string };
+  };
   /** A reinstatement: the cancellation it reverses. */
   reverses?: string;
   note?: string;
@@ -154,7 +159,7 @@ export interface PolicyTransaction {
 /** What the policy module tells others, written in the same transaction as the change (ADR 0008). */
 export interface PolicyEvent {
   id: string;
-  type: 'policy.issued' | 'policy.cancelled' | 'policy.reinstated' | 'policy.version_superseded';
+  type: 'policy.issued' | 'policy.renewed' | 'policy.cancelled' | 'policy.reinstated' | 'policy.version_superseded';
   policyId: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;
@@ -186,7 +191,12 @@ export interface PolicyStore {
    * Ends `supersede` in system time at tx.requestedAt and adds `add`, all or
    * nothing. Throws PolicyConflictError if any of them is no longer current.
    */
-  apply(policyId: string, supersede: string[], add: PolicyVersion[], tx: PolicyTransaction, events: PolicyEvent[]): Promise<void>;
+  apply(policyId: string, supersede: string[], add: PolicyVersion[], tx: PolicyTransaction, events: PolicyEvent[], terms?: Term[]): Promise<void>;
+  /**
+   * Policies with a current active version ending in [from, to] that no current
+   * version follows: the ones that are up for renewal.
+   */
+  endingBetween(from: ISODate, to: ISODate): Promise<string[]>;
   /** Events not yet published, oldest first. */
   pendingEvents(limit: number): Promise<PolicyEvent[]>;
   markPublished(ids: string[], at: Timestamp): Promise<void>;
@@ -213,12 +223,18 @@ export class PolicyError extends Error {
 
 /** What the policy module needs to know about a product version on a date. */
 export interface ProductOffer {
+  /** The product, e.g. SE-HUND-VV-LIV, without the version. */
+  product: string;
   market: string;
   currency: string;
   species: string[];
   onSale: boolean;
   /** The product's setting for the customer's cancellation during a term (ADR 0029). */
   midTermCancellation: 'term-end' | 'immediate';
+  /** The length of a term in months. */
+  termMonths: number;
+  /** Days before a term ends that it is renewed. */
+  renewalLeadDays: number;
   /** Throws on an option the product does not offer. */
   vetCareTermsFor(choice: { annualLimit?: number; deductible?: string }): VetCareTerms & { deductibleOption: string };
 }
@@ -226,6 +242,29 @@ export interface ProductOffer {
 export interface ProductPort {
   /** The product version, e.g. SE-HUND-VV-LIV@2026.2, as offered on the date, or null if it does not exist. */
   offer(productVersion: string, onDate: ISODate): Promise<ProductOffer | null>;
+  /** The version of the product on sale on the date, e.g. SE-HUND-VV-LIV@2027.1, or null. */
+  versionOnSale(product: string, onDate: ISODate): Promise<string | null>;
+}
+
+/** Why the renewal run did not renew a policy that is up for renewal, so someone decides. */
+export type RenewalIssue =
+  | 'product-not-on-sale'
+  | 'option-not-offered'
+  | 'species-not-covered'
+  | 'term-too-long'
+  | 'animal-died'
+  | 'policyholder-unavailable';
+
+export interface RenewalRunResult {
+  onDate: ISODate;
+  dryRun: boolean;
+  checked: number;
+  renewed: { policyId: string; termNo: number; startDate: ISODate; endDate: ISODate; productVersion: string; premium: number; transactionId?: string }[];
+  /** Not renewed because a cancellation applies at the end of the term. */
+  cancelled: number;
+  /** Up for renewal later, by the product's lead time. */
+  notYet: number;
+  needsDecision: { policyId: string; issue: RenewalIssue; detail: string }[];
 }
 
 export interface AnimalPort {
@@ -526,6 +565,161 @@ export class PolicyService implements PolicyPort {
     return tx;
   }
 
+  /**
+   * Renews the policy with its next term from the day the last one ends: the
+   * product's version on sale that day, the same choices, and (until the tariff
+   * exists, M4) the same premium unless one is given. Throws a validation error
+   * with the RenewalIssue in the message when it cannot.
+   */
+  async renew(policyId: string, input: { productVersion?: string; premium?: { amount: number; currency: string } }, by: string): Promise<PolicyTransaction> {
+    const plan = await this.planRenewal(await this.get(policyId), input);
+    if ('issue' in plan) throw new PolicyError('validation', `${plan.issue}: ${plan.detail}`);
+    const now = this.d.clock.now();
+    const txId = this.d.ids.next('ptx');
+    const term: Term = { ...plan.term, transactionId: txId };
+    const version: PolicyVersion = {
+      id: this.d.ids.next('pv'),
+      policyId,
+      validFrom: term.startDate,
+      validTo: term.endDate,
+      sysFrom: now,
+      policyholderPartyId: plan.policyholderPartyId,
+      status: 'active',
+      termNo: term.termNo,
+      transactionId: txId,
+    };
+    const tx: PolicyTransaction = {
+      id: txId,
+      policyId,
+      type: 'renew',
+      steps: [
+        { step: 'draft', at: now },
+        { step: 'priced', at: now, note: input.premium ? 'Premium given by the caller' : 'Same premium as the last term (no tariff yet, M4)' },
+        { step: 'underwritten', at: now, note: 'Accepted (no underwriting rules yet, M4)' },
+        { step: 'issued', at: now },
+      ],
+      requestedBy: by,
+      requestedAt: now,
+      supersedes: [],
+      renewal: { termNo: term.termNo, productVersion: term.productVersion, premium: { amount: term.premium, currency: term.currency } },
+    };
+    await this.d.store
+      .apply(
+        policyId,
+        [],
+        [version],
+        tx,
+        [
+          this.event('policy.renewed', policyId, now, {
+            transactionId: txId,
+            termNo: term.termNo,
+            startDate: term.startDate,
+            endDate: term.endDate,
+            productVersion: term.productVersion,
+            premium: { amount: term.premium, currency: term.currency },
+          }),
+        ],
+        [term],
+      )
+      .catch(this.translate);
+    return tx;
+  }
+
+  /**
+   * The renewal run (ADR 0029): every policy in `markets` whose term ends within
+   * its product's lead time is renewed, unless a cancellation applies at the end
+   * of the term. Policies that cannot be renewed as they are are listed for a decision.
+   */
+  async renewalRun(input: { dryRun: boolean; markets: '*' | ReadonlySet<string> }, by: string): Promise<RenewalRunResult> {
+    const today = this.d.clock.now().slice(0, 10);
+    const result: RenewalRunResult = { onDate: today, dryRun: input.dryRun, checked: 0, renewed: [], cancelled: 0, notYet: 0, needsDecision: [] };
+    for (const id of await this.d.store.endingBetween(today, addDays(today, 120))) {
+      const p = await this.get(id);
+      if (input.markets !== '*' && !input.markets.has(p.market)) continue;
+      result.checked++;
+      const last = p.versions.at(-1)!;
+      if ((await this.cancellationsInForce(id)).some((c) => c.cancellation!.effectiveDate <= last.validTo)) {
+        result.cancelled++;
+        continue;
+      }
+      const term = p.terms.find((t) => t.termNo === last.termNo)!;
+      const lead = (await this.d.products.offer(term.productVersion, today))?.renewalLeadDays ?? 45;
+      if (addDays(today, lead) < last.validTo) {
+        result.notYet++;
+        continue;
+      }
+      const plan = await this.planRenewal(p, {});
+      if ('issue' in plan) {
+        result.needsDecision.push({ policyId: id, issue: plan.issue, detail: plan.detail });
+        continue;
+      }
+      const row: RenewalRunResult['renewed'][number] = {
+        policyId: id,
+        termNo: plan.term.termNo,
+        startDate: plan.term.startDate,
+        endDate: plan.term.endDate,
+        productVersion: plan.term.productVersion,
+        premium: plan.term.premium,
+      };
+      if (!input.dryRun) row.transactionId = (await this.renew(id, {}, by)).id;
+      result.renewed.push(row);
+    }
+    return result;
+  }
+
+  private async planRenewal(
+    p: PolicyRecord,
+    input: { productVersion?: string; premium?: { amount: number; currency: string } },
+  ): Promise<{ term: Omit<Term, 'transactionId'>; policyholderPartyId: string } | { issue: RenewalIssue; detail: string }> {
+    const last = p.versions.at(-1)!;
+    if (last.status !== 'active') throw new PolicyError('conflict', `Policy ${p.id} is cancelled from ${last.validFrom}`);
+    const prev = p.terms.find((t) => t.termNo === last.termNo)!;
+    if (last.validTo !== prev.endDate) throw new PolicyError('conflict', `Policy ${p.id} ends ${last.validTo}, before its term`);
+    const start = prev.endDate;
+    const ending = (await this.cancellationsInForce(p.id)).find((c) => c.cancellation!.effectiveDate <= start);
+    if (ending) throw new PolicyError('conflict', `Policy ${p.id} is cancelled from ${ending.cancellation!.effectiveDate}`);
+    const profile = this.profile(p.market);
+    const animal = await this.d.animals.get(p.animalId);
+    if (!animal || animal.deceasedOn) return { issue: 'animal-died', detail: `The animal ${p.animalId} has died or is gone` };
+    if ((await this.d.parties.marketOf(last.policyholderPartyId)) !== p.market) {
+      return { issue: 'policyholder-unavailable', detail: `The policyholder ${last.policyholderPartyId} is gone, restricted or in another market` };
+    }
+    const prevOffer = await this.d.products.offer(prev.productVersion, start);
+    const product = prevOffer?.product ?? prev.productVersion.split('@')[0]!;
+    const productVersion = input.productVersion ?? (await this.d.products.versionOnSale(product, start));
+    if (!productVersion) return { issue: 'product-not-on-sale', detail: `No version of ${product} is on sale on ${start}` };
+    const offer = await this.d.products.offer(productVersion, start);
+    if (!offer || !offer.onSale || offer.market !== p.market) return { issue: 'product-not-on-sale', detail: `${productVersion} is not on sale in ${p.market} on ${start}` };
+    if (!offer.species.includes(animal.species)) return { issue: 'species-not-covered', detail: `${productVersion} does not cover ${animal.species}` };
+    if (offer.termMonths > profile.maxTermMonths) return { issue: 'term-too-long', detail: `${productVersion} has terms of ${offer.termMonths} months` };
+    let vetCare: VetCareTerms & { deductibleOption: string };
+    try {
+      vetCare = offer.vetCareTermsFor({ annualLimit: prev.vetCare.annualLimit, deductible: prev.deductibleOption });
+    } catch (e) {
+      return { issue: 'option-not-offered', detail: (e as Error).message };
+    }
+    const premium = input.premium ?? { amount: prev.premium, currency: prev.currency };
+    if (premium.currency !== offer.currency || !Number.isSafeInteger(premium.amount) || premium.amount < 0) {
+      throw new PolicyError('validation', `The premium must be a whole number of minor units in ${offer.currency}`);
+    }
+    const { deductibleOption, ...terms } = vetCare;
+    return {
+      policyholderPartyId: last.policyholderPartyId,
+      term: {
+        policyId: p.id,
+        termNo: prev.termNo + 1,
+        startDate: start,
+        endDate: addMonths(start, offer.termMonths),
+        productVersion,
+        currency: offer.currency,
+        vetCare: terms,
+        deductibleOption,
+        premium: premium.amount,
+        riders: structuredClone(prev.riders),
+      },
+    };
+  }
+
   /** Cancellations that have not been reversed. */
   async cancellationsInForce(policyId: string): Promise<PolicyTransaction[]> {
     const txs = await this.d.store.transactions(policyId);
@@ -568,6 +762,9 @@ export class PolicyService implements PolicyPort {
 
     const offer = await this.d.products.offer(input.productVersion, input.startDate);
     if (!offer) throw new PolicyError('validation', `The product version ${input.productVersion} does not exist`);
+    if (offer.termMonths > profile.maxTermMonths) {
+      throw new PolicyError('validation', `${input.productVersion} has terms of ${offer.termMonths} months; ${input.market} allows at most ${profile.maxTermMonths}`);
+    }
     if (!offer.onSale) throw new PolicyError('validation', `${input.productVersion} is not on sale on ${input.startDate}`);
     if (offer.market !== input.market) throw new PolicyError('validation', `${input.productVersion} is not sold in market ${input.market}`);
     if (!offer.species.includes(animal.species)) throw new PolicyError('validation', `${input.productVersion} does not cover ${animal.species}`);
@@ -584,7 +781,7 @@ export class PolicyService implements PolicyPort {
     const now = this.d.clock.now();
     const policyId = this.d.ids.next('pol');
     const txId = this.d.ids.next('ptx');
-    const endDate = addMonths(input.startDate, profile.maxTermMonths);
+    const endDate = addMonths(input.startDate, offer.termMonths);
     const { deductibleOption, ...terms } = vetCare;
     const policy: Policy = { id: policyId, market: input.market, animalId: input.animalId, inceptionDate: input.startDate, createdBy: by, createdAt: now };
     const term: Term = {
@@ -701,10 +898,24 @@ export class InMemoryPolicyStore implements PolicyStore {
     return [...new Set(this.versions.filter((v) => !v.sysTo && v.policyholderPartyId === partyId).map((v) => v.policyId))].sort();
   }
 
-  async apply(policyId: string, supersede: string[], add: PolicyVersion[], tx: PolicyTransaction, events: PolicyEvent[]) {
+  async endingBetween(from: ISODate, to: ISODate) {
+    const current = this.versions.filter((v) => !v.sysTo);
+    return [
+      ...new Set(
+        current
+          .filter((v) => v.status === 'active' && from <= v.validTo && v.validTo <= to)
+          .filter((v) => !current.some((n) => n.policyId === v.policyId && n.validFrom === v.validTo))
+          .map((v) => v.policyId),
+      ),
+    ].sort();
+  }
+
+  async apply(policyId: string, supersede: string[], add: PolicyVersion[], tx: PolicyTransaction, events: PolicyEvent[], terms: Term[] = []) {
+    if (terms.some((t) => this.terms.some((x) => x.policyId === t.policyId && x.termNo === t.termNo))) throw new PolicyConflictError(`Policy ${policyId} has changed`);
     const current = supersede.map((id) => this.versions.find((v) => v.id === id && v.policyId === policyId && !v.sysTo));
     if (current.some((v) => !v)) throw new PolicyConflictError(`Policy ${policyId} has changed`);
     for (const v of current) v!.sysTo = tx.requestedAt;
+    this.terms.push(...structuredClone(terms));
     this.versions.push(...structuredClone(add));
     this.txs.push(structuredClone(tx));
     this.outbox.push(...structuredClone(events));

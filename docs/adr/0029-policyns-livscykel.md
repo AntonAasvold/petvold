@@ -32,7 +32,8 @@ Om försäkringen tecknas på distans gäller distansavtalslagen (2005:59). Kund
    - Startdagen får inte ligga före dagen för tecknandet. En försäkring gäller aldrig retroaktivt.
    - Transaktionen går igenom stegen utkast, prissatt, riskbedömd och utfärdad. Pris och riskbedömning är portar. Tills tariffen och teckningsreglerna finns (M4) anger anroparen premien, och riskbedömningen godkänner allt.
 4. **Förnyelse.**
-   - En förnyelsekörning skapar nästa term ett antal dagar före förfallodagen. Antalet dagar ställs in per produkt, och förvalet är 45 dagar.
+   - Termens längd ställs in per produkt (`termMonths`, 1–12 månader, förval 12), inom marknadens tak.
+   - En förnyelsekörning skapar nästa term ett antal dagar före förfallodagen. Antalet dagar ställs in per produkt, och förvalet är 45 dagar. Det måste vara kortare än termen.
    - Den nya termen får den version av produkten som är till salu på förnyelsedagen. Om produkten inte säljs längre förnyas policyn inte automatiskt, utan den markeras för beslut.
    - En förnyad term meddelas kunden genom en händelse, `policy.renewed`. Utskicket hör till kanalen.
 5. **Avslut.** Lagreglerna ovan ligger i en **marknadsprofil** i koden, per marknad och med källor. Den uppdateras med nya versioner av Petvold och kan inte försvagas av en produkt.

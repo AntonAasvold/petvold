@@ -43,13 +43,23 @@ export interface PolicySettings {
    * Default 'term-end'.
    */
   midTermCancellation?: 'term-end' | 'immediate';
-  /** Days before the term ends that the renewal run renews it. Default 45. */
+  /**
+   * The length of a term in months, at issue and at each renewal. Default 12.
+   * The market's law sets the maximum (Sweden: 12, FAL 3 kap. 2 §); the policy
+   * module checks it.
+   */
+  termMonths?: number;
+  /**
+   * Days before the term ends that the renewal run renews it. Default 45. Must
+   * be shorter than the term. If the price or terms change at renewal, the
+   * customer should hear of it more than a month before the term ends.
+   */
   renewalLeadDays?: number;
   /** Days a new owner has to accept a transferred policy. Default 30. */
   transferAcceptanceDays?: number;
 }
 
-export const POLICY_SETTING_DEFAULTS: Required<PolicySettings> = { midTermCancellation: 'term-end', renewalLeadDays: 45, transferAcceptanceDays: 30 };
+export const POLICY_SETTING_DEFAULTS: Required<PolicySettings> = { midTermCancellation: 'term-end', termMonths: 12, renewalLeadDays: 45, transferAcceptanceDays: 30 };
 
 /** The product's policy settings with defaults filled in. Pure. */
 export function policySettingsOf(c: ProductContent): Required<PolicySettings> {
@@ -329,8 +339,15 @@ export class ProductService {
       if (ps.midTermCancellation !== undefined && !['term-end', 'immediate'].includes(ps.midTermCancellation)) {
         fail('policy.midTermCancellation must be term-end or immediate');
       }
-      if (ps.renewalLeadDays !== undefined && (!Number.isSafeInteger(ps.renewalLeadDays) || ps.renewalLeadDays < 31 || ps.renewalLeadDays > 120)) {
-        fail('policy.renewalLeadDays must be 31-120, so that the customer hears of the renewal more than a month ahead');
+      if (ps.termMonths !== undefined && (!Number.isSafeInteger(ps.termMonths) || ps.termMonths < 1 || ps.termMonths > 12)) {
+        fail('policy.termMonths must be 1-12');
+      }
+      const termMonths = ps.termMonths ?? POLICY_SETTING_DEFAULTS.termMonths;
+      if (ps.renewalLeadDays !== undefined && (!Number.isSafeInteger(ps.renewalLeadDays) || ps.renewalLeadDays < 1 || ps.renewalLeadDays > 120)) {
+        fail('policy.renewalLeadDays must be 1-120');
+      }
+      if ((ps.renewalLeadDays ?? POLICY_SETTING_DEFAULTS.renewalLeadDays) >= termMonths * 28) {
+        fail(`policy.renewalLeadDays must be shorter than a term of ${termMonths} months`);
       }
       if (ps.transferAcceptanceDays !== undefined && (!Number.isSafeInteger(ps.transferAcceptanceDays) || ps.transferAcceptanceDays < 1 || ps.transferAcceptanceDays > 90)) {
         fail('policy.transferAcceptanceDays must be 1-90');

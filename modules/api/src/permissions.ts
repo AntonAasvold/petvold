@@ -62,8 +62,10 @@ export const PERMISSIONS = [
   'parties:retention',
   /** Read policies, their terms and history (ADR 0029). */
   'policies:read',
-  /** Issue policies. Later also change, cancel, renew and transfer them. */
+  /** Issue, renew and cancel policies, and reverse a cancellation. */
   'policies:write',
+  /** Run the renewal of every policy up for renewal (ADR 0029). */
+  'policies:renew',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -129,6 +131,8 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   'party-registrar': { permissions: ['parties:read', 'parties:write'] },
   /** Issues policies, e.g. the insurer's sales channel or customer service (ADR 0029). */
   'policy-registrar': { permissions: ['policies:read', 'policies:write', 'animals:read', 'parties:read', 'catalog:read'] },
+  /** The scheduled renewal run. */
+  'renewal-job': { permissions: ['policies:renew'] },
   /** Handles erasure and restriction of personal data (ADR 0028). Two people are needed to anonymize. */
   'privacy-officer': { permissions: ['parties:read', 'parties:privacy', 'parties:erase', 'parties:retention'] },
   /** The scheduled retention run. Only asks; a privacy officer approves each request. */

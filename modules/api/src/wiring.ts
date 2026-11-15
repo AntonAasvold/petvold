@@ -4,7 +4,7 @@
  * and by the dev server.
  */
 import { AnimalError, type AnimalService } from '@petvold/animals';
-import { CatalogError, onSale, policySettingsOf, vetCareTermsFor, type ProductService } from '@petvold/catalog';
+import { CatalogError, onSale, policySettingsOf, productVersionId, vetCareTermsFor, type ProductService } from '@petvold/catalog';
 import type { AnimalPort, ProductPort } from '@petvold/policies';
 
 /** Product versions as the policy module sees them (ADR 0023, 0029). */
@@ -18,14 +18,22 @@ export function productPort(products: ProductService): ProductPort {
         throw e;
       });
       if (!v) return null;
+      const settings = policySettingsOf(v.content);
       return {
+        product: v.product,
         market: v.content.market,
         currency: v.content.currency,
         species: [...v.content.species],
         onSale: onSale(v, onDate),
-        midTermCancellation: policySettingsOf(v.content).midTermCancellation,
+        midTermCancellation: settings.midTermCancellation,
+        termMonths: settings.termMonths,
+        renewalLeadDays: settings.renewalLeadDays,
         vetCareTermsFor: (choice) => ({ ...vetCareTermsFor(v, choice), deductibleOption: choice.deductible ?? v.content.vetCare.defaultDeductible }),
       };
+    },
+    async versionOnSale(product, onDate) {
+      const v = (await products.onSale(onDate)).find((x) => x.product === product);
+      return v ? productVersionId(v) : null;
     },
   };
 }
