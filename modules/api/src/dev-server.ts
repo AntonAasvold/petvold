@@ -8,7 +8,7 @@
  * products come from their modules, seeded on the first start.
  *
  * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-admin'
- * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals and parties), 'dev-privacy' and 'dev-privacy-2' (erasure), 'dev-retention-job' (retention run), 'dev-clinic'
+ * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals and parties), 'dev-privacy' and 'dev-privacy-2' (erasure), 'dev-retention-job' (retention run), 'dev-seller' (policies), 'dev-clinic'
  * (clinic), 'dev-job' (reassessment job), 'dev-customer' (customer channel). Roles map to
  * permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
@@ -17,7 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { serve } from '@hono/node-server';
 import { ClaimsService, eventClaimId, relayOutbox, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore } from '@petvold/claims-core';
-import { InMemoryClaimsStore, InMemoryPolicyPort, fixtures } from '@petvold/claims-store-memory';
+import { InMemoryClaimsStore, fixtures } from '@petvold/claims-store-memory';
 import { createPool, PostgresClaimsStore, PostgresIdempotencyStore } from '@petvold/claims-store-postgres';
 import { AccessService, InMemoryRoleConfigStore, type RoleConfigStore } from '@petvold/access';
 import { PostgresRoleConfigStore } from '@petvold/access/postgres';
@@ -25,6 +25,9 @@ import { DecisioningRulesPort, DecisioningService, InMemoryRuleSetStore, ruleSet
 import { PostgresRuleSetStore } from '@petvold/decisioning/postgres';
 import { InMemoryPartyStore, InMemoryRetentionStore, PartyService, RetentionService, type PartyStore } from '@petvold/parties';
 import { PostgresPartyStore, PostgresRetentionStore } from '@petvold/parties/postgres';
+import { InMemoryPolicyStore, PolicyService, type PolicyStore } from '@petvold/policies';
+import { PostgresPolicyStore } from '@petvold/policies/postgres';
+import { animalPort, productPort } from './wiring.ts';
 import {
   CatalogService,
   InMemoryProductStore,
@@ -220,16 +223,64 @@ async function seedAnimals(): Promise<void> {
   );
 }
 
-// Retention (ADR 0028): settings in Postgres with the parties, activity from the animal register.
+// Policies (ADR 0029): in Postgres with POLICIES_DATABASE_URL, else in memory.
+// The claims engine reads them through PolicyService as its PolicyPort.
+const policiesUrl = process.env.POLICIES_DATABASE_URL;
+const policyStore: PolicyStore = policiesUrl ? new PostgresPolicyStore(createPool(policiesUrl, { max: 2 })) : new InMemoryPolicyStore();
+const policies = new PolicyService({ store: policyStore, products: productPort(products), animals: animalPort(animals), parties, clock, ids });
+await seedPolicies();
+
+/**
+ * Bella's policy from the sample data, as known since 3 March 2026. Only the
+ * current term is in the sample; the policy began 1 April 2024.
+ */
+async function seedPolicies(): Promise<void> {
+  if (await policyStore.get('pol_bella')) return;
+  const snap = fixtures.bellaPolicy();
+  const at = '2026-03-03T00:00:00.000Z';
+  await policyStore.issue(
+    { id: 'pol_bella', market: 'SE', animalId: 'ani_bella', inceptionDate: snap.inceptionDate, createdBy: 'petvold-seed', createdAt: at },
+    {
+      policyId: 'pol_bella',
+      termNo: 1,
+      startDate: snap.policyYearStart,
+      endDate: snap.policyYearEnd,
+      productVersion: snap.productVersion,
+      currency: 'SEK',
+      vetCare: snap.vetCare!,
+      deductibleOption: 'standard',
+      premium: 480_000,
+      riders: snap.riders,
+      transactionId: 'ptx_bellaseed',
+    },
+    {
+      id: 'pv_bellav4',
+      policyId: 'pol_bella',
+      validFrom: snap.validFrom,
+      validTo: snap.validTo!,
+      sysFrom: at,
+      policyholderPartyId: 'pty_owner001',
+      status: 'active',
+      termNo: 1,
+      transactionId: 'ptx_bellaseed',
+    },
+    { id: 'ptx_bellaseed', policyId: 'pol_bella', type: 'issue', steps: [{ step: 'issued', at, note: 'Sample data' }], requestedBy: 'petvold-seed', requestedAt: at },
+  );
+}
+
+// Retention (ADR 0028): settings in Postgres with the parties, activity from the animal register and the policies.
 const retention = new RetentionService({
   parties,
   settings: partiesUrl ? new PostgresRetentionStore(createPool(partiesUrl, { max: 1 })) : new InMemoryRetentionStore(),
-  sources: [{ name: 'animals', activityOf: (id) => animals.activityOf(id) }],
+  sources: [
+    { name: 'animals', activityOf: (id) => animals.activityOf(id) },
+    { name: 'policies', activityOf: (id) => policies.activityOf(id) },
+  ],
   clock,
 });
 
 const service = new ClaimsService({
-  policies: new InMemoryPolicyPort([{ snapshot: fixtures.bellaPolicy(), sysFrom: '2026-03-03T00:00:00Z' }]),
+  policies,
   // The product version on the policy points at its rule series (ADR 0023).
   rules: new DecisioningRulesPort(decisioning, (pv) => products.ruleSeriesOf(pv)),
   store,
@@ -257,6 +308,7 @@ const tokens: Record<string, Principal> = {
   // Two privacy officers, since anonymization needs four eyes (ADR 0028).
   'dev-privacy': { subject: 'privacy-a@example.test', roles: ['privacy-officer'], markets: ['SE'] },
   'dev-privacy-2': { subject: 'privacy-b@example.test', roles: ['privacy-officer'], markets: ['SE'] },
+  'dev-seller': { subject: 'seller@example.test', roles: ['policy-registrar'], markets: ['SE'] },
   'dev-retention-job': { subject: 'retention-job', roles: ['retention-job'], markets: '*' },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   'dev-job': { subject: 'reassessment-job', roles: ['reassessment-job'], markets: '*' },
@@ -275,6 +327,7 @@ const app = createApp({
   animals,
   parties,
   retention,
+  policies,
   auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) },
 });
 
@@ -294,8 +347,9 @@ console.log(`  Rules:     ${decisioningUrl ? 'Postgres' : 'memory'}, series ${SE
 console.log(`  Reference: ${catalogUrl ? 'Postgres' : 'memory'} (GET /v1/reference-data/breed?parent=dog)`);
 console.log(`  Animals:   ${animalsUrl ? 'Postgres' : 'memory'} (GET /v1/animals/ani_bella)`);
 console.log(`  Parties:   ${partiesUrl ? 'Postgres' : 'memory'} (GET /v1/parties/pty_owner001)`);
+console.log(`  Policies:  ${policiesUrl ? 'Postgres' : 'memory'} (GET /v1/policies/pol_bella)`);
 console.log(`  Products:  ${catalogUrl ? 'Postgres' : 'memory'} (GET /v1/products/on-sale?date=2026-11-15)`);
 console.log(`  Roles:     ${accessUrl ? 'Postgres, versioned (GET /v1/access/roles)' : 'memory, versioned (GET /v1/access/roles)'}`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
-console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-catalog and dev-catalog-publisher (reference data and products), dev-registrar (animals and parties), dev-privacy and dev-privacy-2 (erasure), dev-retention-job (retention run), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);
+console.log(`  Tokens:    dev-handler (claims handler), dev-approver (approver), dev-admin (roles and limits), dev-author and dev-publisher (rule sets), dev-catalog and dev-catalog-publisher (reference data and products), dev-registrar (animals and parties), dev-privacy and dev-privacy-2 (erasure), dev-retention-job (retention run), dev-seller (policies), dev-clinic (clinic), dev-job (reassessment job), dev-customer (customer channel)`);
