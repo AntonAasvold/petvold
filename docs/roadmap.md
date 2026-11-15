@@ -76,6 +76,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] "I dag" i marknadens tidszon (A3)
 - [x] Markörbaserad sidindelning på alla listor, enligt ADR 0002 (A4)
 - [x] Listor för ett gränssnitt: ärenden med arbetsköer, produkter och regelserier
+- [x] Inför ett gränssnitt: `GET /v1/me`, CORS, rikare exempeldata och `AGENTS.md`
 - [ ] Godkännande av villkoren sparas vid tecknande (F3)
 - [ ] ADR om dokument och meddelanden till kunden: förköpsinformation, villkor, försäkringsbrev, besked om förnyelse och uppsägning (F2)
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)

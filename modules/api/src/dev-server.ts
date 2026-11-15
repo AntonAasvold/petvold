@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { serve } from '@hono/node-server';
 import { compose, databasesFromEnv } from './composition.ts';
 import { seedSampleData, SAMPLE_RULE_SERIES } from './seed.ts';
-import { createApp, type Principal } from './index.ts';
+import { corsOriginsFromEnv, createApp, type Principal } from './index.ts';
 import { docsPage } from './docs.ts';
 
 try {
@@ -66,7 +66,9 @@ const DEV_TOKENS: Record<string, Principal> = {
   'dev-customer': { subject: 'customer-portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
 };
 
-const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (DEV_TOKENS[t] ?? null) : null) } });
+// A user interface on a local dev server (Vite on 5173, others on 3000) may call the API.
+const corsOrigins = corsOriginsFromEnv(process.env, ['http://localhost:5173', 'http://localhost:3000']);
+const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (DEV_TOKENS[t] ?? null) : null) }, corsOrigins });
 
 const port = Number(process.env.PORT ?? 8787);
 const docs = docsPage({ specUrl: '/openapi.yaml', defaultToken: 'dev-handler' });
@@ -91,3 +93,4 @@ console.log(`  Roles:     ${where('access')}, versioned (GET /v1/access/roles)`)
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
 console.log(`  Tokens:    ${Object.keys(DEV_TOKENS).join(', ')}`);
+console.log(`  CORS:      ${corsOrigins.join(', ') || 'none'} (PETVOLD_CORS_ORIGINS)`);

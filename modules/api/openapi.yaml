@@ -2050,6 +2050,29 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/me:
+    get:
+      tags: [access]
+      operationId: getMe
+      x-permission: signed-in
+      summary: Who the caller is and what it may do
+      description: |
+        Requires only a valid token. For a user interface: which menus to show
+        and which buttons to enable. The answer follows the role settings in
+        force (ADR 0020), so a change applies at the next call.
+
+        Roles in the token that the installation does not know are listed in
+        `unknownRoles` and give nothing. The API still checks every call; this
+        answer only helps the interface not to offer what would be refused.
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The caller
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+
   /v1/access/roles:
     get:
       tags: [access]
@@ -3149,6 +3172,48 @@ components:
         bindsTo: { type: string, enum: [clinic, policies] }
         decisionLimits: { $ref: '#/components/schemas/AmountLimits' }
         approvalLimits: { $ref: '#/components/schemas/AmountLimits' }
+
+    Me:
+      type: object
+      additionalProperties: false
+      required: [subject, roles, permissions, scope]
+      properties:
+        subject: { type: string }
+        roles:
+          description: The caller's roles that the installation knows.
+          type: array
+          items: { type: string }
+        unknownRoles:
+          type: array
+          items: { type: string }
+        permissions:
+          description: Sorted. Includes permissions checked inside an operation, such as `claims:override` and `policies:price-override`.
+          type: array
+          items: { type: string }
+        scope:
+          type: object
+          additionalProperties: false
+          required: [markets]
+          properties:
+            markets:
+              description: The markets the caller works in, or `*` for every market.
+              oneOf:
+                - { type: string, const: '*' }
+                - { type: array, items: { $ref: '#/components/schemas/Market' } }
+            clinicId: { type: string, description: Set when a role binds the caller to its clinic. }
+            policyIds: { type: array, items: { type: string }, description: Set when a role binds the caller to its policies. }
+        decisionLimits:
+          description: |
+            Only with `claims:decide`. The highest payout per currency the caller
+            may decide alone (ADR 0019). `null`: no limit. A missing currency has the limit 0.
+          oneOf:
+            - { type: 'null' }
+            - { type: object, additionalProperties: { type: integer, minimum: 0 } }
+        approvalLimits:
+          description: Only with `claims:approve`. As `decisionLimits`, for approving proposals.
+          oneOf:
+            - { type: 'null' }
+            - { type: object, additionalProperties: { type: integer, minimum: 0 } }
 
     RoleConfig:
       type: object

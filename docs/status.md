@@ -48,6 +48,14 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **`GET /v1/products`** och **`GET /v1/rule-sets`** listar alla produkter och serier med versionernas status.
   - Tre nya operationer, 90 i kontraktet.
 - 369 tester och 112 databastester.
+- #62 mergad.
+- Inför ett gränssnitt, PR #63:
+  - **`GET /v1/me`** visar anroparens roller, rättigheter, omfång och beloppsgränser. Alla inloggade får anropa den (`x-permission: signed-in`), och ingen annan operation får ha den markören.
+  - **CORS** för uppräknade ursprung (`PETVOLD_CORS_ORIGINS`). Dev-servern tillåter `localhost:5173` och `localhost:3000`, och drift har inga som förval.
+  - **Exempeldata:** Bellas skador i varje arbetskö, Doris i Göteborg och ett hushåll i Malmö med två hundar med grupprabatt och en katt utan försäkring.
+  - **`AGENTS.md`** för Cursor och andra agenter, med hur man bygger mot API:t.
+  - Provat: dev-servern mot Postgres efter `dev:reset`, två starter i rad. Köerna, `/v1/me`, preflight och policyerna svarade som väntat.
+- 373 tester och 112 databastester.
 - #59 mergad.
 - Datum i marknadens tidszon (granskningen, A3), PR #60:
   - `marketDate(market, tidpunkt)` och `MARKET_TIME_ZONES` i `common`, med 15 europeiska marknader. En okänd marknad räknar i UTC.
@@ -219,7 +227,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Före gränssnittet: `GET /v1/me` (vem som är inloggad och vad den får göra), CORS för lokal utveckling, rikare exempeldata och `AGENTS.md`.
+1. Gränssnittet kan börja: API:t har listor, köer, `/v1/me`, CORS och exempeldata.
 2. Teckningsregler (F1, ny ADR) och godkännande vid tecknande (F3). Sedan ett beslut om dokument till kunden (F2).
 
 **Öppet**

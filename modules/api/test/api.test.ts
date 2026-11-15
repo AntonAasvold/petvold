@@ -11,6 +11,7 @@ import {
 } from '@petvold/claims-store-memory';
 import {
   createApp,
+  corsOriginsFromEnv,
   implementedOperations,
   contractOperations,
   InMemoryIdempotencyStore,
@@ -30,7 +31,7 @@ import { docsPage, SCALAR_VERSION } from '../src/docs.ts';
 
 const { bellaPolicy, cruciateClaim, otitisClaim, eurPolicy, eurClaim, RULES_SE_DOG, RULES_EUR_EXAMPLE, PRODUCT, PRODUCT_EUR } = fixtures;
 
-function setup(opts: { roles?: RoleDefinitions } = {}) {
+function setup(opts: { roles?: RoleDefinitions; corsOrigins?: string[] } = {}) {
   const clock = new FixedClock('2026-11-13T14:00:00Z');
   const service = new ClaimsService({
     policies: new InMemoryPolicyPort([
@@ -58,6 +59,7 @@ function setup(opts: { roles?: RoleDefinitions } = {}) {
     service,
     clock,
     ...(opts.roles ? { roles: opts.roles } : {}),
+    ...(opts.corsOrigins ? { corsOrigins: opts.corsOrigins } : {}),
     idempotency: new InMemoryIdempotencyStore(),
     auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) },
   });
@@ -288,9 +290,10 @@ test('limits: within the markets for a handler, never by policy id for a clinic'
   assert.equal((await de.call('GET', path)).status, 404);
 });
 
-test('every operation in the contract names a known permission', () => {
+test('every operation in the contract names a known permission, and only GET /v1/me is open to every caller', () => {
   for (const [op, permission] of operationPermissions()) {
-    assert.ok(isPermission(permission), `${op} has x-permission ${String(permission)}`);
+    if (op === 'GET /v1/me') assert.equal(permission, 'signed-in');
+    else assert.ok(isPermission(permission), `${op} has x-permission ${String(permission)}`);
   }
 });
 
@@ -726,4 +729,59 @@ test('rule set series and products are listed', async () => {
   const products = await call('GET', '/v1/products');
   assert.equal(products.status, 200);
   assert.deepEqual(((await products.json()) as any).items, []);
+});
+
+// The caller and CORS, for a user interface ------------------------------------------------
+
+test('GET /v1/me shows the caller, its permissions, scope and limits', async () => {
+  const { call, as } = setup();
+  const me = (await (await call('GET', '/v1/me')).json()) as any;
+  assertSchema('Me', me);
+  assert.equal(me.subject, 'handlaggare@example.test');
+  assert.deepEqual(me.roles, ['handler', 'approver']);
+  assert.ok(me.permissions.includes('claims:decide') && me.permissions.includes('claims:override'));
+  assert.deepEqual(me.permissions, [...me.permissions].sort());
+  assert.deepEqual(me.scope, { markets: ['DE', 'SE'] });
+  assert.deepEqual(me.decisionLimits, { SEK: 2_500_000, EUR: 250_000 });
+  assert.equal(me.approvalLimits, null); // the approver role has no limit
+
+  const clinic = (await (await call('GET', '/v1/me', { token: 'clinic' })).json()) as any;
+  assert.deepEqual(clinic.scope, { markets: ['DE', 'SE'], clinicId: 'clinic_001' });
+  assert.equal(clinic.decisionLimits, undefined);
+
+  // A role the installation does not know gives nothing, but the caller may still ask.
+  const system = (await (await call('GET', '/v1/me', { token: 'system' })).json()) as any;
+  assertSchema('Me', system);
+  assert.deepEqual([system.roles, system.unknownRoles, system.permissions, system.scope], [[], ['system'], [], { markets: '*' }]);
+
+  // A bound role without its attribute is refused, as everywhere else.
+  assert.equal((await as({ subject: 'x', roles: ['clinic'], markets: ['SE'] }).call('GET', '/v1/me')).status, 403);
+  assert.equal((await call('GET', '/v1/me', { token: 'nobody' })).status, 401);
+});
+
+test('CORS: named origins only, and a preflight needs no token', async () => {
+  const { app } = setup({ corsOrigins: ['http://localhost:5173'] });
+  const pre = await app.request('/v1/claims', {
+    method: 'OPTIONS',
+    headers: { origin: 'http://localhost:5173', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, idempotency-key' },
+  });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+  assert.match(pre.headers.get('access-control-allow-headers') ?? '', /Idempotency-Key/);
+  const res = await app.request('/v1/me', { headers: { origin: 'http://localhost:5173', authorization: 'Bearer handler' } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+  const other = await app.request('/v1/me', { headers: { origin: 'https://evil.example.test', authorization: 'Bearer handler' } });
+  assert.equal(other.headers.get('access-control-allow-origin'), null);
+  // Without origins, no CORS headers at all.
+  const none = await setup().app.request('/v1/me', { headers: { origin: 'http://localhost:5173', authorization: 'Bearer handler' } });
+  assert.equal(none.headers.get('access-control-allow-origin'), null);
+});
+
+test('CORS origins from the environment are exact origins, never *', () => {
+  assert.deepEqual(corsOriginsFromEnv({}, ['http://localhost:5173']), ['http://localhost:5173']);
+  assert.deepEqual(corsOriginsFromEnv({ PETVOLD_CORS_ORIGINS: '' }, ['http://localhost:5173']), []);
+  assert.deepEqual(corsOriginsFromEnv({ PETVOLD_CORS_ORIGINS: 'https://a.example.test, http://localhost:3000' }), ['https://a.example.test', 'http://localhost:3000']);
+  assert.throws(() => corsOriginsFromEnv({ PETVOLD_CORS_ORIGINS: '*' }), /not an origin/);
+  assert.throws(() => corsOriginsFromEnv({ PETVOLD_CORS_ORIGINS: 'https://a.example.test/app' }), /not an origin/);
 });

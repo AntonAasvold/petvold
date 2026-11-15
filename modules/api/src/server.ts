@@ -9,6 +9,7 @@
  *   POLICIES_DATABASE_URL: every one is required, each with the module's own role.
  * - PETVOLD_VERSION: stored with every decision (ADR 0018). Required.
  * - PORT: default 8080.
+ * - PETVOLD_CORS_ORIGINS: browser applications allowed to call the API, comma-separated. Default none.
  * - Authentication: see auth.ts. Without it the server does not start.
  *
  * Migrations run before the server starts (dbmate, as the owner role); the
@@ -17,7 +18,7 @@
 import { serve } from '@hono/node-server';
 import { compose, DATABASE_ENV, DATABASES, databasesFromEnv } from './composition.ts';
 import { authenticatorFromEnv } from './auth.ts';
-import { createApp } from './index.ts';
+import { corsOriginsFromEnv, createApp } from './index.ts';
 
 const log = (line: string) => console.log(line);
 
@@ -38,7 +39,7 @@ await inst.ping().catch((err: Error) => {
 });
 inst.relay.start(1_000);
 
-const app = createApp({ ...inst.deps, auth });
+const app = createApp({ ...inst.deps, auth, corsOrigins: corsOriginsFromEnv(process.env) });
 
 /** Liveness and readiness, outside the contract: databases answer, and dead letters in the relay. */
 async function health(): Promise<Response> {

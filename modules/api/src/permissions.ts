@@ -78,6 +78,18 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
+/**
+ * Not a permission but a marker in `x-permission`: any authenticated caller may
+ * call the operation. Only for what concerns the caller itself, such as GET /v1/me.
+ * No role can grant it, and it is never part of a role's permissions.
+ */
+export const SIGNED_IN = 'signed-in';
+
+/** A valid `x-permission` value: a permission or SIGNED_IN. */
+export function isOperationPermission(value: unknown): value is Permission | typeof SIGNED_IN {
+  return value === SIGNED_IN || isPermission(value);
+}
+
 /** What a caller with the role is bound to, beyond its markets. */
 export type Binding = 'clinic' | 'policies';
 
