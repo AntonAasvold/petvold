@@ -32,6 +32,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #44 mergad.
+- ADR 0029 om policyns livscykel (Föreslagen), PR #45. Bara beslutet, ingen kod. Svenska lagregler (FAL 3 och 5 kap., distansavtalslagen 3 kap.) i en marknadsprofil i koden, och bolagets val i produkten. Djur som dör eller säljs ger förslag till avslut. Vid försäljning får den nya ägaren en ny policy med `continuityOf`.
 - #43 mergad.
 - `npm run roles:sync`, PR #44: lägger till nya standardroller och standardrättigheter i en sparad rollinställning som en ny version med motivering. Visar ändringen först och sparar bara med `--apply`. Tar aldrig bort något. Ersätter mitt tillfälliga skript, och de öppna punkterna om rättigheter som saknas i sparade rollinställningar är borta.
 - 299 tester och 100 databastester.
@@ -91,9 +93,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Flytten av `assess` och `calculate` till `decisioning-core`, eller policymodulen (M3).
+1. Policymodulen (M3) enligt ADR 0029: tecknande och term först, sedan avslut, förnyelse och överlåtelse.
 
 **Öppet**
+- ADR 0029 väntar på ditt beslut, särskilt överlåtelse vid försäljning, antal dagar före förfallodagen för förnyelsen och förval för avslut under termen.
 - Gallringen känner bara till djurregistret. Den ska inte köras skarpt förrän policyer och skador rapporterar sina relationer (M3).
 - Det sparas inte vem som slagit upp ett djur.
 
