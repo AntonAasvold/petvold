@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PricingError, ageInYears, price, tariffCoverage, validateTariff, zoneFor, type PriceInput, type TariffContent } from '../src/index.ts';
-import { TARIFF } from '../src/fixtures.ts';
+import { PricingError, ageInYears, price, tariffCoverage, validatePriceTerms, validateTariff, zoneFor, type PriceInput, type TariffContent } from '../src/index.ts';
+import { PRICE_TERMS, TARIFF } from '../src/fixtures.ts';
 
 const ref = { series: 'SE-HUND-TARIFF', version: 1, checksum: 'abc' };
 const bella: PriceInput = {
@@ -28,7 +28,7 @@ test('Bella: 3 000 kr × 1.3 (age 7) × 1.1 (breed group B) × 1.0 × 1.15 (city
     ['term', 365, 365, 493_400],
   ]);
   assert.deepEqual([r.annualPremium, r.termPremium, r.currency, r.tariff], [493_400, 493_400, 'SEK', ref]);
-  assert.deepEqual(r.facts, { ageYears: 7, breedGroup: 'B', zone: 'city', termDays: 365, yearDays: 365 });
+  assert.deepEqual(r.facts, { ageYears: 7, breedGroup: 'B', zone: 'city', termDays: 365, yearDays: 365, discountBp: 0 });
   assert.match(r.inputHash, /^[0-9a-f]{64}$/);
 });
 
@@ -93,4 +93,43 @@ test('coverage: what a tariff cannot price for a product', () => {
     'No age bands for cat',
     'No factor for deductible low',
   ]);
+});
+
+test('price terms after the base price: the best group discount, a campaign, the cap and the minimum (ADR 0030)', () => {
+  const terms = { content: PRICE_TERMS, ref: { series: 'SE-HUND-TERMS', version: 1, checksum: 't' } };
+  const plain = price({ content: TARIFF, ref }, bella);
+  const none = price({ content: TARIFF, ref }, bella, terms);
+  assert.deepEqual([none.basePremium, none.annualPremium, none.facts.discountBp], [493_400, 493_400, 0]);
+  assert.notEqual(none.inputHash, plain.inputHash); // the terms version is part of the hash
+
+  // Second animal in a litter: the litter discount (15 %) beats the general one (10 %).
+  const second = price({ content: TARIFF, ref }, { ...bella, group: { kind: 'litter', memberNo: 2 } }, terms);
+  assert.deepEqual(second.breakdown.slice(-3).map((s) => [s.code, s.value, s.amount]), [['group-discount', 1_500, 419_390], ['rounding', 100, 419_400], ['term', 365, 419_400]]);
+  assert.equal(price({ content: TARIFF }, { ...bella, group: { kind: 'household', memberNo: 1 } }, terms).facts.discountBp, 0); // the first animal
+
+  // A campaign as well: 15 % + 20 % = 35 %, capped at 30 %.
+  const both = price({ content: TARIFF, ref }, { ...bella, group: { kind: 'litter', memberNo: 3 }, campaignCode: 'puppy2026' }, terms);
+  assert.deepEqual(both.breakdown.filter((s) => ['group-discount', 'campaign', 'discount-cap'].includes(s.code)).map((s) => [s.code, s.value]), [['group-discount', 1_500], ['campaign', 2_000], ['discount-cap', 3_000]]);
+  assert.equal(both.annualPremium, 345_400); // 493 400 × 0.7 = 345 380 -> 345 400
+  assert.throws(() => price({ content: TARIFF }, { ...bella, campaignCode: 'PUPPY2026', newPolicy: false }, terms), /not valid/); // not at renewal
+  assert.throws(() => price({ content: TARIFF }, { ...bella, startDate: '2027-02-01', endDate: '2028-02-01', campaignCode: 'PUPPY2026' }, terms), /not valid/);
+  assert.throws(() => price({ content: TARIFF }, { ...bella, campaignCode: 'NOPE' }, terms), /NOPE/);
+
+  // Never below the minimum premium.
+  const cheap = price({ content: { ...TARIFF, minimumAnnual: 480_000 } }, { ...bella, group: { kind: 'litter', memberNo: 2 } }, terms);
+  assert.equal(cheap.annualPremium, 480_000);
+  assert.throws(() => price({ content: TARIFF }, bella, { content: { ...PRICE_TERMS, currency: 'EUR' } }), /another market or currency/);
+});
+
+test('price terms are checked before they are used', () => {
+  assert.deepEqual(validatePriceTerms(PRICE_TERMS), []);
+  const errors = validatePriceTerms({
+    ...PRICE_TERMS,
+    groupDiscounts: [{ kind: 'friends' as never, fromMember: 0, bp: 20_000 }],
+    campaigns: [{ code: 'x', validFrom: '2026-01-01', validTo: '2025-01-01', bp: 100, newPoliciesOnly: true }],
+    maxTotalDiscountBp: -1,
+  });
+  for (const m of [/group kind 'friends'/, /fromMember/, /group discount/, /campaign code 'x'/, /validTo after/, /maxTotalDiscountBp/]) {
+    assert.ok(errors.some((e) => m.test(e)), `${m} in ${errors.join('; ')}`);
+  }
 });

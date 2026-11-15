@@ -32,6 +32,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #56 mergad.
+- Prisvilkor (ADR 0030), PR #57:
+  - **`price-terms.v1`** i `decisioning`, med grupprabatter (`kind`, `fromMember`), kampanjkoder (giltighet, `newPoliciesOnly`) och `maxTotalDiscountBp`.
+  - **`price` lägger på prisvillkoren efter grundpriset.** Den bästa grupprabatten och en kampanj läggs ihop under taket, aldrig under lägsta premie. Priset avrundas igen, och `basePremium` och `annualPremium` redovisas var för sig.
+  - **`priceTermsSeries` på produkten**, med kontroll vid granskning. Prisindikationen tar `groupId` eller `group`, och `campaignCode`.
+  - **Dev-servern** publicerar `SE-HUND-TERMS`. `SE-HUND-BAS` får dem bara i en ny databas.
+- 355 tester och 111 databastester.
 - #55 mergad.
 - Produktens tariff och prisindikation (ADR 0030), PR #56:
   - **`tariffSeries` på produktversionen.** Vid granskning ska tariffen gälla när försäljningen börjar och täcka varje art, försäkringsbelopp och självrisk (`tariffCoverage`).
@@ -176,7 +183,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Prisvilkor (rabatter efter grundpriset), sedan priset vid tecknande, ändring och förnyelse (ADR 0030).
+1. Priset vid tecknande, ändring och förnyelse: räknas och sparas med underlaget, manuellt pris med egen rättighet, och simulering av tariffer (ADR 0030).
 
 **Öppet**
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).

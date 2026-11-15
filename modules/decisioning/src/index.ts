@@ -11,7 +11,7 @@
  * series holds either claims rules or tariffs, never both.
  */
 import { canonicalJson, sha256, type ClaimsRules, type ISODate, type RulesPort } from '@petvold/claims-core';
-import { TARIFF_MODELS, validateTariff, type TariffContent, type TariffRef } from '@petvold/pricing-core';
+import { PRICE_TERMS_MODELS, TARIFF_MODELS, validatePriceTerms, validateTariff, type PriceTermsContent, type TariffContent, type TariffRef } from '@petvold/pricing-core';
 
 export type RuleSetStatus = 'draft' | 'in_review' | 'published' | 'retired';
 
@@ -20,6 +20,12 @@ export type RuleSetContent = Omit<ClaimsRules, 'rulesVersion' | 'rulesChecksum'>
 
 /** Whether the calculation model is a tariff's (ADR 0030). */
 export const isTariffModel = (model: string) => (TARIFF_MODELS as readonly string[]).includes(model);
+
+/** Whether the calculation model is price terms' (ADR 0030). */
+export const isPriceTermsModel = (model: string) => (PRICE_TERMS_MODELS as readonly string[]).includes(model);
+
+/** What a series holds, from its calculation model. */
+const familyOf = (model: string) => (isTariffModel(model) ? 'tariffs' : isPriceTermsModel(model) ? 'price terms' : 'claims rules');
 
 export interface RuleSetVersion {
   series: string;
@@ -130,8 +136,8 @@ export class DecisioningService {
     if (!SERIES.test(series)) throw new RuleSetError('validation', `Invalid series '${series}': capital letters, digits and hyphens`);
     this.validate(input);
     const existing = await this.d.store.list(series);
-    if (existing.length && isTariffModel(existing[0]!.calculationModel) !== isTariffModel(input.calculationModel)) {
-      throw new RuleSetError('validation', `The series ${series} holds ${isTariffModel(existing[0]!.calculationModel) ? 'tariffs' : 'claims rules'}`);
+    if (existing.length && familyOf(existing[0]!.calculationModel) !== familyOf(input.calculationModel)) {
+      throw new RuleSetError('validation', `The series ${series} holds ${familyOf(existing[0]!.calculationModel)}`);
     }
     const v: RuleSetVersion = {
       series,
@@ -150,8 +156,8 @@ export class DecisioningService {
   async updateDraft(series: string, version: number, input: DraftInput): Promise<RuleSetVersion> {
     const v = await this.inStatus(series, version, 'draft');
     this.validate(input);
-    if (isTariffModel(v.calculationModel) !== isTariffModel(input.calculationModel)) {
-      throw new RuleSetError('validation', `The series ${series} holds ${isTariffModel(v.calculationModel) ? 'tariffs' : 'claims rules'}`);
+    if (familyOf(v.calculationModel) !== familyOf(input.calculationModel)) {
+      throw new RuleSetError('validation', `The series ${series} holds ${familyOf(v.calculationModel)}`);
     }
     return this.save({ ...v, ...input });
   }
@@ -188,7 +194,7 @@ export class DecisioningService {
   /** The rules in force in a series on a date, as the claims engine uses them. */
   async rulesInForce(series: string, onDate: ISODate): Promise<ClaimsRules | null> {
     const v = inForce(await this.d.store.list(series), onDate);
-    return v && !isTariffModel(v.calculationModel) ? toClaimsRules(v) : null;
+    return v && familyOf(v.calculationModel) === 'claims rules' ? toClaimsRules(v) : null;
   }
 
   /** The tariff in force in a series on a date (ADR 0030), with its reference for the evidence. */
@@ -196,6 +202,13 @@ export class DecisioningService {
     const v = inForce(await this.d.store.list(series), onDate);
     if (!v || !isTariffModel(v.calculationModel)) return null;
     return { content: v.content as unknown as TariffContent, ref: { series: v.series, version: v.version, checksum: v.checksum! } };
+  }
+
+  /** The price terms in force in a series on a date (ADR 0030), with their reference for the evidence. */
+  async priceTermsInForce(series: string, onDate: ISODate): Promise<{ content: PriceTermsContent; ref: TariffRef } | null> {
+    const v = inForce(await this.d.store.list(series), onDate);
+    if (!v || !isPriceTermsModel(v.calculationModel)) return null;
+    return { content: v.content as unknown as PriceTermsContent, ref: { series: v.series, version: v.version, checksum: v.checksum! } };
   }
 
   private async inStatus(series: string, version: number, status: RuleSetStatus): Promise<RuleSetVersion> {
@@ -226,12 +239,14 @@ export class DecisioningService {
       throw new RuleSetError('validation', m);
     };
     const c = input.content;
-    if (!this.d.calculationModels.includes(input.calculationModel) && !isTariffModel(input.calculationModel)) {
+    if (!this.d.calculationModels.includes(input.calculationModel) && familyOf(input.calculationModel) === 'claims rules') {
       fail(`Unknown calculation model '${input.calculationModel}'`);
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveFrom) || Number.isNaN(Date.parse(input.effectiveFrom))) fail('effectiveFrom must be a date');
-    if (isTariffModel(input.calculationModel)) {
-      const errors = validateTariff(c as unknown as TariffContent);
+    if (isTariffModel(input.calculationModel) || isPriceTermsModel(input.calculationModel)) {
+      const errors = isTariffModel(input.calculationModel)
+        ? validateTariff(c as unknown as TariffContent)
+        : validatePriceTerms(c as unknown as PriceTermsContent);
       if (errors.length) fail(errors.join('; '));
       return;
     }

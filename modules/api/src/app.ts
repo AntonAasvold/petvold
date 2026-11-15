@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
-import { DecisioningService, InMemoryRuleSetStore, RuleSetError, isTariffModel, toClaimsRules } from '@petvold/decisioning';
+import { DecisioningService, InMemoryRuleSetStore, RuleSetError, isPriceTermsModel, isTariffModel, toClaimsRules } from '@petvold/decisioning';
 import { AnimalError, AnimalService, IDENTIFIER_TYPES, InMemoryAnimalStore, type AnimalRecord, type IdentifierType } from '@petvold/animals';
 import {
   InMemoryPartyStore,
@@ -394,7 +394,9 @@ export function createApp(d: AppDeps) {
     if (!r.ok) return r.res;
     const series = c.req.param('series');
     const target = await decisioning.get(series, v);
-    if (isTariffModel(target.calculationModel)) return problem(c, 422, 'Tariffs are simulated against stored prices, which comes with pricing at issue (ADR 0030)');
+    if (isTariffModel(target.calculationModel) || isPriceTermsModel(target.calculationModel)) {
+      return problem(c, 422, 'Tariffs and price terms are simulated against stored prices, which comes with pricing at issue (ADR 0030)');
+    }
     const scope = c.get('scope');
     const stored = (await d.service.decisionsForSimulation(r.body.from, r.body.to)).filter(
       (x) => x.evidence.input.rules.rulesVersion.startsWith(`${series}@`) && coversClaim(scope, x.evidence.input.claim),
@@ -449,6 +451,11 @@ export function createApp(d: AppDeps) {
       tariffProblems: async (series, onDate, product) => {
         const t = await decisioning.tariffInForce(series, onDate);
         return t ? tariffCoverage(t.content, product) : null;
+      },
+      priceTermsProblems: async (series, onDate, product) => {
+        const t = await decisioning.priceTermsInForce(series, onDate);
+        if (!t) return null;
+        return t.content.market === product.market && t.content.currency === product.currency ? [] : [`The price terms are for ${t.content.market} in ${t.content.currency}`];
       },
     });
   const withName = (c: Context, v: ProductVersion) => ({
@@ -762,7 +769,7 @@ export function createApp(d: AppDeps) {
     if (!r.ok) return r.res;
     const scope = c.get('scope');
     if (!(scope.markets === '*' || scope.markets.has(r.body.market))) return problem(c, 403, 'Not permitted', 'The market is outside the caller\'s scope');
-    if ((scope.clinicId || scope.policyIds) && (r.body.animalId !== undefined || r.body.policyholderPartyId !== undefined)) {
+    if ((scope.clinicId || scope.policyIds) && (r.body.animalId !== undefined || r.body.policyholderPartyId !== undefined || r.body.groupId !== undefined)) {
       return problem(c, 403, 'Not permitted', 'Give the animal and the postal code instead of ids');
     }
     return send(c, await policies.quote(r.body));

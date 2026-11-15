@@ -29,7 +29,7 @@ import { InMemoryPolicyStore, PolicyService, type PolicyStore } from '@petvold/p
 import { PostgresPolicyStore } from '@petvold/policies/postgres';
 import { animalPort, claimsActivity, productPort } from './wiring.ts';
 import { tariffCoverage } from '@petvold/pricing-core';
-import { TARIFF } from '@petvold/pricing-core/fixtures';
+import { PRICE_TERMS, TARIFF } from '@petvold/pricing-core/fixtures';
 import {
   CatalogService,
   InMemoryProductStore,
@@ -103,14 +103,14 @@ const ruleStore: RuleSetStore = decisioningUrl ? new PostgresRuleSetStore(create
 const decisioning = new DecisioningService({ store: ruleStore, clock, calculationModels: Object.keys(CALCULATION_MODELS) });
 const SERIES = 'SE-HUND-VV';
 await seedRules(ruleStore);
-await seedTariff(ruleStore);
+await seedPricing(ruleStore, 'SE-HUND-TARIFF', TARIFF, 'tariff.v1');
+await seedPricing(ruleStore, 'SE-HUND-TERMS', PRICE_TERMS, 'price-terms.v1');
 
-/** The made-up dog tariff (ADR 0030), which the sample product SE-HUND-BAS is priced with. */
-async function seedTariff(store: RuleSetStore): Promise<void> {
-  const series = 'SE-HUND-TARIFF';
+/** The made-up dog tariff and price terms (ADR 0030), which the sample product SE-HUND-BAS is priced with. */
+async function seedPricing(store: RuleSetStore, series: string, content: unknown, calculationModel: string): Promise<void> {
   if ((await store.list(series)).length > 0) return;
   const now = clock.now();
-  const base = { series, version: 1, content: TARIFF as never, calculationModel: 'tariff.v1', effectiveFrom: '2026-01-01' };
+  const base = { series, version: 1, content: content as never, calculationModel, effectiveFrom: '2026-01-01' };
   const v: RuleSetVersion = {
     ...base,
     status: 'published',
@@ -167,6 +167,11 @@ const products = new ProductService({
   tariffProblems: async (series, onDate, product) => {
     const t = await decisioning.tariffInForce(series, onDate);
     return t ? tariffCoverage(t.content, product) : null;
+  },
+  priceTermsProblems: async (series, onDate, product) => {
+    const t = await decisioning.priceTermsInForce(series, onDate);
+    if (!t) return null;
+    return t.content.market === product.market && t.content.currency === product.currency ? [] : [`The price terms are for ${t.content.market} in ${t.content.currency}`];
   },
 });
 await seedReferenceData();

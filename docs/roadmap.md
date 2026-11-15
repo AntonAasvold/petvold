@@ -75,7 +75,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Prisfunktionen (`pricing-core`) och tariffserier i `decisioning`
 - [x] Produktversionen pekar på en tariffserie som täcker den
 - [x] Prisindikation utan sparat tillstånd (`POST /v1/quotes`)
-- [ ] Prisvilkor: rabatter efter grundpriset
+- [x] Prisvilkor: grupprabatt och kampanjkoder efter grundpriset, med tak
 - [ ] Priset vid tecknande, ändring och förnyelse, manuellt pris och simulering av tariffer
 - [ ] Teckningsregler och manuell prövning
 - [ ] Rabatter som regler

@@ -14,6 +14,25 @@ export type ISODate = string;
 /** The calculation models a tariff version can have. */
 export const TARIFF_MODELS = ['tariff.v1'] as const;
 
+/** The calculation models a price terms version can have (ADR 0030). */
+export const PRICE_TERMS_MODELS = ['price-terms.v1'] as const;
+
+/**
+ * Price terms (ADR 0030): discounts applied after the base price from the
+ * tariff. Each discount is in basis points of the base price (1 000 = 10 %).
+ * Together they never exceed maxTotalDiscountBp, and the price never goes below
+ * the tariff's minimum premium.
+ */
+export interface PriceTermsContent {
+  market: string;
+  currency: string;
+  /** For a policy in a group (ADR 0007): from the fromMember:th animal in the group, e.g. 2 = the second and later. */
+  groupDiscounts: { kind: 'litter' | 'household' | 'any'; fromMember: number; bp: BasisPoints }[];
+  /** Campaign codes, valid for terms starting in [validFrom, validTo). newPoliciesOnly: not at renewal. */
+  campaigns: { code: string; validFrom: ISODate; validTo?: ISODate; bp: BasisPoints; newPoliciesOnly: boolean }[];
+  maxTotalDiscountBp: BasisPoints;
+}
+
 /** Basis points: 10 000 = a factor of 1.0. */
 export type BasisPoints = number;
 
@@ -64,10 +83,16 @@ export interface PriceInput {
   deductibleOption: string;
   /** The policyholder's postal code. Only the zone is kept (ADR 0030). Omitted: the default zone. */
   postalCode?: string;
+  /** For price terms: the policy's group and its place in it, 1 = the first animal. */
+  group?: { kind: 'litter' | 'household'; memberNo: number };
+  /** For price terms: a campaign code the customer gave. */
+  campaignCode?: string;
+  /** For price terms: a new policy (issue), not a renewal or change. Default true. */
+  newPolicy?: boolean;
 }
 
 export interface PriceStep {
-  code: 'base' | 'age' | 'breed-group' | 'deductible' | 'zone' | 'minimum' | 'rounding' | 'term';
+  code: 'base' | 'age' | 'breed-group' | 'deductible' | 'zone' | 'minimum' | 'rounding' | 'group-discount' | 'campaign' | 'discount-cap' | 'term';
   /** For a factor, its basis points; for an amount, minor units. */
   value: number;
   /** e.g. the age, the breed group or the zone the factor came from. */
@@ -78,14 +103,18 @@ export interface PriceStep {
 
 export interface PriceResult {
   currency: string;
-  /** The yearly premium at these facts and choices. */
+  /** The yearly base price from the tariff, before price terms. */
+  basePremium: number;
+  /** The yearly premium at these facts and choices, after price terms. */
   annualPremium: number;
   /** The premium for the term: the yearly premium per day of a year. */
   termPremium: number;
   breakdown: PriceStep[];
   /** What the price depended on, without the postal code: only its zone. */
-  facts: { ageYears: number; breedGroup: string; zone: string; termDays: number; yearDays: number };
+  facts: { ageYears: number; breedGroup: string; zone: string; termDays: number; yearDays: number; discountBp: number };
   tariff?: TariffRef;
+  /** The price terms version, if any applied. */
+  priceTerms?: TariffRef;
   /** sha256 over the tariff reference and the facts; the same price gives the same hash. */
   inputHash: string;
 }
@@ -133,7 +162,11 @@ export function zoneFor(t: Pick<TariffContent, 'zones' | 'defaultZone'>, postalC
  * The price for the facts with the tariff (ADR 0030). Throws PricingError when
  * the tariff has no price for them, e.g. an annual limit it does not cover.
  */
-export function price(tariff: { content: TariffContent; ref?: TariffRef }, input: PriceInput): PriceResult {
+export function price(
+  tariff: { content: TariffContent; ref?: TariffRef },
+  input: PriceInput,
+  priceTerms?: { content: PriceTermsContent; ref?: TariffRef },
+): PriceResult {
   const t = tariff.content;
   if (input.market !== t.market) throw new PricingError(`The tariff is for ${t.market}, not ${input.market}`);
   for (const d of [input.birthDate, input.startDate, input.endDate]) if (!DATE.test(d)) throw new PricingError('Dates are YYYY-MM-DD');
@@ -175,15 +208,57 @@ export function price(tariff: { content: TariffContent; ref?: TariffRef }, input
   const rounded = Number(divRound(BigInt(annual), BigInt(t.roundTo))) * t.roundTo;
   if (rounded !== annual) breakdown.push({ code: 'rounding', value: t.roundTo, amount: rounded });
   annual = rounded;
+  const basePremium = annual;
+
+  // Price terms after the base price (ADR 0030).
+  let discountBp = 0;
+  if (priceTerms) {
+    const pt = priceTerms.content;
+    if (pt.market !== t.market || pt.currency !== t.currency) throw new PricingError('The price terms are for another market or currency than the tariff');
+    const found: { code: PriceStep['code']; bp: number; basis: string }[] = [];
+    if (input.group) {
+      const g = pt.groupDiscounts
+        .filter((d) => (d.kind === 'any' || d.kind === input.group!.kind) && input.group!.memberNo >= d.fromMember)
+        .sort((a, b) => b.bp - a.bp)[0];
+      if (g) found.push({ code: 'group-discount', bp: g.bp, basis: `${input.group.kind} #${input.group.memberNo}` });
+    }
+    if (input.campaignCode) {
+      const code = input.campaignCode.trim().toUpperCase();
+      const c = pt.campaigns.find(
+        (x) => x.code === code && x.validFrom <= input.startDate && (!x.validTo || input.startDate < x.validTo) && (!x.newPoliciesOnly || input.newPolicy !== false),
+      );
+      if (!c) throw new PricingError(`The campaign code ${code} is not valid for this policy on ${input.startDate}`);
+      found.push({ code: 'campaign', bp: c.bp, basis: c.code });
+    }
+    for (const f of found) {
+      discountBp += f.bp;
+      breakdown.push({ code: f.code, value: f.bp, basis: f.basis, amount: Number(divRound(BigInt(basePremium) * BigInt(10_000 - Math.min(discountBp, 10_000)), 10_000n)) });
+    }
+    if (discountBp > pt.maxTotalDiscountBp) {
+      discountBp = pt.maxTotalDiscountBp;
+      breakdown.push({ code: 'discount-cap', value: discountBp, amount: Number(divRound(BigInt(basePremium) * BigInt(10_000 - discountBp), 10_000n)) });
+    }
+    if (discountBp > 0) {
+      annual = Number(divRound(BigInt(basePremium) * BigInt(10_000 - discountBp), 10_000n));
+      if (annual < t.minimumAnnual) {
+        annual = t.minimumAnnual;
+        breakdown.push({ code: 'minimum', value: t.minimumAnnual, amount: annual });
+      }
+      const again = Number(divRound(BigInt(annual), BigInt(t.roundTo))) * t.roundTo;
+      if (again !== annual) breakdown.push({ code: 'rounding', value: t.roundTo, amount: again });
+      annual = Math.max(again, t.minimumAnnual);
+    }
+  }
 
   const termDays = days(input.startDate, input.endDate);
   const yearDays = days(input.startDate, addYear(input.startDate));
   const termPremium = Number(divRound(BigInt(annual) * BigInt(termDays), BigInt(yearDays)));
   breakdown.push({ code: 'term', value: termDays, basis: yearDays, amount: termPremium });
 
-  const facts = { ageYears, breedGroup, zone, termDays, yearDays };
+  const facts = { ageYears, breedGroup, zone, termDays, yearDays, discountBp };
   const hashed = {
     tariff: tariff.ref ?? null,
+    priceTerms: priceTerms?.ref ?? null,
     market: input.market,
     species: input.species,
     annualLimit: input.annualLimit,
@@ -192,11 +267,13 @@ export function price(tariff: { content: TariffContent; ref?: TariffRef }, input
   };
   return {
     currency: t.currency,
+    basePremium,
     annualPremium: annual,
     termPremium,
     breakdown,
     facts,
     ...(tariff.ref ? { tariff: tariff.ref } : {}),
+    ...(priceTerms?.ref ? { priceTerms: priceTerms.ref } : {}),
     inputHash: createHash('sha256').update(canonicalJson(hashed)).digest('hex'),
   };
 }
@@ -277,4 +354,34 @@ export function tariffCoverage(
   }
   for (const d of product.deductibleOptions) if (t.deductibleFactors[d] === undefined) out.push(`No factor for deductible ${d}`);
   return out;
+}
+
+/** What is wrong with price terms, if anything. Empty: valid. Pure. */
+export function validatePriceTerms(c: PriceTermsContent): string[] {
+  const errors: string[] = [];
+  const fail = (m: string) => errors.push(m);
+  const bp = (n: unknown) => Number.isSafeInteger(n) && (n as number) >= 0 && (n as number) <= 10_000;
+  if (!c || typeof c !== 'object') return ['The price terms must be an object'];
+  if (!/^[A-Z]{2}$/.test(c.market ?? '')) fail(`Invalid market '${c.market}'`);
+  if (!/^[A-Z]{3}$/.test(c.currency ?? '')) fail(`Invalid currency '${c.currency}'`);
+  if (!Array.isArray(c.groupDiscounts)) fail('groupDiscounts must be a list');
+  for (const g of c.groupDiscounts ?? []) {
+    if (!['litter', 'household', 'any'].includes(g.kind)) fail(`Unknown group kind '${g.kind}'`);
+    if (!Number.isSafeInteger(g.fromMember) || g.fromMember < 1) fail('fromMember must be 1 or more');
+    if (!bp(g.bp)) fail('A group discount must be 0-10 000 basis points');
+  }
+  if (!Array.isArray(c.campaigns)) fail('campaigns must be a list');
+  const codes = new Set<string>();
+  for (const k of c.campaigns ?? []) {
+    if (!/^[A-Z0-9][A-Z0-9-]{1,31}$/.test(k.code ?? '')) fail(`Invalid campaign code '${k.code}': capital letters, digits and hyphens`);
+    if (codes.has(k.code)) fail(`The campaign code ${k.code} is listed twice`);
+    codes.add(k.code);
+    if (!DATE.test(k.validFrom ?? '') || (k.validTo !== undefined && (!DATE.test(k.validTo) || k.validTo <= k.validFrom))) fail(`The campaign ${k.code} needs validFrom, and validTo after it`);
+    if (!bp(k.bp)) fail(`The campaign ${k.code} must be 0-10 000 basis points`);
+    if (typeof k.newPoliciesOnly !== 'boolean') fail(`The campaign ${k.code} needs newPoliciesOnly`);
+  }
+  if (!bp(c.maxTotalDiscountBp)) fail('maxTotalDiscountBp must be 0-10 000 basis points');
+  const known = new Set(['market', 'currency', 'groupDiscounts', 'campaigns', 'maxTotalDiscountBp']);
+  for (const k of Object.keys(c)) if (!known.has(k)) fail(`Unknown field '${k}' in the price terms`);
+  return errors;
 }
