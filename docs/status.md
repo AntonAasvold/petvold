@@ -32,6 +32,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #60 mergad.
+- Drift: kompositionsrot, relä och inloggning (granskningen A1, A2, A5), PR #61:
+  - **`composition.ts`** kopplar ihop alla moduler en gång, både för `server.ts` (drift) och `dev-server.ts`. Exempeldatan ligger i `seed.ts`.
+  - **`server.ts`** (`npm start`): kräver alla databasadresser, `PETVOLD_VERSION` och inloggning. Den har `/healthz` och stänger ordnat vid SIGTERM.
+  - **Reläet** för alla tre outboxar levererar i ordning, gör omförsök med växande paus och lägger händelser som döda bokstäver efter 10 försök.
+  - **Inloggning med JWT:** verifiering mot JWKS eller OpenID-konfiguration, utfärdare, mottagare och asymmetriska algoritmer. Roller, marknader och bindningar läses ur token, och fälten går att ställa in. Nytt beroende: `jose` 6.2.14.
+  - **Ny sida** `docs/teknik/drift.md`.
+  - Provat: servern med en lokal nyckeltjänst gav `200` med en signerad token, `401` med dev-token, `ok` på `/healthz` och ordnad avstängning.
+- 366 tester och 111 databastester.
 - #59 mergad.
 - Datum i marknadens tidszon (granskningen, A3), PR #60:
   - `marketDate(market, tidpunkt)` och `MARKET_TIME_ZONES` i `common`, med 15 europeiska marknader. En okänd marknad räknar i UTC.
@@ -203,9 +212,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Enligt granskningen: kompositionsrot för drift med relä (A1, A5) och inloggning med JWT (A2), sedan teckningsregler (F1, ny ADR) och godkännande vid tecknande (F3).
+1. Teckningsregler (F1, ny ADR) och godkännande vid tecknande (F3). Sedan sidindelning (A4) och ett beslut om dokument till kunden (F2).
 
 **Öppet**
+- Flera instanser av servern kör var sitt relä. Leveransen sker minst en gång, men samma händelse kan levereras av två instanser samtidigt. Ett relä med lås per outbox (pg-boss) behövs före drift med flera instanser.
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).
 - Gallringen känner till djur, policyer och skador. Innan den körs skarpt hos ett försäkringsbolag behöver bolaget bekräfta lagringstiderna och att inga andra system har relationer som Petvold inte känner till, till exempel betalningar (M5).
 - Det sparas inte vem som slagit upp ett djur.

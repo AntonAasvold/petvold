@@ -18,6 +18,7 @@ För utvecklare och drift.
 - [Arkitektur](teknik/arkitektur.md): moduler, portar, lagring, händelser och API
 - [Utvecklingsmiljö](teknik/utvecklingsmiljo.md): kom igång lokalt
 - [Testning](teknik/testning.md): testlager och vad som krävs
+- [Drift](teknik/drift.md): starta en installation, konfiguration, inloggning, händelser och hälsa
 - [API](../modules/api/openapi.yaml): kontraktet. Klickbar version på `/docs` när dev-servern kör.
 
 ## Styrning
