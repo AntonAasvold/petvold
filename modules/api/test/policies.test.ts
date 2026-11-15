@@ -208,3 +208,23 @@ test('the choices are changed from a day during the term', async () => {
   assert.equal((await call('POST', `/v1/policies/${p.id}/changes`, 'seller', { from: '2027-05-01', vetCare: {}, premium: { amount: 1, currency: 'SEK' }, reason: 'x' })).status, 422);
   assert.equal((await call('POST', `/v1/policies/${p.id}/changes`, 'handler', { from: '2027-07-01', vetCare: {}, premium: { amount: 1, currency: 'SEK' }, reason: 'x' })).status, 403);
 });
+
+test('a household group is created, a policy joins and leaves', async () => {
+  const call = await setup();
+  const p = (await call('POST', '/v1/policies', 'seller', apply)).body;
+  assert.equal((await call('POST', '/v1/policy-groups', 'sellerDe', { market: 'SE', kind: 'household', holderPartyId: 'pty_anna' })).status, 403);
+  assert.equal((await call('POST', '/v1/policy-groups', 'seller', { market: 'SE', kind: 'litter', holderPartyId: 'pty_anna' })).status, 422);
+  const g = await call('POST', '/v1/policy-groups', 'seller', { market: 'SE', kind: 'household', holderPartyId: 'pty_anna' });
+  assert.equal(g.status, 201);
+  const joined = await call('POST', `/v1/policy-groups/${g.body.id}/members`, 'seller', { policyId: p.id });
+  assert.equal(joined.status, 201);
+  assert.ok(validatorFor('PolicyGroup')(structuredClone(joined.body)));
+  assert.deepEqual(joined.body.members.map((m: any) => [m.policyId, m.from]), [[p.id, '2026-12-01']]);
+  assert.equal((await call('POST', `/v1/policy-groups/${g.body.id}/members`, 'seller', { policyId: p.id })).status, 409);
+  assert.deepEqual((await call('GET', `/v1/policy-groups?policyId=${p.id}`, 'handler')).body.items.map((x: any) => x.id), [g.body.id]);
+  assert.equal((await call('GET', `/v1/policy-groups/${g.body.id}`, 'sellerDe')).status, 404);
+  assert.equal((await call('GET', '/v1/policy-groups', 'handler')).status, 422);
+  call.clock.set('2027-01-10T10:00:00.000Z');
+  const left = await call('POST', `/v1/policy-groups/${g.body.id}/members/${p.id}/ends`, 'seller', { reason: 'Moved out' });
+  assert.deepEqual([left.status, left.body.members[0].to], [201, '2027-01-10']);
+});

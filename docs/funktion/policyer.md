@@ -103,6 +103,20 @@ Djurregistret skickar händelser när ett djur byter ägare (`animal.ownership_c
 
 **Exempel:** Anna säljer Rex till Bo 1 juni 2027 och registrerar det 10 juni. Policyn får ett förslag med sista dag 10 juli. Bo godkänner villkoren på webben 12 juni. Bo är då försäkringstagare från 1 juni, och premien för 1 juni till 1 december flyttas från Anna till Bo.
 
+## Grupper för kull och hushåll
+
+En **grupp** samlar policyer för en kull eller ett hushåll (ADR 0007). Gruppen har en försäkringstagare, som har alla medlemmarnas policyer så länge de är med. Senare får gruppen en gemensam faktura (M5) och grupprabatt (M4). Gruppen påverkar aldrig skaderegleringen, eftersom varje djur har sin egen policy.
+
+- **Skapa:** `POST /v1/policy-groups` med `market`, `kind` (`litter` eller `household`) och `holderPartyId`. En kull har också `litterId` ur djurregistret.
+- **Lägga till:** `POST /v1/policy-groups/{id}/members` med `policyId` och eventuellt `from`. Förval är i dag, eller policyns start om den är senare.
+  - Gruppens försäkringstagare måste ha policyn den dagen.
+  - En policy är med i en grupp i taget (`409`).
+- **Ta bort:** `POST /v1/policy-groups/{id}/members/{policyId}/ends` med `reason` och eventuellt `to`.
+- **När djuret säljs** och den nya ägaren tar över policyn lämnar policyn gruppen från försäljningsdagen. Det sker i samma transaktion som överlåtelsen. Den nya ägaren kan sedan lägga policyn i en egen grupp.
+- **Historiken** syns i `members`, där varje medlemskap har `from` och `to`.
+
+**Exempel:** Kennel Exempel försäkrar en kull på fem valpar och samlar dem i en kullgrupp. När valp 3 säljs 1 mars lämnar den gruppen den dagen, och de andra fyra är kvar.
+
 ## Avsluta en policy
 
 `POST /v1/policies/{id}/cancellations` med `reason`, och vid behov `receivedOn` (dagen uppsägningen kom fram, eller skickades av bolaget, förvalt i dag), `effectiveDate` och `note`. Skälet styr från vilken dag policyn upphör. Reglerna kommer från marknadsprofilen, alltså lagen, och från produktens inställning.
@@ -140,6 +154,10 @@ Djurregistret skickar händelser när ett djur byter ägare (`animal.ownership_c
 | `POST /v1/policies/{id}/renewals` | `policies:write` | Förnyar en policy för hand |
 | `POST /v1/renewal-runs` | `policies:renew` | Förnyelsekörningen |
 | `POST /v1/policies/{id}/cancellations` | `policies:write` | Avslutar en policy |
+| `POST /v1/policy-groups` | `policies:write` | Skapar en grupp för kull eller hushåll |
+| `GET /v1/policy-groups?holderPartyId=…` | `policies:read` | Grupper för en försäkringstagare. Det går också att använda `policyId`. |
+| `POST /v1/policy-groups/{id}/members` | `policies:write` | Lägger till en policy |
+| `POST /v1/policy-groups/{id}/members/{policyId}/ends` | `policies:write` | Tar bort en policy från en dag |
 | `GET /v1/policy-proposals` | `policies:read` | Förslag efter försäljning och dödsfall |
 | `POST /v1/policy-proposals/{id}/acceptances` | `policies:write` | Godkänner ett förslag |
 | `POST /v1/policy-proposals/{id}/rejections` | `policies:write` | Avböjer ett förslag |
@@ -179,4 +197,4 @@ Svaret har en term från 1 december 2026 till 1 december 2027 (slutdagen räknas
 
 Dev-servern lägger in Bellas policy `pol_bella` första gången, med ägaren `pty_owner001` och förbehållet för hälta. Exemplet har bara den gällande termen. Token `dev-seller` tecknar policyer. Skademotorn läser policyerna från modulen.
 
-*Inte byggt än:* nytt pris vid förnyelse och ändring (M4), ny karenstid för ett höjt försäkringsbelopp, och policygrupper (ADR 0029).
+*Inte byggt än:* nytt pris vid förnyelse och ändring (M4), ny karenstid för ett höjt försäkringsbelopp, grupprabatt (M4), gemensam faktura (M5), och att teckna en hel kull i ett anrop.

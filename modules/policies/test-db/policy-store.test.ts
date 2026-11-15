@@ -15,7 +15,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate policies.term_change, policies.proposal_decision, policies.proposal, policies.outbox, policies.policy_version, policies.term, policies.policy_transaction, policies.policy cascade');
+const clean = () => admin.query('truncate policies.group_membership, policies.policy_group, policies.term_change, policies.proposal_decision, policies.proposal, policies.outbox, policies.policy_version, policies.term, policies.policy_transaction, policies.policy cascade');
 
 policyStoreSuite('PostgresPolicyStore', async () => {
   await clean();

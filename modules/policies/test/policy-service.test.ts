@@ -475,3 +475,36 @@ test('the renewal keeps the changed choices and premium, and a change is made in
   const tx = await s.change(p.id, { from: '2027-12-01', vetCare: { annualLimit: 6_000_000 }, premium: { amount: 365_000, currency: 'SEK' }, reason: 'Back' }, 'cs');
   assert.equal(tx.change?.termNo, 2);
 });
+
+test('a group holds policies of one policyholder; a policy leaves it when the animal is sold', async () => {
+  const { s, at } = transferSetup();
+  const p = await s.issue(yearly, by);
+  const q = await s.issue({ ...yearly, animalId: 'ani_rex2' }, by);
+  await rejects(s.createGroup({ market: 'SE', kind: 'litter', holderPartyId: 'pty_anna' }, 'cs'), 'validation', /litterId/);
+  await rejects(s.createGroup({ market: 'SE', kind: 'household', holderPartyId: 'pty_none' }, 'cs'), 'validation', /party/);
+  const g = await s.createGroup({ market: 'SE', kind: 'litter', holderPartyId: 'pty_anna', litterId: 'lit_1' }, 'cs');
+  await s.addMember(g.id, { policyId: p.id }, 'cs');
+  await s.addMember(g.id, { policyId: q.id, from: '2027-01-01' }, 'cs');
+  await rejects(s.addMember(g.id, { policyId: p.id }, 'cs'), 'conflict', /already a member/);
+  const other = await s.createGroup({ market: 'SE', kind: 'household', holderPartyId: 'pty_bo' }, 'cs');
+  await rejects(s.addMember(other.id, { policyId: q.id, from: '2027-02-01' }, 'cs'), 'validation', /held by another party/);
+  let now = await s.getGroup(g.id);
+  assert.deepEqual(now.members.map((m) => [m.policyId, m.from, m.to ?? null]), [[p.id, '2026-12-01', null], [q.id, '2027-01-01', null]]);
+
+  // Rex is sold to Bo from 1 June: his policy leaves Anna's group that day.
+  at('2027-06-10T10:00:00.000Z');
+  const pr = (await s.handleAnimalEvent(sold('aev_g1', '2027-06-01')))!;
+  await s.acceptProposal(pr.id, { channel: 'web' }, 'cs');
+  now = await s.getGroup(g.id);
+  assert.deepEqual(now.members.map((m) => [m.policyId, m.to ?? null, m.endReason ?? null]), [[p.id, '2027-06-01', 'The animal was sold'], [q.id, null, null]]);
+  assert.deepEqual((await s.findGroups({ policyId: p.id })).map((x) => x.id), [g.id]);
+  assert.deepEqual((await s.findGroups({ holderPartyId: 'pty_bo' })).map((x) => x.id), [other.id]);
+  // Now Bo's, the policy can join Bo's household group.
+  await s.addMember(other.id, { policyId: p.id, from: '2027-06-10' }, 'cs');
+
+  await rejects(s.endMember(g.id, p.id, { reason: 'x' }, 'cs'), 'conflict', /not a member/);
+  await rejects(s.endMember(g.id, q.id, { reason: ' ' }, 'cs'), 'validation', /reason/);
+  const ended = await s.endMember(g.id, q.id, { to: '2027-06-10', reason: 'Left the litter discount' }, 'cs');
+  assert.equal(ended.members[1]!.to, '2027-06-10');
+  await rejects(s.getGroup('pgr_none'), 'not_found');
+});

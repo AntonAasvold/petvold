@@ -32,6 +32,14 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #52 mergad.
+- Policygrupper för kull och hushåll (ADR 0007), PR #53:
+  - **Grupp** med marknad, sort, försäkringstagare och kull. **Medlemskap** med `from` och `to`, där en policy bara är med i en grupp i taget (migration 0027).
+  - **Vid försäljning** lämnar policyn den förra ägarens grupp från försäljningsdagen, i samma transaktion som överlåtelsen.
+  - **API:** fem operationer under `/v1/policy-groups`.
+  - **Roadmapen för M3 är städad.** Förnyelse och avslut har nu delpunkter som stämmer med vad som är byggt.
+  - `PolicyStore.apply` tar ett objekt (`ApplyExtra`) i stället för fyra valfria parametrar i följd.
+- 339 tester och 111 databastester.
 - #51 mergad.
 - Ändring av val under termen (ADR 0029), PR #52:
   - **`POST /v1/policies/{id}/changes`:** nytt försäkringsbelopp eller ny självrisk från i dag eller senare, i den senaste termen. Premien för resten av termen justeras per dag (`premiumAdjustment`).
@@ -149,7 +157,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Policygrupper för kullar och hushåll (ADR 0007), sedan M4: tariff, prisindikation och teckningsregler.
+1. M4: tariff som rena funktioner per produktversion, prisindikation och teckningsregler. Det ger riktiga priser vid tecknande, ändring och förnyelse, och grupprabatt.
 
 **Öppet**
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).

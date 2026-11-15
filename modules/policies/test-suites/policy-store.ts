@@ -127,8 +127,8 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
         supersedes: [],
         renewal: { termNo: 2, productVersion: 'SE-TEST@2', premium: { amount: 480_000, currency: 'SEK' } },
       };
-      await store.apply('pol_t1', [], [v2], tx, [], [term2]);
-      await assert.rejects(store.apply('pol_t1', [], [], { ...tx, id: 'ptx_r2' }, [], [term2]), PolicyConflictError);
+      await store.apply('pol_t1', [], [v2], tx, [], { terms: [term2] });
+      await assert.rejects(store.apply('pol_t1', [], [], { ...tx, id: 'ptx_r2' }, [], { terms: [term2] }), PolicyConflictError);
       const p = (await store.get('pol_t1'))!;
       assert.deepEqual(p.terms, [t.term, term2]);
       assert.deepEqual(p.versions, [t.version, v2]);
@@ -175,7 +175,7 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
       const before: PolicyVersion = { ...t.version, id: 'pv_x1', validTo: '2027-06-01', sysFrom: later, transactionId: 'ptx_x1' };
       const afterV: PolicyVersion = { ...t.version, id: 'pv_x2', validFrom: '2027-06-01', policyholderPartyId: 'pty_bo', sysFrom: later, transactionId: 'ptx_x1' };
       const accepted = { outcome: 'accepted' as const, acceptance: { channel: 'web', acceptedAt: later }, transactionId: 'ptx_x1', decidedBy: 'cs', decidedAt: later };
-      await store.apply('pol_t1', ['pv_t1'], [before, afterV], tx, [], [], { proposalId: 'ppr_1', decision: accepted });
+      await store.apply('pol_t1', ['pv_t1'], [before, afterV], tx, [], { decision: { proposalId: 'ppr_1', decision: accepted } });
       assert.deepEqual((await store.getProposal('ppr_1'))!.decision, accepted);
       assert.deepEqual((await store.listProposals({ policyId: 'pol_t1', pending: false })).map((p) => p.id), ['ppr_1', 'ppr_3']);
       assert.deepEqual((await store.transactions('pol_t1')).at(-1), tx);
@@ -200,12 +200,35 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
       const change = { changeNo: 1, from: '2027-06-01', vetCare: { ...t.term.vetCare, annualLimit: 3_000_000 }, deductibleOption: 'high', premium: 292_000, transactionId: 'ptx_ch1' };
       const cut: PolicyVersion = { ...t.version, id: 'pv_ch1', validTo: '2027-06-01', sysFrom: later, transactionId: 'ptx_ch1' };
       const next: PolicyVersion = { ...t.version, id: 'pv_ch2', validFrom: '2027-06-01', changeNo: 1, sysFrom: later, transactionId: 'ptx_ch1' };
-      await store.apply('pol_t1', ['pv_t1'], [cut, next], tx, [], [], undefined, [{ ...change, policyId: 'pol_t1', termNo: 1 }]);
+      await store.apply('pol_t1', ['pv_t1'], [cut, next], tx, [], { changes: [{ ...change, policyId: 'pol_t1', termNo: 1 }] });
       const p = (await store.get('pol_t1'))!;
       assert.deepEqual(p.terms, [{ ...t.term, changes: [change] }]);
       assert.deepEqual(p.versions, [cut, next]);
       assert.deepEqual((await store.transactions('pol_t1')).at(-1), tx);
       assert.equal((await store.versionAt('pol_t1', '2027-07-01'))?.changeNo, 1);
+    });
+
+    it('groups keep their members over time, and a policy is in one group at a time', async (store) => {
+      const t = issued();
+      await store.issue(t.policy, t.term, t.version, t.transaction, []);
+      const g = { id: 'pgr_1', market: 'SE', kind: 'household' as const, holderPartyId: 'pty_anna', createdBy: 'cs', createdAt: at, members: [] };
+      const litter = { ...g, id: 'pgr_2', kind: 'litter' as const, litterId: 'lit_1' };
+      await store.createGroup(g);
+      await store.createGroup(litter);
+      const m = { policyId: 'pol_t1', from: '2026-12-01', addedBy: 'cs', addedAt: at };
+      await store.addMember('pgr_1', m);
+      await assert.rejects(store.addMember('pgr_2', { ...m, from: '2027-01-01' }), PolicyConflictError);
+      assert.deepEqual(await store.getGroup('pgr_1'), { ...g, members: [m] });
+      assert.deepEqual(await store.getGroup('pgr_2'), litter);
+      const end = { to: '2027-06-01', endedBy: 'cs', endedAt: at, reason: 'Sold' };
+      await store.endMember('pgr_1', 'pol_t1', end);
+      await assert.rejects(store.endMember('pgr_1', 'pol_t1', end), PolicyConflictError);
+      assert.deepEqual((await store.getGroup('pgr_1'))!.members, [{ ...m, to: '2027-06-01', endedBy: 'cs', endedAt: at, endReason: 'Sold' }]);
+      await store.addMember('pgr_2', { ...m, from: '2027-06-01' }); // free again
+      assert.deepEqual((await store.findGroups({ policyId: 'pol_t1' })).map((x) => x.id), ['pgr_1', 'pgr_2']);
+      assert.deepEqual((await store.findGroups({ holderPartyId: 'pty_anna' })).map((x) => x.id), ['pgr_1', 'pgr_2']);
+      assert.deepEqual(await store.findGroups({ holderPartyId: 'pty_bo' }), []);
+      assert.equal(await store.getGroup('pgr_none'), null);
     });
 
     it('an animal is never insured twice for the same day', async (store) => {
