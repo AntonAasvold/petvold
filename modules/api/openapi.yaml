@@ -912,6 +912,142 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/parties/{partyId}/erasure-requests:
+    post:
+      tags: [parties]
+      operationId: requestPartyErasure
+      x-permission: parties:privacy
+      summary: Ask for a party to be anonymized
+      description: |
+        Requires the permission `parties:privacy` (ADR 0028). Someone else
+        approves or rejects the request. A party has at most one undecided
+        request; another gives `409`.
+      parameters:
+        - $ref: '#/components/parameters/PartyId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ErasureRequestInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErasureRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/erasure-requests:
+    get:
+      tags: [parties]
+      operationId: listErasureRequests
+      x-permission: parties:privacy
+      summary: Erasure requests, oldest first
+      description: Requires the permission `parties:privacy`. Only requests for parties in the caller's markets.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, decided] } }
+        - { name: partyId, in: query, schema: { type: string } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The requests
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ErasureRequest' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/erasure-requests/{requestId}:
+    get:
+      tags: [parties]
+      operationId: getErasureRequest
+      x-permission: parties:privacy
+      summary: An erasure request with its decision
+      description: Requires the permission `parties:privacy`.
+      parameters:
+        - $ref: '#/components/parameters/ErasureRequestId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErasureRequest' }
+
+  /v1/erasure-requests/{requestId}/approvals:
+    post:
+      tags: [parties]
+      operationId: approveErasure
+      x-permission: parties:erase
+      summary: Approve an erasure request and anonymize the party
+      description: |
+        Requires the permission `parties:erase`. Not by the one who asked
+        (`403`, four eyes). Removes the party's personal data from every
+        revision and its identifiers. Cannot be undone (ADR 0028).
+      parameters:
+        - $ref: '#/components/parameters/ErasureRequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ErasureApprovalInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The decided request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErasureRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/erasure-requests/{requestId}/rejections:
+    post:
+      tags: [parties]
+      operationId: rejectErasure
+      x-permission: parties:privacy
+      summary: Reject an erasure request
+      description: |
+        Requires the permission `parties:privacy`. A request from the data
+        subject is rejected when the data must be kept (GDPR article 17.3); it
+        then needs `restrictUntil`, and the party is restricted until that date
+        (article 18): only callers with `parties:privacy` see it.
+      parameters:
+        - $ref: '#/components/parameters/ErasureRequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ErasureRejectionInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The decided request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErasureRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/litters:
     post:
       tags: [animals]
@@ -1732,6 +1868,11 @@ components:
       required: true
       description: The version label, e.g. 2026.2.
       schema: { type: string, pattern: '^[0-9A-Za-z][0-9A-Za-z.-]{0,31}$' }
+    ErasureRequestId:
+      name: requestId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^era_[A-Za-z0-9]+$' }
     PartyId:
       name: partyId
       in: path
@@ -2469,6 +2610,7 @@ components:
             changedBy: { type: string }
             changedAt: { $ref: '#/components/schemas/DateTime' }
             reason: { type: string }
+            anonymized: { type: boolean, enum: [true], description: 'The personal data is removed (ADR 0028).' }
 
     PartyRecord:
       allOf:
@@ -2476,6 +2618,7 @@ components:
         - type: object
           required: [identifiers]
           properties:
+            restrictedUntil: { $ref: '#/components/schemas/Date', description: 'Restricted (GDPR article 18) up to and including this date. While restricted, only callers with parties:privacy see the party.' }
             identifiers:
               type: array
               items:
@@ -2488,6 +2631,49 @@ components:
                   masked: { type: boolean }
                   addedBy: { type: string }
                   addedAt: { $ref: '#/components/schemas/DateTime' }
+
+    ErasureRequestInput:
+      type: object
+      additionalProperties: false
+      required: [basis, reason]
+      properties:
+        basis: { type: string, enum: [subject-request, retention-expired], description: 'The data subject asked, or the retention period ended.' }
+        reason: { type: string, minLength: 1, maxLength: 2000, description: 'Must not contain personal data.' }
+
+    ErasureApprovalInput:
+      type: object
+      additionalProperties: false
+      properties:
+        reason: { type: string, maxLength: 2000 }
+
+    ErasureRejectionInput:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        restrictUntil: { $ref: '#/components/schemas/Date', description: 'Required when the data subject asked. A date after today.' }
+
+    ErasureRequest:
+      type: object
+      required: [id, partyId, market, basis, reason, requestedBy, requestedAt]
+      properties:
+        id: { type: string }
+        partyId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        basis: { type: string, enum: [subject-request, retention-expired] }
+        reason: { type: string }
+        requestedBy: { type: string }
+        requestedAt: { $ref: '#/components/schemas/DateTime' }
+        decision:
+          type: object
+          required: [outcome, decidedBy, decidedAt]
+          properties:
+            outcome: { type: string, enum: [approved, rejected] }
+            reason: { type: string }
+            restrictUntil: { $ref: '#/components/schemas/Date' }
+            decidedBy: { type: string }
+            decidedAt: { $ref: '#/components/schemas/DateTime' }
 
     RegisterPartyRequest:
       type: object

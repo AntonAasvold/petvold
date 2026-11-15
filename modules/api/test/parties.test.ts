@@ -11,6 +11,9 @@ const tokens: Record<string, Principal> = {
   handler: { subject: 'h@example.test', roles: ['handler'], markets: '*' },
   clinic: { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
   bound: { subject: 'portal', roles: ['party-registrar', 'customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
+  officerA: { subject: 'officer-a@example.test', roles: ['privacy-officer'], markets: ['SE'] },
+  officerB: { subject: 'officer-b@example.test', roles: ['privacy-officer'], markets: ['SE'] },
+  officerDe: { subject: 'officer-de@example.test', roles: ['privacy-officer'], markets: ['DE'] },
 };
 
 function setup() {
@@ -106,4 +109,45 @@ test('errors: duplicate numbers, invalid numbers and details, unknown parties', 
   assert.equal((await call('POST', '/v1/party-searches', 'handler', { type: 'personal-number', value: '1' })).status, 422);
   assert.equal((await call('GET', '/v1/parties/pty_none', 'handler')).status, 404);
   assert.equal((await call('PUT', '/v1/parties/pty_none', 'registrar', { basedOnRevision: 1, reason: 'x', givenName: 'A', familyName: 'B' })).status, 404);
+});
+
+test('erasure: requested by one officer, approved by another, and the party is anonymized', async () => {
+  const call = setup();
+  const p = (await call('POST', '/v1/parties', 'registrar', anna)).body;
+  assert.equal((await call('POST', `/v1/parties/${p.id}/erasure-requests`, 'registrar', { basis: 'subject-request', reason: 'x' })).status, 403);
+  const req = await call('POST', `/v1/parties/${p.id}/erasure-requests`, 'officerA', { basis: 'subject-request', reason: 'The customer asked by phone' });
+  assert.equal(req.status, 201);
+  assert.ok(validatorFor('ErasureRequest')(structuredClone(req.body)));
+  assert.equal((await call('POST', `/v1/parties/${p.id}/erasure-requests`, 'officerA', { basis: 'subject-request', reason: 'Again' })).status, 409);
+  assert.deepEqual((await call('GET', '/v1/erasure-requests?status=pending', 'officerB')).body.items.map((r: any) => r.id), [req.body.id]);
+  assert.deepEqual((await call('GET', '/v1/erasure-requests?status=pending', 'officerDe')).body.items, []);
+  assert.equal((await call('GET', `/v1/erasure-requests/${req.body.id}`, 'officerDe')).status, 404);
+
+  assert.equal((await call('POST', `/v1/erasure-requests/${req.body.id}/approvals`, 'officerA', {})).status, 403); // four eyes
+  const ok = await call('POST', `/v1/erasure-requests/${req.body.id}/approvals`, 'officerB', { reason: 'No policy or claim left' });
+  assert.equal(ok.status, 201);
+  assert.equal(ok.body.decision.outcome, 'approved');
+
+  const gone = (await call('GET', `/v1/parties/${p.id}`, 'handler')).body;
+  valid(gone);
+  assert.deepEqual([gone.anonymized, gone.givenName, gone.email, gone.identifiers], [true, undefined, undefined, []]);
+  const revs = (await call('GET', `/v1/parties/${p.id}/revisions`, 'handler')).body.items;
+  assert.ok(!JSON.stringify(revs).includes('Anna'));
+  assert.deepEqual((await call('POST', '/v1/party-searches', 'handler', PNR)).body.items, []);
+  assert.equal((await call('PUT', `/v1/parties/${p.id}`, 'registrar', { basedOnRevision: 1, reason: 'x', givenName: 'A', familyName: 'B' })).status, 409);
+});
+
+test('erasure: a rejected request from the data subject hides the party from everyone without parties:privacy', async () => {
+  const call = setup();
+  const p = (await call('POST', '/v1/parties', 'registrar', anna)).body;
+  const req = (await call('POST', `/v1/parties/${p.id}/erasure-requests`, 'officerA', { basis: 'subject-request', reason: 'Asked' })).body;
+  assert.equal((await call('POST', `/v1/erasure-requests/${req.id}/rejections`, 'officerA', { reason: 'Open claim' })).status, 422);
+  const no = await call('POST', `/v1/erasure-requests/${req.id}/rejections`, 'officerA', { reason: 'Claim within the ten-year limit', restrictUntil: '2036-11-15' });
+  assert.equal(no.status, 201);
+  assert.equal((await call('GET', `/v1/parties/${p.id}`, 'handler')).status, 404);
+  assert.deepEqual((await call('POST', '/v1/party-searches', 'handler', PNR)).body.items, []);
+  const seen = await call('GET', `/v1/parties/${p.id}`, 'officerB');
+  assert.deepEqual([seen.status, seen.body.restrictedUntil, seen.body.givenName], [200, '2036-11-15', 'Anna']);
+  assert.equal((await call('POST', `/v1/erasure-requests/${req.id}/approvals`, 'officerB', {})).status, 409); // already decided
+  assert.equal((await call('GET', '/v1/erasure-requests?status=done', 'officerA')).status, 422);
 });

@@ -57,10 +57,25 @@ Svaret har `"value": "20990101-****"` och `"masked": true`. Numret är fött 209
 
 **En kennel:** `{ "kind": "organization", "market": "SE", "name": "Kennel Exempel", "identifiers": [{ "type": "organization-number", "country": "SE", "value": "556000-0000" }] }`. Numret i exemplet är bara ett formexempel.
 
+## Radering och begränsning (ADR 0028)
+
+Personuppgifter tas bort genom att parten **anonymiseras**. Namn, födelsedatum, kontaktuppgifter, adress, språk och motiveringar tas bort i alla revisioner, och personnummer och organisationsnummer tas bort. Id:t, sorten och marknaden finns kvar, så att djurens ägarskap, försäkringar och beslut fortfarande hänger ihop. Det går inte att ångra.
+
+1. **Någon begär anonymisering:** `POST /v1/parties/{id}/erasure-requests` med `basis` och `reason`. `basis` är `subject-request` om personen själv har bett om det, eller `retention-expired` om lagringstiden har gått ut. En part kan bara ha en obesvarad begäran.
+2. **Någon annan godkänner:** `POST /v1/erasure-requests/{id}/approvals`. Den som begärde får inte godkänna (`403`). Parten anonymiseras i samma ögonblick.
+3. **Eller avslår:** `POST /v1/erasure-requests/{id}/rejections` med `reason`. Om personen själv bad om radering men uppgifterna måste sparas, till exempel för ett skadeärende inom tioårsgränsen, anges `restrictUntil`. Parten är då **begränsad** till och med det datumet: den syns inte vid sökning och ger `404` för alla utom den som har `parties:privacy`. Ett djur kan inte heller få en begränsad eller anonymiserad part som ny ägare.
+
+`GET /v1/erasure-requests?status=pending` visar obesvarade begäranden, äldst först.
+
+Motiveringarna får inte innehålla personuppgifter. De sparas för att visa vad som hänt.
+
+**Exempel:** Anna ber om att bli raderad. `dev-privacy` registrerar begäran, och `dev-privacy-2` ser att Anna inte har några försäkringar eller skador kvar och godkänner. `GET /v1/parties/{id}` visar sedan bara `"anonymized": true`, id, sort och marknad.
+
 ## Vem ser vad
 
 - `party-registrar` registrerar och ändrar, till exempel kundservice.
 - `handler`, `approver` och `animal-registrar` kan läsa.
+- `privacy-officer` registrerar, godkänner och avslår begäranden om radering och ser begränsade parter. Det krävs två personer för att anonymisera.
 - Alla ser bara parter i sina egna marknader. En part i en annan marknad ger `404`.
 - Roller som är bundna till klinik eller försäkringar ser inga parter.
 
@@ -74,9 +89,12 @@ Svaret har `"value": "20990101-****"` och `"masked": true`. Numret är fött 209
 | Personnummer på en organisation, eller organisationsnummer på en person | `422` |
 | `name` på en person, eller `givenName` på en organisation | `422` |
 | Telefon utan landsnummer, eller ogiltig e-post | `422` |
+| Ändring av en anonymiserad part | `409` |
+| Godkännande av sin egen begäran om radering | `403` |
+| En begäran som redan är besvarad | `409` |
 
 ## Lokalt
 
-Dev-servern registrerar Bellas ägare `pty_owner001` (Anna Example) utan personnummer. Token `dev-registrar` får registrera och ändra parter i Sverige. Testerna använder personnummer födda 2099, som ingen levande person kan ha.
+Dev-servern registrerar Bellas ägare `pty_owner001` (Anna Example) utan personnummer. Tokens `dev-privacy` och `dev-privacy-2` är två dataskyddsansvariga, så att fyra ögon går att prova. Token `dev-registrar` får registrera och ändra parter i Sverige. Testerna använder personnummer födda 2099, som ingen levande person kan ha.
 
-*Inte byggt än:* kundens åtkomst till sin egen part, kontaktpersoner för organisationer, och gallring och anonymisering (GDPR artikel 17, föreslagen i ADR 0028).
+*Inte byggt än:* kundens åtkomst till sin egen part, kontaktpersoner för organisationer, lagringstider per marknad och automatisk gallring (ADR 0028, nästa steg), och att köra anonymiseringarna igen efter en återställning.

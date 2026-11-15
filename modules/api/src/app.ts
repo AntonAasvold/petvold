@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
 import { DecisioningService, InMemoryRuleSetStore, RuleSetError, toClaimsRules } from '@petvold/decisioning';
 import { AnimalError, AnimalService, IDENTIFIER_TYPES, InMemoryAnimalStore, type AnimalRecord, type IdentifierType } from '@petvold/animals';
-import { InMemoryPartyStore, PartyError, PartyService, publicView, type PartyRecord } from '@petvold/parties';
+import { InMemoryPartyStore, PartyError, PartyService, publicView, type ErasureRequest, type PartyRecord } from '@petvold/parties';
 import {
   CatalogError,
   CatalogService,
@@ -596,23 +596,30 @@ export function createApp(d: AppDeps) {
   // Parties (ADR 0026). Same scope as animals: the caller's markets, and no
   // parties for roles bound to a clinic or to policies. Personal numbers are
   // masked in every response and searched for in a request body, never in the URL.
-  const seesParty = (scope: Scope, p: PartyRecord) =>
-    !scope.clinicId && !scope.policyIds && (scope.markets === '*' || scope.markets.has(p.market));
+  const inMarkets = (scope: Scope, market: string) => !scope.clinicId && !scope.policyIds && (scope.markets === '*' || scope.markets.has(market));
+  const hasPrivacy = (c: Context<Env>) => permissionsOf(c.get('principal').roles, c.get('roles')).has('parties:privacy');
+  // A restricted party (ADR 0028) is visible only with parties:privacy.
+  const seesParty = (c: Context<Env>, p: PartyRecord) => inMarkets(c.get('scope'), p.market) && (hasPrivacy(c) || !parties.isRestricted(p));
   const visibleParty = async (c: Context<Env>) => {
     const id = c.req.param('partyId') ?? '';
     const p = await parties.get(id).catch((e: unknown) => {
       if (e instanceof PartyError && e.code === 'not_found') return null;
       throw e;
     });
-    if (!p || !seesParty(c.get('scope'), p)) throw new PartyError('not_found', `Party ${id} does not exist`);
+    if (!p || !seesParty(c, p)) throw new PartyError('not_found', `Party ${id} does not exist`);
     return p;
+  };
+  const visibleErasure = async (c: Context<Env>): Promise<ErasureRequest> => {
+    const r = await parties.getErasureRequest(c.req.param('requestId') ?? '');
+    if (!inMarkets(c.get('scope'), r.market)) throw new PartyError('not_found', `Erasure request ${r.id} does not exist`);
+    return r;
   };
 
   app.post('/v1/party-searches', async (c) => {
     const r = await readJson(c, 'PartySearchRequest');
     if (!r.ok) return r.res;
     const found = await parties.findByIdentifier(r.body);
-    return send(c, { items: found.filter((p) => seesParty(c.get('scope'), p)).map(publicView) });
+    return send(c, { items: found.filter((p) => seesParty(c, p)).map(publicView) });
   });
 
   app.post('/v1/parties', async (c) => {
@@ -632,6 +639,41 @@ export function createApp(d: AppDeps) {
     const r = await readJson(c, 'ChangePartyRequest');
     if (!r.ok) return r.res;
     return send(c, publicView(await parties.change(p.id, r.body, c.get('principal').subject)));
+  });
+
+  // Erasure (ADR 0028): request, approve with four eyes, or reject.
+  app.post('/v1/parties/:partyId/erasure-requests', async (c) => {
+    const p = await visibleParty(c);
+    const r = await readJson(c, 'ErasureRequestInput');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await parties.requestErasure(p.id, r.body, c.get('principal').subject) }));
+  });
+
+  app.get('/v1/erasure-requests', async (c) => {
+    const status = c.req.query('status');
+    if (status !== undefined && status !== 'pending' && status !== 'decided') return problem(c, 422, 'status is pending or decided');
+    const partyId = c.req.query('partyId');
+    const items = await parties.listErasureRequests({
+      ...(partyId ? { partyId } : {}),
+      ...(status ? { pending: status === 'pending' } : {}),
+    });
+    return send(c, { items: items.filter((r) => inMarkets(c.get('scope'), r.market)) });
+  });
+
+  app.get('/v1/erasure-requests/:requestId', async (c) => send(c, await visibleErasure(c)));
+
+  app.post('/v1/erasure-requests/:requestId/approvals', async (c) => {
+    const e = await visibleErasure(c);
+    const r = await readJson(c, 'ErasureApprovalInput');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await parties.approveErasure(e.id, r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/erasure-requests/:requestId/rejections', async (c) => {
+    const e = await visibleErasure(c);
+    const r = await readJson(c, 'ErasureRejectionInput');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await parties.rejectErasure(e.id, r.body, c.get('principal').subject) }));
   });
 
   app.get('/v1/parties/:partyId/revisions', async (c) => send(c, { items: await parties.revisions((await visibleParty(c)).id) }));
@@ -677,7 +719,8 @@ export function createApp(d: AppDeps) {
       return problem(c, status, err.message);
     }
     if (err instanceof PartyError) {
-      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
+      const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
+      return problem(c, status, err.message);
     }
     if (err instanceof AnimalError) {
       return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);

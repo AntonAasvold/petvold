@@ -1,6 +1,6 @@
 # 0028. Gallring och anonymisering av personuppgifter
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-15
 
 ## Sammanhang

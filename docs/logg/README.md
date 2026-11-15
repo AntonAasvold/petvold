@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-15 | [Anonymisering och begränsning av parter](2026-11-15-anonymisering.md) | #42 |
 | 2026-11-15 | [ADR om gallring och anonymisering](2026-11-15-gallring-adr.md) | #41 |
 | 2026-11-15 | [Kullar i djurregistret](2026-11-15-kullar.md) | #39 |
 | 2026-11-15 | [Djurregistret kontrollerar ägaren](2026-11-15-agarkontroll.md) | #38 |

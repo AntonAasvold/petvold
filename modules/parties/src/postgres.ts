@@ -1,12 +1,16 @@
 /**
  * PartyStore against the schema `parties` (migration 0017). Connect with the
  * service role `parties_service`: it may only insert and read. The database
- * also checks that kind and market never change.
+ * also checks that kind and market never change. Migration 0019 adds erasure
+ * (ADR 0028): the only change to history is the function parties.anonymize,
+ * which needs an approved request.
  */
 import type pg from 'pg';
 import {
   PartyConflictError,
   PartyIdentifierTakenError,
+  type ErasureDecision,
+  type ErasureRequest,
   type Party,
   type PartyIdentifier,
   type PartyIdentifierType,
@@ -16,7 +20,7 @@ import {
 
 const UNIQUE_VIOLATION = '23505';
 const REVISION = `party_id, revision, kind, market, given_name, family_name, birth_date::text as birth_date, name, email, phone,
-  address, language, changed_by, changed_at, reason`;
+  address, language, changed_by, changed_at, reason, anonymized`;
 const COLUMNS = `party_id, revision, kind, market, given_name, family_name, birth_date, name, email, phone, address, language, changed_by, changed_at, reason`;
 
 export class PostgresPartyStore implements PartyStore {
@@ -29,8 +33,15 @@ export class PostgresPartyStore implements PartyStore {
       `select type, country, value, added_by, added_at from parties.party_identifier where party_id = $1 order by added_at, type, country, value`,
       [id],
     );
+    const restricted = await this.pool.query(
+      `select max(d.restrict_until)::text as until from parties.erasure_request r join parties.erasure_decision d using (request_id)
+       where r.party_id = $1`,
+      [id],
+    );
+    const until = restricted.rows[0]?.until ?? null;
     return {
       ...toParty(rows[0]),
+      ...(until === null ? {} : { restrictedUntil: until }),
       identifiers: ids.rows.map((r) => ({ type: r.type, country: r.country, value: r.value, addedBy: r.added_by, addedAt: iso(r.added_at) })),
     };
   }
@@ -79,6 +90,83 @@ export class PostgresPartyStore implements PartyStore {
   async addIdentifier(partyId: string, identifier: PartyIdentifier): Promise<void> {
     await insertIdentifier(this.pool, partyId, identifier);
   }
+
+  async addErasureRequest(r: ErasureRequest): Promise<void> {
+    const res = await this.pool.query(
+      `insert into parties.erasure_request (request_id, party_id, market, basis, reason, requested_by, requested_at)
+       select $1, $2, $3, $4, $5, $6, $7
+       where not exists (
+         select 1 from parties.erasure_request p left join parties.erasure_decision d using (request_id)
+         where p.party_id = $2 and d.request_id is null)`,
+      [r.id, r.partyId, r.market, r.basis, r.reason, r.requestedBy, r.requestedAt],
+    );
+    if (res.rowCount !== 1) throw new PartyConflictError(`Party ${r.partyId} already has an undecided erasure request`);
+  }
+
+  async getErasureRequest(id: string): Promise<ErasureRequest | null> {
+    const { rows } = await this.pool.query(`${ERASURES} where r.request_id = $1`, [id]);
+    return rows[0] ? toErasure(rows[0]) : null;
+  }
+
+  async listErasureRequests(filter: { partyId?: string; pending?: boolean }): Promise<ErasureRequest[]> {
+    const { rows } = await this.pool.query(
+      `${ERASURES}
+       where ($1::text is null or r.party_id = $1)
+         and ($2::boolean is null or (d.request_id is null) = $2)
+       order by r.requested_at, r.request_id`,
+      [filter.partyId ?? null, filter.pending ?? null],
+    );
+    return rows.map(toErasure);
+  }
+
+  async decideErasure(requestId: string, d: ErasureDecision): Promise<void> {
+    const db = await this.pool.connect();
+    try {
+      await db.query('begin');
+      await db
+        .query(
+          `insert into parties.erasure_decision (request_id, outcome, reason, restrict_until, decided_by, decided_at) values ($1, $2, $3, $4, $5, $6)`,
+          [requestId, d.outcome, d.reason ?? null, d.restrictUntil ?? null, d.decidedBy, d.decidedAt],
+        )
+        .catch(conflict(`Erasure request ${requestId} is already decided`));
+      if (d.outcome === 'approved') {
+        await db.query(`select parties.anonymize(party_id) from parties.erasure_request where request_id = $1`, [requestId]);
+      }
+      await db.query('commit');
+    } catch (e) {
+      await db.query('rollback');
+      throw e;
+    } finally {
+      db.release();
+    }
+  }
+}
+
+const ERASURES = `select r.request_id, r.party_id, r.market, r.basis, r.reason, r.requested_by, r.requested_at,
+  d.outcome, d.reason as decision_reason, d.restrict_until::text as restrict_until, d.decided_by, d.decided_at
+  from parties.erasure_request r left join parties.erasure_decision d using (request_id)`;
+
+function toErasure(r: Record<string, any>): ErasureRequest {
+  return {
+    id: r.request_id,
+    partyId: r.party_id,
+    market: r.market,
+    basis: r.basis,
+    reason: r.reason,
+    requestedBy: r.requested_by,
+    requestedAt: iso(r.requested_at),
+    ...(r.outcome === null
+      ? {}
+      : {
+          decision: {
+            outcome: r.outcome,
+            ...(r.decision_reason === null ? {} : { reason: r.decision_reason }),
+            ...(r.restrict_until === null ? {} : { restrictUntil: r.restrict_until }),
+            decidedBy: r.decided_by,
+            decidedAt: iso(r.decided_at),
+          },
+        }),
+  };
 }
 
 const placeholders = (n: number) => Array.from({ length: n }, (_, i) => `$${i + 1}`).join(', ');
@@ -148,5 +236,6 @@ function toParty(r: Record<string, any>): Party {
     changedBy: r.changed_by,
     changedAt: iso(r.changed_at),
     ...(r.reason === null ? {} : { reason: r.reason }),
+    ...(r.anonymized ? { anonymized: true as const } : {}),
   };
 }

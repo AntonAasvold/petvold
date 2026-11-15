@@ -15,7 +15,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate parties.party_revision, parties.party_identifier');
+const clean = () => admin.query('truncate parties.party_revision, parties.party_identifier, parties.erasure_request, parties.erasure_decision');
 
 partyStoreSuite('PostgresPartyStore', async () => {
   await clean();
@@ -31,4 +31,17 @@ test('the database keeps the history, the kind and the market', async () => {
   await assert.rejects(store.appendRevision(person({ revision: 2, market: 'YY', reason: 'x' })), /never change/);
   await assert.rejects(store.register(organization({ givenName: 'Anna' }), []), /party_revision_names/);
   await assert.rejects(store.register(person({ id: 'pty_bo', name: 'Bo AB' }), []), /party_revision_names/);
+});
+
+test('only an approved request by someone else anonymizes, and only through the function', async () => {
+  await clean();
+  const store = new PostgresPartyStore(pool);
+  await store.register(person(), []);
+  await assert.rejects(pool.query(`select parties.anonymize('pty_anna')`), /no approved erasure request/);
+  await assert.rejects(pool.query(`update parties.party_revision set anonymized = true`), /permission denied/);
+  const at = '2026-11-15T10:00:00.000Z';
+  await store.addErasureRequest({ id: 'era_1', partyId: 'pty_anna', market: 'XX', basis: 'subject-request', reason: 'Asked', requestedBy: 'a', requestedAt: at });
+  await assert.rejects(store.decideErasure('era_1', { outcome: 'approved', decidedBy: 'a', decidedAt: at }), /Four eyes/);
+  assert.equal((await store.get('pty_anna'))!.givenName, 'Anna');
+  await assert.rejects(pool.query(`delete from parties.erasure_request`), /permission denied/);
 });
