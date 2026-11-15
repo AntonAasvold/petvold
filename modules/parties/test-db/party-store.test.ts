@@ -2,7 +2,7 @@
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import { PostgresPartyStore } from '../src/postgres.ts';
+import { PostgresPartyStore, PostgresRetentionStore, reapplyErasures } from '../src/postgres.ts';
 import { organization, person, partyStoreSuite } from '../test-suites/party-store.ts';
 
 const ownerUrl = process.env.TEST_DATABASE_URL;
@@ -15,7 +15,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate parties.party_revision, parties.party_identifier, parties.erasure_request, parties.erasure_decision');
+const clean = () => admin.query('truncate parties.party_revision, parties.party_identifier, parties.erasure_request, parties.erasure_decision, parties.retention_settings');
 
 partyStoreSuite('PostgresPartyStore', async () => {
   await clean();
@@ -44,4 +44,28 @@ test('only an approved request by someone else anonymizes, and only through the 
   await assert.rejects(store.decideErasure('era_1', { outcome: 'approved', decidedBy: 'a', decidedAt: at }), /Four eyes/);
   assert.equal((await store.get('pty_anna'))!.givenName, 'Anna');
   await assert.rejects(pool.query(`delete from parties.erasure_request`), /permission denied/);
+});
+
+test('retention settings are versions, and approved anonymizations can be run again after a restore', async () => {
+  await clean();
+  const settings = new PostgresRetentionStore(pool);
+  const v1 = { version: 1, markets: { SE: { years: 10 } }, changedBy: 'petvold-defaults', changedAt: '2026-11-15T10:00:00.000Z', reason: 'Defaults' };
+  await settings.append(v1);
+  await assert.rejects(settings.append(v1), /exists|not the next/);
+  await assert.rejects(settings.append({ ...v1, version: 3 }), /not the next/);
+  assert.deepEqual(await settings.current(), v1);
+  assert.deepEqual(await settings.versions(), [v1]);
+  await assert.rejects(pool.query('update parties.retention_settings set reason = $1', ['x']), /permission denied/);
+
+  const store = new PostgresPartyStore(pool);
+  const at = '2026-11-15T10:00:00.000Z';
+  await store.register(person(), []);
+  await store.addErasureRequest({ id: 'era_1', partyId: 'pty_anna', market: 'XX', basis: 'subject-request', reason: 'Asked', requestedBy: 'a', requestedAt: at });
+  await store.decideErasure('era_1', { outcome: 'approved', decidedBy: 'b', decidedAt: at });
+  // A restore brings the personal data back; the owner role stands in for the backup here.
+  await admin.query(`update parties.party_revision set given_name = 'Anna', family_name = 'Example', anonymized = false where party_id = 'pty_anna'`);
+  assert.equal((await store.get('pty_anna'))!.givenName, 'Anna');
+  assert.deepEqual(await reapplyErasures(pool), ['pty_anna']);
+  assert.equal((await store.get('pty_anna'))!.givenName, undefined);
+  assert.deepEqual(await reapplyErasures(pool), ['pty_anna']); // safe to run again
 });

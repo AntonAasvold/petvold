@@ -122,6 +122,8 @@ export interface PartyView extends Party {
 
 export interface PartyStore {
   get(id: string): Promise<PartyRecord | null>;
+  /** Every party that is not anonymized, in id order. For the retention run (ADR 0028). */
+  partyIds(): Promise<string[]>;
   /** Every revision of the details, oldest first. */
   revisions(id: string): Promise<Party[]>;
   findByIdentifier(type: PartyIdentifierType, country: string, value: string): Promise<string | null>;
@@ -291,6 +293,11 @@ export class PartyService {
     const p = await this.d.store.get(id);
     if (!p || p.anonymized || restrictedOn(p, this.today())) return null;
     return p.market;
+  }
+
+  /** Every party that is not anonymized. */
+  partyIds(): Promise<string[]> {
+    return this.d.store.partyIds();
   }
 
   /** Whether the party is restricted today. */
@@ -527,6 +534,10 @@ export class InMemoryPartyStore implements PartyStore {
     return structuredClone(this.parties.filter((p) => p.id === id).sort((a, b) => a.revision - b.revision));
   }
 
+  async partyIds() {
+    return [...new Set(this.parties.filter((p) => !p.anonymized).map((p) => p.id))].sort();
+  }
+
   async findByIdentifier(type: PartyIdentifierType, country: string, value: string) {
     return this.identifiers.get(`${type}:${country}:${value}`)?.partyId ?? null;
   }
@@ -580,3 +591,5 @@ export class InMemoryPartyStore implements PartyStore {
     r.decision = structuredClone(decision);
   }
 }
+
+export * from './retention.ts';

@@ -14,6 +14,7 @@ const tokens: Record<string, Principal> = {
   officerA: { subject: 'officer-a@example.test', roles: ['privacy-officer'], markets: ['SE'] },
   officerB: { subject: 'officer-b@example.test', roles: ['privacy-officer'], markets: ['SE'] },
   officerDe: { subject: 'officer-de@example.test', roles: ['privacy-officer'], markets: ['DE'] },
+  job: { subject: 'retention-job', roles: ['retention-job'], markets: '*' },
 };
 
 function setup() {
@@ -27,7 +28,7 @@ function setup() {
   });
   const app = createApp({ service, clock, idempotency: new InMemoryIdempotencyStore(), auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
   let n = 0;
-  return async (method: string, path: string, token: string, body?: unknown) => {
+  const call = async (method: string, path: string, token: string, body?: unknown) => {
     const res = await app.request(path, {
       method,
       headers: {
@@ -39,6 +40,7 @@ function setup() {
     });
     return { status: res.status, body: (await res.json()) as any };
   };
+  return Object.assign(call, { clock });
 }
 
 // Born 2099: valid in form, but no living person can have this number.
@@ -150,4 +152,36 @@ test('erasure: a rejected request from the data subject hides the party from eve
   assert.deepEqual([seen.status, seen.body.restrictedUntil, seen.body.givenName], [200, '2036-11-15', 'Anna']);
   assert.equal((await call('POST', `/v1/erasure-requests/${req.id}/approvals`, 'officerB', {})).status, 409); // already decided
   assert.equal((await call('GET', '/v1/erasure-requests?status=done', 'officerA')).status, 422);
+});
+
+test('retention: settings as versions, and a run asks for anonymization of parties past their retention', async () => {
+  const call = setup();
+  const v1 = await call('GET', '/v1/retention-settings', 'officerA');
+  assert.deepEqual([v1.status, v1.body.version, v1.body.markets], [200, 1, { SE: { years: 10 } }]);
+  assert.equal((await call('GET', '/v1/retention-settings', 'handler')).status, 403);
+  assert.equal((await call('POST', '/v1/retention-settings/versions', 'job', { basedOnVersion: 1, markets: {}, reason: 'x' })).status, 403);
+  assert.equal((await call('POST', '/v1/retention-settings/versions', 'officerA', { basedOnVersion: 1, markets: { SE: { years: 0 } }, reason: 'x' })).status, 422);
+  const v2 = await call('POST', '/v1/retention-settings/versions', 'officerA', { basedOnVersion: 1, markets: { SE: { years: 10 }, DE: { years: 10 } }, reason: 'Germany added' });
+  assert.equal(v2.status, 201);
+  assert.equal((await call('POST', '/v1/retention-settings/versions', 'officerA', { basedOnVersion: 1, markets: {}, reason: 'x' })).status, 409);
+  assert.deepEqual((await call('GET', '/v1/retention-settings/versions', 'officerB')).body.items.map((v: any) => v.version), [1, 2]);
+
+  call.clock.set('2014-03-01T10:00:00.000Z');
+  const old = (await call('POST', '/v1/parties', 'registrar', { ...anna, identifiers: [] })).body;
+  call.clock.set('2026-11-15T10:00:00.000Z');
+  await call('POST', '/v1/parties', 'registrar', { ...anna, givenName: 'New', identifiers: [] });
+
+  const dry = await call('POST', '/v1/retention-runs', 'job', { dryRun: true });
+  assert.equal(dry.status, 200);
+  assert.ok(validatorFor('RetentionRunResult')(structuredClone(dry.body)));
+  assert.deepEqual(dry.body.due.map((d: any) => [d.partyId, d.retainedUntil]), [[old.id, '2024-03-01']]);
+  assert.equal((await call('GET', '/v1/erasure-requests?status=pending', 'officerA')).body.items.length, 0);
+
+  const run = await call('POST', '/v1/retention-runs', 'job', {});
+  const requestId = run.body.due[0].requestId;
+  const pending = (await call('GET', '/v1/erasure-requests?status=pending', 'officerA')).body.items;
+  assert.deepEqual(pending.map((r: any) => [r.id, r.basis, r.requestedBy]), [[requestId, 'retention-expired', 'retention-job']]);
+  assert.equal((await call('POST', `/v1/erasure-requests/${requestId}/approvals`, 'officerA', {})).status, 201);
+  assert.equal((await call('GET', `/v1/parties/${old.id}`, 'handler')).body.anonymized, true);
+  assert.equal((await call('POST', '/v1/retention-runs', 'handler', {})).status, 403);
 });

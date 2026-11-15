@@ -84,6 +84,9 @@ test('a change of owner ends the previous ownership the same day', async () => {
   assert.equal(ownerOn(t.ownerships, '2026-05-31')!.partyId, 'pty_anna');
   assert.equal(ownerOn(t.ownerships, '2026-06-01')!.partyId, 'pty_bo');
   assert.equal(ownerOn(t.ownerships, '2024-04-30'), null);
+  assert.deepEqual(await s.activityOf('pty_anna'), { lastDate: '2026-06-01' });
+  assert.deepEqual(await s.activityOf('pty_bo'), { ongoing: true });
+  assert.equal(await s.activityOf('pty_none'), null);
   const base = { sex: 'male', neutered: false, name: 'Rex', birthDate: '2024-03-01', breed: 'dog-beagle', allowLookup: false };
   await s.correct(a.id, { ...base, deceasedOn: '2026-11-01', basedOnRevision: 1, reason: 'Died' }, by);
   await rejects(s.transfer(a.id, { partyId: 'pty_cy', from: '2026-11-02' }, by), 'validation', /died/);

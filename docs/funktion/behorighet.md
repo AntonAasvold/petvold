@@ -29,7 +29,8 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `catalog:write` | Skapa och ändra referensdata. Skriva produktutkast och skicka dem till granskning. | `PUT /v1/reference-data/{sort}/{kod}`, `POST`/`PUT /v1/products/{p}/versions…`, `.../submissions` |
 | `catalog:publish` | Publicera eller skicka tillbaka produktversioner, aldrig den egna inskickade, och avsluta försäljning | `.../publications`, `.../returns`, `.../sales-ends` |
 | `parties:privacy` | Se begränsade parter, registrera och avslå begäranden om radering (ADR 0028) | `POST /v1/parties/{id}/erasure-requests`, `GET /v1/erasure-requests`, `.../rejections` |
-| `parties:erase` | Godkänna någon annans begäran om radering, vilket anonymiserar parten | `POST /v1/erasure-requests/{id}/approvals` |
+| `parties:erase` | Godkänna någon annans begäran om radering, vilket anonymiserar parten, och ändra lagringstider | `POST /v1/erasure-requests/{id}/approvals`, `POST /v1/retention-settings/versions` |
+| `parties:retention` | Köra gallringen, som begär anonymisering av parter vars lagringstid har gått ut | `POST /v1/retention-runs` |
 | `animals:read` | Läsa djurregistret: djur, id-nummer, ägare och historik (ADR 0024) | `GET /v1/animals`, `.../{id}`, `.../{id}/revisions` |
 | `animals:write` | Registrera djur, rätta uppgifter, lägga till id-nummer och byta ägare | `POST /v1/animals`, `PUT .../{id}`, `.../identifiers`, `.../ownerships` |
 | `animals:lookup` | Slå upp ett djur på id-nummer, utan ägare eller historik. Hittar bara djur som är öppna för uppslagning (ADR 0025). | `GET /v1/animal-lookup` |
@@ -53,7 +54,8 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `rules-publisher` | `rules:read`, `rules:publish`, `rules:simulate`, `catalog:read` | – | Granskar och publicerar regler |
 | `animal-registrar` | `animals:read`, `animals:write`, `catalog:read`, `parties:read` | – | Registrerar djur och ägarbyten, till exempel kundservice |
 | `party-registrar` | `parties:read`, `parties:write` | – | Registrerar personer och organisationer, till exempel kundservice |
-| `privacy-officer` | `parties:read`, `parties:privacy`, `parties:erase` | – | Dataskyddsansvarig. Två personer behövs för att anonymisera. |
+| `privacy-officer` | `parties:read`, `parties:privacy`, `parties:erase`, `parties:retention` | – | Dataskyddsansvarig. Två personer behövs för att anonymisera. |
+| `retention-job` | `parties:retention` | – | Schemalagd gallringskörning. Begär bara, och en dataskyddsansvarig godkänner. |
 | `catalog-manager` | `catalog:read`, `catalog:write` | – | Underhåller referensdata och skriver produktutkast |
 | `catalog-publisher` | `catalog:read`, `catalog:publish` | – | Granskar och publicerar produktversioner |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview`, `catalog:read`, `animals:lookup` | klinik | Veterinärklinik med direktreglering |
@@ -173,6 +175,7 @@ Dev-servern har elva tokens:
 | `dev-catalog-publisher` | publicerar produktversioner | inga ärenden |
 | `dev-registrar` | registrerar djur och parter | SE |
 | `dev-privacy`, `dev-privacy-2` | två dataskyddsansvariga | SE |
+| `dev-retention-job` | gallringskörning | alla |
 | `dev-clinic` | klinik | SE, klinik `clinic_001` |
 | `dev-job` | omprövningsjobb | alla marknader |
 | `dev-customer` | kundkanal | SE, försäkringen `pol_bella` |

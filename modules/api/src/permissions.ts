@@ -56,8 +56,10 @@ export const PERMISSIONS = [
    * reject them, and list them.
    */
   'parties:privacy',
-  /** Approve an erasure request someone else made, which anonymizes the party. Cannot be undone. */
+  /** Approve an erasure request someone else made, which anonymizes the party, and change retention settings. */
   'parties:erase',
+  /** Run retention: ask for anonymization of every party whose retention has ended (ADR 0028). */
+  'parties:retention',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -121,7 +123,9 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Registers persons and organizations and keeps their details up to date, e.g. customer service. */
   'party-registrar': { permissions: ['parties:read', 'parties:write'] },
   /** Handles erasure and restriction of personal data (ADR 0028). Two people are needed to anonymize. */
-  'privacy-officer': { permissions: ['parties:read', 'parties:privacy', 'parties:erase'] },
+  'privacy-officer': { permissions: ['parties:read', 'parties:privacy', 'parties:erase', 'parties:retention'] },
+  /** The scheduled retention run. Only asks; a privacy officer approves each request. */
+  'retention-job': { permissions: ['parties:retention'] },
   /** Maintains reference data and writes product drafts. */
   'catalog-manager': { permissions: ['catalog:read', 'catalog:write'] },
   /** Reviews and publishes product versions. */

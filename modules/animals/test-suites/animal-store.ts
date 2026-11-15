@@ -112,6 +112,9 @@ export function animalStoreSuite(name: string, factory: AnimalStoreFactory): voi
       assert.deepEqual(await store.findByOwner('pty_anna', '2026-05-31'), ['ani_rex']);
       assert.deepEqual(await store.findByOwner('pty_anna', '2026-06-01'), []);
       assert.deepEqual(await store.findByOwner('pty_bo', '2026-06-01'), ['ani_rex']);
+      assert.deepEqual(await store.ownershipsOfParty('pty_anna'), [owner({ validTo: '2026-06-01' })]);
+      assert.deepEqual(await store.ownershipsOfParty('pty_bo'), [next]);
+      assert.deepEqual(await store.ownershipsOfParty('pty_none'), []);
     });
   });
 }

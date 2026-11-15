@@ -1048,6 +1048,100 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/retention-settings:
+    get:
+      tags: [parties]
+      operationId: getRetentionSettings
+      x-permission: parties:privacy
+      summary: How long parties are kept after their last relation, per market
+      description: |
+        Requires the permission `parties:privacy` (ADR 0028). Version 1 is
+        Petvold's suggestion (Sweden: ten years); the insurer is responsible
+        for the values.
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The current settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetentionSettings' }
+
+  /v1/retention-settings/versions:
+    get:
+      tags: [parties]
+      operationId: listRetentionSettings
+      x-permission: parties:privacy
+      summary: Every version of the retention settings, oldest first
+      description: Requires the permission `parties:privacy`.
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RetentionSettings' }
+    post:
+      tags: [parties]
+      operationId: changeRetentionSettings
+      x-permission: parties:erase
+      summary: Change the retention settings
+      description: |
+        Requires the permission `parties:erase`, since a shorter retention leads
+        to earlier anonymization. Replaces every market's rule with a new
+        version. A market left out is no longer erased automatically.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeRetentionRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The new version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetentionSettings' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/retention-runs:
+    post:
+      tags: [parties]
+      operationId: runRetention
+      x-permission: parties:retention
+      summary: Ask for anonymization of every party whose retention has ended
+      description: |
+        Requires the permission `parties:retention`. Checks every party in the
+        caller's markets: a party is due when no relation is ongoing and the
+        retention after its last relation has ended. With `dryRun` only lists
+        them; otherwise each gets an erasure request (`retention-expired`) that
+        a privacy officer approves or rejects. Meant to run on a schedule.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RetentionRunRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: What the run found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetentionRunResult' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/litters:
     post:
       tags: [animals]
@@ -2631,6 +2725,70 @@ components:
                   masked: { type: boolean }
                   addedBy: { type: string }
                   addedAt: { $ref: '#/components/schemas/DateTime' }
+
+    RetentionSettings:
+      type: object
+      required: [version, markets, changedBy, changedAt, reason]
+      properties:
+        version: { type: integer, minimum: 1 }
+        markets:
+          type: object
+          description: Market -> rule. A market without a rule is never erased automatically.
+          additionalProperties:
+            type: object
+            required: [years]
+            properties:
+              years: { type: integer, minimum: 1, maximum: 100, description: Whole years after the last relation. }
+        changedBy: { type: string }
+        changedAt: { $ref: '#/components/schemas/DateTime' }
+        reason: { type: string }
+
+    ChangeRetentionRequest:
+      type: object
+      additionalProperties: false
+      required: [basedOnVersion, markets, reason]
+      properties:
+        basedOnVersion: { type: integer, minimum: 1 }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        markets:
+          type: object
+          propertyNames: { pattern: '^[A-Z]{2}$' }
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            required: [years]
+            properties:
+              years: { type: integer, minimum: 1, maximum: 100 }
+
+    RetentionRunRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        dryRun: { type: boolean, default: false, description: Only list the parties that are due. }
+
+    RetentionRunResult:
+      type: object
+      required: [onDate, dryRun, settingsVersion, checked, due, ongoing, withinRetention, pendingRequest, marketsWithoutRule]
+      properties:
+        onDate: { $ref: '#/components/schemas/Date' }
+        dryRun: { type: boolean }
+        settingsVersion: { type: integer }
+        checked: { type: integer, description: Parties checked. }
+        due:
+          type: array
+          items:
+            type: object
+            required: [partyId, market, lastActivity, retainedUntil]
+            properties:
+              partyId: { type: string }
+              market: { $ref: '#/components/schemas/Market' }
+              lastActivity: { $ref: '#/components/schemas/Date' }
+              retainedUntil: { $ref: '#/components/schemas/Date' }
+              requestId: { type: string, description: The erasure request made. Omitted in a dry run. }
+        ongoing: { type: integer, description: Parties kept because a relation is ongoing. }
+        withinRetention: { type: integer }
+        pendingRequest: { type: integer, description: Parties skipped because they already have an undecided request. }
+        marketsWithoutRule: { type: array, items: { type: string } }
 
     ErasureRequestInput:
       type: object
