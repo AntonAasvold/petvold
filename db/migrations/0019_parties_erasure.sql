@@ -87,6 +87,10 @@ drop table parties.erasure_decision;
 drop table parties.erasure_request;
 drop function parties.check_erasure_decision();
 alter table parties.party_revision drop constraint party_revision_anonymized;
+-- Anonymized revisions cannot exist without the erasure tables; a rollback drops them too.
+delete from parties.party_identifier i
+ where exists (select 1 from parties.party_revision r where r.party_id = i.party_id and r.anonymized);
+delete from parties.party_revision where anonymized;
 alter table parties.party_revision drop constraint party_revision_reason;
 alter table parties.party_revision add constraint party_revision_reason check (revision = 1 or reason is not null);
 alter table parties.party_revision drop constraint party_revision_names;

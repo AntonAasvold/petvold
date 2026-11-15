@@ -42,16 +42,13 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Djurregistret kontrollerar att ägaren finns som part, i djurets marknad
 - [x] ADR om gallring och anonymisering av personuppgifter (ADR 0028)
 - [x] Anonymisering med fyra ögon, begäran om radering och begränsning (ADR 0028)
-- [ ] Gallring enligt ADR 0028:
-  - lagringstider per marknad som inställning
-  - `lastActivity` i djurregistret och skademotorn
-  - ett jobb som begär anonymisering när lagringstiden har gått ut
-  - anonymiseringarna körs igen efter en återställning
+- [x] Gallring enligt ADR 0028: lagringstider per marknad, relationer från djurregistret, gallringskörning och omkörning efter återställning
 
 **M3 – Policy**
 - [ ] Bitemporala versioner, term, transaktionslivscykel
 - [ ] Ändring, reversering och ändring i fel ordning
 - [ ] PolicyGroup och överlåtelse
+- [ ] Policyer och skador rapporterar partens relationer till gallringen (`ActivitySource`, ADR 0028)
 - [ ] ADR om policyns livscykel: tecknande, ändring, förnyelse, avslut och överlåtelse, med legala ramar per marknad (försäkringsavtalslagen, regler för distansavtal) och källor
 - [ ] Förnyelse:
   - förnyelsekörning före förfallodagen

@@ -32,6 +32,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #42 mergad.
+- Gallring (ADR 0028), PR #43:
+  - **Lagringstider per marknad** som versioner, ändringsbara via API:et. Version 1 är tio år för Sverige.
+  - **Sista relationen** via `ActivitySource`. Djurregistret rapporterar pågående ägarskap eller när det senaste slutade. Policyer och skador kopplas in i M3.
+  - **Gallringskörning** (`POST /v1/retention-runs`, med provkörning) som begär anonymisering av parter vars lagringstid har gått ut. En dataskyddsansvarig godkänner varje begäran.
+  - **`npm run erasures:reapply`** kör alla godkända anonymiseringar igen efter en återställning.
+  - Ny rättighet `parties:retention` och ny roll `retention-job`. **Migration 0020.** Lokal rollinställning är version 8.
+  - **Backningen av migration 0019 är ändrad.** Den tar nu bort anonymiserade revisioner, så att alla migreringar kan backas i CI. Uppåtdelen är oförändrad, och ingen installation har kört 0019.
+- 297 tester och 100 databastester.
 - #41 mergad. ADR 0028 beslutad som den är skriven: tio år för Sverige och fyra ögon för varje anonymisering.
 - Anonymisering och begränsning (ADR 0028), PR #42:
   - **Begäran, godkännande av någon annan, och avslag.** Godkännandet anonymiserar parten i samma transaktion: personfälten töms i alla revisioner, och id-numren tas bort.
@@ -79,10 +88,11 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Gallring enligt ADR 0028: lagringstider per marknad, `lastActivity` i djurregistret och skademotorn, och ett jobb som begär anonymisering.
+1. Flytten av `assess` och `calculate` till `decisioning-core`, eller policymodulen (M3).
 
 **Öppet**
-- `parties:privacy`, `parties:erase` och `privacy-officer` saknas i installationer som redan har en sparad rollinställning.
+- `parties:privacy`, `parties:erase`, `parties:retention`, `privacy-officer` och `retention-job` saknas i installationer som redan har en sparad rollinställning.
+- Gallringen känner bara till djurregistret. Den ska inte köras skarpt förrän policyer och skador rapporterar sina relationer (M3).
 - `parties:read`, `parties:write` och `party-registrar` saknas i installationer som redan har en sparad rollinställning.
 - Det sparas inte vem som slagit upp ett djur.
 - `animals:lookup` saknas på `clinic` i installationer som redan har en sparad rollinställning.
