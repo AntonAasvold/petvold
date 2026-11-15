@@ -1,6 +1,6 @@
 # 0024. Djurregister: djur, id-nummer och ägarskap
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-15
 
 ## Sammanhang
