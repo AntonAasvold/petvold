@@ -19,6 +19,7 @@
  * and implements the claims engine's PolicyPort.
  */
 import type { ISODate, PolicyPort, PolicySnapshot, Rider, Timestamp, VetCareTerms } from '@petvold/claims-core';
+import { PricingError, price, type PriceResult, type TariffContent, type TariffRef } from '@petvold/pricing-core';
 
 export type { ISODate };
 
@@ -369,6 +370,8 @@ export interface ProductOffer {
   onSale: boolean;
   /** Days a new owner has to accept a transferred policy. */
   transferAcceptanceDays: number;
+  /** The tariff series that prices it (ADR 0030). Omitted: no tariff, the premium is given by hand. */
+  tariffSeries?: string;
   /** The product's setting for the customer's cancellation during a term (ADR 0029). */
   midTermCancellation: 'term-end' | 'immediate';
   /** The length of a term in months. */
@@ -408,12 +411,43 @@ export interface RenewalRunResult {
 }
 
 export interface AnimalPort {
-  get(animalId: string): Promise<{ market: string; species: string; birthDate: ISODate; deceasedOn?: ISODate } | null>;
+  get(animalId: string): Promise<{ market: string; species: string; breed?: string; birthDate: ISODate; deceasedOn?: ISODate } | null>;
 }
 
 export interface PartyPort {
   /** The party's market, or null if it does not exist or may not get new relations (ADR 0028). */
   marketOf(partyId: string): Promise<string | null>;
+  /** The postal code of the party's address, for the tariff's zone (ADR 0030). null: none. */
+  postalCodeOf?(partyId: string): Promise<string | null>;
+}
+
+/** The tariff in force, from the decisioning module (ADR 0030). */
+export interface TariffPort {
+  tariffInForce(series: string, onDate: ISODate): Promise<{ content: TariffContent; ref: TariffRef } | null>;
+}
+
+export interface QuoteInput {
+  market: string;
+  productVersion: string;
+  startDate: ISODate;
+  /** A registered animal, or the facts about one. */
+  animalId?: string;
+  animal?: { species: string; breed?: string; birthDate: ISODate };
+  /** The policyholder, whose postal code gives the zone; or the postal code itself. Neither: the default zone. */
+  policyholderPartyId?: string;
+  postalCode?: string;
+  vetCare?: { annualLimit?: number; deductible?: string };
+}
+
+/** A price indication (ADR 0030). Nothing is stored. */
+export interface Quote {
+  market: string;
+  productVersion: string;
+  startDate: ISODate;
+  endDate: ISODate;
+  vetCare: VetCareTerms;
+  deductibleOption: string;
+  price: PriceResult;
 }
 
 export interface PolicyDeps {
@@ -424,6 +458,8 @@ export interface PolicyDeps {
   clock: { now(): string };
   ids: { next(prefix: string): string };
   profiles?: Record<string, MarketProfile>;
+  /** Omitted: no product has a tariff, and quotes answer that. */
+  tariffs?: TariffPort;
 }
 
 export interface IssueInput {
@@ -1205,6 +1241,78 @@ export class PolicyService implements PolicyPort {
     if (!validDate(to) || to < m.from) throw new PolicyError('validation', `to must be a date from ${m.from}`);
     await this.d.store.endMember(groupId, policyId, { to, endedBy: by, endedAt: this.d.clock.now(), reason }).catch(this.translate);
     return this.getGroup(groupId);
+  }
+
+  /**
+   * A price indication (ADR 0030): what the policy would cost from the start
+   * date with these choices. Uses the same tariff and function as issue will.
+   * Nothing is stored, and the postal code is not returned, only its zone.
+   */
+  async quote(input: QuoteInput): Promise<Quote> {
+    const profile = this.profile(input.market);
+    const today = this.d.clock.now().slice(0, 10);
+    if (!validDate(input.startDate)) throw new PolicyError('validation', 'startDate must be YYYY-MM-DD');
+    if (input.startDate < today) throw new PolicyError('validation', 'A policy cannot start before today');
+    if ((input.animalId === undefined) === (input.animal === undefined)) throw new PolicyError('validation', 'Give either animalId or animal');
+    if (input.policyholderPartyId !== undefined && input.postalCode !== undefined) throw new PolicyError('validation', 'Give policyholderPartyId or postalCode, not both');
+    let animal: { species: string; breed?: string; birthDate: ISODate };
+    if (input.animalId !== undefined) {
+      const a = await this.d.animals.get(input.animalId);
+      if (!a || a.market !== input.market) throw new PolicyError('validation', `The animal ${input.animalId} does not exist in market ${input.market}`);
+      if (a.deceasedOn) throw new PolicyError('validation', `The animal ${input.animalId} has died`);
+      animal = { species: a.species, ...(a.breed ? { breed: a.breed } : {}), birthDate: a.birthDate };
+    } else {
+      animal = input.animal!;
+      if (!animal.species || !validDate(animal.birthDate)) throw new PolicyError('validation', 'animal needs species and birthDate');
+    }
+    let postalCode = input.postalCode;
+    if (input.policyholderPartyId !== undefined) {
+      if ((await this.d.parties.marketOf(input.policyholderPartyId)) !== input.market) {
+        throw new PolicyError('validation', `The party ${input.policyholderPartyId} does not exist in market ${input.market}`);
+      }
+      postalCode = (await this.d.parties.postalCodeOf?.(input.policyholderPartyId)) ?? undefined;
+    }
+    const offer = await this.d.products.offer(input.productVersion, input.startDate);
+    if (!offer) throw new PolicyError('validation', `The product version ${input.productVersion} does not exist`);
+    if (!offer.onSale) throw new PolicyError('validation', `${input.productVersion} is not on sale on ${input.startDate}`);
+    if (offer.market !== input.market) throw new PolicyError('validation', `${input.productVersion} is not sold in market ${input.market}`);
+    if (!offer.species.includes(animal.species)) throw new PolicyError('validation', `${input.productVersion} does not cover ${animal.species}`);
+    if (offer.termMonths > profile.maxTermMonths) throw new PolicyError('validation', `${input.productVersion} has terms longer than ${input.market} allows`);
+    let chosen: VetCareTerms & { deductibleOption: string };
+    try {
+      chosen = offer.vetCareTermsFor(input.vetCare ?? {});
+    } catch (e) {
+      throw new PolicyError('validation', (e as Error).message);
+    }
+    if (!offer.tariffSeries) throw new PolicyError('conflict', `${input.productVersion} has no tariff; its premium is given by hand`);
+    const tariff = await this.d.tariffs?.tariffInForce(offer.tariffSeries, input.startDate);
+    if (!tariff) throw new PolicyError('conflict', `The tariff series ${offer.tariffSeries} has no published version in force on ${input.startDate}`);
+    const endDate = addMonths(input.startDate, offer.termMonths);
+    const { deductibleOption, ...vetCare } = chosen;
+    try {
+      return {
+        market: input.market,
+        productVersion: input.productVersion,
+        startDate: input.startDate,
+        endDate,
+        vetCare,
+        deductibleOption,
+        price: price(tariff, {
+          market: input.market,
+          species: animal.species,
+          ...(animal.breed ? { breed: animal.breed } : {}),
+          birthDate: animal.birthDate,
+          startDate: input.startDate,
+          endDate,
+          annualLimit: vetCare.annualLimit,
+          deductibleOption,
+          ...(postalCode ? { postalCode } : {}),
+        }),
+      };
+    } catch (e) {
+      if (e instanceof PricingError) throw new PolicyError('validation', e.message);
+      throw e;
+    }
   }
 
   /** Cancellations that have not been reversed. */

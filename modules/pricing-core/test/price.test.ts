@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PricingError, ageInYears, price, validateTariff, zoneFor, type PriceInput, type TariffContent } from '../src/index.ts';
+import { PricingError, ageInYears, price, tariffCoverage, validateTariff, zoneFor, type PriceInput, type TariffContent } from '../src/index.ts';
 import { TARIFF } from '../src/fixtures.ts';
 
 const ref = { series: 'SE-HUND-TARIFF', version: 1, checksum: 'abc' };
@@ -80,4 +80,17 @@ test('a tariff is checked before it is used', () => {
   for (const m of [/market/, /start at 0 years/, /group without a factor: Z/, /prefix 'a-b'/, /defaultZone/, /roundTo/, /Unknown field 'extra'/]) {
     assert.ok(errors.some((e) => m.test(e)), `${m} in ${errors.join('; ')}`);
   }
+});
+
+test('coverage: what a tariff cannot price for a product', () => {
+  const product = { market: 'SE', currency: 'SEK', species: ['dog'], annualLimits: [3_000_000, 6_000_000], deductibleOptions: ['standard', 'high'] };
+  assert.deepEqual(tariffCoverage(TARIFF, product), []);
+  assert.deepEqual(tariffCoverage(TARIFF, { ...product, species: ['dog', 'cat'], annualLimits: [6_000_000, 12_000_000], deductibleOptions: ['low'], currency: 'EUR' }), [
+    'The tariff is in SEK, the product in EUR',
+    'No base premium for dog with annual limit 12000000',
+    'No base premium for cat with annual limit 6000000',
+    'No base premium for cat with annual limit 12000000',
+    'No age bands for cat',
+    'No factor for deductible low',
+  ]);
 });

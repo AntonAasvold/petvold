@@ -31,6 +31,7 @@ export function productPort(products: ProductService): ProductPort {
         termMonths: settings.termMonths,
         renewalLeadDays: settings.renewalLeadDays,
         transferAcceptanceDays: settings.transferAcceptanceDays,
+        ...(v.content.tariffSeries ? { tariffSeries: v.content.tariffSeries } : {}),
         vetCareTermsFor: (choice) => ({ ...vetCareTermsFor(v, choice), deductibleOption: choice.deductible ?? v.content.vetCare.defaultDeductible }),
       };
     },
@@ -49,7 +50,9 @@ export function animalPort(animals: AnimalService): AnimalPort {
         if (e instanceof AnimalError && e.code === 'not_found') return null;
         throw e;
       });
-      return a ? { market: a.market, species: a.species, birthDate: a.birthDate, ...(a.deceasedOn ? { deceasedOn: a.deceasedOn } : {}) } : null;
+      return a
+        ? { market: a.market, species: a.species, ...(a.breed ? { breed: a.breed } : {}), birthDate: a.birthDate, ...(a.deceasedOn ? { deceasedOn: a.deceasedOn } : {}) }
+        : null;
     },
   };
 }

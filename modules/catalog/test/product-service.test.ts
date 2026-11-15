@@ -144,3 +144,22 @@ test('policy settings have defaults and limits (ADR 0029)', async () => {
   await rejects(s.createDraft('XX-DOG-X', withPolicy({ midTermCancellation: 'never' }), author), 'validation', /midTermCancellation/);
   await rejects(s.createDraft('XX-DOG-X', withPolicy({ transferAcceptanceDays: 91 }), author), 'validation', /transferAcceptanceDays/);
 });
+
+test('a product with a tariff series needs a tariff in force that covers it (ADR 0030)', async () => {
+  let problems: string[] | null = null;
+  const s = new ProductService({
+    products: new InMemoryProductStore(),
+    clock: { now: () => '2026-11-15T10:00:00.000Z' },
+    speciesActive: async () => true,
+    ruleSeriesInForce: async () => true,
+    tariffProblems: async () => problems,
+  });
+  const priced = draft({ content: { ...content(), tariffSeries: 'XX-DOG-TARIFF' } });
+  await s.createDraft('XX-DOG-VC', priced, author);
+  await rejects(s.submit('XX-DOG-VC', '2026.1', author), 'validation', /no published version in force/);
+  problems = ['No factor for deductible high'];
+  await rejects(s.submit('XX-DOG-VC', '2026.1', author), 'validation', /does not cover the product: No factor for deductible high/);
+  problems = [];
+  assert.equal((await s.submit('XX-DOG-VC', '2026.1', author)).status, 'in_review');
+  await rejects(s.createDraft('XX-DOG-X', draft({ content: { ...content(), tariffSeries: 'bad series' } }), author), 'validation', /tariff series/);
+});

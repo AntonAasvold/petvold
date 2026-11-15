@@ -1259,6 +1259,38 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/quotes:
+    post:
+      tags: [policies]
+      operationId: quote
+      x-permission: policies:quote
+      summary: A price indication
+      description: |
+        Requires the permission `policies:quote` (ADR 0030). What the policy
+        would cost from `startDate` with these choices, with the product's
+        tariff in force that day and every step of the price. Nothing is
+        stored. Give a registered animal (`animalId`) or the facts (`animal`),
+        and the policyholder (`policyholderPartyId`, whose postal code gives
+        the zone) or a `postalCode`. A caller bound to a clinic or to policies,
+        such as a customer portal, gives the facts and the postal code. The
+        postal code is never returned, only its zone. A product without a
+        tariff gives `409`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuoteRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The price indication
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quote' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/policies/{policyId}/changes:
     post:
       tags: [policies]
@@ -3201,6 +3233,7 @@ components:
           description: Species codes from the reference data.
         names: { $ref: '#/components/schemas/Labels' }
         ruleSeries: { type: string, pattern: '^[A-Z0-9][A-Z0-9-]{1,63}$', description: 'The rule series claims are assessed with, e.g. SE-HUND-VV.' }
+        tariffSeries: { type: string, description: 'The tariff series that prices it (ADR 0030). Omitted: the premium is given by hand. At review, a version must be in force when sales start and cover every species, annual limit and deductible option.' }
         policy:
           type: object
           additionalProperties: false
@@ -3569,6 +3602,80 @@ components:
             transactionId: { type: string }
             decidedBy: { type: string }
             decidedAt: { $ref: '#/components/schemas/DateTime' }
+
+    QuoteRequest:
+      type: object
+      additionalProperties: false
+      required: [market, productVersion, startDate]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        productVersion: { type: string }
+        startDate: { $ref: '#/components/schemas/Date' }
+        animalId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
+        animal:
+          type: object
+          additionalProperties: false
+          required: [species, birthDate]
+          properties:
+            species: { type: string }
+            breed: { type: string }
+            birthDate: { $ref: '#/components/schemas/Date' }
+        policyholderPartyId: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' }
+        postalCode: { type: string, maxLength: 12 }
+        vetCare:
+          type: object
+          additionalProperties: false
+          properties:
+            annualLimit: { $ref: '#/components/schemas/NonNegativeMoney' }
+            deductible: { type: string }
+
+    PriceResult:
+      type: object
+      required: [currency, annualPremium, termPremium, breakdown, facts, inputHash]
+      properties:
+        currency: { $ref: '#/components/schemas/Currency' }
+        annualPremium: { $ref: '#/components/schemas/NonNegativeMoney' }
+        termPremium: { $ref: '#/components/schemas/NonNegativeMoney' }
+        breakdown:
+          type: array
+          description: Every step of the price, in order.
+          items:
+            type: object
+            required: [code, value, amount]
+            properties:
+              code: { type: string, enum: [base, age, breed-group, deductible, zone, minimum, rounding, term] }
+              value: { type: integer, description: A factor in basis points, or an amount in minor units. }
+              basis: { description: 'What the factor came from, e.g. the age, the breed group or the zone.', oneOf: [{ type: string }, { type: integer }] }
+              amount: { type: integer, description: The amount after the step. }
+        facts:
+          type: object
+          required: [ageYears, breedGroup, zone, termDays, yearDays]
+          properties:
+            ageYears: { type: integer }
+            breedGroup: { type: string }
+            zone: { type: string }
+            termDays: { type: integer }
+            yearDays: { type: integer }
+        tariff:
+          type: object
+          required: [series, version, checksum]
+          properties:
+            series: { type: string }
+            version: { type: integer }
+            checksum: { type: string }
+        inputHash: { type: string }
+
+    Quote:
+      type: object
+      required: [market, productVersion, startDate, endDate, vetCare, deductibleOption, price]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        productVersion: { type: string }
+        startDate: { $ref: '#/components/schemas/Date' }
+        endDate: { $ref: '#/components/schemas/Date' }
+        vetCare: { $ref: '#/components/schemas/VetCareTerms' }
+        deductibleOption: { type: string }
+        price: { $ref: '#/components/schemas/PriceResult' }
 
     ChangePolicyRequest:
       type: object

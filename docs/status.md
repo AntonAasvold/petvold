@@ -32,6 +32,12 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Varje djur visar `litterId`**, och en valp säljs med ett vanligt ägarbyte.
   - **Migration 0018:** `animals.litter` och `animals.litter_member`. Provad ner och upp igen.
 - 286 tester och 96 databastester.
+- #55 mergad.
+- Produktens tariff och prisindikation (ADR 0030), PR #56:
+  - **`tariffSeries` på produktversionen.** Vid granskning ska tariffen gälla när försäljningen börjar och täcka varje art, försäkringsbelopp och självrisk (`tariffCoverage`).
+  - **`POST /v1/quotes`** med ny rättighet `policies:quote` (`policy-registrar` och `customer-channel`). Den räknar priset med ett registrerat djur och en part, eller med uppgifterna direkt. Ingenting sparas, och postnumret syns aldrig, bara zonen.
+  - **Dev-servern** publicerar exempeltariffen `SE-HUND-TARIFF` och produkten `SE-HUND-BAS@2026.1`, som prissätts med den. Bella får 4 934 kr om året. Rollinställningen lokalt är version 11.
+- 350 tester och 111 databastester.
 - #54 mergad.
 - Prisfunktion och tariffer (ADR 0030), PR #55:
   - **Ny modul `pricing-core`:** `price(tariff, input)` räknar grundpremien gånger faktorerna för ålder, rasgrupp, självrisk och zon (ort). Den räknar med heltal och BigInt, avrundar en gång och ger lägsta premie, termens premie, `breakdown`, `facts` och `inputHash`. Postnumret sparas inte, bara zonen.
@@ -170,7 +176,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 - 269 tester och 91 databastester.
 
 **Nästa steg**
-1. Produktversionen pekar på en tariffserie, och prisindikation (`POST /v1/quotes`). Sedan prisvilkor, och sist priset vid tecknande, ändring och förnyelse (ADR 0030).
+1. Prisvilkor (rabatter efter grundpriset), sedan priset vid tecknande, ändring och förnyelse (ADR 0030).
 
 **Öppet**
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).

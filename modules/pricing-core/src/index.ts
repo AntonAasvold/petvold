@@ -256,3 +256,25 @@ export function validateTariff(c: TariffContent): string[] {
   for (const k of Object.keys(c)) if (!known.has(k)) fail(`Unknown field '${k}' in the tariff`);
   return errors;
 }
+
+/**
+ * What the tariff cannot price for a product: a species, an annual limit or a
+ * deductible option the product offers but the tariff lacks, or another market
+ * or currency. Empty: the tariff covers the product. Pure.
+ */
+export function tariffCoverage(
+  t: TariffContent,
+  product: { market: string; currency: string; species: string[]; annualLimits: number[]; deductibleOptions: string[] },
+): string[] {
+  const out: string[] = [];
+  if (t.market !== product.market) out.push(`The tariff is for ${t.market}, the product for ${product.market}`);
+  if (t.currency !== product.currency) out.push(`The tariff is in ${t.currency}, the product in ${product.currency}`);
+  for (const species of product.species) {
+    for (const limit of product.annualLimits) {
+      if (!t.basePremiums.some((b) => b.species === species && b.annualLimit === limit)) out.push(`No base premium for ${species} with annual limit ${limit}`);
+    }
+    if (!t.ageBands.some((a) => a.species === species && a.fromYears === 0)) out.push(`No age bands for ${species}`);
+  }
+  for (const d of product.deductibleOptions) if (t.deductibleFactors[d] === undefined) out.push(`No factor for deductible ${d}`);
+  return out;
+}

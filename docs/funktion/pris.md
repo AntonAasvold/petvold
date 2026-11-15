@@ -2,7 +2,7 @@
 
 Premien räknas med en **tariff** (ADR 0030). En tariff är tabeller som publiceras med fyra ögon, på samma sätt som skaderegler. Den ger grundpriset. Rabatter läggs på efter grundpriset som prisvilkor (kommer i ett senare steg).
 
-Den här första delen innehåller prisfunktionen och tariffserierna. Prisindikation, prisvilkor och pris vid tecknande, ändring och förnyelse kommer i nästa steg. Till dess anges premien för hand.
+Prisfunktionen, tariffserierna, produktens tariff och prisindikationen är byggda. Prisvilkor och pris vid tecknande, ändring och förnyelse kommer i nästa steg. Till dess anges premien för hand när en policy tecknas.
 
 ## Så räknas grundpriset
 
@@ -33,6 +33,35 @@ All räkning sker med heltal, och avrundning sker bara på slutet, så priset bl
 | × 1,15 (zon storstad) | 4 933,50 kr |
 | Avrundat till hela kronor | **4 934 kr om året** |
 
+## Produktens tariff
+
+Produktversionen pekar på en tariffserie med `tariffSeries`. När versionen skickas till granskning kontrolleras att en tariffversion gäller när försäljningen börjar. Tariffen ska också täcka produkten:
+- samma marknad och valuta
+- en grundpremie för varje art och varje försäkringsbelopp i produkten
+- åldersband för varje art
+- en faktor för varje självriskalternativ
+
+Om något saknas blir svaret `422` med en lista. En produkt utan `tariffSeries` prissätts för hand.
+
+## Prisindikation
+
+`POST /v1/quotes` (rättigheten `policies:quote`) räknar vad en policy skulle kosta, med samma tariff och funktion som tecknandet kommer att använda. Ingenting sparas.
+
+```http
+POST /v1/quotes
+{
+  "market": "SE", "productVersion": "SE-HUND-BAS@2026.1", "startDate": "2026-12-01",
+  "animalId": "ani_bella", "policyholderPartyId": "pty_owner001",
+  "vetCare": { "annualLimit": 6000000, "deductible": "standard" }
+}
+```
+
+- **Djuret:** ange ett registrerat djur (`animalId`) eller uppgifterna (`animal` med `species`, `breed` och `birthDate`).
+- **Orten:** ange försäkringstagaren (`policyholderPartyId`), så hämtas postnumret från adressen, eller `postalCode` direkt. Utan någon av dem gäller tariffens förvalda zon.
+- **Kundens egen portal,** och andra roller bundna till försäkringar eller kliniker, anger uppgifterna och postnumret direkt. De får inte läsa djur och parter.
+- **Svaret** har termens datum, de valda villkoren och priset med `breakdown`. Postnumret finns aldrig i svaret, bara zonen.
+- **En produkt utan tariff** ger `409`.
+
 ## Vad priset sparar
 
 Priset sparar inte postnumret, bara zonen (GDPR artikel 5.1 c). Svaret har:
@@ -59,4 +88,4 @@ En tariffversion skapas med `POST /v1/rule-sets/{serie}/versions` och `calculati
 
 Faktorer anges i baspunkter, där 10 000 betyder 1,0.
 
-*Inte byggt än:* prisindikation, prisvilkor (rabatter), pris vid tecknande, ändring och förnyelse, manuellt pris, skatt per marknad, och simulering av tariffer.
+*Inte byggt än:* prisvilkor (rabatter), pris vid tecknande, ändring och förnyelse, manuellt pris, skatt per marknad, och simulering av tariffer.

@@ -14,6 +14,7 @@ import {
 } from '@petvold/parties';
 import { InMemoryPolicyStore, PolicyError, PolicyService, type PolicyGroup, type PolicyRecord, type Proposal } from '@petvold/policies';
 import { animalPort, claimsActivity, productPort } from './wiring.ts';
+import { tariffCoverage } from '@petvold/pricing-core';
 import {
   CatalogError,
   CatalogService,
@@ -445,6 +446,10 @@ export function createApp(d: AppDeps) {
       clock: d.clock,
       speciesActive: async (code) => (await catalog.listReferences('species', { active: true })).some((i) => i.code === code),
       ruleSeriesInForce: async (series, onDate) => (await decisioning.rulesInForce(series, onDate)) !== null,
+      tariffProblems: async (series, onDate, product) => {
+        const t = await decisioning.tariffInForce(series, onDate);
+        return t ? tariffCoverage(t.content, product) : null;
+      },
     });
   const withName = (c: Context, v: ProductVersion) => ({
     ...v,
@@ -708,6 +713,7 @@ export function createApp(d: AppDeps) {
       products: productPort(products),
       animals: animalPort(animals),
       parties,
+      tariffs: decisioning,
       clock: d.clock,
       ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
     });
@@ -747,6 +753,19 @@ export function createApp(d: AppDeps) {
     const r = await readJson(c, 'CancelPolicyRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => ({ status: 201, body: await policies.cancel(p.id, r.body, c.get('principal').subject) }));
+  });
+
+  // Price indication (ADR 0030). Nothing is stored. A caller bound to a clinic or
+  // to policies gives the facts itself: it may not read animals or parties.
+  app.post('/v1/quotes', async (c) => {
+    const r = await readJson(c, 'QuoteRequest');
+    if (!r.ok) return r.res;
+    const scope = c.get('scope');
+    if (!(scope.markets === '*' || scope.markets.has(r.body.market))) return problem(c, 403, 'Not permitted', 'The market is outside the caller\'s scope');
+    if ((scope.clinicId || scope.policyIds) && (r.body.animalId !== undefined || r.body.policyholderPartyId !== undefined)) {
+      return problem(c, 403, 'Not permitted', 'Give the animal and the postal code instead of ids');
+    }
+    return send(c, await policies.quote(r.body));
   });
 
   app.post('/v1/policies/:policyId/changes', async (c) => {

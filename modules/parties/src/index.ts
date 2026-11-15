@@ -300,6 +300,13 @@ export class PartyService {
     return this.d.store.partyIds();
   }
 
+  /** The postal code of the party's address, for a tariff's zone (ADR 0030). null for an anonymized or restricted party. */
+  async postalCodeOf(id: string): Promise<string | null> {
+    const p = await this.d.store.get(id);
+    if (!p || p.anonymized || restrictedOn(p, this.today())) return null;
+    return p.address?.postalCode ?? null;
+  }
+
   /** Whether the party is restricted today. */
   isRestricted(p: PartyRecord): boolean {
     return restrictedOn(p, this.today());
