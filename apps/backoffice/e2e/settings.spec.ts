@@ -7,7 +7,7 @@ async function signIn(page: Page, token: string) {
   await page.getByRole('option', { name: token, exact: true }).click();
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.getByRole('link', { name: 'Settings' }).click();
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
 }
 
 const saved = (page: Page) => page.locator('wa-callout[role="status"]');
