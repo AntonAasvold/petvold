@@ -1,0 +1,47 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { formatDate, formatMoney } from '../src/format.ts';
+import { move } from '../src/grid-keys.ts';
+import { append, emptyPager, hasMore } from '../src/pager.ts';
+import { sectionsFor } from '../src/permissions.ts';
+
+const nbsp = (s: string) => s.replace(/ | /g, ' ');
+
+test('amounts in minor units follow the locale and the currency', () => {
+  assert.equal(nbsp(formatMoney(150_000, 'SEK', 'sv')), '1 500,00 kr');
+  assert.equal(nbsp(formatMoney(150_000, 'EUR', 'en')), '€1,500.00');
+  assert.equal(nbsp(formatMoney(1500, 'JPY', 'en')), '¥1,500', 'a currency without minor units');
+});
+
+test('a calendar date is the same date everywhere', () => {
+  assert.equal(formatDate('2026-11-16', 'sv'), '16 nov. 2026');
+  assert.equal(formatDate('2026-01-01', 'en'), 'Jan 1, 2026');
+});
+
+test('the grid moves within its bounds and activates a row with Enter', () => {
+  const size = { rows: 3, cols: 4 };
+  assert.deepEqual(move({ row: 0, col: 0 }, 'ArrowDown', size), { to: { row: 1, col: 0 } });
+  assert.deepEqual(move({ row: 2, col: 0 }, 'ArrowDown', size), { to: { row: 2, col: 0 } });
+  assert.deepEqual(move({ row: 1, col: 1 }, 'End', size), { to: { row: 1, col: 3 } });
+  assert.deepEqual(move({ row: 1, col: 1 }, 'Home', size, { ctrl: true }), { to: { row: 0, col: 0 } });
+  assert.deepEqual(move({ row: 0, col: 2 }, 'PageDown', size), { to: { row: 2, col: 2 } });
+  assert.deepEqual(move({ row: 1, col: 2 }, 'Enter', size), { activate: 1 });
+  assert.equal(move({ row: 0, col: 0 }, 'x', size), null);
+  assert.equal(move({ row: 0, col: 0 }, 'ArrowDown', { rows: 0, cols: 4 }), null);
+});
+
+test('a list grows a page at a time with the cursor', () => {
+  let p = emptyPager<number>();
+  assert.equal(hasMore(p), true, 'nothing loaded yet');
+  p = append(p, { items: [1, 2], nextCursor: 'c1' });
+  assert.deepEqual([p.items, p.next, hasMore(p)], [[1, 2], 'c1', true]);
+  p = append(p, { items: [3] });
+  assert.deepEqual([p.items, p.next, hasMore(p)], [[1, 2, 3], undefined, false]);
+});
+
+test('sections follow the permissions from /v1/me', () => {
+  const me = (permissions: string[]) => ({ subject: 's', roles: [], permissions, scope: { markets: '*' as const } });
+  assert.deepEqual(sectionsFor(me(['claims:read'])).map((s) => s.path), ['/claims']);
+  assert.deepEqual(sectionsFor(me(['policies:read'])), []);
+  assert.deepEqual(sectionsFor(null), []);
+});

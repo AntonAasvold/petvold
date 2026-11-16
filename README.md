@@ -33,11 +33,14 @@ npm run typecheck
 npm run lint:openapi   # kontrakt och implementation har exakt samma operationer
 npm run lint:lang      # koden är på engelska
 npm run dev            # http://localhost:8787, kontraktet på /openapi.yaml
+npm run ui:dev         # back office på http://localhost:5180 (ADR 0035)
+npm run ui:test        # back office: logik utan webbläsare
+npm run ui:e2e         # back office: flödena i Chromium med Playwright
 ```
 
 Se [Utvecklingsmiljö](docs/teknik/utvecklingsmiljo.md) för detaljer.
 
-Dev-servern har exempeldata (Bella, labrador) och två tokens: `dev-handler` och `dev-clinic`.
+Dev-servern har exempeldata, med Bella (labrador) och fler, och en token per roll, till exempel `dev-handler` och `dev-clinic`. Se [Behörighet](docs/funktion/behorighet.md#lokalt).
 
 **Testa själv:** öppna http://localhost:8787/docs för en klickbar API-sida med färdiga exempel, eller [`examples/claims.http`](examples/claims.http) i VS Code (tillägget REST Client) för hela flödet från förhandsbesked till beslut och omprövning.
 

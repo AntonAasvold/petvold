@@ -79,8 +79,8 @@ const DEV_TOKENS: Record<string, Principal> = {
   'dev-customer': { subject: 'customer-portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
 };
 
-// A user interface on a local dev server (Vite on 5173, others on 3000) may call the API.
-const corsOrigins = corsOriginsFromEnv(process.env, ['http://localhost:5173', 'http://localhost:3000']);
+// A user interface on a local dev server may call the API: the back office on 5180 (ADR 0035), Vite's usual 5173, others on 3000.
+const corsOrigins = corsOriginsFromEnv(process.env, ['http://localhost:5180', 'http://localhost:5173', 'http://localhost:3000']);
 const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (DEV_TOKENS[t] ?? null) : null) }, corsOrigins });
 
 const port = Number(process.env.PORT ?? 8787);

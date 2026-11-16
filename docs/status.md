@@ -120,8 +120,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Svenska och engelska**, WCAG 2.1 AA och Playwright i CI.
   - **Fem steg:** grunden med skadornas köer, skador, policyer och ansökningar, meddelanden och webhooks, och inställningar.
 
+- #79 mergad.
+- Back office, steg 1 (ADR 0035), PR #80:
+  - **`apps/backoffice`** med Lit, Web Awesome, Vite och TypeScript. Dev-tokens lokalt och OIDC med PKCE i drift. Menyn följer `GET /v1/me`.
+  - **`<pv-data-grid>`** med tangentbord enligt ARIA, "Visa fler" med markör, och lägen för laddning, tomt och fel.
+  - **Skadornas köer och ärende:** bedömning, beräkning och beslut, bara läsning.
+  - **Svenska och engelska.** Ikonerna kopieras lokalt från Font Awesome Free, så inget hämtas från ett CDN.
+  - **Typerna genereras från `openapi.yaml`.** Det nya CI-jobbet `ui` jämför typerna, typkontrollerar, kör enhetstester och fyra flödestester i Chromium, och bygger.
+
 **Nästa steg**
-1. Back office, steg 1: grunden, `<pv-data-grid>` och skadornas köer.
+1. Back office, steg 2: beslut, attest och prövning.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
