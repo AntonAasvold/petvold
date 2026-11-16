@@ -44,7 +44,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **`acceptance.documents`** vid tecknande och ansökan. Villkoren och förköpsinformationen krävs för en produkt med dokument, och ett okänt dokument eller en annan kontrollsumma ger `422`.
   - **`MARKET_LANGUAGES`** i `common` med marknadens språk för dokument.
   - Ingen migrering. Exempelprodukten `SE-HUND-PLUS` har påhittade dokument.
-- 406 tester och 114 databastester.
+- 405 tester och 114 databastester.
 
 **Nästa steg**
 1. Meddelandemodulen `communications` (ADR 0032, del 2): kundmeddelanden från händelserna, utskick, kö och bolagets texter.
