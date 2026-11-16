@@ -14,10 +14,10 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Policyer | Sök på policy-, djur- eller part-id, personnummer eller chipnummer. Policyn med termer, förbehåll, versioner över tid och historik. | `policies:read`, och `parties:read` eller `animals:read` för personnummer och chip |
 | Ansökningar | Kön för manuell prövning, och godkända och avslagna ansökningar. Ansökan med svar och reglernas kontroller. Godkänn eller avslå med motivering, eller återkalla. | `policies:read`, `policies:underwrite` för att pröva, `policies:write` för att återkalla |
 | Förslag | Förslag som väntar på svar: överlåtelse till ny ägare och avslut när djuret dött. Godkänns eller avböjs från policyn. | `policies:read`, `policies:write` för att svara |
+| Meddelanden | Det som behöver en person: misslyckade, försenade och de som saknar en text som lagen kräver. Meddelandet med innehåll, lagrum och utskick. Rapportera ett utskick för hand. | `notices:read`, `notices:deliver` för att rapportera |
+| Webhooks | Prenumerationer och händelser som inte kom fram. Skapa en prenumeration, stänga av och sätta på, ny hemlighet och skicka igen. | `webhooks:read`, `webhooks:manage` för att ändra |
 
-*Inte byggt än:*
-- meddelanden och webhooks (steg 4)
-- inställningar (steg 5)
+*Inte byggt än:* inställningar (steg 5).
 
 ## Logga in
 
@@ -64,6 +64,18 @@ Varje åtgärd skickas med en idempotensnyckel. Om nätverket svajar och man fö
   - Ett avslag kräver en skälkod, och den sökande får ett meddelande med skälen (ADR 0032).
   - Har startdagen passerat anges en ny.
 - **Ett förslag** öppnas från policyn. En överlåtelse godkänns med var den nya ägaren godkände villkoren, till exempel per telefon. Ett avböjande kräver ett skäl.
+
+## Meddelanden och webhooks
+
+- **Meddelanden** börjar på fliken "Behöver en person", alltså samma kö som `GET /v1/notices?attention=true`.
+  - Varje rad visar varför meddelandet hamnade där: misslyckat, försenat eller text saknas.
+  - Meddelandet visar innehållet som fält, lagrummen och varje utskick med kanal, tid och dokument-id.
+  - Den som har `notices:deliver`, till exempel dokumentsystemet eller en person som har skickat ett brev för hand, kan rapportera utskicket.
+- **Webhooks:**
+  - Listan visar prenumerationerna. En prenumeration som misslyckas markeras innan den stängs av automatiskt.
+  - Fliken "Kom inte fram" listar döda händelser för alla prenumerationer.
+  - En ny prenumeration visar hemligheten en enda gång, med en knapp för att kopiera den. Detsamma gäller en ny hemlighet.
+  - Från prenumerationen kan man skicka döda händelser igen, en i taget eller alla, och stänga av eller sätta på den.
 
 ## Språk
 

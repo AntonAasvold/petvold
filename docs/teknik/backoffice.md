@@ -20,6 +20,9 @@ Appen ligger i `apps/backoffice` (ADR 0035). Den är byggd med Lit 3, Web Awesom
 | `src/views/policies-search.ts`, `policy-detail.ts` | Sökning och policy. `parseSearch` i `policy-logic.ts` avgör vad som söks. `versionOn` väljer versionen som gäller i dag, som den är känd nu. |
 | `src/views/applications-queue.ts`, `application-detail.ts` | Ansökningar och prövning. `applicationDecisionProblems` stoppar ett beslut utan motivering eller skälkod. |
 | `src/views/proposals-queue.ts` | Förslag som väntar. Förslaget besvaras i `policy-detail.ts`. |
+| `src/views/notices-queue.ts`, `notice-detail.ts` | Kön med flikar som motsvarar filtren `attention`, `status` och `late`, och meddelandet med formuläret för utskick |
+| `src/views/webhooks-view.ts`, `webhook-detail.ts`, `components/secret-callout.ts` | Prenumerationer, döda händelser och prenumerationen. Hemligheten från `POST` visas i `<pv-secret-callout>` och sparas inte. |
+| `src/integration-logic.ts` | `subscriptionProblems` och `subscriptionBody` för formuläret, och `noticeFlags` som säger varför ett meddelande behöver en person |
 | `src/actions.ts` | `act` skickar en åtgärd och gör svaret till ett besked. `409` blir "Ladda om". Används av vyerna i steg 3, och `claim-actions` gör samma sak. |
 | `src/icons.ts`, `icons.json`, `scripts/copy-icons.mjs` | Ikoner från Font Awesome Free (npm), kopierade till `public/icons` före dev och bygge. `wa-icon` läser dem därifrån och aldrig från ett CDN. |
 

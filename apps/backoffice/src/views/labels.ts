@@ -84,6 +84,12 @@ export function problemLabel(id: string): string {
       return msg('Give a reason code in lowercase, e.g. ongoing-symptoms.', { id: 'application.needReason' });
     case 'application.startInPast':
       return msg('The start date cannot be in the past.', { id: 'application.startInPast' });
+    case 'webhooks.needHttps':
+      return msg('Give an address that uses https.', { id: 'webhooks.needHttps' });
+    case 'webhooks.needTypes':
+      return msg('Give event types, e.g. policy.* or claim.decided.', { id: 'webhooks.needTypes' });
+    case 'webhooks.needMarkets':
+      return msg('Give markets, e.g. SE, or *.', { id: 'webhooks.needMarkets' });
     default:
       return id;
   }
@@ -130,5 +136,43 @@ export function applicationStatusLabel(s: string): string {
       return msg('Expired', { id: 'application.status.expired' });
     default:
       return s;
+  }
+}
+
+export function noticeTypeLabel(t: string): string {
+  switch (t) {
+    case 'policy-confirmation':
+      return msg('Policy confirmation', { id: 'notice.type.policy-confirmation' });
+    case 'renewal-notice':
+      return msg('Renewal notice', { id: 'notice.type.renewal-notice' });
+    case 'insurer-termination':
+      return msg("The insurer's termination", { id: 'notice.type.insurer-termination' });
+    case 'cancellation-confirmation':
+      return msg('Cancellation confirmed', { id: 'notice.type.cancellation-confirmation' });
+    case 'application-declined':
+      return msg('Application declined', { id: 'notice.type.application-declined' });
+    case 'transfer-offer':
+      return msg('Offer to a new owner', { id: 'notice.type.transfer-offer' });
+    default:
+      return t;
+  }
+}
+
+export function noticeStatusLabel(s: string): string {
+  return s === 'sent' ? msg('Sent', { id: 'notices.tab.sent' }) : s === 'failed' ? msg('Failed', { id: 'notice.failed' }) : msg('Waiting', { id: 'notices.tab.pending' });
+}
+
+export function noticeFlagLabel(f: string): string {
+  switch (f) {
+    case 'failed':
+      return msg('Failed', { id: 'notice.failed' });
+    case 'overdue':
+      return msg('Overdue', { id: 'notice.overdue' });
+    case 'incomplete':
+      return msg('Text missing', { id: 'notice.incomplete' });
+    case 'late':
+      return msg('Sent late', { id: 'notices.tab.late' });
+    default:
+      return f;
   }
 }

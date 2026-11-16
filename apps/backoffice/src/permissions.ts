@@ -21,6 +21,8 @@ export const SECTIONS: Section[] = [
   { path: '/policies', label: 'nav.policies', icon: 'paw', anyOf: ['policies:read'] },
   { path: '/applications', label: 'nav.applications', icon: 'list-check', anyOf: ['policies:read'] },
   { path: '/proposals', label: 'nav.proposals', icon: 'user-check', anyOf: ['policies:read'] },
+  { path: '/notices', label: 'nav.notices', icon: 'envelope', anyOf: ['notices:read'] },
+  { path: '/webhooks', label: 'nav.webhooks', icon: 'plug', anyOf: ['webhooks:read'] },
 ];
 
 export const can = (me: Me | null, permission: string): boolean => !!me?.permissions.includes(permission);
