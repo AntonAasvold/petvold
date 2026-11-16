@@ -1,6 +1,6 @@
 # 0032. Meddelanden och dokument till kunden
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-16
 
 ## Sammanhang
@@ -24,7 +24,7 @@ ADR 0031 lämnade två frågor till det här beslutet: brevet med skälen vid av
 
 ## Beslut
 
-1. **Petvold avgör vad som ska skickas, men skapar och skickar inte själva dokumentet.** Ett **kundmeddelande** är en uppgift i Petvold: vilket besked, till vem, om vad, med vilket innehåll, enligt vilken lag och när det senast måste skickas. Bolagets dokumentsystem gör dokumentet med sina mallar, skickar det och rapporterar tillbaka till Petvold.
+1. **Petvold avgör vad som ska skickas och tar fram underlaget, men skapar och skickar inte själva dokumentet.** Ett **kundmeddelande** är en uppgift i Petvold: vilket besked, till vem, om vad, med vilket innehåll, enligt vilken lag och när det senast måste skickas. Bolagets dokumentsystem gör dokumentet med sina mallar, skickar det och rapporterar tillbaka till Petvold.
 
 2. **En ny modul, `communications`, med ett eget schema** (ADR 0001):
    - Den skapar meddelanden från de andra modulernas händelser, via reläet (ADR 0008). Den läser policyer, ansökningar och parter genom portar, aldrig deras tabeller.

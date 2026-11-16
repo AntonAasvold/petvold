@@ -1,6 +1,6 @@
 # ADR om meddelanden och dokument till kunden (PR #68)
 
-**Datum:** 2026-11-16 **ADR:** 0032 (Föreslagen) **Moduler:** inga, bara dokumentation
+**Datum:** 2026-11-16 **ADR:** 0032 (Beslutad) **Moduler:** inga, bara dokumentation
 
 ## Vad
 
