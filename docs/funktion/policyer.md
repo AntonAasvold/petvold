@@ -110,7 +110,7 @@ Djurregistret skickar händelser när ett djur byter ägare (`animal.ownership_c
   - Karenstid, självriskperioder och förbrukat försäkringsbelopp följer policyn.
   - Premien för dagarna efter försäljningen flyttas: den förra ägaren får tillbaka den, och den nya ska betala den (M5).
 - **Avböj:** `POST /v1/policy-proposals/{id}/rejections` med `reason`. Policyn avslutas från försäljningsdagen, eftersom behovet föll bort då.
-- **Ingen svarar:** `POST /v1/proposal-expiry-runs`, som är tänkt att köras varje dag, avslutar policyer vars förslag inte godkändes senast sista dagen.
+- **Ingen svarar:** `POST /v1/policy-proposal-expiry-runs`, som är tänkt att köras varje dag, avslutar policyer vars förslag inte godkändes senast sista dagen.
 
 **Dödsfall: förslag om avslut.**
 - **Godkänn:** policyn avslutas från dödsdagen, med premie tillbaka.
@@ -128,7 +128,7 @@ En **grupp** samlar policyer för en kull eller ett hushåll (ADR 0007). Gruppen
 - **Lägga till:** `POST /v1/policy-groups/{id}/members` med `policyId` och eventuellt `from`. Förval är i dag, eller policyns start om den är senare.
   - Gruppens försäkringstagare måste ha policyn den dagen.
   - En policy är med i en grupp i taget (`409`).
-- **Ta bort:** `POST /v1/policy-groups/{id}/members/{policyId}/ends` med `reason` och eventuellt `to`.
+- **Ta bort:** `POST /v1/policy-groups/{id}/members/{policyId}/endings` med `reason` och eventuellt `to`.
 - **När djuret säljs** och den nya ägaren tar över policyn lämnar policyn gruppen från försäljningsdagen. Det sker i samma transaktion som överlåtelsen. Den nya ägaren kan sedan lägga policyn i en egen grupp.
 - **Historiken** syns i `members`, där varje medlemskap har `from` och `to`.
 
@@ -179,13 +179,13 @@ En **grupp** samlar policyer för en kull eller ett hushåll (ADR 0007). Gruppen
 | `POST /v1/renewal-runs` | `policies:renew` | Förnyelsekörningen |
 | `POST /v1/policies/{id}/cancellations` | `policies:write` | Avslutar en policy |
 | `POST /v1/policy-groups` | `policies:write` | Skapar en grupp för kull eller hushåll |
-| `GET /v1/policy-groups?holderPartyId=…` | `policies:read` | Grupper för en försäkringstagare. Det går också att använda `policyId`. |
+| `GET /v1/policy-groups?policyholderPartyId=…` | `policies:read` | Grupper för en försäkringstagare. Det går också att använda `policyId`. |
 | `POST /v1/policy-groups/{id}/members` | `policies:write` | Lägger till en policy |
-| `POST /v1/policy-groups/{id}/members/{policyId}/ends` | `policies:write` | Tar bort en policy från en dag |
+| `POST /v1/policy-groups/{id}/members/{policyId}/endings` | `policies:write` | Tar bort en policy från en dag |
 | `GET /v1/policy-proposals` | `policies:read` | Förslag efter försäljning och dödsfall |
 | `POST /v1/policy-proposals/{id}/acceptances` | `policies:write` | Godkänner ett förslag |
 | `POST /v1/policy-proposals/{id}/rejections` | `policies:write` | Avböjer ett förslag |
-| `POST /v1/proposal-expiry-runs` | `policies:renew` | Avslutar policyer vars överlåtelse inte godkändes i tid |
+| `POST /v1/policy-proposal-expiry-runs` | `policies:renew` | Avslutar policyer vars överlåtelse inte godkändes i tid |
 | `POST /v1/policies/{id}/reinstatements` | `policies:write` | Återkallar det senaste avslutet |
 | `GET /v1/policies?animalId=…` | `policies:read` | Policyer för ett djur. Det går också att använda `policyholderPartyId`. |
 | `GET /v1/policies/{id}` | `policies:read` | Policyn med termer och gällande versioner |
@@ -223,4 +223,4 @@ Svaret har en term från 1 december 2026 till 1 december 2027 (slutdagen räknas
 
 Dev-servern lägger in Bellas policy `pol_bella` första gången, med ägaren `pty_owner001` och förbehållet för hälta. Lenas tre ansökningar på `SE-HUND-PLUS@2026.1` finns också, en med varje utfall (se [Utvecklingsmiljö](../teknik/utvecklingsmiljo.md)). Exemplet har bara den gällande termen. Token `dev-seller` tecknar policyer. Skademotorn läser policyerna från modulen.
 
-*Inte byggt än:* nytt pris vid förnyelse och ändring (M4), ny karenstid för ett höjt försäkringsbelopp, grupprabatt (M4), gemensam faktura (M5), och att teckna en hel kull i ett anrop.
+*Inte byggt än:* ny karenstid för ett höjt försäkringsbelopp, gemensam faktura (M5), och att teckna en hel kull i ett anrop.

@@ -190,17 +190,19 @@ Dokumenten ligger i bolagets arkiv. Produktversionen har adressen och en kontrol
 | Granskning | `POST .../versions/{v}/submissions` | `catalog:write` | Låser innehållet. Arterna måste vara aktiva, och regelserien måste ha en publicerad version som gäller när försäljningen börjar. |
 | Tillbaka | `POST .../versions/{v}/returns` | `catalog:publish` | Tillbaka till utkast, med motivering |
 | Publicering | `POST .../versions/{v}/publications` | `catalog:publish` | En annan person än den som skickade till granskning. Ingen annan version av produkten får säljas under samma period. |
-| Avsluta försäljning | `POST .../versions/{v}/sales-ends` med `salesTo` och `reason` | `catalog:publish` | Tidigast i dag och bara tidigare än ett befintligt slutdatum |
+| Avsluta försäljning | `POST .../versions/{v}/sales-endings` med `salesTo` och `reason` | `catalog:publish` | Tidigast i dag och bara tidigare än ett befintligt slutdatum |
 
 En publicerad version ändras aldrig utom slutdatumet för försäljningen. Policyer som redan har versionen behåller den, och skademotorn hittar fortfarande dess regelserie.
 
 **Läsa:**
 - `GET /v1/products` ger alla produkter med deras versioner och status (rättighet `catalog:read`), till exempel för en lista i ett gränssnitt.
-- `GET /v1/products/on-sale?date=2026-11-15&market=SE&species=dog` ger versionerna som säljs den dagen. Det är högst en per produkt.
+- `GET /v1/product-versions?onSale=2026-11-15&market=SE&species=dog` ger versionerna som säljs den dagen. Det är högst en per produkt.
 - `GET /v1/products/{produkt}/versions/{v}/vet-care-terms?annualLimit=3000000&deductible=high` ger de villkor en policy får med kundens val. Ett val som utelämnas ger standardvalet. Ett val som inte finns i produkten ger `422`.
 
 **Exempel:** version `2026.2` säljs från 1 januari 2026. Version `2027.1` med högre självrisk ska börja säljas 1 januari 2027. Den som publicerar avslutar först försäljningen av `2026.2` till `2027-01-01` och publicerar sedan `2027.1` med `salesFrom` `2027-01-01`. Bella, som har `2026.2`, får fortfarande sina skador bedömda med regelserien `SE-HUND-VV`.
 
 **Så hittar skademotorn reglerna:** policyns produktversion ger regelserien, och regelserien ger den version som gäller på behandlingsdatumet. Om produktversionen inte finns eller inte är publicerad svarar skademotorn `409`.
 
-*Inte byggt än:* andra moment än veterinärvård, och pris (M4).
+Priset ställs in med tariff och prisvillkor, se [Pris](pris.md).
+
+*Inte byggt än:* andra moment än veterinärvård, till exempel liv (F4).

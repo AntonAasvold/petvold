@@ -1,6 +1,6 @@
 # ADR om händelser till bolagets system (PR #72)
 
-**Datum:** 2026-11-16 **ADR:** 0033 (Föreslagen) **Moduler:** inga, bara dokumentation
+**Datum:** 2026-11-16 **ADR:** 0033 (Beslutad) **Moduler:** inga, bara dokumentation
 
 ## Vad
 Ett förslag om hur Petvolds händelser når bolagets andra system: en modul för webhooks med prenumerationer, CloudEvents som kuvert, signatur enligt Standard Webhooks, tunna händelser utan personuppgifter och AsyncAPI som kontrakt.

@@ -139,7 +139,7 @@ Authorization: Bearer {{handler}}
 # 7. Annual limit: consumed and remaining for Bella this year.
 ###############################################################################
 
-GET {{base}}/v1/policies/pol_bella/animals/ani_bella/limits?onDate=2026-11-11
+GET {{base}}/v1/policies/pol_bella/limits?onDate=2026-11-11
 Authorization: Bearer {{handler}}
 
 ###############################################################################

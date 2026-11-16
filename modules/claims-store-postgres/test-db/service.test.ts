@@ -65,7 +65,7 @@ test('handler decision, consumed limit and reassessment without change', async (
   const d = await decideNow(service, cruciateClaim().id, { action: 'accept', decidedBy: 'h1', expectedInputHash: a.inputHash });
   assert.equal(d.outcome, 'partial');
 
-  const limits = await service.getLimits('pol_bella', 'ani_bella', '2026-11-11');
+  const limits = await service.getLimits('pol_bella', '2026-11-11');
   assert.equal(limits.consumed, 150_000 + d.payout);
 
   // The basis is unchanged since the decision: no new reassessment.

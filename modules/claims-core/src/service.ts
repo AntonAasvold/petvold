@@ -458,16 +458,18 @@ export class ClaimsService {
     return { decision, evidence };
   }
 
-  async getLimits(policyId: string, animalId: string, onDate: ISODate): Promise<LimitsView> {
+  /** The annual limit of the policy's animal on a date. A policy covers one animal (ADR 0007). */
+  async getLimits(policyId: string, onDate: ISODate): Promise<LimitsView> {
     try {
       assertDate(onDate, 'onDate');
     } catch (e) {
       throw new DomainError('validation', (e as Error).message);
     }
     const policy = await this.d.policies.getPolicyAt(policyId, onDate);
-    if (!policy || policy.animalId !== animalId || !policy.vetCare) {
+    if (!policy || !policy.vetCare) {
       throw new DomainError('not_found', 'No vet care cover in force for the animal on that date');
     }
+    const animalId = policy.animalId;
     const consumed = await this.d.store.getConsumed(limitKey(animalId, policy));
     return {
       animalId,

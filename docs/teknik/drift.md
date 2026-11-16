@@ -74,5 +74,5 @@ Dessa anropas av installationens schemaläggare med en token för respektive rol
 | Körning | Anrop | Roll | Förslag |
 | --- | --- | --- | --- |
 | Förnyelse | `POST /v1/renewal-runs` | `renewal-job` | Varje dag |
-| Överlåtelser som löpt ut | `POST /v1/proposal-expiry-runs` | `renewal-job` | Varje dag |
+| Överlåtelser som löpt ut | `POST /v1/policy-proposal-expiry-runs` | `renewal-job` | Varje dag |
 | Gallring | `POST /v1/retention-runs` | `retention-job` | Varje vecka |

@@ -1,6 +1,6 @@
 # 0033. Händelser till bolagets system med webhooks
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-16
 
 ## Sammanhang

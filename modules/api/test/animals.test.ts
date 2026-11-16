@@ -114,7 +114,7 @@ test('scope: markets, bound roles and permissions', async () => {
   assert.equal((await call('GET', `/v1/animals/${a.id}`, 'boundRegistrar')).status, 404);
   assert.equal((await call('POST', '/v1/animals', 'boundRegistrar', { ...rex, identifiers: [] })).status, 403);
   assert.equal((await call('GET', `/v1/animals/${a.id}`, 'clinic')).status, 403); // no animals:read
-  assert.equal((await call('GET', '/v1/animal-lookup?microchip=752098100000042', 'handler')).status, 403); // no animals:lookup
+  assert.equal((await call('GET', '/v1/animal-summaries?microchip=752098100000042', 'handler')).status, 403); // no animals:lookup
   assert.equal((await call('POST', '/v1/animals', 'handler', rex)).status, 403); // no animals:write
   assert.equal((await call('GET', `/v1/animals/${a.id}`, 'handler')).status, 200);
 });
@@ -144,7 +144,7 @@ test('a clinic looks up an animal by chip only when the animal is open for looku
   const a = (await (await call('POST', '/v1/animals', 'registrar', rex)).json()) as any;
   assert.equal(a.allowLookup, false);
   const lookup = async (token: string, q = 'microchip=752 098 100 000 042') => {
-    const res = await call('GET', `/v1/animal-lookup?${q}`, token);
+    const res = await call('GET', `/v1/animal-summaries?${q}`, token);
     assert.equal(res.status, 200);
     return ((await res.json()) as any).items;
   };
@@ -163,9 +163,9 @@ test('a clinic looks up an animal by chip only when the animal is open for looku
   // Still no owners, history or search by owner for a clinic.
   assert.equal((await call('GET', `/v1/animals/${a.id}`, 'clinic')).status, 403);
   assert.equal((await call('GET', '/v1/animals?ownerPartyId=pty_anna', 'clinic')).status, 403);
-  assert.equal((await call('GET', '/v1/animal-lookup', 'clinic')).status, 422);
-  assert.equal((await call('GET', '/v1/animal-lookup?microchip=1&passport=x', 'clinic')).status, 422);
-  assert.equal((await call('GET', '/v1/animal-lookup?microchip=123', 'clinic')).status, 422);
+  assert.equal((await call('GET', '/v1/animal-summaries', 'clinic')).status, 422);
+  assert.equal((await call('GET', '/v1/animal-summaries?microchip=1&passport=x', 'clinic')).status, 422);
+  assert.equal((await call('GET', '/v1/animal-summaries?microchip=123', 'clinic')).status, 422);
 
   assert.equal((await call('PUT', `/v1/animals/${a.id}`, 'registrar', { ...open, basedOnRevision: 2, allowLookup: false, reason: 'Withdrawn' })).status, 200);
   assert.deepEqual(await lookup('clinic'), []);

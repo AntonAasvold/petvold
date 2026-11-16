@@ -318,20 +318,21 @@ export function createApp(d: AppDeps) {
   // Claims for lists and work queues, within the caller's scope: markets, and a
   // clinic's own claims or the bound policies' claims.
   app.get('/v1/claims', async (c) => {
-    const state = c.req.query('state');
-    if (state !== undefined && !['awaiting-decision', 'awaiting-approval', 'review-requested', 'decided'].includes(state)) {
-      return problem(c, 422, 'state is awaiting-decision, awaiting-approval, review-requested or decided');
+    const status = c.req.query('status');
+    if (status !== undefined && !['awaiting-decision', 'awaiting-approval', 'review-requested', 'decided'].includes(status)) {
+      return problem(c, 422, 'status is awaiting-decision, awaiting-approval, review-requested or decided');
     }
     const scope = c.get('scope');
     const q = (k: string) => c.req.query(k);
     const found = await d.service.listClaims({
-      ...(state ? { state: state as ClaimState } : {}),
+      ...(status ? { state: status as ClaimState } : {}),
       ...(q('policyId') ? { policyId: q('policyId')! } : {}),
       ...(q('animalId') ? { animalId: q('animalId')! } : {}),
       ...(q('market') ? { market: q('market')! } : {}),
       ...(scope.clinicId ? { clinicId: scope.clinicId } : {}),
     });
-    return sendPage(c, found.filter((x) => coversClaim(scope, x)));
+    // The work queue a claim is in is its status (ADR 0034).
+    return sendPage(c, found.filter((x) => coversClaim(scope, x)).map(({ state, ...x }) => ({ ...x, status: state })));
   });
 
   app.post('/v1/claims', async (c) => {
@@ -439,14 +440,14 @@ export function createApp(d: AppDeps) {
     return send(c, await d.service.preview(draft));
   });
 
-  app.get('/v1/policies/:policyId/animals/:animalId/limits', async (c) => {
+  app.get('/v1/policies/:policyId/limits', async (c) => {
     const onDate = c.req.query('onDate');
     if (!onDate) return problem(c, 422, 'onDate is required');
     // A clinic is not tied to policies, so it cannot look up limits by policy id.
     const scope = c.get('scope');
     const notFound = () => problem(c, 404, 'No vet care cover in force for the animal on that date');
     if (scope.clinicId || (scope.policyIds && !scope.policyIds.has(c.req.param('policyId')))) return notFound();
-    const limits = await d.service.getLimits(c.req.param('policyId'), c.req.param('animalId'), onDate);
+    const limits = await d.service.getLimits(c.req.param('policyId'), onDate);
     if (!coversPolicy(scope, limits.market, limits.policyId)) return notFound();
     return send(c, limits);
   });
@@ -577,9 +578,9 @@ export function createApp(d: AppDeps) {
   const productVersion = '/v1/products/:product/versions/:version';
   const pathOf = (c: Context) => [c.req.param('product') ?? '', c.req.param('version') ?? ''] as const;
 
-  app.get('/v1/products/on-sale', async (c) => {
-    const date = c.req.query('date');
-    if (!date) return problem(c, 422, 'date is required');
+  app.get('/v1/product-versions', async (c) => {
+    const date = c.req.query('onSale');
+    if (!date) return problem(c, 422, 'onSale is required: the date the versions are on sale');
     const market = c.req.query('market');
     const species = c.req.query('species');
     const items = await products.onSale(date, { ...(market ? { market } : {}), ...(species ? { species } : {}) });
@@ -632,7 +633,7 @@ export function createApp(d: AppDeps) {
   productStep('submissions', 'EmptyRequest', (p, v, by) => products.submit(p, v, by));
   productStep('returns', 'ReasonRequest', (p, v, _by, b) => products.returnToDraft(p, v, b.reason));
   productStep('publications', 'EmptyRequest', (p, v, by) => products.publish(p, v, by));
-  productStep('sales-ends', 'SalesEndRequest', (p, v, by, b) => products.endSales(p, v, b.salesTo, by, b.reason));
+  productStep('sales-endings', 'SalesEndRequest', (p, v, by, b) => products.endSales(p, v, b.salesTo, by, b.reason));
 
   // Parties first: the animal register checks owners against them (ADR 0026).
   const parties =
@@ -678,7 +679,7 @@ export function createApp(d: AppDeps) {
 
   // Lookup by identifier (ADR 0025): only animals open for lookup, as a summary
   // without owners, so bindings to a clinic or to policies do not limit it. Markets do.
-  app.get('/v1/animal-lookup', async (c) => {
+  app.get('/v1/animal-summaries', async (c) => {
     const filters = IDENTIFIER_TYPES.flatMap((k) => {
       const v = c.req.query(k);
       return v === undefined ? [] : [[k, v] as const];
@@ -768,7 +769,7 @@ export function createApp(d: AppDeps) {
     return r;
   };
 
-  app.post('/v1/party-searches', async (c) => {
+  app.post('/v1/parties/searches', async (c) => {
     const r = await readJson(c, 'PartySearchRequest');
     if (!r.ok) return r.res;
     const found = await parties.findByIdentifier(r.body);
@@ -975,11 +976,11 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/notices/:noticeId', async (c) => send(c, await visibleNotice(c)));
 
-  app.get('/v1/notice-settings', async (c) => send(c, await communications.settings()));
+  app.get('/v1/settings/notices', async (c) => send(c, await communications.settings()));
 
-  app.get('/v1/notice-settings/versions', async (c) => sendPage(c, await communications.settingsVersions()));
+  app.get('/v1/settings/notices/versions', async (c) => sendPage(c, await communications.settingsVersions()));
 
-  app.post('/v1/notice-settings/versions', async (c) => {
+  app.post('/v1/settings/notices/versions', async (c) => {
     const r = await readJson(c, 'ChangeNoticeSettingsRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => ({ status: 201, body: await communications.changeSettings(r.body, c.get('principal').subject) }));
@@ -1126,9 +1127,9 @@ export function createApp(d: AppDeps) {
   });
 
   app.get('/v1/policy-groups', async (c) => {
-    const holderPartyId = c.req.query('holderPartyId');
+    const holderPartyId = c.req.query('policyholderPartyId');
     const policyId = c.req.query('policyId');
-    if ((holderPartyId === undefined) === (policyId === undefined)) return problem(c, 422, 'Give exactly one of holderPartyId or policyId');
+    if ((holderPartyId === undefined) === (policyId === undefined)) return problem(c, 422, 'Give exactly one of policyholderPartyId or policyId');
     const found = await policies.findGroups(holderPartyId !== undefined ? { holderPartyId } : { policyId: policyId! });
     return sendPage(c, found.filter((g) => seesGroup(c, g)));
   });
@@ -1142,14 +1143,14 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await policies.addMember(g.id, r.body, c.get('principal').subject) }));
   });
 
-  app.post('/v1/policy-groups/:groupId/members/:policyId/ends', async (c) => {
+  app.post('/v1/policy-groups/:groupId/members/:policyId/endings', async (c) => {
     const g = await visibleGroup(c);
     const r = await readJson(c, 'EndGroupMemberRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => ({ status: 201, body: await policies.endMember(g.id, c.req.param('policyId'), r.body, c.get('principal').subject) }));
   });
 
-  app.post('/v1/proposal-expiry-runs', async (c) => {
+  app.post('/v1/policy-proposal-expiry-runs', async (c) => {
     const scope = c.get('scope');
     if (scope.clinicId || scope.policyIds) return problem(c, 403, 'Not permitted', 'A role bound to a clinic or to policies cannot run this');
     return send(c, { expired: await policies.expireProposals(scope.markets, c.get('principal').subject) });
@@ -1189,11 +1190,11 @@ export function createApp(d: AppDeps) {
       clock: d.clock,
     });
 
-  app.get('/v1/retention-settings', async (c) => send(c, await retention.current()));
+  app.get('/v1/settings/retention', async (c) => send(c, await retention.current()));
 
-  app.get('/v1/retention-settings/versions', async (c) => sendPage(c, await retention.versions()));
+  app.get('/v1/settings/retention/versions', async (c) => sendPage(c, await retention.versions()));
 
-  app.post('/v1/retention-settings/versions', async (c) => {
+  app.post('/v1/settings/retention/versions', async (c) => {
     const r = await readJson(c, 'ChangeRetentionRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => ({ status: 201, body: await retention.change(r.body, c.get('principal').subject) }));
@@ -1236,11 +1237,11 @@ export function createApp(d: AppDeps) {
     });
   });
 
-  app.get('/v1/access/roles', async (c) => send(c, await access.current()));
+  app.get('/v1/settings/roles', async (c) => send(c, await access.current()));
 
-  app.get('/v1/access/roles/versions', async (c) => sendPage(c, await access.versions()));
+  app.get('/v1/settings/roles/versions', async (c) => sendPage(c, await access.versions()));
 
-  app.post('/v1/access/roles/versions', async (c) => {
+  app.post('/v1/settings/roles/versions', async (c) => {
     const p = c.get('principal');
     const r = await readJson(c, 'ChangeRolesRequest');
     if (!r.ok) return r.res;
