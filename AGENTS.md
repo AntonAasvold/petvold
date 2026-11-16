@@ -18,11 +18,12 @@ Petvold är en headless kärna för djurförsäkring (hund, katt, häst) för eu
 1. **Starta API:t:** `npm run dev:up` och sedan `npm run dev`. API:t svarar på http://localhost:8787, och API-sidan finns på `/docs`.
 2. **Logga in med en dev-token** i `Authorization: Bearer …`, till exempel `dev-handler`, `dev-approver`, `dev-seller` eller `dev-customer`. Alla finns i `modules/api/src/dev-server.ts`.
 3. **Fråga vem du är:** `GET /v1/me` ger rättigheter, omfång och beloppsgränser. Visa bara det som anroparen får göra. API:t kontrollerar ändå varje anrop.
-4. **Listor** svarar med `{ items, nextCursor? }`. Hämta nästa sida med `?cursor=…`, och tolka aldrig markören. Arbetsköerna är `GET /v1/claims?state=awaiting-decision`, `awaiting-approval` och `review-requested`.
+4. **Listor** svarar med `{ items, nextCursor? }`. Hämta nästa sida med `?cursor=…`, och tolka aldrig markören. Arbetsköerna är `GET /v1/claims?state=awaiting-decision`, `awaiting-approval` och `review-requested`, och för manuell prövning `GET /v1/applications?status=referred`.
 5. **Fel** kommer som `application/problem+json` (RFC 9457) med `title`, `detail` och vid valideringsfel `errors` per fält.
 6. **Anrop som skapar något** kräver `Idempotency-Key` (8–128 tecken). Skapa nyckeln en gång per användarhandling, så att ett nytt försök inte skapar en dubblett.
 7. **Språk:** skicka `Accept-Language: sv` eller `en`. Skälen i en bedömning kommer översatta.
-8. **CORS:** dev-servern tillåter `http://localhost:5173` och `http://localhost:3000`. Ange andra med `PETVOLD_CORS_ORIGINS`.
+8. **Teckna:** en produkt med hälsofrågor tecknas med `POST /v1/applications`. Hämta frågorna med `GET /v1/application-questions`. Både ansökan och `POST /v1/policies` kräver kundens godkännande (`acceptance`).
+9. **CORS:** dev-servern tillåter `http://localhost:5173` och `http://localhost:3000`. Ange andra med `PETVOLD_CORS_ORIGINS`.
 
 Exempeldatan beskrivs i [docs/teknik/utvecklingsmiljo.md](docs/teknik/utvecklingsmiljo.md). Bellas skador ligger i varje arbetskö.
 

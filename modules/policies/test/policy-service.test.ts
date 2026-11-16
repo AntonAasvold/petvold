@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { InMemoryPolicyStore, PolicyError, PolicyService, addMonths, type IssueInput, type ProductOffer } from '../src/index.ts';
+import { InMemoryPolicyStore, PolicyError, PolicyService, addMonths, type ApplicationInput, type IssueInput, type ProductOffer } from '../src/index.ts';
+import { underwrite } from '@petvold/underwriting-core';
+import { UNDERWRITING } from '@petvold/underwriting-core/fixtures';
+import { TARIFF } from '@petvold/pricing-core/fixtures';
 
 const vetCare = { code: 'vet_care' as const, annualLimit: 6_000_000, deductible: { fixed: 200_000, fixedPer: 'period' as const, periodDays: 125, variableBp: 2500 }, waitingPeriodDays: 30 };
 const offer = (o: Partial<ProductOffer> = {}): ProductOffer => ({
@@ -46,6 +49,7 @@ const input = (o: Partial<IssueInput> = {}): IssueInput => ({
   productVersion: 'SE-HUND@1',
   startDate: '2026-12-01',
   premium: { amount: 480_000, currency: 'SEK' },
+  acceptance: { channel: 'web', reference: 'sess-1', acceptedAt: '2026-11-15T09:58:00.000Z' },
   ...o,
 });
 const rejects = (p: Promise<unknown>, code: string, msg?: RegExp) =>
@@ -560,7 +564,14 @@ test('a product with a tariff is priced at issue, change and renewal; a manual p
     clock: { now: () => now },
     ids: { next: (p) => `${p}_${++n}` },
   });
-  const base = { market: 'SE', animalId: 'ani_bella', policyholderPartyId: 'pty_anna', productVersion: 'SE-HUND@1', startDate: '2026-04-01' };
+  const base = {
+    market: 'SE',
+    animalId: 'ani_bella',
+    policyholderPartyId: 'pty_anna',
+    productVersion: 'SE-HUND@1',
+    startDate: '2026-04-01',
+    acceptance: { channel: 'web', acceptedAt: '2026-03-20T09:59:00.000Z' },
+  };
 
   // Issue: Bella's price, 4 934 kr, with the campaign 20 % off: 3 947 kr.
   const p = await s.issue({ ...base, campaignCode: 'PUPPY2026' }, by);
@@ -603,7 +614,136 @@ test("'today' is the market's date: at 00:30 in Stockholm a policy can start tha
     clock: { now: () => now },
     ids: { next: (p) => `${p}_${++n}` },
   });
-  const p = await s.issue(input({ startDate: '2026-11-15' }), by);
+  const acceptance = { channel: 'web', acceptedAt: now };
+  const p = await s.issue(input({ startDate: '2026-11-15', acceptance }), by);
   assert.equal(p.terms[0]!.startDate, '2026-11-15');
-  await rejects(s.issue(input({ animalId: 'ani_other', startDate: '2026-11-14' }), by), 'validation', /before the day it is issued/);
+  await rejects(s.issue(input({ animalId: 'ani_other', startDate: '2026-11-14', acceptance }), by), 'validation', /before the day it is issued/);
+});
+
+// Applications and underwriting (ADR 0031).
+function applicationSetup(o: { rulesInForce?: boolean; tariff?: boolean } = {}) {
+  let n = 0;
+  const store = new InMemoryPolicyStore();
+  const ref = { series: 'SE-UW', version: 1, checksum: 'u' };
+  const uwOffer = offer({
+    underwritingSeries: 'SE-UW',
+    ...(o.tariff ? { tariffSeries: 'SE-HUND-TARIFF', vetCareTermsFor: (c) => ({ ...vetCare, annualLimit: c.annualLimit ?? 6_000_000, deductibleOption: c.deductible ?? 'standard' }) } : {}),
+  });
+  const s = new PolicyService({
+    store,
+    products: { offer: async (pv) => ({ 'SE-UW@1': uwOffer, 'SE-HUND@1': offer() })[pv] ?? null, versionOnSale: async () => 'SE-UW@1' },
+    animals: {
+      get: async (id) =>
+        ({
+          ani_rex: { market: 'SE', species: 'dog', breed: 'dog-mixed', birthDate: '2024-03-01' },
+          ani_old: { market: 'SE', species: 'dog', birthDate: '2015-01-01' },
+        })[id] ?? null,
+    },
+    parties: { marketOf: async () => 'SE', postalCodeOf: async () => '11122' },
+    underwriting: { underwritingInForce: async () => (o.rulesInForce === false ? null : { content: UNDERWRITING, ref }) },
+    ...(o.tariff ? { tariffs: { tariffInForce: async (series: string) => ({ content: TARIFF, ref: { series, version: 1, checksum: 't' } }) } } : {}),
+    engineVersion: 'test-1',
+    clock: { now: () => '2026-11-15T10:00:00.000Z' },
+    ids: { next: (p) => `${p}_${++n}` },
+  });
+  return { s, store, ref };
+}
+const no = (question: string) => ({ question, value: false });
+const allNo = [no('previous-illness'), no('ongoing-symptoms'), no('lameness')];
+const application = (o: Partial<ApplicationInput> = {}): ApplicationInput => ({ ...input({ productVersion: 'SE-UW@1' }), answers: allNo, ...o });
+
+test('the customer\'s acceptance is stored at issue, with the time Petvold received it (ADR 0031)', async () => {
+  const s = setup();
+  const p = await s.issue(input(), by);
+  const tx = (await s.transactions(p.id))[0]!;
+  assert.deepEqual(tx.issue, { acceptance: { channel: 'web', reference: 'sess-1', acceptedAt: '2026-11-15T09:58:00.000Z', receivedAt: '2026-11-15T10:00:00.000Z' } });
+  assert.equal(tx.steps[2]!.note, 'Accepted (the product has no underwriting rules)');
+  await rejects(s.issue(input({ animalId: 'ani_cat', acceptance: { channel: ' ', acceptedAt: '2026-11-15T09:00:00Z' } }), by), 'validation', /acceptance.channel/);
+  await rejects(s.issue(input({ acceptance: { channel: 'web', acceptedAt: 'yesterday' } }), by), 'validation', /timestamp/);
+  await rejects(s.issue(input({ acceptance: { channel: 'web', acceptedAt: '2026-11-15T10:06:00Z' } }), by), 'validation', /future/);
+});
+
+test('a product with underwriting rules is applied for, not issued directly, and the other way round', async () => {
+  const { s } = applicationSetup();
+  await rejects(s.issue(input({ productVersion: 'SE-UW@1' }), by), 'validation', /has underwriting rules/);
+  await rejects(s.apply(application({ productVersion: 'SE-HUND@1' }), by), 'validation', /no underwriting rules/);
+  await rejects(applicationSetup({ rulesInForce: false }).s.apply(application(), by), 'conflict', /no published version in force on 2026-11-15/);
+  await rejects(s.apply(application({ answers: [no('previous-illness')] }), by), 'validation', /Unanswered questions: ongoing-symptoms, lameness/);
+  assert.deepEqual(await s.listApplications(), []);
+});
+
+test('an accepted application issues the policy in the same transaction, with the evidence', async () => {
+  const { s, store, ref } = applicationSetup();
+  const a = await s.apply(application(), by);
+  assert.deepEqual([a.status, a.underwriting.result.outcome, a.underwriting.engineVersion, a.underwriting.result.rules], ['accepted', 'accept', 'test-1', ref]);
+  assert.deepEqual([a.premium, a.acceptance.receivedAt, a.receivedBy], [{ amount: 480_000, currency: 'SEK' }, '2026-11-15T10:00:00.000Z', by]);
+  const p = await s.get(a.policyId!);
+  assert.deepEqual(p.terms[0]!.riders, []);
+  const tx = (await s.transactions(p.id))[0]!;
+  assert.equal(tx.issue?.applicationId, a.id);
+  assert.equal(tx.steps[2]!.note, `Accepted by SE-UW@1 (${a.id})`);
+  assert.deepEqual(await s.getApplication(a.id), a);
+  const events = await store.pendingEvents(10);
+  assert.deepEqual(
+    events.map((e) => [e.type, e.applicationId, e.policyId]),
+    [
+      ['application.received', a.id, undefined],
+      ['application.accepted', a.id, p.id],
+      ['policy.issued', undefined, p.id],
+    ],
+  );
+  assert.equal(events[2]!.data.applicationId, a.id);
+  // The evidence recomputes to the same outcome.
+  const again = underwrite({ content: UNDERWRITING, ref }, a.underwriting.input);
+  assert.deepEqual([again.outcome, again.inputHash], [a.underwriting.result.outcome, a.underwriting.result.inputHash]);
+});
+
+test('a declared illness becomes a rider on the term, which the claims engine sees', async () => {
+  const { s } = applicationSetup();
+  const a = await s.apply(application({ answers: [{ question: 'previous-illness', value: true, diagnosisCodes: ['ORA-OTIT'] }, no('ongoing-symptoms'), { question: 'lameness', value: true }] }), by);
+  assert.deepEqual([a.status, a.underwriting.result.outcome], ['accepted', 'accept-with-riders']);
+  const riders = (await s.get(a.policyId!)).terms[0]!.riders;
+  assert.deepEqual(
+    riders.map((r) => [r.diagnosisCodes, r.validFrom, r.source, r.applicationId, r.question]),
+    [
+      [['ORA-OTIT'], '2026-12-01', 'underwriting', a.id, 'previous-illness'],
+      [['ORT-HALTA-HB-H', 'ORT-HALTA-HB-V'], '2026-12-01', 'underwriting', a.id, 'lameness'],
+    ],
+  );
+  assert.match(riders[0]!.id, /^rdr_/);
+  assert.match((await s.transactions(a.policyId!))[0]!.steps[2]!.note!, /Accepted with 2 rider\(s\) by SE-UW@1/);
+  assert.deepEqual((await s.getPolicyAt(a.policyId!, '2027-01-01'))?.riders.map((r) => r.question), ['previous-illness', 'lameness']);
+});
+
+test('a referred application waits without a policy; a declined one keeps its reasons', async () => {
+  const { s, store } = applicationSetup();
+  const referred = await s.apply(application({ answers: [no('previous-illness'), { question: 'ongoing-symptoms', value: true }, no('lameness')] }), by);
+  assert.deepEqual([referred.status, referred.policyId, referred.underwriting.result.reasons], ['referred', undefined, ['ongoing-symptoms']]);
+  assert.deepEqual(await s.findByAnimal('ani_rex'), []);
+  assert.deepEqual(await s.activityOf('pty_anna'), { ongoing: true });
+
+  const declined = await s.apply(application({ animalId: 'ani_old' }), by);
+  assert.deepEqual([declined.status, declined.underwriting.result.reasons, declined.underwriting.input.birthDate], ['declined', ['too-old'], '2015-01-01']);
+  assert.deepEqual((await s.listApplications({ status: 'referred' })).map((x) => x.id), [referred.id]);
+  assert.deepEqual((await s.listApplications({ animalId: 'ani_old' })).map((x) => x.id), [declined.id]);
+  assert.deepEqual(
+    (await store.pendingEvents(10)).map((e) => [e.type, e.policyId]),
+    [
+      ['application.received', undefined],
+      ['application.referred', undefined],
+      ['application.received', undefined],
+      ['application.declined', undefined],
+    ],
+  );
+  await rejects(s.getApplication('app_none'), 'not_found');
+});
+
+test('a quote with answers says what an application would lead to; nothing is stored', async () => {
+  const { s } = applicationSetup({ tariff: true });
+  const base = { market: 'SE', productVersion: 'SE-UW@1', startDate: '2026-12-01', animalId: 'ani_rex', postalCode: '11122' };
+  const q = await s.quote({ ...base, answers: [{ question: 'previous-illness', value: true, diagnosisCodes: ['CAR-MITRAL'] }, no('ongoing-symptoms'), no('lameness')] });
+  assert.deepEqual([q.underwriting?.outcome, q.underwriting?.reasons], ['decline', ['heart-disease']]);
+  assert.equal((await s.quote(base)).underwriting, undefined);
+  await rejects(s.quote({ ...base, answers: [] }), 'validation', /Unanswered/);
+  assert.deepEqual(await s.listApplications(), []);
 });

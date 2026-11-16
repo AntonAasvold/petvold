@@ -15,12 +15,24 @@
  * TermChange from a date; the versions from that date point at it. Events from the animal register become proposals: a
  * transfer when the animal is sold, a cancellation when it dies. Every change writes events to an outbox in
  * the same transaction (ADR 0008).
+ * A product with underwriting rules is applied for (ADR 0031): the application
+ * is stored with its evidence, and an accepted one issues the policy in the
+ * same transaction.
  * The module reads products, animals and parties only through ports (ADR 0001),
  * and implements the claims engine's PolicyPort.
  */
 import type { ISODate, PolicyPort, PolicySnapshot, Rider, Timestamp, VetCareTerms } from '@petvold/claims-core';
 import { marketDate } from '@petvold/common';
 import { PricingError, price, type PriceInput, type PriceResult, type PriceTermsContent, type TariffContent, type TariffRef } from '@petvold/pricing-core';
+import {
+  underwrite,
+  UnderwritingError,
+  type Answer,
+  type UnderwritingContent,
+  type UnderwritingInput,
+  type UnderwritingRef,
+  type UnderwritingResult,
+} from '@petvold/underwriting-core';
 
 export type { ISODate };
 
@@ -186,6 +198,8 @@ export interface PolicyTransaction {
     productVersion: string;
     premium: { amount: number; currency: string };
   };
+  /** How the customer accepted at issue (ADR 0031), and the application it came from. Omitted: issued before ADR 0031. */
+  issue?: { acceptance: Acceptance; applicationId?: string };
   transfer?: {
     fromPartyId: string;
     toPartyId: string;
@@ -248,13 +262,60 @@ export interface ApplyExtra {
   endMemberships?: { groupId: string; policyId: string; to: ISODate; endedBy: string; endedAt: Timestamp; reason: string }[];
 }
 
-/** How the new policyholder accepted the terms (ADR 0029). */
+/** How the policyholder accepted the terms (ADR 0029, 0031). */
 export interface Acceptance {
   /** e.g. 'web', 'app', 'phone', 'paper'. */
   channel: string;
   /** e.g. a signing or recording reference in the channel. */
   reference?: string;
+  /** When the customer accepted: as the channel says at issue, when Petvold recorded it at a transfer. */
   acceptedAt: Timestamp;
+  /** At issue: when Petvold received it. */
+  receivedAt?: Timestamp;
+}
+
+/** The customer's acceptance as the channel gives it at issue (ADR 0031). */
+export interface AcceptanceInput {
+  channel: string;
+  reference?: string;
+  acceptedAt: Timestamp;
+}
+
+export type ApplicationStatus = 'accepted' | 'referred' | 'declined';
+
+/**
+ * An application for a policy on a product with underwriting rules (ADR 0031),
+ * stored with what the rules were run on and what they gave, so the outcome can
+ * be shown and recomputed (ADR 0018). It never changes.
+ */
+export interface Application {
+  id: string;
+  market: string;
+  animalId: string;
+  policyholderPartyId: string;
+  productVersion: string;
+  startDate: ISODate;
+  /** The customer's choices as given. */
+  vetCare?: { annualLimit?: number; deductible?: string };
+  groupId?: string;
+  campaignCode?: string;
+  acceptance: Acceptance;
+  /** The premium for the term the customer applied at. */
+  premium: { amount: number; currency: string };
+  status: ApplicationStatus;
+  /** The evidence: the input with the answers, the result with every check, and the engine. */
+  underwriting: { input: UnderwritingInput; result: UnderwritingResult; engineVersion: string };
+  /** The policy it led to. */
+  policyId?: string;
+  receivedBy: string;
+  receivedAt: Timestamp;
+}
+
+export interface ApplicationFilter {
+  status?: ApplicationStatus;
+  market?: string;
+  animalId?: string;
+  policyholderPartyId?: string;
 }
 
 /** What the policy module proposes after an event from the animal register (ADR 0029). */
@@ -292,8 +353,21 @@ export interface AnimalEventInput {
 /** What the policy module tells others, written in the same transaction as the change (ADR 0008). */
 export interface PolicyEvent {
   id: string;
-  type: 'policy.issued' | 'policy.changed' | 'policy.renewed' | 'policy.transferred' | 'policy.cancelled' | 'policy.reinstated' | 'policy.version_superseded';
-  policyId: string;
+  type:
+    | 'policy.issued'
+    | 'policy.changed'
+    | 'policy.renewed'
+    | 'policy.transferred'
+    | 'policy.cancelled'
+    | 'policy.reinstated'
+    | 'policy.version_superseded'
+    | 'application.received'
+    | 'application.referred'
+    | 'application.accepted'
+    | 'application.declined';
+  /** Omitted for an application that has not led to a policy. */
+  policyId?: string;
+  applicationId?: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;
 }
@@ -315,11 +389,16 @@ export interface PolicyStore {
   findByAnimal(animalId: string): Promise<string[]>;
   findByPolicyholder(partyId: string): Promise<string[]>;
   /**
-   * Stores a new policy with its first term, version and transaction, all or
-   * nothing. Throws PolicyConflictError if the animal already has a policy
-   * whose current versions overlap the new one.
+   * Stores a new policy with its first term, version and transaction, and the
+   * application it came from, all or nothing. Throws PolicyConflictError if the
+   * animal already has a policy whose current versions overlap the new one.
    */
-  issue(policy: Policy, term: Term, version: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[]): Promise<void>;
+  issue(policy: Policy, term: Term, version: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[], application?: Application): Promise<void>;
+  /** Stores an application that did not lead to a policy, with its events. */
+  addApplication(a: Application, events: PolicyEvent[]): Promise<void>;
+  getApplication(id: string): Promise<Application | null>;
+  /** Oldest first. */
+  listApplications(filter: ApplicationFilter): Promise<Application[]>;
   /**
    * Ends `supersede` in system time at tx.requestedAt and adds `add`, all or
    * nothing. Throws PolicyConflictError if any of them is no longer current.
@@ -390,6 +469,8 @@ export interface ProductOffer {
   tariffSeries?: string;
   /** The price terms series (ADR 0030). */
   priceTermsSeries?: string;
+  /** The underwriting rules series (ADR 0031). Omitted: policies are issued directly, without questions. */
+  underwritingSeries?: string;
   /** The product's setting for the customer's cancellation during a term (ADR 0029). */
   midTermCancellation: 'term-end' | 'immediate';
   /** The length of a term in months. */
@@ -446,6 +527,11 @@ export interface TariffPort {
   priceTermsInForce?(series: string, onDate: ISODate): Promise<{ content: PriceTermsContent; ref: TariffRef } | null>;
 }
 
+/** The underwriting rules in force, from the decisioning module (ADR 0031). */
+export interface UnderwritingPort {
+  underwritingInForce(series: string, onDate: ISODate): Promise<{ content: UnderwritingContent; ref: UnderwritingRef } | null>;
+}
+
 export interface QuoteInput {
   market: string;
   productVersion: string;
@@ -461,6 +547,8 @@ export interface QuoteInput {
   groupId?: string;
   group?: { kind: 'litter' | 'household'; memberNo: number };
   campaignCode?: string;
+  /** Answers to the underwriting questions: the quote then says what an application would lead to (ADR 0031). */
+  answers?: Answer[];
 }
 
 /** A price indication (ADR 0030). Nothing is stored. */
@@ -472,6 +560,8 @@ export interface Quote {
   vetCare: VetCareTerms;
   deductibleOption: string;
   price: PriceResult;
+  /** What an application with the answers would lead to, if answers were given. */
+  underwriting?: UnderwritingResult;
 }
 
 export interface PolicyDeps {
@@ -484,6 +574,10 @@ export interface PolicyDeps {
   profiles?: Record<string, MarketProfile>;
   /** Omitted: no product has a tariff, and quotes answer that. */
   tariffs?: TariffPort;
+  /** Omitted: no underwriting rules are found, and applications are refused. */
+  underwriting?: UnderwritingPort;
+  /** Stored with every application's evidence (ADR 0018), e.g. the release version. */
+  engineVersion?: string;
 }
 
 export interface IssueInput {
@@ -503,6 +597,13 @@ export interface IssueInput {
   /** A group the policy joins from its start, for the group discount (ADR 0007). */
   groupId?: string;
   campaignCode?: string;
+  /** How the customer accepted the offer (ADR 0031). */
+  acceptance: AcceptanceInput;
+}
+
+/** An application (ADR 0031): what an issue takes, and the answers to the underwriting questions. */
+export interface ApplicationInput extends IssueInput {
+  answers: Answer[];
 }
 
 /** What the caller may do beyond the operation itself. */
@@ -618,12 +719,6 @@ export class PolicyService implements PolicyPort {
     return toSnapshot(p, term, v, animal.birthDate);
   }
 
-  /**
-   * Issues a policy: the first term and version in one transaction through the
-   * steps draft, priced, underwritten and issued. Until the tariff and the
-   * underwriting rules exist (M4), the caller gives the premium and every
-   * application is accepted.
-   */
   async transactions(id: string): Promise<PolicyTransaction[]> {
     await this.get(id);
     return this.d.store.transactions(id);
@@ -828,7 +923,7 @@ export class PolicyService implements PolicyPort {
       steps: [
         { step: 'draft', at: now },
         { step: 'priced', at: now, note: term.pricing ? this.pricedNote(term.pricing) : input.premium ? 'Premium given by the caller' : 'Same premium as the last term (the product has no tariff)' },
-        { step: 'underwritten', at: now, note: 'Accepted (no underwriting rules yet, M4)' },
+        { step: 'underwritten', at: now, note: 'No new underwriting at renewal (ADR 0031)' },
         { step: 'issued', at: now },
       ],
       requestedBy: by,
@@ -1250,7 +1345,7 @@ export class PolicyService implements PolicyPort {
       steps: [
         { step: 'draft', at: now },
         { step: 'priced', at: now, note: this.pricedNote(newPremium.pricing) },
-        { step: 'underwritten', at: now, note: 'Accepted (no underwriting rules yet, M4)' },
+        { step: 'underwritten', at: now, note: 'No underwriting for a change of choices (ADR 0031)' },
         { step: 'issued', at: now },
       ],
       requestedBy: by,
@@ -1418,7 +1513,21 @@ export class PolicyService implements PolicyPort {
       annualLimit: vetCare.annualLimit,
       deductibleOption,
     }))!;
-    return { market: input.market, productVersion: input.productVersion, startDate: input.startDate, endDate, vetCare, deductibleOption, price: pricing.result };
+    let underwriting: UnderwritingResult | undefined;
+    if (input.answers !== undefined) {
+      if (!offer.underwritingSeries) throw new PolicyError('validation', `${input.productVersion} has no underwriting rules, so no answers`);
+      underwriting = (await this.underwriteFor(offer.underwritingSeries, today, input.market, animal, input.startDate, input.answers)).result;
+    }
+    return {
+      market: input.market,
+      productVersion: input.productVersion,
+      startDate: input.startDate,
+      endDate,
+      vetCare,
+      deductibleOption,
+      price: pricing.result,
+      ...(underwriting ? { underwriting } : {}),
+    };
   }
 
   /**
@@ -1534,6 +1643,10 @@ export class PolicyService implements PolicyPort {
     return { id: this.d.ids.next('pev'), type, policyId, occurredAt: at, data };
   }
 
+  private appEvent(type: PolicyEvent['type'], applicationId: string, policyId: string | undefined, at: Timestamp, data: Record<string, unknown>): PolicyEvent {
+    return { id: this.d.ids.next('pev'), type, ...(policyId ? { policyId } : {}), applicationId, occurredAt: at, data };
+  }
+
   /** One event per superseded version, so the claims engine can reassess claims on it. */
   private superseded(policyId: string, at: Timestamp, ids: string[], by: PolicyVersion[]): PolicyEvent[] {
     return ids.map((versionId) => this.event('policy.version_superseded', policyId, at, { versionId, supersededBy: by.map((v) => v.id) }));
@@ -1550,11 +1663,122 @@ export class PolicyService implements PolicyPort {
     throw e;
   };
 
+  /**
+   * Issues a policy on a product without underwriting rules: the first term and
+   * version in one transaction through the steps draft, priced, underwritten
+   * and issued, with the customer's acceptance (ADR 0031). A product with
+   * underwriting rules is applied for instead (`apply`).
+   */
   async issue(input: IssueInput, by: string, rights: CallerRights = {}): Promise<PolicyRecord> {
+    const plan = await this.planIssue(input, by, rights);
+    if (plan.offer.underwritingSeries) {
+      throw new PolicyError('validation', `${input.productVersion} has underwriting rules: send an application with the answers to its questions`);
+    }
+    return this.commitIssue(plan, input, by, { riders: [], note: 'Accepted (the product has no underwriting rules)', events: [] });
+  }
+
+  /**
+   * An application for a product with underwriting rules (ADR 0031). The rules
+   * in force today decide; the application is stored with the evidence. An
+   * accepted one, with or without riders, issues the policy in the same
+   * transaction. A referred one waits for a person; a declined one keeps its reasons.
+   */
+  async apply(input: ApplicationInput, by: string, rights: CallerRights = {}): Promise<Application> {
+    const plan = await this.planIssue(input, by, rights);
+    const series = plan.offer.underwritingSeries;
+    if (!series) throw new PolicyError('validation', `${input.productVersion} has no underwriting rules: issue the policy directly`);
+    const { result, input: uwInput } = await this.underwriteFor(series, plan.today, input.market, plan.animal, input.startDate, input.answers);
+    const id = this.d.ids.next('app');
+    const status: ApplicationStatus = result.outcome === 'decline' ? 'declined' : result.outcome === 'refer' ? 'referred' : 'accepted';
+    const application: Application = {
+      id,
+      market: input.market,
+      animalId: input.animalId,
+      policyholderPartyId: input.policyholderPartyId,
+      productVersion: input.productVersion,
+      startDate: input.startDate,
+      ...(input.vetCare ? { vetCare: structuredClone(input.vetCare) } : {}),
+      ...(input.groupId ? { groupId: input.groupId } : {}),
+      ...(input.campaignCode ? { campaignCode: input.campaignCode } : {}),
+      acceptance: plan.acceptance,
+      premium: { amount: plan.premium.amount, currency: plan.offer.currency },
+      status,
+      underwriting: { input: uwInput, result, engineVersion: this.d.engineVersion ?? 'unknown' },
+      receivedBy: by,
+      receivedAt: plan.now,
+    };
+    const received = this.appEvent('application.received', id, undefined, plan.now, { market: input.market, animalId: input.animalId, productVersion: input.productVersion });
+    if (status !== 'accepted') {
+      await this.d.store
+        .addApplication(application, [received, this.appEvent(`application.${status}`, id, undefined, plan.now, { outcome: result.outcome, reasons: result.reasons })])
+        .catch(this.translate);
+      return application;
+    }
+    const riders: Rider[] = result.riders.map((r) => ({
+      id: this.d.ids.next('rdr'),
+      description: r.description,
+      diagnosisCodes: [...r.diagnosisCodes],
+      validFrom: input.startDate,
+      source: 'underwriting',
+      applicationId: id,
+      question: r.question,
+    }));
+    const accepted: Application = { ...application, policyId: plan.policyId };
+    const ref = result.rules ? `${result.rules.series}@${result.rules.version}` : 'the underwriting rules';
+    await this.commitIssue(plan, input, by, {
+      riders,
+      application: accepted,
+      note: riders.length ? `Accepted with ${riders.length} rider(s) by ${ref} (${id})` : `Accepted by ${ref} (${id})`,
+      events: [received, this.appEvent('application.accepted', id, plan.policyId, plan.now, { outcome: result.outcome, riders: riders.length })],
+    });
+    return accepted;
+  }
+
+  async getApplication(id: string): Promise<Application> {
+    const a = await this.d.store.getApplication(id);
+    if (!a) throw new PolicyError('not_found', `Application ${id} does not exist`);
+    return a;
+  }
+
+  listApplications(filter: ApplicationFilter = {}): Promise<Application[]> {
+    return this.d.store.listApplications(filter);
+  }
+
+  /** Runs the underwriting rules in force on the application date (ADR 0031). */
+  private async underwriteFor(
+    series: string,
+    onDate: ISODate,
+    market: string,
+    animal: { species: string; breed?: string; birthDate: ISODate },
+    startDate: ISODate,
+    answers: Answer[] | undefined,
+  ): Promise<{ result: UnderwritingResult; input: UnderwritingInput }> {
+    const rules = await this.d.underwriting?.underwritingInForce(series, onDate);
+    if (!rules) throw new PolicyError('conflict', `The underwriting series ${series} has no published version in force on ${onDate}`);
+    const input: UnderwritingInput = {
+      market,
+      species: animal.species,
+      ...(animal.breed ? { breed: animal.breed } : {}),
+      birthDate: animal.birthDate,
+      startDate,
+      answers: structuredClone(answers ?? []),
+    };
+    try {
+      return { result: underwrite(rules, input), input };
+    } catch (e) {
+      if (e instanceof UnderwritingError) throw new PolicyError('validation', e.message);
+      throw e;
+    }
+  }
+
+  /** Everything an issue checks and computes before anything is stored. */
+  private async planIssue(input: IssueInput, by: string, rights: CallerRights) {
     const profile = this.profile(input.market);
-    const today = marketDate(input.market, this.d.clock.now());
+    const now = this.d.clock.now();
+    const today = marketDate(input.market, now);
     if (!validDate(input.startDate)) throw new PolicyError('validation', 'startDate must be YYYY-MM-DD');
     if (input.startDate < today) throw new PolicyError('validation', 'A policy cannot start before the day it is issued');
+    const acceptance = this.acceptanceOf(input.acceptance, now);
 
     const animal = await this.d.animals.get(input.animalId);
     if (!animal || animal.market !== input.market) throw new PolicyError('validation', `The animal ${input.animalId} does not exist in market ${input.market}`);
@@ -1602,9 +1826,17 @@ export class PolicyService implements PolicyPort {
       deductibleOption,
     });
     const premium = this.premiumFor(pricing, input.premium, input.priceOverride, rights, by, offer.currency);
+    return { now, today, animal, offer, endDate, terms, deductibleOption, premium, acceptance, policyId: this.d.ids.next('pol') };
+  }
 
-    const now = this.d.clock.now();
-    const policyId = this.d.ids.next('pol');
+  /** Stores a planned issue: the policy, its first term and version, and the application it came from, in one transaction. */
+  private async commitIssue(
+    plan: Awaited<ReturnType<PolicyService['planIssue']>>,
+    input: IssueInput,
+    by: string,
+    u: { riders: Rider[]; note: string; events: PolicyEvent[]; application?: Application },
+  ): Promise<PolicyRecord> {
+    const { now, policyId, offer, endDate, premium } = plan;
     const txId = this.d.ids.next('ptx');
     const policy: Policy = { id: policyId, market: input.market, animalId: input.animalId, inceptionDate: input.startDate, createdBy: by, createdAt: now };
     const term: Term = {
@@ -1614,10 +1846,10 @@ export class PolicyService implements PolicyPort {
       endDate,
       productVersion: input.productVersion,
       currency: offer.currency,
-      vetCare: terms,
-      deductibleOption,
+      vetCare: plan.terms,
+      deductibleOption: plan.deductibleOption,
       premium: premium.amount,
-      riders: [],
+      riders: u.riders,
       transactionId: txId,
       ...(premium.pricing ? { pricing: premium.pricing } : {}),
     };
@@ -1639,27 +1871,49 @@ export class PolicyService implements PolicyPort {
       steps: [
         { step: 'draft', at: now },
         { step: 'priced', at: now, note: this.pricedNote(premium.pricing) },
-        { step: 'underwritten', at: now, note: 'Accepted (no underwriting rules yet, M4)' },
+        { step: 'underwritten', at: now, note: u.note },
         { step: 'issued', at: now },
       ],
       requestedBy: by,
       requestedAt: now,
+      issue: { acceptance: plan.acceptance, ...(u.application ? { applicationId: u.application.id } : {}) },
     };
     await this.d.store
-      .issue(policy, term, version, tx, [
-        this.event('policy.issued', policyId, now, {
-          transactionId: txId,
-          animalId: input.animalId,
-          policyholderPartyId: input.policyholderPartyId,
-          productVersion: input.productVersion,
-          startDate: input.startDate,
-          endDate,
-          premium: { amount: premium.amount, currency: offer.currency },
-        }),
-      ])
+      .issue(
+        policy,
+        term,
+        version,
+        tx,
+        [
+          ...u.events,
+          this.event('policy.issued', policyId, now, {
+            transactionId: txId,
+            animalId: input.animalId,
+            policyholderPartyId: input.policyholderPartyId,
+            productVersion: input.productVersion,
+            startDate: input.startDate,
+            endDate,
+            premium: { amount: premium.amount, currency: offer.currency },
+            ...(u.application ? { applicationId: u.application.id } : {}),
+          }),
+        ],
+        u.application,
+      )
       .catch(this.translate);
     if (input.groupId !== undefined) await this.addMember(input.groupId, { policyId, from: input.startDate }, by);
     return this.get(policyId);
+  }
+
+  /** The customer's acceptance at issue (ADR 0031): a channel, and a time that is not in the future. */
+  private acceptanceOf(a: AcceptanceInput | undefined, now: Timestamp): Acceptance {
+    const channel = (a?.channel ?? '').trim();
+    if (!channel) throw new PolicyError('validation', 'acceptance.channel is required: where the customer accepted the offer');
+    const at = Date.parse(a?.acceptedAt ?? '');
+    if (Number.isNaN(at)) throw new PolicyError('validation', 'acceptance.acceptedAt must be a timestamp');
+    // A few minutes for clocks that differ between the channel and Petvold.
+    if (at > Date.parse(now) + 5 * 60_000) throw new PolicyError('validation', 'acceptance.acceptedAt cannot be in the future');
+    const reference = a?.reference?.trim();
+    return { channel, ...(reference ? { reference } : {}), acceptedAt: new Date(at).toISOString(), receivedAt: now };
   }
 
   /** The periods the party held a policy, as known now: for retention, to find the party's claims (ADR 0028). */
@@ -1683,6 +1937,11 @@ export class PolicyService implements PolicyPort {
         ends.push(v.validTo);
       }
     }
+    // An application is a relation too: a referred one is ongoing, the others count from the day they were received.
+    for (const a of await this.d.store.listApplications({ policyholderPartyId: partyId })) {
+      if (a.status === 'referred') return { ongoing: true };
+      ends.push(marketDate(a.market, a.receivedAt));
+    }
     const last = ends.sort().at(-1);
     return last ? { lastDate: last } : null;
   }
@@ -1697,6 +1956,30 @@ export class InMemoryPolicyStore implements PolicyStore {
   private outbox: (PolicyEvent & { publishedAt?: string })[] = [];
   private proposals: Proposal[] = [];
   private groups: PolicyGroup[] = [];
+  private applications: Application[] = [];
+
+  async addApplication(a: Application, events: PolicyEvent[]) {
+    if (this.applications.some((x) => x.id === a.id)) throw new PolicyConflictError(`Application ${a.id} exists`);
+    this.applications.push(structuredClone(a));
+    this.outbox.push(...structuredClone(events));
+  }
+
+  async getApplication(id: string) {
+    const a = this.applications.find((x) => x.id === id);
+    return a ? structuredClone(a) : null;
+  }
+
+  async listApplications(f: ApplicationFilter) {
+    return structuredClone(
+      this.applications.filter(
+        (a) =>
+          (!f.status || a.status === f.status) &&
+          (!f.market || a.market === f.market) &&
+          (!f.animalId || a.animalId === f.animalId) &&
+          (!f.policyholderPartyId || a.policyholderPartyId === f.policyholderPartyId),
+      ),
+    );
+  }
 
   async createGroup(g: PolicyGroup) {
     this.groups.push(structuredClone(g));
@@ -1835,8 +2118,9 @@ export class InMemoryPolicyStore implements PolicyStore {
     for (const e of this.outbox) if (ids.includes(e.id)) e.publishedAt = at;
   }
 
-  async issue(policy: Policy, term: Term, version: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[]) {
+  async issue(policy: Policy, term: Term, version: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[], application?: Application) {
     if (this.policies.some((p) => p.id === policy.id)) throw new PolicyConflictError(`Policy ${policy.id} exists`);
+    if (application && this.applications.some((x) => x.id === application.id)) throw new PolicyConflictError(`Application ${application.id} exists`);
     const others = new Set(this.policies.filter((p) => p.animalId === policy.animalId).map((p) => p.id));
     const overlap = this.versions.some(
       (v) => others.has(v.policyId) && !v.sysTo && v.status === 'active' && v.validFrom < version.validTo && version.validFrom < v.validTo,
@@ -1847,5 +2131,6 @@ export class InMemoryPolicyStore implements PolicyStore {
     this.versions.push(structuredClone(version));
     this.txs.push(structuredClone(tx));
     this.outbox.push(...structuredClone(events));
+    if (application) this.applications.push(structuredClone(application));
   }
 }

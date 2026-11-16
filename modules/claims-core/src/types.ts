@@ -121,6 +121,11 @@ export interface Rider {
   diagnosisCodes: string[];
   validFrom: ISODate;
   validTo?: ISODate;
+  /** Where it came from (ADR 0031): the underwriting rules at application, or set by a person. Omitted: older riders. */
+  source?: 'underwriting' | 'manual';
+  /** For a rider from underwriting: the application and the question it answers. */
+  applicationId?: string;
+  question?: string;
 }
 
 /**

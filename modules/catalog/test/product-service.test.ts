@@ -182,3 +182,21 @@ test('price terms need a tariff, and a version in force that fits the product', 
   problems = [];
   assert.equal((await s.submit('XX-DOG-VC', '2026.1', author)).status, 'in_review');
 });
+
+test('underwriting rules need a version in force that covers the product (ADR 0031)', async () => {
+  let problems: string[] | null = null;
+  const s = new ProductService({
+    products: new InMemoryProductStore(),
+    clock: { now: () => '2026-11-15T10:00:00.000Z' },
+    speciesActive: async () => true,
+    ruleSeriesInForce: async () => true,
+    underwritingProblems: async () => problems,
+  });
+  await rejects(s.createDraft('XX-DOG-X', draft({ content: { ...content(), underwritingSeries: 'bad series' } }), author), 'validation', /underwriting series/);
+  await s.createDraft('XX-DOG-VC', draft({ content: { ...content(), underwritingSeries: 'XX-UW' } }), author);
+  await rejects(s.submit('XX-DOG-VC', '2026.1', author), 'validation', /underwriting series XX-UW has no published version/);
+  problems = ['No age limits for cat'];
+  await rejects(s.submit('XX-DOG-VC', '2026.1', author), 'validation', /does not cover the product: No age limits for cat/);
+  problems = [];
+  assert.equal((await s.submit('XX-DOG-VC', '2026.1', author)).status, 'in_review');
+});

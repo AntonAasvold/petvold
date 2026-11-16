@@ -41,8 +41,11 @@ Servern skriver ut vilken lagring den använder och loggar varje händelse som r
 | Erik och Doris, golden retriever i Göteborg | `pty_owner002`, `ani_doris` | Policy på `SE-HUND-BAS`, prissatt av tariffen |
 | Sara, Max och Ludde i Malmö | `pty_owner003`, `ani_max`, `ani_ludde` | Två policyer i ett hushåll, Ludde med grupprabatt |
 | Saras katt Smilla | `ani_smilla` | Ett djur utan försäkring |
+| Lena och Kajsa i Uppsala | `pty_owner004`, `ani_kajsa` | Ansökan på `SE-HUND-PLUS`, godkänd med förbehåll för öroninflammation (`ORA-OTIT`) |
+| Lenas Rocky | `ani_rocky` | Ansökan som väntar på manuell prövning (`GET /v1/applications?status=referred`) |
+| Lenas Sixten, 12 år | `ani_sixten` | Ansökan som avslagits med skälet `too-old` |
 
-De nya policyerna tecknas med dagens datum första gången servern startar, så deras id skiljer sig mellan databaser. Hitta dem med `GET /v1/policies?policyholderPartyId=pty_owner003`. En befintlig lokal databas får de nya delarna vid nästa start, men Bellas skador och policyer bara om de saknas. Kör `npm run dev:reset` för att börja om.
+De nya policyerna tecknas med dagens datum första gången servern startar, så deras id skiljer sig mellan databaser. Hitta dem med `GET /v1/policies?policyholderPartyId=pty_owner003`, och ansökningarna med `GET /v1/applications?policyholderPartyId=pty_owner004`. Teckningsreglerna `SE-HUND-UW@1` läses från `modules/api/seed/underwriting-rules.json`, med frågorna på svenska och engelska. Hälsofrågorna för produkten finns på `GET /v1/application-questions?productVersion=SE-HUND-PLUS@2026.1&species=dog`. En befintlig lokal databas får de nya delarna vid nästa start, men Bellas skador och policyer bara om de saknas. Kör `npm run dev:reset` för att börja om.
 
 **Gränssnitt i webbläsaren:** dev-servern tillåter anrop från `http://localhost:5173` (Vite) och `http://localhost:3000`. Ange andra adresser med `PETVOLD_CORS_ORIGINS`, kommaseparerat. `GET /v1/me` visar vad varje dev-token får göra.
 

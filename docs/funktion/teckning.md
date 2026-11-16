@@ -2,7 +2,7 @@
 
 Teckningsreglerna avgör om en ansökan om en ny försäkring godkänns, godkänns med förbehåll, går till manuell prövning eller avslås. Beslutet bakom finns i ADR 0031.
 
-*Läge:* teckningsreglerna och funktionen som prövar dem är byggda. Ansökan, som kör reglerna och sparar resultatet, och kön för manuell prövning kommer i nästa steg.
+*Läge:* teckningsreglerna, ansökan och kön för manuell prövning är byggda. Besluten i kön, återkallelse och utgång kommer i nästa steg.
 
 ## Vad reglerna innehåller
 
@@ -65,3 +65,61 @@ Utfallet för några ansökningar som startar 2026-11-15:
 | Doris, ja på symtom som inte undersökts | `refer`, skäl `ongoing-symptoms` |
 | En valp född 2026-10-05, 41 dagar gammal | `decline`, skäl `too-young` |
 | En hund som fyller 10 år på startdagen | `decline`, skäl `too-old` |
+
+## Produkten pekar på reglerna
+
+Produktversionen anger serien i `underwritingSeries` (se [Produktkonfiguration](produktkonfiguration.md)). Vid granskningen måste en version vara i kraft när försäljningen börjar, för samma marknad och med åldersgränser för varje art som produkten täcker. En produkt utan serie tecknas direkt med `POST /v1/policies`, utan frågor.
+
+## Ansökan
+
+**1. Hämta frågorna.** `GET /v1/application-questions?productVersion=SE-HUND-PLUS@2026.1&species=dog` ger frågorna i reglerna som gäller i dag, i ordning. `label` är texten på anroparens språk (`Accept-Language`), och `labels` har alla språk. Rättigheten är `policies:quote`, som för prisindikationen.
+
+**2. Visa priset och vad svaren leder till.** `POST /v1/quotes` med `answers` ger också `underwriting`: utfallet, förbehållen och skälen. Inget sparas.
+
+**3. Skicka ansökan.** `POST /v1/applications` tar det som `POST /v1/policies` tar, plus `answers`. Rättigheten är `policies:write`.
+
+```http
+POST /v1/applications
+{
+  "market": "SE", "animalId": "ani_kajsa", "policyholderPartyId": "pty_owner004",
+  "productVersion": "SE-HUND-PLUS@2026.1", "startDate": "2026-12-01",
+  "acceptance": { "channel": "web", "reference": "sess-41b7", "acceptedAt": "2026-11-16T09:12:00Z" },
+  "answers": [
+    { "question": "previous-illness", "value": true, "diagnosisCodes": ["ORA-OTIT"] },
+    { "question": "ongoing-symptoms", "value": false },
+    { "question": "lameness", "value": false }
+  ]
+}
+```
+
+Petvold gör samma kontroller som vid tecknande och räknar fram priset. Sedan körs teckningsreglerna som gäller på ansökningsdagen, och ansökan sparas. Svaret är `201` för alla utfall:
+
+| `status` | Utfall | Vad händer |
+| --- | --- | --- |
+| `accepted` | `accept` eller `accept-with-riders` | Policyn tecknas i samma transaktion. `policyId` pekar på den, och förbehållen ligger på första termen. |
+| `referred` | `refer` | Ansökan väntar på en person med rollen `underwriter`. Ingen policy finns än. |
+| `declined` | `decline` | Ansökan sparas med skälskoderna. Kanalen förklarar dem för kunden. |
+
+**Förbehållen på policyn** har `source: "underwriting"`, ansökans id och frågan de kommer från. De gäller från startdagen och följer med vid förnyelse. Skademotorn prövar dem som andra förbehåll.
+
+**Underlaget sparas** (ADR 0018) i `underwriting`:
+- `input`: djurets art, ras och födelsedag som de var i registret, startdagen och svaren
+- `result`: utfallet, varje kontroll, skälen och teckningsreglernas version och kontrollsumma
+- `engineVersion`: Petvolds version
+
+Samma regler och samma underlag ger samma utfall och samma `inputHash`. Vid en skada kan bolaget visa vilka frågor som ställdes och vad som svarades (FAL 4 kap. 2 §).
+
+**Kön.** `GET /v1/applications?status=referred` är kön för manuell prövning, äldst först. Listan kan också filtreras på `market`, `animalId` och `policyholderPartyId`. Den som är bunden till en klinik eller till policyer ser inga ansökningar.
+
+**Gallring (ADR 0028).** En ansökan räknas som en relation till sökanden. En ansökan som väntar håller relationen pågående, och de andra räknas från dagen de kom in. En godkänd ansökan har dessutom policyn, som gäller längre.
+
+**Händelser:** `application.received` och sedan `application.accepted`, `application.referred` eller `application.declined`. `policy.issued` har ansökans id.
+
+## Exempeldata
+
+Dev-servern har teckningsreglerna `SE-HUND-UW@1` med frågorna på svenska och engelska, och produkten `SE-HUND-PLUS@2026.1` som använder dem. Lena (`pty_owner004`) har tre ansökningar:
+- Kajsa uppgav en öroninflammation och fick ett förbehåll för `ORA-OTIT`.
+- Rocky har symtom som ingen veterinär har undersökt och väntar i kön.
+- Sixten är 12 år och avslogs med skälet `too-old`.
+
+*Inte byggt än:* besluten i kön med rättigheten `policies:underwrite`, att en kanal återkallar en ansökan, att en ansökan löper ut, brevet med skälen vid avslag (F2), och ansökan från kundkanalen.

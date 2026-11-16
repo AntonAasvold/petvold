@@ -32,6 +32,7 @@ import { PostgresPartyStore, PostgresRetentionStore } from '@petvold/parties/pos
 import { InMemoryPolicyStore, PolicyService, type PolicyStore } from '@petvold/policies';
 import { PostgresPolicyStore } from '@petvold/policies/postgres';
 import { tariffCoverage } from '@petvold/pricing-core';
+import { underwritingCoverage } from '@petvold/underwriting-core';
 import { InMemoryIdempotencyStore, type AppDeps, type IdempotencyStore } from './app.ts';
 import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './permissions.ts';
 import { Relay, relaySource } from './relay.ts';
@@ -130,6 +131,10 @@ export async function compose(config: InstallationConfig): Promise<Installation>
       if (!t) return null;
       return t.content.market === product.market && t.content.currency === product.currency ? [] : [`The price terms are for ${t.content.market} in ${t.content.currency}`];
     },
+    underwritingProblems: async (series, onDate, product) => {
+      const u = await decisioning.underwritingInForce(series, onDate);
+      return u ? underwritingCoverage(u.content, product) : null;
+    },
   });
 
   const partiesPool = pool('parties', 3);
@@ -142,7 +147,17 @@ export async function compose(config: InstallationConfig): Promise<Installation>
 
   const policiesPool = pool('policies', 3);
   const policyStore: PolicyStore = policiesPool ? new PostgresPolicyStore(policiesPool) : new InMemoryPolicyStore();
-  const policies = new PolicyService({ store: policyStore, products: productPort(products), animals: animalPort(animals), parties, tariffs: decisioning, clock, ids });
+  const policies = new PolicyService({
+    store: policyStore,
+    products: productPort(products),
+    animals: animalPort(animals),
+    parties,
+    tariffs: decisioning,
+    underwriting: decisioning,
+    engineVersion: config.engineVersion,
+    clock,
+    ids,
+  });
 
   const service = new ClaimsService({
     policies,

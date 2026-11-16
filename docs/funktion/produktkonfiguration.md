@@ -142,6 +142,7 @@ En produktversion säger vad som kan säljas och med vilka val (ADR 0023). Id:t 
 | `ruleSeries` | Regelserien skador bedöms med | `SE-HUND-VV` |
 | `tariffSeries` | Tariffserien priset räknas med ([Pris](pris.md)). Utelämnad: premien anges för hand. | `SE-HUND-TARIFF` |
 | `priceTermsSeries` | Prisvillkoren, alltså rabatter efter grundpriset. Bara med `tariffSeries`. | `SE-HUND-TERMS` |
+| `underwritingSeries` | Teckningsreglerna för nya policyer ([Teckning](teckning.md)). Då tecknas policyn med en ansökan. Utelämnad: policyn tecknas direkt, utan frågor. Vid granskningen måste en version vara i kraft när försäljningen börjar och ha åldersgränser för varje art. | `SE-HUND-UW` |
 | `salesFrom`, `salesTo` | Säljperiod, där `salesTo` är första dagen den inte säljs. Utan `salesTo` säljs den tills vidare. | `2026-01-01` |
 | `vetCare.annualLimits` | Valbara försäkringsbelopp | 30 000, 60 000 och 120 000 kr |
 | `vetCare.deductibles` | Valbara självrisker, var och en med kod, namn och villkor (se [Policyns villkor](#policyns-villkor-för-veterinärvård)) | `standard`: 2 000 kr per period och 25 %. `high`: 4 000 kr per period och 25 %. |

@@ -15,7 +15,7 @@ Petvold installeras en gång per försäkringsbolag (ADR 0010). Varje kund har s
 | Djur | Djur med id-nummer, historik och ägare över tid. | Byggd, se [Djurregister](djurregister.md) |
 | Parter | Personer och organisationer med kontaktuppgifter, personnummer och historik. | Byggd, se [Parter](parter.md) |
 | Policy | Försäkringar med full historik: vad som gällde när, och vad som var känt när. | Tecknande byggt, se [Policyer](policyer.md). Avslut, förnyelse och överlåtelse kommer (M3). Skademotorn läser policyn via ett gränssnitt och kan kopplas till ett befintligt system. |
-| Pris och teckning | Premie och teckningsregler per produktversion. | Pris byggt, se [Pris](pris.md). Teckningsregler byggda, se [Teckning](teckning.md). Ansökan och manuell prövning kommer (M4). |
+| Pris och teckning | Premie och teckningsregler per produktversion. | Pris byggt, se [Pris](pris.md). Teckningsregler och ansökan byggda, se [Teckning](teckning.md). Besluten vid manuell prövning kommer (M4). |
 | Billing och betalningar | Premier in, ersättningar ut, via flera betaltjänster. | *(planerat, M5)* |
 
 ## Grundprinciper

@@ -50,5 +50,17 @@ test('the sample data fills every work queue and prices the households with the 
   // Ludde joins Max in the household group and gets the group discount.
   assert.ok(ludde!.terms[0]!.pricing!.result.facts.discountBp > 0);
   assert.equal(doris!.terms[0]!.pricing!.result.facts.discountBp, 0);
+  // Applications for the product with health questions: one in each outcome (ADR 0031).
+  const applications = await policies.listApplications({ policyholderPartyId: 'pty_owner004' });
+  assert.deepEqual(
+    applications.map((a) => [a.animalId, a.status, a.underwriting.result.reasons]),
+    [
+      ['ani_kajsa', 'accepted', []],
+      ['ani_rocky', 'referred', ['ongoing-symptoms']],
+      ['ani_sixten', 'declined', ['too-old']],
+    ],
+  );
+  const [kajsa] = await policies.findByAnimal('ani_kajsa');
+  assert.deepEqual(kajsa!.terms[0]!.riders.map((r) => [r.diagnosisCodes, r.source]), [[['ORA-OTIT'], 'underwriting']]);
   await inst.close();
 });

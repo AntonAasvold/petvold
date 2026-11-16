@@ -5,11 +5,13 @@
  * of a policy and two active policies for one animal on the same day.
  * Migration 0022 adds cancellation fields and the outbox (ADR 0008, 0029), and
  * migration 0023 renewal, migration 0025 proposals and transfer, and migration
- * 0026 changes during a term.
+ * 0026 changes during a term. Migration 0029 adds applications (ADR 0031).
  */
 import type pg from 'pg';
 import {
   PolicyConflictError,
+  type Application,
+  type ApplicationFilter,
   type ISODate,
   type Policy,
   type PolicyEvent,
@@ -84,7 +86,7 @@ export class PostgresPolicyStore implements PolicyStore {
 
   async transactions(id: string): Promise<PolicyTransaction[]> {
     const { rows } = await this.pool.query(
-      `select transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note, renewal, transfer, change
+      `select transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note, renewal, transfer, change, issue
        from policies.policy_transaction where policy_id = $1 order by requested_at, transaction_id`,
       [id],
     );
@@ -102,6 +104,7 @@ export class PostgresPolicyStore implements PolicyStore {
       ...(r.renewal === null ? {} : { renewal: r.renewal }),
       ...(r.transfer === null ? {} : { transfer: r.transfer }),
       ...(r.change === null ? {} : { change: r.change }),
+      ...(r.issue === null ? {} : { issue: r.issue }),
     }));
   }
 
@@ -275,17 +278,46 @@ export class PostgresPolicyStore implements PolicyStore {
 
   async pendingEvents(limit: number): Promise<PolicyEvent[]> {
     const { rows } = await this.pool.query(
-      `select event_id, type, policy_id, occurred_at, data from policies.outbox where published_at is null order by seq limit $1`,
+      `select event_id, type, policy_id, application_id, occurred_at, data from policies.outbox where published_at is null order by seq limit $1`,
       [limit],
     );
-    return rows.map((r) => ({ id: r.event_id, type: r.type, policyId: r.policy_id, occurredAt: iso(r.occurred_at), data: r.data }));
+    return rows.map((r) => ({
+      id: r.event_id,
+      type: r.type,
+      ...(r.policy_id === null ? {} : { policyId: r.policy_id }),
+      ...(r.application_id === null ? {} : { applicationId: r.application_id }),
+      occurredAt: iso(r.occurred_at),
+      data: r.data,
+    }));
   }
 
   async markPublished(ids: string[], at: string): Promise<void> {
     await this.pool.query(`update policies.outbox set published_at = $2 where event_id = any($1) and published_at is null`, [ids, at]);
   }
 
-  async issue(p: Policy, t: Term, v: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[]): Promise<void> {
+  async addApplication(a: Application, events: PolicyEvent[]): Promise<void> {
+    await this.tx(async (db) => {
+      await insertApplication(db, a);
+      await insertEvents(db, events);
+    }, a.id);
+  }
+
+  async getApplication(id: string): Promise<Application | null> {
+    const { rows } = await this.pool.query(`${APPLICATIONS} where application_id = $1`, [id]);
+    return rows[0] ? toApplication(rows[0]) : null;
+  }
+
+  async listApplications(f: ApplicationFilter): Promise<Application[]> {
+    const { rows } = await this.pool.query(
+      `${APPLICATIONS} where ($1::text is null or status = $1) and ($2::text is null or market = $2)
+         and ($3::text is null or animal_id = $3) and ($4::text is null or policyholder_party_id = $4)
+       order by received_at, application_id`,
+      [f.status ?? null, f.market ?? null, f.animalId ?? null, f.policyholderPartyId ?? null],
+    );
+    return rows.map(toApplication);
+  }
+
+  async issue(p: Policy, t: Term, v: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[], application?: Application): Promise<void> {
     await this.tx(async (db) => {
       await db.query(`insert into policies.policy (policy_id, market, animal_id, inception_date, created_by, created_at) values ($1, $2, $3, $4, $5, $6)`, [
         p.id,
@@ -298,6 +330,7 @@ export class PostgresPolicyStore implements PolicyStore {
       await insertTransaction(db, tx);
       await insertTerm(db, t);
       await insertVersion(db, v, p.animalId);
+      if (application) await insertApplication(db, application);
       await insertEvents(db, events);
     }, p.id, p.animalId);
   }
@@ -394,8 +427,8 @@ async function insertTerm(db: pg.PoolClient, t: Term) {
 
 async function insertTransaction(db: pg.PoolClient, tx: PolicyTransaction) {
   await db.query(
-    `insert into policies.policy_transaction (transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note, renewal, transfer, change)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+    `insert into policies.policy_transaction (transaction_id, policy_id, type, steps, requested_by, requested_at, supersedes, cancellation, reverses, note, renewal, transfer, change, issue)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
     [
       tx.id,
       tx.policyId,
@@ -410,6 +443,7 @@ async function insertTransaction(db: pg.PoolClient, tx: PolicyTransaction) {
       tx.renewal ? JSON.stringify(tx.renewal) : null,
       tx.transfer ? JSON.stringify(tx.transfer) : null,
       tx.change ? JSON.stringify(tx.change) : null,
+      tx.issue ? JSON.stringify(tx.issue) : null,
     ],
   );
 }
@@ -424,9 +458,10 @@ async function insertVersion(db: pg.PoolClient, v: PolicyVersion, animalId: stri
 
 async function insertEvents(db: pg.PoolClient, events: PolicyEvent[]) {
   for (const e of events) {
-    await db.query(`insert into policies.outbox (event_id, policy_id, type, occurred_at, data) values ($1, $2, $3, $4, $5)`, [
+    await db.query(`insert into policies.outbox (event_id, policy_id, application_id, type, occurred_at, data) values ($1, $2, $3, $4, $5, $6)`, [
       e.id,
-      e.policyId,
+      e.policyId ?? null,
+      e.applicationId ?? null,
       e.type,
       e.occurredAt,
       JSON.stringify(e.data),
@@ -435,6 +470,54 @@ async function insertEvents(db: pg.PoolClient, events: PolicyEvent[]) {
 }
 
 const iso = (d: Date | string) => new Date(d).toISOString();
+
+const APPLICATIONS = `select application_id, market, animal_id, policyholder_party_id, product_version, start_date::text as start_date, choices,
+  acceptance, premium, currency, status, underwriting, policy_id, received_by, received_at from policies.application`;
+
+async function insertApplication(db: pg.PoolClient, a: Application) {
+  const choices = { ...(a.vetCare ? { vetCare: a.vetCare } : {}), ...(a.groupId ? { groupId: a.groupId } : {}), ...(a.campaignCode ? { campaignCode: a.campaignCode } : {}) };
+  await db.query(
+    `insert into policies.application (application_id, market, animal_id, policyholder_party_id, product_version, start_date, choices, acceptance,
+       premium, currency, status, underwriting, policy_id, received_by, received_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    [
+      a.id,
+      a.market,
+      a.animalId,
+      a.policyholderPartyId,
+      a.productVersion,
+      a.startDate,
+      JSON.stringify(choices),
+      JSON.stringify(a.acceptance),
+      a.premium.amount,
+      a.premium.currency,
+      a.status,
+      JSON.stringify(a.underwriting),
+      a.policyId ?? null,
+      a.receivedBy,
+      a.receivedAt,
+    ],
+  );
+}
+
+function toApplication(r: Record<string, any>): Application {
+  return {
+    id: r.application_id,
+    market: r.market,
+    animalId: r.animal_id,
+    policyholderPartyId: r.policyholder_party_id,
+    productVersion: r.product_version,
+    startDate: r.start_date,
+    ...r.choices,
+    acceptance: r.acceptance,
+    premium: { amount: Number(r.premium), currency: r.currency },
+    status: r.status,
+    underwriting: r.underwriting,
+    ...(r.policy_id === null ? {} : { policyId: r.policy_id }),
+    receivedBy: r.received_by,
+    receivedAt: iso(r.received_at),
+  };
+}
 
 function toTerm(r: Record<string, any>): Term {
   return {
