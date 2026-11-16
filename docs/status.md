@@ -154,9 +154,17 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Flödestesterna körs med en enda arbetare.** De delar en server och bygger på ordningen, och med flera arbetare kördes filerna samtidigt.
   - **Tester:** 22 enhetstester och 17 flöden i Chromium.
 
+- #84 mergad.
+- Back office, steg 5b (ADR 0035), PR #85. ADR 0035 är därmed byggd:
+  - **Produkter och regeluppsättningar** med versioner och hela livscykeln: nytt utkast från en version, ändra som JSON, skicka till granskning, publicera med fyra ögon, skicka tillbaka, avsluta försäljning och avveckla.
+  - **En gemensam komponent**, `<pv-versions-panel>`, med en adapter per sort.
+  - **API:ts fel per fält** visas vid `422`.
+  - **Tester:** 25 enhetstester och 19 flöden i Chromium.
+
 **Nästa steg**
-1. Back office, steg 5b: produkter och regler med fyra ögon.
+1. ADR om premier och betalningar (M5).
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
+3. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.
 
 **Öppet**
 - Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.

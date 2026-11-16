@@ -3,6 +3,7 @@
   "solid": [
     "arrow-left",
     "arrow-right-from-bracket",
+    "box",
     "circle-check",
     "circle-exclamation",
     "circle-info",
@@ -16,6 +17,7 @@
     "list-check",
     "magnifying-glass",
     "paw",
+    "pen",
     "plug",
     "plus",
     "rotate-right",

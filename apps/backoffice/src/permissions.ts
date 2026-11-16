@@ -23,6 +23,8 @@ export const SECTIONS: Section[] = [
   { path: '/proposals', label: 'nav.proposals', icon: 'user-check', anyOf: ['policies:read'] },
   { path: '/notices', label: 'nav.notices', icon: 'envelope', anyOf: ['notices:read'] },
   { path: '/webhooks', label: 'nav.webhooks', icon: 'plug', anyOf: ['webhooks:read'] },
+  { path: '/products', label: 'nav.products', icon: 'box', anyOf: ['catalog:read'] },
+  { path: '/rule-sets', label: 'nav.ruleSets', icon: 'scale-balanced', anyOf: ['rules:read'] },
   { path: '/settings', label: 'nav.settings', icon: 'gear', anyOf: ['access:read', 'parties:privacy', 'notices:read'] },
 ];
 
