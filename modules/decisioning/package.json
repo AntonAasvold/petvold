@@ -11,6 +11,7 @@
   "dependencies": {
     "@petvold/claims-core": "^0.1.0",
     "@petvold/pricing-core": "^0.1.0",
+    "@petvold/underwriting-core": "^0.1.0",
     "pg": "^8.23.1"
   }
 }

@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { AccessError, AccessService, InMemoryRoleConfigStore } from '@petvold/access';
-import { DecisioningService, InMemoryRuleSetStore, RuleSetError, isPriceTermsModel, isTariffModel, toClaimsRules } from '@petvold/decisioning';
+import { DecisioningService, InMemoryRuleSetStore, RuleSetError, seriesKindOf, toClaimsRules } from '@petvold/decisioning';
 import { AnimalError, AnimalService, IDENTIFIER_TYPES, InMemoryAnimalStore, type AnimalRecord, type IdentifierType } from '@petvold/animals';
 import {
   InMemoryPartyStore,
@@ -493,8 +493,8 @@ export function createApp(d: AppDeps) {
     if (!r.ok) return r.res;
     const series = c.req.param('series');
     const target = await decisioning.get(series, v);
-    if (isTariffModel(target.calculationModel) || isPriceTermsModel(target.calculationModel)) {
-      return problem(c, 422, 'Tariffs and price terms are simulated against stored prices, which comes with pricing at issue (ADR 0030)');
+    if (seriesKindOf(target.calculationModel) !== 'claims-rules') {
+      return problem(c, 422, 'Only claims rules can be simulated against stored decisions; tariffs, price terms and underwriting rules cannot yet (ADR 0030, 0031)');
     }
     const scope = c.get('scope');
     const stored = (await d.service.decisionsForSimulation(r.body.from, r.body.to)).filter(

@@ -63,6 +63,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Ansökan sparas** i policymodulen med underlaget (`POST /v1/applications`). Den har en kö för manuell prövning och den nya rättigheten `policies:underwrite`.
   - **Godkännandet** sparas med kanal, referens och tid vid varje tecknande.
   - **Källor:** FAL 2 kap. 2 §, 3 kap. 1–2 §§, 4 kap. 1–2 §§ och 7 kap. 6 §, och VVG § 19.
+- #64 mergad. ADR 0031 beslutad.
+- Teckningsregler, steg 1 av 3 (ADR 0031), PR #65:
+  - **Ny modul `underwriting-core`** med den rena funktionen `underwrite`. Den prövar art, ålder på startdagen, ras och svaren på hälsofrågorna. Utfallen är godkänd, godkänd med förbehåll, manuell prövning eller avslag med skälskoder, och varje kontroll redovisas. Samma ansökan ger samma `inputHash`.
+  - **Serier med `underwriting.v1`** i `decisioning`, med samma livscykel som tariffer. Den nya funktionen `underwritingInForce` hämtar reglerna, och `GET /v1/rule-sets` visar sorten `underwriting`.
+  - **Kontraktet:** schemat `UnderwritingContent`.
+  - **Ny sida** `docs/funktion/teckning.md`.
+- 388 tester och 112 databastester.
 - #59 mergad.
 - Datum i marknadens tidszon (granskningen, A3), PR #60:
   - `marketDate(market, tidpunkt)` och `MARKET_TIME_ZONES` i `common`, med 15 europeiska marknader. En okänd marknad räknar i UTC.
@@ -235,7 +242,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
 **Nästa steg**
 1. Gränssnittet kan börja: API:t har listor, köer, `/v1/me`, CORS och exempeldata.
-2. Bygga ADR 0031 i steg: `underwriting-core` och serien, ansökan med godkännande, och manuell prövning. Därefter ett beslut om dokument till kunden (F2).
+2. Bygga ADR 0031, steg 2: ansökan med godkännande (F3), förbehåll på termen och produktens `underwritingSeries`. Steg 3 är kön och besluten för manuell prövning. Därefter ett beslut om dokument till kunden (F2).
 
 **Öppet**
 - Flera instanser av servern kör var sitt relä. Leveransen sker minst en gång, men samma händelse kan levereras av två instanser samtidigt. Ett relä med lås per outbox (pg-boss) behövs före drift med flera instanser.

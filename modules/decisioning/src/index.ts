@@ -9,9 +9,13 @@
  * A tariff (ADR 0030) is a series too, with the same lifecycle: its versions
  * have a tariff calculation model, e.g. 'tariff.v1', and tariff content. A
  * series holds either claims rules or tariffs, never both.
+ *
+ * Price terms (ADR 0030) and underwriting rules (ADR 0031, 'underwriting.v1')
+ * are series of their own in the same way.
  */
 import { canonicalJson, sha256, type ClaimsRules, type ISODate, type RulesPort } from '@petvold/claims-core';
 import { PRICE_TERMS_MODELS, TARIFF_MODELS, validatePriceTerms, validateTariff, type PriceTermsContent, type TariffContent, type TariffRef } from '@petvold/pricing-core';
+import { UNDERWRITING_MODELS, validateUnderwriting, type UnderwritingContent, type UnderwritingRef } from '@petvold/underwriting-core';
 
 export type RuleSetStatus = 'draft' | 'in_review' | 'published' | 'retired';
 
@@ -24,8 +28,17 @@ export const isTariffModel = (model: string) => (TARIFF_MODELS as readonly strin
 /** Whether the calculation model is price terms' (ADR 0030). */
 export const isPriceTermsModel = (model: string) => (PRICE_TERMS_MODELS as readonly string[]).includes(model);
 
+/** Whether the calculation model is underwriting rules' (ADR 0031). */
+export const isUnderwritingModel = (model: string) => (UNDERWRITING_MODELS as readonly string[]).includes(model);
+
+export type SeriesKind = 'claims-rules' | 'tariff' | 'price-terms' | 'underwriting';
+
 /** What a series holds, from its calculation model. */
-const familyOf = (model: string) => (isTariffModel(model) ? 'tariffs' : isPriceTermsModel(model) ? 'price terms' : 'claims rules');
+export const seriesKindOf = (model: string): SeriesKind =>
+  isTariffModel(model) ? 'tariff' : isPriceTermsModel(model) ? 'price-terms' : isUnderwritingModel(model) ? 'underwriting' : 'claims-rules';
+
+const FAMILY: Record<SeriesKind, string> = { 'claims-rules': 'claims rules', tariff: 'tariffs', 'price-terms': 'price terms', underwriting: 'underwriting rules' };
+const familyOf = (model: string) => FAMILY[seriesKindOf(model)];
 
 export interface RuleSetVersion {
   series: string;
@@ -135,16 +148,15 @@ export class DecisioningService {
 
   /**
    * Every series with what it holds and its versions' states: for a list of
-   * claims rules, tariffs and price terms.
+   * claims rules, tariffs, price terms and underwriting rules.
    */
-  async allSeries(): Promise<{ series: string; kind: 'claims-rules' | 'tariff' | 'price-terms'; versions: { version: number; status: RuleSetStatus; effectiveFrom: ISODate }[] }[]> {
+  async allSeries(): Promise<{ series: string; kind: SeriesKind; versions: { version: number; status: RuleSetStatus; effectiveFrom: ISODate }[] }[]> {
     return Promise.all(
       (await this.d.store.seriesNames()).map(async (series) => {
         const versions = await this.d.store.list(series);
-        const model = versions[0]!.calculationModel;
         return {
           series,
-          kind: isTariffModel(model) ? ('tariff' as const) : isPriceTermsModel(model) ? ('price-terms' as const) : ('claims-rules' as const),
+          kind: seriesKindOf(versions[0]!.calculationModel),
           versions: versions.map((v) => ({ version: v.version, status: v.status, effectiveFrom: v.effectiveFrom })),
         };
       }),
@@ -231,6 +243,13 @@ export class DecisioningService {
     return { content: v.content as unknown as PriceTermsContent, ref: { series: v.series, version: v.version, checksum: v.checksum! } };
   }
 
+  /** The underwriting rules in force in a series on a date (ADR 0031): the application date. */
+  async underwritingInForce(series: string, onDate: ISODate): Promise<{ content: UnderwritingContent; ref: UnderwritingRef } | null> {
+    const v = inForce(await this.d.store.list(series), onDate);
+    if (!v || !isUnderwritingModel(v.calculationModel)) return null;
+    return { content: v.content as unknown as UnderwritingContent, ref: { series: v.series, version: v.version, checksum: v.checksum! } };
+  }
+
   private async inStatus(series: string, version: number, status: RuleSetStatus): Promise<RuleSetVersion> {
     const v = await this.get(series, version);
     if (v.status !== status) throw new RuleSetError('conflict', `Rule set ${series}@${version} is ${v.status}, not ${status}`);
@@ -263,10 +282,14 @@ export class DecisioningService {
       fail(`Unknown calculation model '${input.calculationModel}'`);
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveFrom) || Number.isNaN(Date.parse(input.effectiveFrom))) fail('effectiveFrom must be a date');
-    if (isTariffModel(input.calculationModel) || isPriceTermsModel(input.calculationModel)) {
-      const errors = isTariffModel(input.calculationModel)
-        ? validateTariff(c as unknown as TariffContent)
-        : validatePriceTerms(c as unknown as PriceTermsContent);
+    const kind = seriesKindOf(input.calculationModel);
+    if (kind !== 'claims-rules') {
+      const errors =
+        kind === 'tariff'
+          ? validateTariff(c as unknown as TariffContent)
+          : kind === 'price-terms'
+            ? validatePriceTerms(c as unknown as PriceTermsContent)
+            : validateUnderwriting(c as unknown as UnderwritingContent);
       if (errors.length) fail(errors.join('; '));
       return;
     }

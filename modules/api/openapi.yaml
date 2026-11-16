@@ -2157,7 +2157,7 @@ paths:
       tags: [rule-sets]
       operationId: listRuleSetSeries
       x-permission: rules:read
-      summary: Every series of claims rules, tariffs and price terms
+      summary: Every series of claims rules, tariffs, price terms and underwriting rules
       description: Requires the permission `rules:read`. Sorted by series, with what each holds and its versions' states.
       parameters:
         - $ref: '#/components/parameters/Limit'
@@ -2180,7 +2180,7 @@ paths:
                       required: [series, kind, versions]
                       properties:
                         series: { type: string }
-                        kind: { type: string, enum: [claims-rules, tariff, price-terms] }
+                        kind: { type: string, enum: [claims-rules, tariff, price-terms, underwriting] }
                         versions:
                           type: array
                           items:
@@ -3239,11 +3239,70 @@ components:
         reason: { type: string, minLength: 1, maxLength: 2000 }
 
     RuleSetContent:
-      description: Claims rules, a tariff (calculation model tariff.v1) or price terms (price-terms.v1), ADR 0030.
+      description: Claims rules, a tariff (calculation model tariff.v1), price terms (price-terms.v1, ADR 0030) or underwriting rules (underwriting.v1, ADR 0031).
       oneOf:
         - $ref: '#/components/schemas/ClaimsRulesContent'
         - $ref: '#/components/schemas/TariffContent'
         - $ref: '#/components/schemas/PriceTermsContent'
+        - $ref: '#/components/schemas/UnderwritingContent'
+
+    UnderwritingContent:
+      type: object
+      additionalProperties: false
+      description: |
+        Underwriting rules (ADR 0031): whether an application for a new policy
+        is accepted, accepted with riders, referred to a person or declined.
+        The strictest outcome wins. Every refer and decline has a reason code
+        the channel explains, since a refusal needs reasons (FAL 7 kap. 6 §).
+      required: [market, ageLimits, questions, answerRules, breedRules]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        ageLimits:
+          type: array
+          minItems: 1
+          description: Per species, the age on the start date. A species not listed is declined (species-not-covered).
+          items:
+            type: object
+            additionalProperties: false
+            required: [species, minAgeDays]
+            properties:
+              species: { type: string }
+              minAgeDays: { type: integer, minimum: 0 }
+              maxAgeYears: { type: integer, minimum: 0, description: 'The highest age in whole years, e.g. 9: until the day before the 10th birthday.' }
+        questions:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, type, labels]
+            properties:
+              id: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+              type: { type: string, enum: [boolean, diagnoses], description: 'diagnoses: answered yes with the diagnosis codes.' }
+              labels: { type: object, minProperties: 1, additionalProperties: { type: string, minLength: 1 }, description: 'The question per language, e.g. { "sv": "…", "en": "…" }.' }
+              species: { type: array, minItems: 1, items: { type: string }, description: 'Asked only for these species. Omitted: every species.' }
+        answerRules:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [question, outcome, reason]
+            properties:
+              question: { type: string }
+              outcome: { type: string, enum: [rider, refer, decline] }
+              reason: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+              onlyFor: { type: array, minItems: 1, items: { type: string }, description: 'For a diagnoses question: only if a declared code is listed.' }
+              diagnosisCodes: { type: array, minItems: 1, items: { type: string }, description: 'For a rider: codes excluded besides the declared ones.' }
+              riderDescription: { type: string, minLength: 1 }
+        breedRules:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [breed, outcome, reason]
+            properties:
+              breed: { type: string }
+              outcome: { type: string, enum: [refer, decline] }
+              reason: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
 
     TariffContent:
       type: object
@@ -3349,7 +3408,7 @@ components:
       required: [content, calculationModel, effectiveFrom]
       properties:
         content: { $ref: '#/components/schemas/RuleSetContent' }
-        calculationModel: { type: string, description: 'One of the engine''s calculation models, e.g. vet-care.v1; tariff.v1 for a tariff; price-terms.v1 for price terms (ADR 0030).' }
+        calculationModel: { type: string, description: 'One of the engine''s calculation models, e.g. vet-care.v1; tariff.v1 for a tariff; price-terms.v1 for price terms (ADR 0030); underwriting.v1 for underwriting rules (ADR 0031).' }
         effectiveFrom: { $ref: '#/components/schemas/Date' }
 
     RuleSetVersion:
