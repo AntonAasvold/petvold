@@ -88,7 +88,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] ADR om leverans av händelser till bolagets system: webhooks med prenumerationer, signatur, CloudEvents och AsyncAPI (ADR 0008, granskningen C1), ADR 0033
 - [x] Webhooks, steg 1: modulen `webhooks`, prenumerationer, kö och arbetare, med händelser om policyer, ansökningar och förslag (ADR 0033)
 - [x] Webhooks, steg 2: skador, djur, meddelanden och AsyncAPI-kontraktet (ADR 0033)
-- [ ] Webhooks, steg 3: död post, skicka igen och avstängning (ADR 0033)
+- [x] Webhooks, steg 3: död post, skicka igen och avstängning (ADR 0033)
 - [ ] ADR om ett gränssnitt för handläggare och back office
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
 

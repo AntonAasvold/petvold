@@ -61,6 +61,27 @@ export function webhookStoreSuite(name: string, make: () => Promise<{ store: Web
       assert.deepEqual(await store.listDeliveries({ subscriptionId: 'whs_1', status: 'delivered' }), [done]);
       assert.deepEqual((await store.listDeliveries({ subscriptionId: 'whs_1' })).map((d) => d.id), ['whd_1', 'whd_2']);
       assert.deepEqual((await store.claimDue('2026-11-16T11:00:00.000Z', 10, '2026-11-16T11:01:00.000Z')).map((d) => d.id), ['whd_2']);
+      assert.deepEqual(await store.getDelivery('whd_1'), done);
+      assert.equal(await store.getDelivery('whd_9'), null);
+      assert.deepEqual((await store.listDeliveries({ status: 'pending' })).map((d) => d.id), ['whd_2', 'whd_3'], 'across subscriptions');
+    });
+
+    test('failing since is set and cleared without a revision; old data is removed', async () => {
+      const { store } = await make();
+      await store.createSubscription(subscription(1));
+      await store.setFailingSince('whs_1', '2026-11-16T10:00:00.000Z');
+      assert.deepEqual([(await store.getSubscription('whs_1'))!.failingSince, (await store.getSubscription('whs_1'))!.revision], ['2026-11-16T10:00:00.000Z', 1]);
+      await store.setFailingSince('whs_1', null);
+      assert.equal((await store.getSubscription('whs_1'))!.failingSince, undefined);
+
+      await store.enqueue([delivery(1), delivery(2), delivery(3)]);
+      const old = '2026-10-01T10:00:00.000Z';
+      await store.recordAttempt({ ...delivery(1), status: 'dead', attempts: 7, lastAttemptAt: old, lastError: 'HTTP 503' });
+      await store.recordAttempt({ ...delivery(2), status: 'delivered', attempts: 1, lastAttemptAt: '2026-11-16T10:00:00.000Z', deliveredAt: '2026-11-16T10:00:00.000Z' });
+      assert.equal(await store.prune('2026-10-17T10:00:00.000Z', '2026-11-16T12:00:00.000Z'), 1, 'only the old one, never a pending one');
+      const pruned = (await store.getDelivery('whd_1'))!;
+      assert.deepEqual([pruned.prunedAt, pruned.event.data, pruned.event.id], ['2026-11-16T12:00:00.000Z', {}, 'pev_1']);
+      assert.equal(await store.prune('2026-10-17T10:00:00.000Z', '2026-11-16T12:00:00.000Z'), 0);
     });
   });
 }

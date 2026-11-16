@@ -32,7 +32,7 @@ Några exempel på vad som stannar i Petvold:
 
 Mottagaren hämtar sådant med API:t om den har rätt till det.
 
-*Inte byggt än:* död post, att skicka igen och att stänga av en prenumeration automatiskt (steg 3).
+*Inte byggt än:* ordningsnumret `sequence` som ADR 0033 nämner. Mottagaren sorterar på `time`.
 
 ## Hur en händelse ser ut
 
@@ -85,8 +85,14 @@ Signaturen följer Standard Webhooks. Det finns bibliotek för mottagaren i fler
 | `410 Gone` | Stänger av prenumerationen. Inget skickas förrän en person aktiverar den igen. |
 | Annat, eller inget svar inom 15 sekunder | Försöker igen efter 5 sekunder, 5 minuter, 30 minuter, 2 timmar, 5 timmar, 10 timmar och sedan var 24:e timme, med lite slumpad spridning |
 | Inget lyckat svar på tre dygn | Händelsen blir `dead` |
+| Inget lyckat svar alls på fem dygn | Stänger av prenumerationen, med skälet i `disabledReason` |
 
-`GET /v1/webhook-subscriptions/{id}/deliveries?status=dead` visar händelser som inte kom fram, med senaste svar och fel.
+**Händelser som inte kom fram:**
+- **Listan:** `GET /v1/webhook-deliveries?status=dead` visar döda händelser för alla prenumerationer inom anroparens marknader, med senaste svar och fel. `failingSince` på prenumerationen visar sedan när allt har misslyckats.
+- **Skicka igen:** `POST /v1/webhook-subscriptions/{id}/deliveries/{deliveryId}/retries` skickar en död händelse igen. `POST /v1/webhook-subscriptions/{id}/delivery-retries` skickar alla döda för prenumerationen, till exempel när mottagaren har varit nere i flera dagar. Varje händelse får tre nya dygn.
+- **Aktivera igen:** en avstängd prenumeration aktiveras med `PUT` och `status: active`. Händelser som väntade skickas då.
+
+**Gallring:** 30 dagar efter att en händelse levererades eller gavs upp tas innehållet bort (`prunedAt`, och `event.data` blir tomt). Tid, svar och antal försök finns kvar som bevis. En händelse vars innehåll är borttaget kan inte skickas igen.
 
 **Säkerhet:**
 - Adressen måste använda `https`.
@@ -102,7 +108,9 @@ Signaturen följer Standard Webhooks. Det finns bibliotek för mottagaren i fler
 | `GET /v1/webhook-subscriptions`, `.../{id}` | `webhooks:read` | Listar och visar, utan hemligheter |
 | `PUT /v1/webhook-subscriptions/{id}` | `webhooks:manage` | Ändrar adress, typer, marknader eller status, med `basedOnRevision` |
 | `POST .../{id}/secret-rotations` | `webhooks:manage` | Ny hemlighet |
-| `GET .../{id}/deliveries` | `webhooks:read` | Utskicken, med status och försök |
+| `GET .../{id}/deliveries` | `webhooks:read` | Utskicken för prenumerationen, med status och försök |
+| `GET /v1/webhook-deliveries` | `webhooks:read` | Utskick för alla prenumerationer, till exempel `status=dead` |
+| `POST .../{id}/deliveries/{deliveryId}/retries`, `POST .../{id}/delivery-retries` | `webhooks:manage` | Skicka döda händelser igen |
 
 - **Marknaderna** ska ligga inom anroparens. Bara den som har alla marknader får ange `*`.
 - **Rollen** `integration-admin` har båda rättigheterna.

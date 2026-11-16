@@ -164,3 +164,56 @@ test('a rotated secret: both sign for 24 hours, then only the new one', async ()
   await worker.tick();
   assert.equal(sent[1]!.headers['webhook-signature']!.split(' ').length, 1);
 });
+
+test('a dead delivery is sent again with three new days; all of a subscription at once', async () => {
+  const { service, worker, at, answer } = setup();
+  const { subscription } = await service.create(input, 'ia');
+  await service.enqueue(issued());
+  await service.enqueue(issued({ id: 'pev_2' }));
+  answer(500);
+  await worker.tick();
+  at('2026-11-19T10:00:06.000Z');
+  assert.deepEqual(await worker.tick(), { delivered: 0, failed: 0, dead: 2 });
+  const [d1] = await service.allDeliveries({ status: 'dead' });
+  await rejects(service.retry('whs_other', d1!.id), 'not_found');
+  answer(204);
+  const again = await service.retry(subscription.id, d1!.id);
+  assert.deepEqual([again.status, again.attempts, again.retriedAt], ['pending', 0, '2026-11-19T10:00:06.000Z']);
+  await rejects(service.retry(subscription.id, d1!.id), 'conflict', /pending/);
+  assert.equal(await service.retryAll(subscription.id), 1);
+  assert.deepEqual(await worker.tick(), { delivered: 2, failed: 0, dead: 0 });
+});
+
+test('a subscription that has failed for five days is disabled; a delivery clears it', async () => {
+  const { service, worker, at, answer } = setup();
+  const { subscription } = await service.create(input, 'ia');
+  answer(503);
+  await service.enqueue(issued());
+  await worker.tick();
+  assert.equal((await service.get(subscription.id)).failingSince, '2026-11-16T10:00:00.000Z');
+  answer(204);
+  at('2026-11-16T10:00:06.000Z');
+  await worker.tick();
+  assert.equal((await service.get(subscription.id)).failingSince, undefined, 'cleared by a delivery');
+
+  answer(503);
+  for (const [i, t] of ['2026-11-17T10:00:00.000Z', '2026-11-20T10:00:00.000Z', '2026-11-22T10:00:01.000Z'].entries()) {
+    at(t);
+    await service.enqueue(issued({ id: `pev_x${i}` }));
+    await worker.tick();
+  }
+  const off = await service.get(subscription.id);
+  assert.deepEqual([off.status, off.disabledReason, off.failingSince], ['disabled', 'Nothing delivered since 2026-11-17T10:00:00.000Z', undefined]);
+});
+
+test('the worker removes the data of old deliveries once an hour', async () => {
+  const { service, worker, at } = setup();
+  const { subscription } = await service.create(input, 'ia');
+  await service.enqueue(issued());
+  await worker.tick();
+  at('2026-12-17T10:00:00.000Z');
+  await worker.tick();
+  const [d] = await service.deliveries(subscription.id);
+  assert.deepEqual([d!.prunedAt, d!.event.data, d!.status], ['2026-12-17T10:00:00.000Z', {}, 'delivered']);
+  await rejects(service.retry(subscription.id, d!.id), 'conflict', /delivered/);
+});

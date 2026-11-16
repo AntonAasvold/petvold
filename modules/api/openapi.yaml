@@ -31,20 +31,39 @@ security:
   - bearerAuth: []
 tags:
   - name: claims
+    description: Claims for vet care, registered by a clinic or the customer, assessed against the policy and the product's rules.
   - name: decisions
+    description: Decisions on claims, with their evidence and explanation (ADR 0018).
   - name: reviews
+    description: A person's review of an automated decision, asked for on the customer's behalf (ADR 0018).
   - name: approvals
+    description: Decisions above a handler's limit, approved or returned by someone else (ADR 0019).
   - name: access
+    description: Who the caller is, and the installation's roles and limits (ADR 0016, 0020).
   - name: rule-sets
+    description: Versioned rule sets, tariffs, price terms and underwriting rules, published with four eyes (ADR 0021).
   - name: reference-data
+    description: Species, breeds and sexes (ADR 0022).
   - name: products
+    description: Product versions with their options, settings and documents, published with four eyes (ADR 0023).
   - name: animals
+    description: The animal register, its identifiers and owners, and the clinics' lookup (ADR 0024, 0025).
   - name: parties
+    description: Persons and organizations, erasure and retention (ADR 0026, 0028).
   - name: policies
+    description: Policies, applications, quotes, proposals and groups (ADR 0029, 0030, 0031).
   - name: previews
+    description: A pre-approval for a clinic, without storing anything.
   - name: limits
+    description: The consumed and remaining annual limit of a policy.
   - name: notices
+    description: Notices the law requires the customer to get, for the insurer's document system (ADR 0032).
   - name: webhooks
+    x-displayName: webhook subscriptions
+    description: |
+      Subscriptions that send Petvold's events to the insurer's systems (ADR 0033).
+      The events themselves, with the fields of each, are described in the
+      events contract `asyncapi.yaml`, next to this one.
 
 paths:
   /v1/claims:
@@ -3225,6 +3244,87 @@ paths:
                   nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/webhook-deliveries:
+    get:
+      tags: [webhooks]
+      operationId: listAllWebhookDeliveries
+      x-permission: webhooks:read
+      summary: Deliveries across subscriptions, oldest first
+      description: |
+        Requires the permission `webhooks:read`. `status=dead` is the list for a
+        person: events that did not arrive in three days, or whose receiver
+        answered 410 Gone. Only deliveries of subscriptions within the caller's
+        markets.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, delivered, dead] } }
+        - { name: subscriptionId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/WebhookDelivery' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/webhook-subscriptions/{subscriptionId}/deliveries/{deliveryId}/retries:
+    post:
+      tags: [webhooks]
+      operationId: retryWebhookDelivery
+      x-permission: webhooks:manage
+      summary: Send a dead delivery again
+      description: |
+        Requires the permission `webhooks:manage`. Only a `dead` delivery
+        (`409` otherwise), and not one given up more than 30 days ago, whose
+        data is removed. It gets three new days of attempts.
+      parameters:
+        - { name: subscriptionId, in: path, required: true, schema: { type: string, pattern: '^whs_[A-Za-z0-9]+$' } }
+        - { name: deliveryId, in: path, required: true, schema: { type: string, pattern: '^whd_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The delivery, pending again
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookDelivery' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/webhook-subscriptions/{subscriptionId}/delivery-retries:
+    post:
+      tags: [webhooks]
+      operationId: retryWebhookDeliveries
+      x-permission: webhooks:manage
+      summary: Send every dead delivery of a subscription again
+      description: Requires the permission `webhooks:manage`. E.g. after the receiver was down for days. Deliveries whose data is removed are left as they are.
+      parameters:
+        - { name: subscriptionId, in: path, required: true, schema: { type: string, pattern: '^whs_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: How many were sent again
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [retried]
+                properties:
+                  retried: { type: integer, minimum: 0 }
 
 components:
   securitySchemes:
@@ -4349,6 +4449,7 @@ components:
         disabledReason: { type: string, description: 'Why it is disabled, e.g. the receiver answered 410 Gone.' }
         revision: { type: integer, minimum: 1 }
         previousSecretUntil: { $ref: '#/components/schemas/DateTime', description: Until when the previous secret also signs. }
+        failingSince: { $ref: '#/components/schemas/DateTime', description: 'Since when every attempt has failed. After five days the subscription is disabled. Cleared by a delivery.' }
         createdBy: { type: string }
         createdAt: { $ref: '#/components/schemas/DateTime' }
         changedBy: { type: string }
@@ -4392,6 +4493,8 @@ components:
         lastStatus: { type: integer, description: The receiver's HTTP status at the last attempt. }
         lastError: { type: string }
         deliveredAt: { $ref: '#/components/schemas/DateTime' }
+        retriedAt: { $ref: '#/components/schemas/DateTime', description: When a person sent it again. The three days count from here. }
+        prunedAt: { $ref: '#/components/schemas/DateTime', description: 'When the data of the event was removed, 30 days after it was delivered or given up. event.data is then empty.' }
         createdAt: { $ref: '#/components/schemas/DateTime' }
 
     MarketNoticeSettings:

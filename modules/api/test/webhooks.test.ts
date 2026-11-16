@@ -8,13 +8,15 @@ import { createApp, validatorFor, type Principal } from '../src/index.ts';
 import { eventValidator } from '../src/events-contract.ts';
 
 async function setup() {
-  const clock = { now: () => '2026-11-15T10:00:00.000Z' };
+  let now = '2026-11-15T10:00:00.000Z';
+  const clock = { now: () => now };
+  let answer = 204;
   const received: { url: string; headers: Record<string, string>; body: string }[] = [];
   const inst = await compose({
     databases: {},
     engineVersion: 'test',
     clock,
-    webhooks: { transport: { post: async (url, headers, body) => (received.push({ url, headers, body }), { status: 204 }) } },
+    webhooks: { transport: { post: async (url, headers, body) => (received.push({ url, headers, body }), { status: answer }) } },
   });
   const tokens: Record<string, Principal> = {
     integration: { subject: 'integration@example.test', roles: ['integration-admin'], markets: '*' },
@@ -31,7 +33,7 @@ async function setup() {
     });
     return { status: res.status, body: (await res.json()) as any };
   };
-  return { inst, call, received, clock };
+  return { inst, call, received, clock, at: (iso: string) => (now = iso), answer: (s: number) => (answer = s) };
 }
 
 test('a subscription gets the policy module\'s events as signed CloudEvents, without personal data', async () => {
@@ -104,4 +106,33 @@ test('every event a subscription to everything gets follows asyncapi.yaml: claim
   const review = events.find((e) => e.type === 'petvold.claim.review_requested.v1')!;
   assert.equal('statement' in review.data, false, "the customer's own words stay in Petvold");
   assert.equal(events.some((e) => JSON.stringify(e).includes('@example.test')), false, 'no one who did it');
+});
+
+test('dead deliveries are listed across subscriptions and sent again, one or all', async () => {
+  const { inst, call, at, answer } = await setup();
+  const { subscription } = (await call('POST', '/v1/webhook-subscriptions', 'integration', { url: 'https://crm.example.com/hook', eventTypes: ['animal.*'], markets: ['SE'] })).body;
+  const other = (await call('POST', '/v1/webhook-subscriptions', 'integration', { url: 'https://no.example.com/hook', eventTypes: ['animal.*'], markets: ['NO'] })).body.subscription;
+  await seedSampleData(inst, { now: inst.deps.clock.now });
+  for (const [animal, to] of [['ani_bella', 'pty_owner002'], ['ani_doris', 'pty_owner003']] as const) await inst.deps.animals!.transfer(animal, { partyId: to, from: '2026-11-14' }, 'registrar');
+  while ((await inst.relay.tick()) > 0);
+  answer(500);
+  await inst.webhookWorker.tick();
+  at('2026-11-18T10:00:01.000Z');
+  await inst.webhookWorker.tick();
+  const dead = await call('GET', '/v1/webhook-deliveries?status=dead', 'integration');
+  assert.deepEqual(dead.body.items.map((d: any) => d.subscriptionId), [subscription.id, subscription.id]);
+  assert.equal((await call('GET', '/v1/webhook-deliveries?status=dead', 'integrationSe')).body.items.length, 2);
+  assert.equal((await call('GET', `/v1/webhook-deliveries?subscriptionId=${other.id}`, 'integration')).body.items.length, 0);
+  assert.equal((await call('GET', '/v1/webhook-deliveries?status=lost', 'integration')).status, 422);
+
+  answer(204);
+  const one = await call('POST', `/v1/webhook-subscriptions/${subscription.id}/deliveries/${dead.body.items[0].id}/retries`, 'integration');
+  assert.deepEqual([one.status, one.body.status, one.body.retriedAt], [201, 'pending', '2026-11-18T10:00:01.000Z']);
+  assert.ok(validatorFor('WebhookDelivery')(structuredClone(one.body)), JSON.stringify(validatorFor('WebhookDelivery').errors));
+  assert.equal((await call('POST', `/v1/webhook-subscriptions/${subscription.id}/deliveries/${dead.body.items[0].id}/retries`, 'integration')).status, 409);
+  assert.equal((await call('POST', `/v1/webhook-subscriptions/${other.id}/deliveries/${dead.body.items[1].id}/retries`, 'integration')).status, 404);
+  const all = await call('POST', `/v1/webhook-subscriptions/${subscription.id}/delivery-retries`, 'integration');
+  assert.deepEqual([all.status, all.body.retried], [201, 1]);
+  assert.deepEqual(await inst.webhookWorker.tick(), { delivered: 2, failed: 0, dead: 0 });
+  assert.equal((await call('GET', `/v1/webhook-subscriptions/${subscription.id}`, 'integration')).body.failingSince, undefined);
 });
