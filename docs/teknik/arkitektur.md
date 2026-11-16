@@ -283,6 +283,10 @@ Händelser skrivs till modulens outbox i samma transaktion som ändringen (ADR 0
 - **Kö per prenumeration.** `enqueue` gör om händelsen till en CloudEvent med `toCloudEvent`, som bara tar med fälten i `PUBLIC_EVENTS`, och lägger en rad i `webhooks.delivery` för varje aktiv prenumeration som matchar typ och marknad. `unique (subscription_id, event_id)` gör att en ny leverans från reläet inte ger dubbletter. Marknaden slås upp från policyn eller ansökan i `composition.ts`.
 - **Arbetaren** (`WebhookWorker`) startar bredvid reläet. `claimDue` tar förfallna rader med `for update skip locked` och flyttar fram `next_attempt_at` en minut som ett lån. Flera instanser skickar alltså aldrig samma händelse samtidigt.
 - **Ett försök** skickar kroppen exakt som den signerades, med `fetch`, utan omdirigeringar och med 15 sekunders timeout. `fetchTransport` slår upp värden och vägrar privata adresser, så att en DNS-post som byts efter att prenumerationen skapades inte når interna system. Utfallet sparas med `recordAttempt`.
+- **Steg 3 (migration 0035):**
+  - `retry` sätter en död händelse till `pending` med `retriedAt`, och de tre dygnen räknas från den.
+  - `noteOutcome` sätter `failing_since` vid första misslyckandet och tar bort det vid en leverans, utan ny revision. Efter fem dygn stängs prenumerationen av.
+  - Arbetaren kör `prune` en gång i timmen. Den tömmer `event.data` för levererade och döda händelser som är äldre än 30 dagar.
 - **Hemligheterna** krypteras med AES-256-GCM och `PETVOLD_WEBHOOK_KEY` (`SecretBox`). Databasen ser dem aldrig i klartext. Efter ett byte signerar den gamla i 24 timmar.
 
 Ett fel stoppar källan i den rundan, så att senare händelser inte går förbi. Efter tio försök blir händelsen död post och syns i hälsokontrollen. Flera instanser av servern kör var sitt relä. Ett lås per outbox behövs före drift med flera instanser.

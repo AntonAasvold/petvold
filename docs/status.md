@@ -103,10 +103,17 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **OpenAPI-kontraktets gamla `webhooks`** med hela skadeobjekt är borttagna.
 - 437 tester och 122 databastester.
 
+- Webhooks, steg 3 (ADR 0033), PR #78. ADR 0033 är därmed byggd:
+  - **Döda händelser:** listan `GET /v1/webhook-deliveries?status=dead` för alla prenumerationer, och att skicka igen en i taget (`.../retries`) eller alla (`.../delivery-retries`), med tre nya dygn.
+  - **Automatisk avstängning** när inget har levererats på fem dygn (`failingSince`).
+  - **Gallring:** innehållet i levererade och döda händelser tas bort efter 30 dagar.
+  - **API-sidan:** varje tagg har en beskrivning, och taggen för webhooks pekar på `asyncapi.yaml`. Sajtens meny har en länk till händelsernas kontrakt.
+  - **Migration 0035.** Provad ner och upp igen. 113 operationer.
+- 442 tester och 123 databastester.
+
 **Nästa steg**
-1. Webhooks, steg 3: död post, skicka igen, automatisk avstängning och gallring av innehållet efter 30 dagar.
-2. ADR om ett gränssnitt för handläggare och back office.
-3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
+1. ADR om ett gränssnitt för handläggare och back office.
+2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
 - Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.

@@ -1035,6 +1035,26 @@ export function createApp(d: AppDeps) {
     return sendPage(c, await webhooks.deliveries(s.id, status as 'pending' | 'delivered' | 'dead' | undefined));
   });
 
+  app.post('/v1/webhook-subscriptions/:subscriptionId/deliveries/:deliveryId/retries', async (c) => {
+    const s = await visibleSubscription(c);
+    return idempotent(c, {}, async () => ({ status: 201, body: await webhooks.retry(s.id, c.req.param('deliveryId') ?? '') }));
+  });
+
+  app.post('/v1/webhook-subscriptions/:subscriptionId/delivery-retries', async (c) => {
+    const s = await visibleSubscription(c);
+    return idempotent(c, {}, async () => ({ status: 201, body: { retried: await webhooks.retryAll(s.id) } }));
+  });
+
+  // Deliveries across subscriptions, e.g. every dead one, within the caller's markets.
+  app.get('/v1/webhook-deliveries', async (c) => {
+    const status = c.req.query('status');
+    if (status !== undefined && !['pending', 'delivered', 'dead'].includes(status)) return problem(c, 422, 'status is pending, delivered or dead');
+    const subscriptionId = c.req.query('subscriptionId');
+    const visible = new Set((await webhooks.list()).filter((s) => coversMarkets(c.get('scope'), s.markets)).map((s) => s.id));
+    const items = await webhooks.allDeliveries({ ...(status ? { status: status as 'pending' | 'delivered' | 'dead' } : {}), ...(subscriptionId ? { subscriptionId } : {}) });
+    return sendPage(c, items.filter((d) => visible.has(d.subscriptionId)));
+  });
+
   app.get('/v1/settings/notices', async (c) => send(c, await communications.settings()));
 
   app.get('/v1/settings/notices/versions', async (c) => sendPage(c, await communications.settingsVersions()));

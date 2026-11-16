@@ -136,6 +136,7 @@ ${items.map((p) => link(p.out, p.title, p === current)).join('\n')}
   return [
     ...top.map((p) => link(p.out, p.title, p === current)),
     link('api/index.html', apiTitle, current === null),
+    link('api/asyncapi.yaml', 'Petvold events (AsyncAPI)', false),
     ...groups,
   ].join('\n');
 }

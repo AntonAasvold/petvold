@@ -62,8 +62,8 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `notices:read` | Läsa kundmeddelanden och deras utskick (ADR 0032), och bolagets inställningar för dem. Meddelandena har partens id, inte namn eller adress. | `GET /v1/notices`, `.../{id}`, `GET /v1/settings/notices`, `.../versions` |
 | `notices:deliver` | Rapportera att ett meddelande skickades, med dokumentets id och kontrollsumma, eller att utskicket misslyckades | `POST /v1/notices/{id}/deliveries` |
 | `notices:configure` | Ändra bolagets inställningar för meddelanden: texter, dagar för "snarast" och typer som stängs av | `POST /v1/settings/notices/versions` |
-| `webhooks:read` | Läsa prenumerationer på webhooks och deras utskick (ADR 0033), aldrig hemligheterna | `GET /v1/webhook-subscriptions`, `.../{id}`, `.../deliveries` |
-| `webhooks:manage` | Skapa och ändra prenumerationer, och byta hemlighet | `POST /v1/webhook-subscriptions`, `PUT .../{id}`, `.../secret-rotations` |
+| `webhooks:read` | Läsa prenumerationer på webhooks och deras utskick (ADR 0033), aldrig hemligheterna | `GET /v1/webhook-subscriptions`, `.../{id}`, `.../deliveries`, `GET /v1/webhook-deliveries` |
+| `webhooks:manage` | Skapa och ändra prenumerationer, byta hemlighet och skicka döda händelser igen | `POST /v1/webhook-subscriptions`, `PUT .../{id}`, `.../secret-rotations`, `.../retries`, `.../delivery-retries` |
 | `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/settings/roles`, `.../versions` |
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/settings/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |

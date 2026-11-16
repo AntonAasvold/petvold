@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-16 | [Webhooks, steg 3: döda händelser och gallring](2026-11-16-webhooks-steg3.md) | #78 |
 | 2026-11-16 | [Webhooks, steg 2: alla händelser och AsyncAPI](2026-11-16-webhooks-steg2.md) | #77 |
 | 2026-11-16 | [Webhooks, steg 1](2026-11-16-webhooks.md) | #76 |
 | 2026-11-16 | [ADR om händelser till bolagets system](2026-11-16-webhooks-adr.md) | #72 |

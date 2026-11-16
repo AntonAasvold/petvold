@@ -113,6 +113,8 @@ export interface Subscription {
   changedAt: Timestamp;
   /** Until when the previous secret also signs, after a rotation. */
   previousSecretUntil?: Timestamp;
+  /** Since when every attempt has failed. After five days the subscription is disabled. Cleared by a delivery. */
+  failingSince?: Timestamp;
 }
 
 /** As stored: with the secrets sealed. */
@@ -138,7 +140,16 @@ export interface Delivery {
   lastStatus?: number;
   lastError?: string;
   deliveredAt?: Timestamp;
+  /** When a person sent it again. The three days count from here. */
+  retriedAt?: Timestamp;
+  /** When the event's data was removed, 30 days after it was delivered or given up (ADR 0033 point 10). */
+  prunedAt?: Timestamp;
   createdAt: Timestamp;
+}
+
+export interface DeliveryFilter {
+  subscriptionId?: string;
+  status?: DeliveryStatus;
 }
 
 export interface WebhookStore {
@@ -154,9 +165,15 @@ export interface WebhookStore {
    * is leased until `leaseUntil`, so another worker does not take it meanwhile.
    */
   claimDue(now: Timestamp, limit: number, leaseUntil: Timestamp): Promise<Delivery[]>;
-  /** Stores the outcome of an attempt. */
+  /** Stores the outcome of an attempt, or a person's retry. */
   recordAttempt(d: Delivery): Promise<void>;
-  listDeliveries(filter: { subscriptionId: string; status?: DeliveryStatus }): Promise<Delivery[]>;
+  getDelivery(id: string): Promise<Delivery | null>;
+  /** Oldest first. */
+  listDeliveries(filter: DeliveryFilter): Promise<Delivery[]>;
+  /** Sets or clears when the subscription started failing, without a new revision. */
+  setFailingSince(subscriptionId: string, at: Timestamp | null): Promise<void>;
+  /** Removes `data` from delivered and dead deliveries last tried before `before`. Returns how many. */
+  prune(before: Timestamp, now: Timestamp): Promise<number>;
 }
 
 export class WebhookConflictError extends Error {
@@ -222,6 +239,10 @@ export const GIVE_UP_AFTER_MS = 3 * 86_400_000;
 export const REQUEST_TIMEOUT_MS = 15_000;
 /** How long a worker holds a delivery it is sending. */
 export const LEASE_MS = 60_000;
+/** A subscription where every attempt has failed this long is disabled (ADR 0033). */
+export const DISABLE_AFTER_MS = 5 * 86_400_000;
+/** The data of a delivered or dead event is kept this long (ADR 0033 point 10). */
+export const KEEP_DATA_MS = 30 * 86_400_000;
 
 /** When to try again after a failed attempt, or null to give up. Jitter is ±10 %. */
 export function nextAttemptAt(createdAt: Timestamp, attempts: number, now: Timestamp, random: () => number = Math.random): Timestamp | null {
@@ -324,8 +345,9 @@ export class WebhookService {
     if (input.status !== 'active' && input.status !== 'disabled') throw new WebhookError('validation', 'status is active or disabled');
     const clean = this.validate(input);
     const { description: _d, disabledReason: _r, ...rest } = cur;
+    const { failingSince: _f, ...kept } = rest;
     const next: StoredSubscription = {
-      ...rest,
+      ...(input.status === 'active' ? kept : rest),
       ...clean,
       status: input.status,
       ...(input.status === 'disabled' ? { disabledReason: 'Disabled by a person' } : {}),
@@ -360,6 +382,30 @@ export class WebhookService {
     return this.d.store.listDeliveries({ subscriptionId: id, ...(status ? { status } : {}) });
   }
 
+  /** Deliveries across subscriptions, e.g. every dead one: the list for a person. */
+  async allDeliveries(filter: DeliveryFilter): Promise<Delivery[]> {
+    return this.d.store.listDeliveries(filter);
+  }
+
+  /** Sends a dead delivery again, with three new days. Not one whose data has been removed. */
+  async retry(subscriptionId: string, deliveryId: string): Promise<Delivery> {
+    const d = await this.d.store.getDelivery(deliveryId);
+    if (!d || d.subscriptionId !== subscriptionId) throw new WebhookError('not_found', `Delivery ${deliveryId} does not exist`);
+    if (d.status !== 'dead') throw new WebhookError('conflict', `Delivery ${deliveryId} is ${d.status}; only a dead one is sent again`);
+    if (d.prunedAt) throw new WebhookError('conflict', `Delivery ${deliveryId} was given up more than 30 days ago and its data is removed`);
+    const now = this.d.clock.now();
+    const next: Delivery = { ...d, status: 'pending', attempts: 0, nextAttemptAt: now, retriedAt: now };
+    await this.d.store.recordAttempt(next);
+    return next;
+  }
+
+  /** Sends every dead delivery of a subscription again. Returns how many. */
+  async retryAll(subscriptionId: string): Promise<number> {
+    const dead = (await this.deliveries(subscriptionId, 'dead')).filter((d) => !d.prunedAt);
+    for (const d of dead) await this.retry(subscriptionId, d.id);
+    return dead.length;
+  }
+
   /**
    * Queues an event for every active subscription that wants it. Events that
    * are not public give nothing. Repeats give nothing new (ADR 0008).
@@ -382,11 +428,22 @@ export class WebhookService {
     return [this.d.box.open(s.secret), ...(s.previousSecret && s.previousSecretUntil && now < s.previousSecretUntil ? [this.d.box.open(s.previousSecret)] : [])];
   }
 
+  /** Notes that an attempt failed or succeeded; disables a subscription that has failed for five days. */
+  async noteOutcome(s: StoredSubscription, ok: boolean, now: Timestamp): Promise<void> {
+    if (ok) {
+      if (s.failingSince) await this.d.store.setFailingSince(s.id, null);
+      return;
+    }
+    if (!s.failingSince) return this.d.store.setFailingSince(s.id, now);
+    if (Date.parse(now) - Date.parse(s.failingSince) > DISABLE_AFTER_MS) await this.disable(s.id, `Nothing delivered since ${s.failingSince}`);
+  }
+
   /** Marks a subscription disabled, e.g. when the receiver answers 410 Gone. */
   async disable(id: string, reason: string): Promise<void> {
     const cur = await this.stored(id);
     if (cur.status === 'disabled') return;
-    await this.save({ ...cur, status: 'disabled', disabledReason: reason, revision: cur.revision + 1, changedBy: 'petvold-webhooks', changedAt: this.d.clock.now() });
+    const { failingSince: _f, ...rest } = cur;
+    await this.save({ ...rest, status: 'disabled', disabledReason: reason, revision: cur.revision + 1, changedBy: 'petvold-webhooks', changedAt: this.d.clock.now() });
   }
 
   async stored(id: string): Promise<StoredSubscription> {
@@ -451,6 +508,7 @@ export interface WorkerResult {
 export class WebhookWorker {
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
+  private prunedAt = 0;
 
   constructor(
     private readonly d: {
@@ -470,6 +528,12 @@ export class WebhookWorker {
     this.running = true;
     try {
       const now = this.d.clock.now();
+      // Once an hour: remove the data of events delivered or given up 30 days ago.
+      if (Date.parse(now) - this.prunedAt >= 3_600_000) {
+        this.prunedAt = Date.parse(now);
+        const pruned = await this.d.store.prune(new Date(Date.parse(now) - KEEP_DATA_MS).toISOString(), now);
+        if (pruned) this.d.log?.(`[webhooks] removed the data of ${pruned} old deliveries`);
+      }
       const due = await this.d.store.claimDue(now, this.d.batchSize ?? 50, new Date(Date.parse(now) + LEASE_MS).toISOString());
       for (const delivery of due) {
         const r = await this.send(delivery);
@@ -508,6 +572,7 @@ export class WebhookWorker {
     if (status !== undefined && status >= 200 && status < 300) {
       const { lastError: _e, ...rest } = attempt;
       await this.d.store.recordAttempt({ ...rest, status: 'delivered', lastStatus: status, deliveredAt: now });
+      await this.d.service.noteOutcome(sub, true, now);
       return 'delivered';
     }
     const lastError = error ?? `HTTP ${status}`;
@@ -515,13 +580,14 @@ export class WebhookWorker {
       await this.d.service.disable(sub.id, 'The receiver answered 410 Gone');
       this.d.log?.(`[webhooks] ${sub.id} disabled: 410 Gone`);
     }
-    const next = status === 410 ? null : nextAttemptAt(delivery.createdAt, attempt.attempts, now, this.d.random);
+    const next = status === 410 ? null : nextAttemptAt(delivery.retriedAt ?? delivery.createdAt, attempt.attempts, now, this.d.random);
     await this.d.store.recordAttempt({
       ...attempt,
       ...(status !== undefined ? { lastStatus: status } : {}),
       lastError,
       ...(next ? { status: 'pending', nextAttemptAt: next } : { status: 'dead' }),
     });
+    if (status !== 410) await this.d.service.noteOutcome(sub, false, now);
     this.d.log?.(`[webhooks] ${delivery.eventType} ${delivery.eventId} to ${sub.id} failed (attempt ${attempt.attempts}): ${lastError}`);
     return next ? 'failed' : 'dead';
   }
@@ -589,7 +655,30 @@ export class InMemoryWebhookStore implements WebhookStore {
     if (i >= 0) this.queue[i] = structuredClone(d);
   }
 
-  async listDeliveries(f: { subscriptionId: string; status?: DeliveryStatus }) {
-    return structuredClone(this.queue.filter((d) => d.subscriptionId === f.subscriptionId && (!f.status || d.status === f.status)));
+  async getDelivery(id: string) {
+    const d = this.queue.find((x) => x.id === id);
+    return d ? structuredClone(d) : null;
+  }
+
+  async listDeliveries(f: DeliveryFilter) {
+    return structuredClone(this.queue.filter((d) => (!f.subscriptionId || d.subscriptionId === f.subscriptionId) && (!f.status || d.status === f.status)));
+  }
+
+  async setFailingSince(id: string, at: Timestamp | null) {
+    const s = this.subs.find((x) => x.id === id);
+    if (!s) return;
+    if (at) s.failingSince = at;
+    else delete s.failingSince;
+  }
+
+  async prune(before: Timestamp, now: Timestamp) {
+    let n = 0;
+    for (const d of this.queue) {
+      if (d.status === 'pending' || d.prunedAt || (d.lastAttemptAt ?? d.createdAt) >= before) continue;
+      d.event = { ...d.event, data: {} };
+      d.prunedAt = now;
+      n++;
+    }
+    return n;
   }
 }
