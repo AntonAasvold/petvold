@@ -6,8 +6,10 @@
  * Configuration from the environment (never a .env file):
  * - CLAIMS_DATABASE_URL, ACCESS_DATABASE_URL, DECISIONING_DATABASE_URL,
  *   CATALOG_DATABASE_URL, ANIMALS_DATABASE_URL, PARTIES_DATABASE_URL,
- *   POLICIES_DATABASE_URL and COMMUNICATIONS_DATABASE_URL: every one is
- *   required, each with the module's own role.
+ *   POLICIES_DATABASE_URL, COMMUNICATIONS_DATABASE_URL and WEBHOOKS_DATABASE_URL:
+ *   every one is required, each with the module's own role.
+ * - PETVOLD_WEBHOOK_KEY: 32 bytes in base64 that seal the webhook secrets (ADR 0033). Required.
+ * - PETVOLD_WEBHOOK_ALLOW_HOSTS: hosts a webhook may name although local or http, comma-separated. Default none.
  * - PETVOLD_VERSION: stored with every decision (ADR 0018). Required.
  * - PORT: default 8080.
  * - PETVOLD_CORS_ORIGINS: browser applications allowed to call the API, comma-separated. Default none.
@@ -17,13 +19,16 @@
  * server's roles cannot change the schema.
  */
 import { serve } from '@hono/node-server';
-import { compose, DATABASE_ENV, DATABASES, databasesFromEnv } from './composition.ts';
+import { compose, DATABASE_ENV, DATABASES, databasesFromEnv, webhooksFromEnv } from './composition.ts';
 import { authenticatorFromEnv } from './auth.ts';
 import { corsOriginsFromEnv, createApp } from './index.ts';
 
 const log = (line: string) => console.log(line);
 
-const missing = [...DATABASES.filter((d) => !process.env[DATABASE_ENV[d]]).map((d) => DATABASE_ENV[d]), ...(process.env.PETVOLD_VERSION ? [] : ['PETVOLD_VERSION'])];
+const missing = [
+  ...DATABASES.filter((d) => !process.env[DATABASE_ENV[d]]).map((d) => DATABASE_ENV[d]),
+  ...['PETVOLD_VERSION', 'PETVOLD_WEBHOOK_KEY'].filter((k) => !process.env[k]),
+];
 if (missing.length) {
   console.error(`Missing configuration: ${missing.join(', ')}`);
   process.exit(1);
@@ -33,12 +38,13 @@ const auth = await authenticatorFromEnv(process.env).catch((err: Error) => {
   process.exit(1);
 });
 
-const inst = await compose({ databases: databasesFromEnv(process.env), engineVersion: process.env.PETVOLD_VERSION!, log });
+const inst = await compose({ databases: databasesFromEnv(process.env), engineVersion: process.env.PETVOLD_VERSION!, log, webhooks: webhooksFromEnv(process.env) });
 await inst.ping().catch((err: Error) => {
   console.error(`A database does not answer: ${err.message}`);
   process.exit(1);
 });
 inst.relay.start(1_000);
+inst.webhookWorker.start(1_000);
 
 const app = createApp({ ...inst.deps, auth, corsOrigins: corsOriginsFromEnv(process.env) });
 

@@ -52,6 +52,7 @@ Ett id är ett prefix, ett understreck och bokstäver och siffror, till exempel 
 | `dec_` | skadebeslut | `prp_` | beslutsförslag i en skada |
 | `rvw_` | begäran om prövning | `po_` | utbetalningsorder |
 | `jrn_` | journal i ledgern | `dp_` | självriskperiod |
+| `whs_` | prenumeration på webhooks | `whd_` | utskick av webhook |
 
 Ett nytt prefix har två till fyra bokstäver och läggs till i tabellen. En skadas id väljs av den som anmäler skadan och får också innehålla `_`, till exempel `clm_otit_204311`.
 
@@ -90,4 +91,4 @@ En produktversion och en version av en regeluppsättning skrivs `{namn}@{version
 
 - **`Idempotency-Key`** krävs på anrop som skapar något.
 - **Varje operation har en rättighet i `x-permission`** (ADR 0016), ett `operationId` i camelCase och en tagg **(CI)**.
-- **Webhooks och händelser** beskrivs i AsyncAPI när ADR 0033 är byggd.
+- **Webhooks och händelser** beskrivs i AsyncAPI i steg 2 av ADR 0033. Till dess beskriver schemat `CloudEvent` i OpenAPI-kontraktet kuvertet.

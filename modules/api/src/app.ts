@@ -15,6 +15,7 @@ import {
 } from '@petvold/parties';
 import { InMemoryPolicyStore, PolicyError, PolicyService, type Application, type ApplicationStatus, type PolicyGroup, type PolicyRecord, type Proposal } from '@petvold/policies';
 import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_TYPES, type NoticeType, type NoticeView } from '@petvold/communications';
+import { InMemoryWebhookStore, SecretBox, WebhookError, WebhookService, type Subscription } from '@petvold/webhooks';
 import { animalPort, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
 import { tariffCoverage } from '@petvold/pricing-core';
 import { questionsFor, underwritingCoverage } from '@petvold/underwriting-core';
@@ -124,6 +125,8 @@ export interface AppDeps {
    * services above. The installation's relay feeds it the policy events.
    */
   communications?: CommunicationsService;
+  /** Webhook subscriptions (ADR 0033). Omitted: kept in memory; nothing feeds or sends them without the installation's relay and worker. */
+  webhooks?: WebhookService;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
   /**
@@ -976,6 +979,62 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/notices/:noticeId', async (c) => send(c, await visibleNotice(c)));
 
+  // Webhook subscriptions (ADR 0033). A subscription's markets must lie within the caller's;
+  // only a caller with every market may subscribe to '*'.
+  const webhooks =
+    d.webhooks ??
+    new WebhookService({
+      store: new InMemoryWebhookStore(),
+      box: new SecretBox(Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64')),
+      clock: d.clock,
+      ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
+    });
+  const coversMarkets = (scope: Scope, markets: string[] | '*') =>
+    !scope.clinicId && !scope.policyIds && (scope.markets === '*' || (markets !== '*' && markets.every((m) => (scope.markets as ReadonlySet<string>).has(m))));
+  const visibleSubscription = async (c: Context<Env>): Promise<Subscription> => {
+    const id = c.req.param('subscriptionId') ?? '';
+    const s = await webhooks.get(id).catch((e: unknown) => {
+      if (e instanceof WebhookError && e.code === 'not_found') return null;
+      throw e;
+    });
+    if (!s || !coversMarkets(c.get('scope'), s.markets)) throw new WebhookError('not_found', `Webhook subscription ${id} does not exist`);
+    return s;
+  };
+  const marketsAllowed = (c: Context<Env>, markets: string[] | '*') => {
+    if (!coversMarkets(c.get('scope'), markets)) throw new WebhookError('forbidden', "The subscription's markets lie outside the caller's");
+  };
+
+  app.get('/v1/webhook-subscriptions', async (c) => sendPage(c, (await webhooks.list()).filter((s) => coversMarkets(c.get('scope'), s.markets))));
+
+  app.post('/v1/webhook-subscriptions', async (c) => {
+    const r = await readJson(c, 'WebhookSubscriptionRequest');
+    if (!r.ok) return r.res;
+    marketsAllowed(c, r.body.markets);
+    return idempotent(c, r.body, async () => ({ status: 201, body: await webhooks.create(r.body, c.get('principal').subject) }));
+  });
+
+  app.get('/v1/webhook-subscriptions/:subscriptionId', async (c) => send(c, await visibleSubscription(c)));
+
+  app.put('/v1/webhook-subscriptions/:subscriptionId', async (c) => {
+    const s = await visibleSubscription(c);
+    const r = await readJson(c, 'WebhookSubscriptionChange');
+    if (!r.ok) return r.res;
+    marketsAllowed(c, r.body.markets);
+    return send(c, await webhooks.change(s.id, r.body, c.get('principal').subject));
+  });
+
+  app.post('/v1/webhook-subscriptions/:subscriptionId/secret-rotations', async (c) => {
+    const s = await visibleSubscription(c);
+    return idempotent(c, {}, async () => ({ status: 201, body: await webhooks.rotateSecret(s.id, c.get('principal').subject) }));
+  });
+
+  app.get('/v1/webhook-subscriptions/:subscriptionId/deliveries', async (c) => {
+    const s = await visibleSubscription(c);
+    const status = c.req.query('status');
+    if (status !== undefined && !['pending', 'delivered', 'dead'].includes(status)) return problem(c, 422, 'status is pending, delivered or dead');
+    return sendPage(c, await webhooks.deliveries(s.id, status as 'pending' | 'delivered' | 'dead' | undefined));
+  });
+
   app.get('/v1/settings/notices', async (c) => send(c, await communications.settings()));
 
   app.get('/v1/settings/notices/versions', async (c) => sendPage(c, await communications.settingsVersions()));
@@ -1271,6 +1330,10 @@ export function createApp(d: AppDeps) {
       return problem(c, status, err.message);
     }
     if (err instanceof PolicyError) {
+      const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
+      return problem(c, status, err.message);
+    }
+    if (err instanceof WebhookError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
       return problem(c, status, err.message);
     }

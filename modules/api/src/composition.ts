@@ -32,6 +32,10 @@ import { PostgresPartyStore, PostgresRetentionStore } from '@petvold/parties/pos
 import { InMemoryPolicyStore, PolicyService, type PolicyStore } from '@petvold/policies';
 import { CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, type NoticeStore } from '@petvold/communications';
 import { PostgresNoticeSettingsStore, PostgresNoticeStore } from '@petvold/communications/postgres';
+import { lookup } from 'node:dns/promises';
+import { randomBytes } from 'node:crypto';
+import { fetchTransport, InMemoryWebhookStore, SecretBox, WebhookService, WebhookWorker, type Transport, type WebhookStore } from '@petvold/webhooks';
+import { PostgresWebhookStore } from '@petvold/webhooks/postgres';
 import { PostgresPolicyStore } from '@petvold/policies/postgres';
 import { tariffCoverage } from '@petvold/pricing-core';
 import { underwritingCoverage } from '@petvold/underwriting-core';
@@ -40,7 +44,7 @@ import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './pe
 import { Relay, relaySource } from './relay.ts';
 import { animalPort, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
 
-export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications'] as const;
+export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks'] as const;
 export type DatabaseName = (typeof DATABASES)[number];
 
 export interface InstallationConfig {
@@ -50,6 +54,15 @@ export interface InstallationConfig {
   engineVersion: string;
   clock?: { now(): string };
   log?: (line: string) => void;
+  /** Webhooks (ADR 0033). The key is required when webhooks are stored in Postgres. */
+  webhooks?: {
+    /** 32 bytes, base64: seals the subscriptions' secrets (PETVOLD_WEBHOOK_KEY). */
+    key?: string;
+    /** Hosts a subscription may name although local or http, e.g. a receiver in development (PETVOLD_WEBHOOK_ALLOW_HOSTS). */
+    allowHosts?: string[];
+    /** How deliveries are sent. Defaults to HTTP with fetch. */
+    transport?: Transport;
+  };
 }
 
 /** The environment variables a module's database URL is read from. */
@@ -62,11 +75,20 @@ export const DATABASE_ENV: Record<DatabaseName, string> = {
   parties: 'PARTIES_DATABASE_URL',
   policies: 'POLICIES_DATABASE_URL',
   communications: 'COMMUNICATIONS_DATABASE_URL',
+  webhooks: 'WEBHOOKS_DATABASE_URL',
 };
 
 /** The database URLs from the environment, skipping empty ones. */
 export function databasesFromEnv(env: Record<string, string | undefined>): Partial<Record<DatabaseName, string>> {
   return Object.fromEntries(DATABASES.flatMap((d) => (env[DATABASE_ENV[d]] ? [[d, env[DATABASE_ENV[d]]!]] : [])));
+}
+
+/** Webhook settings from PETVOLD_WEBHOOK_KEY and PETVOLD_WEBHOOK_ALLOW_HOSTS (comma-separated). */
+export function webhooksFromEnv(env: Record<string, string | undefined>): { key?: string; allowHosts: string[] } {
+  return {
+    ...(env.PETVOLD_WEBHOOK_KEY ? { key: env.PETVOLD_WEBHOOK_KEY } : {}),
+    allowHosts: (env.PETVOLD_WEBHOOK_ALLOW_HOSTS ?? '').split(',').map((h) => h.trim()).filter(Boolean),
+  };
 }
 
 /** Everything a running Petvold needs, connected. */
@@ -83,8 +105,11 @@ export interface Installation {
     animals: AnimalStore;
     policies: PolicyStore;
     notices: NoticeStore;
+    webhooks: WebhookStore;
   };
   relay: Relay;
+  /** Sends queued webhook deliveries (ADR 0033). Start it next to the relay. */
+  webhookWorker: WebhookWorker;
   /** Where each module keeps its data: 'postgres' or 'memory'. */
   storage: Record<DatabaseName, 'postgres' | 'memory'>;
   /** Checks that every database answers. */
@@ -175,6 +200,34 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     ids,
   });
 
+  // Webhooks to the insurer's systems (ADR 0033), fed by the relay below.
+  const webhooksPool = pool('webhooks', 2);
+  const webhookKey = config.webhooks?.key;
+  if (webhooksPool && !webhookKey) throw new Error('PETVOLD_WEBHOOK_KEY is required when webhooks are stored in Postgres');
+  const webhookStore: WebhookStore = webhooksPool ? new PostgresWebhookStore(webhooksPool) : new InMemoryWebhookStore();
+  const allowHosts = config.webhooks?.allowHosts ?? [];
+  const webhooks = new WebhookService({
+    store: webhookStore,
+    // In memory without a key: a key for this process only, since nothing outlives it.
+    box: new SecretBox(webhookKey ?? randomBytes(32).toString('base64')),
+    clock,
+    ids,
+    allowHosts,
+  });
+  const webhookWorker = new WebhookWorker({
+    service: webhooks,
+    store: webhookStore,
+    transport: config.webhooks?.transport ?? fetchTransport({ allowHosts, resolve: async (host) => (await lookup(host, { all: true })).map((a) => a.address) }),
+    clock,
+    log,
+  });
+  /** The market of a policy event, for the subscriptions' markets. */
+  const marketOf = async (e: { policyId?: string; applicationId?: string; data: Record<string, unknown> }): Promise<string> => {
+    if (typeof e.data.market === 'string') return e.data.market;
+    if (e.policyId) return (await policies.get(e.policyId)).market;
+    return (await policies.getApplication(e.applicationId!)).market;
+  };
+
   const service = new ClaimsService({
     policies,
     // The product version on the policy points at its rule series (ADR 0023).
@@ -222,6 +275,10 @@ export async function compose(config: InstallationConfig): Promise<Installation>
           log(`[event] ${e.type} ${e.policyId ?? e.applicationId}`);
           const notice = await communications.handlePolicyEvent(e);
           if (notice) log(`[notice] ${notice.type} ${notice.id} due ${notice.dueBy}`);
+          if (e.type !== 'policy.version_superseded') {
+            const queued = await webhooks.enqueue({ ...e, market: await marketOf(e) });
+            if (queued) log(`[webhook] ${e.type} ${e.id} queued for ${queued} subscription(s)`);
+          }
           if (e.type !== 'policy.version_superseded') return;
           const versionId = String(e.data.versionId);
           for (const r of await service.reassessForPolicyChange([versionId], `Policy version ${versionId} was superseded`, 'policy-change')) {
@@ -235,7 +292,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   );
 
   return {
-    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications },
+    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks },
     stores: {
       claims: claimsStore,
       roles: roleStore,
@@ -246,14 +303,17 @@ export async function compose(config: InstallationConfig): Promise<Installation>
       animals: animalStore,
       policies: policyStore,
       notices: noticeStore,
+      webhooks: webhookStore,
     },
     relay,
+    webhookWorker,
     storage: Object.fromEntries(DATABASES.map((d) => [d, config.databases[d] ? 'postgres' : 'memory'])) as Record<DatabaseName, 'postgres' | 'memory'>,
     async ping() {
       await Promise.all(pools.map((p) => p.query('select 1')));
     },
     async close() {
       await relay.stop();
+      await webhookWorker.stop();
       await Promise.all(pools.map((p) => p.end()));
     },
   };
