@@ -63,8 +63,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Migration 0032:** `communications.notice_settings`, `notice.settings_version` och typen `transfer-offer`. Provad ner och upp igen.
 - 421 tester och 118 databastester. ADR 0032 är byggd, utom skadebesked.
 
+- #71 mergad. ADR 0032 är byggd, utom skadebesked.
+- ADR 0033 om händelser till bolagets system med webhooks, Föreslagen, PR #72:
+  - **En modul `webhooks`** med prenumerationer via API:t, en kö per prenumeration och en arbetare med `skip locked`.
+  - **CloudEvents 1.0** som kuvert, och signatur enligt **Standard Webhooks** (HMAC-SHA256).
+  - **Tunna händelser** utan personuppgifter, och mottagaren hämtar detaljer med API:t.
+  - **AsyncAPI 3.0** som kontrakt för händelserna, i stället för `webhooks` i OpenAPI.
+
 **Nästa steg**
-1. ADR om leverans av händelser till bolagets system (webhooks). I dag beskriver kontraktet `claim.registered` och `claim.decided` under `webhooks`, men reläet bara loggar.
+1. Ta ställning till ADR 0033.
+2. Gå igenom dokumentationen och API-adresserna (förslag i passet 2026-11-16).
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**

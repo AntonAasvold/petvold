@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-16 | [ADR om händelser till bolagets system](2026-11-16-webhooks-adr.md) | #72 |
 | 2026-11-16 | [Bolagets inställningar för meddelanden och erbjudande om överlåtelse](2026-11-16-meddelandeinstallningar.md) | #71 |
 | 2026-11-16 | [Kundmeddelanden](2026-11-16-kundmeddelanden.md) | #70 |
 | 2026-11-16 | [Produktens dokument och godkännandet](2026-11-16-produktdokument.md) | #69 |

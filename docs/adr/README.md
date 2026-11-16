@@ -34,5 +34,6 @@
 | [0030](0030-tariff.md) | Tariff: pris som versionerad data och en ren funktion | Beslutad |
 | [0031](0031-teckningsregler-och-ansokan.md) | Teckningsregler, ansökan och godkännande vid tecknande | Beslutad |
 | [0032](0032-meddelanden-och-dokument-till-kunden.md) | Meddelanden och dokument till kunden | Beslutad |
+| [0033](0033-handelser-till-bolagets-system.md) | Händelser till bolagets system med webhooks | Föreslagen |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.
