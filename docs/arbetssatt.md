@@ -53,10 +53,10 @@ Allt som är svårt att ändra senare – modulgränser, datamodell, kontraktsko
 
 - All kod på engelska: identifierare, kommentarer, felmeddelanden, loggar, testnamn, SQL, konfiguration, kontrakt och exempeldata. Undantag: språkkataloger för användare (t.ex. den svenska i `messages.ts`) och migreringar som redan körts. `npm run lint:lang` stoppar svenska tecken i koden.
 - Dokumentation, ADR, PR-beskrivningar och commit-meddelanden på svenska.
-- Id-prefix per typ: `pol_`, `clm_`, `ani_`, `pty_` …
+- Id-prefix per typ: `pol_`, `clm_`, `ani_`, `pty_` … Listan finns i [API-konventionerna](teknik/api-konventioner.md#id).
 
 ## Versioner
 
-- Kontrakt: semver per modul. Brytande ändringar kräver ny huvudversion av sökvägen (`/v2`).
+- Kontrakt: följer [API-konventionerna](teknik/api-konventioner.md). Brytande ändringar kräver ny huvudversion av sökvägen (`/v2`), från den dag första kanalen är i drift. Före det rättas `/v1` direkt (ADR 0034).
 - Händelser: `type` innehåller version, t.ex. `petvold.claim.decided.v1`.
 - Databas: framåtmigreringar, aldrig ändring av en körd migration.

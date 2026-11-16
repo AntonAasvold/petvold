@@ -2,6 +2,8 @@
 import { ClaimsService } from '@petvold/claims-core';
 import { createApp, implementedOperations, contractOperations, operationPermissions, isOperationPermission } from '../src/index.ts';
 import { InMemoryIdempotencyStore } from '../src/app.ts';
+import { openapi } from '../src/contract.ts';
+import { conventionCheck, KNOWN_DEVIATIONS } from '../src/conventions.ts';
 
 // Every operation must name one known permission, or signed-in (ADR 0016).
 const withoutPermission = [...operationPermissions()].filter(([, p]) => !isOperationPermission(p)).map(([op, p]) => `${op} (${String(p)})`);
@@ -26,4 +28,13 @@ if (missing.length || extra.length) {
   if (extra.length) console.error('  Implemented but not in the contract:', extra);
   process.exit(1);
 }
+// The naming conventions (ADR 0034). Known breaks are listed until fixed.
+const conventions = conventionCheck(openapi as never);
+if (conventions.problems.length || conventions.fixed.length) {
+  for (const p of conventions.problems) console.error(`  ${p.rule}: ${p.where} – ${p.message}`);
+  if (conventions.problems.length) console.error('The contract breaks its conventions (docs/teknik/api-konventioner.md)');
+  if (conventions.fixed.length) console.error('Fixed, remove from KNOWN_DEVIATIONS in conventions.ts:', conventions.fixed);
+  process.exit(1);
+}
 console.log(`OK – ${spec.size} operations in the contract, all implemented, all with a permission`);
+console.log(`OK – the conventions hold${KNOWN_DEVIATIONS.length ? `, with ${KNOWN_DEVIATIONS.length} known breaks left` : ''}`);
