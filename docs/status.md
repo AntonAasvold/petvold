@@ -22,10 +22,18 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Exempeldata:** teckningsreglerna `SE-HUND-UW@1` på svenska och engelska, produkten `SE-HUND-PLUS@2026.1` och Lenas tre ansökningar i Uppsala, en med varje utfall. Provat mot Postgres.
   - Fyra nya operationer, 95 i kontraktet.
 - 397 tester och 113 databastester.
+- #66 mergad.
+- Manuell prövning av ansökningar (ADR 0031, steg 3 av 3), PR #67:
+  - **`POST /v1/applications/{id}/decisions`** med den nya rättigheten `policies:underwrite` (rollen `underwriter`). Godkänn tecknar policyn till premien kunden ansökte till, med reglernas förbehåll eller egna. Avslå kräver en skälskod. Båda kräver en motivering.
+  - **Återkallelse** från kanalen (`.../withdrawals`) och **utgång** efter produktens `policy.applicationExpiryDays` (förval 30) med `POST /v1/application-expiry-runs`.
+  - **Beslutet sparas bredvid** det automatiska utfallet (`decision`), och `status` visar beslutet. Ett godkännande sparas i samma transaktion som policyn.
+  - **Migration 0030:** `policies.application_decision` och `application.deadline`. En trigger tillåter bara beslut om en ansökan i kön. Provad ner och upp igen.
+  - Tre nya operationer, 98 i kontraktet. En befintlig rollinställning behöver `npm run roles:sync -- --apply`.
+- 401 tester och 114 databastester.
 
 **Nästa steg**
-1. ADR 0031, steg 3: besluten i kön med rättigheten `policies:underwrite` (godkänn med eller utan förbehåll, eller avslå med skälskod och motivering), återkallelse från kanalen och utgång efter en tid per produkt.
-2. Därefter ett beslut om dokument till kunden (F2), med brevet vid avslag och förköpsinformationen som godkännandet gäller.
+1. Ett beslut om dokument till kunden (F2): förköpsinformation, villkor, försäkringsbrev och brevet med skälen vid avslag.
+2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
 - Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.

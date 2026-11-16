@@ -2,7 +2,7 @@
 
 Teckningsreglerna avgör om en ansökan om en ny försäkring godkänns, godkänns med förbehåll, går till manuell prövning eller avslås. Beslutet bakom finns i ADR 0031.
 
-*Läge:* teckningsreglerna, ansökan och kön för manuell prövning är byggda. Besluten i kön, återkallelse och utgång kommer i nästa steg.
+*Läge:* teckningsreglerna, ansökan, kön för manuell prövning och besluten i den är byggda.
 
 ## Vad reglerna innehåller
 
@@ -109,7 +109,24 @@ Petvold gör samma kontroller som vid tecknande och räknar fram priset. Sedan k
 
 Samma regler och samma underlag ger samma utfall och samma `inputHash`. Vid en skada kan bolaget visa vilka frågor som ställdes och vad som svarades (FAL 4 kap. 2 §).
 
-**Kön.** `GET /v1/applications?status=referred` är kön för manuell prövning, äldst först. Listan kan också filtreras på `market`, `animalId` och `policyholderPartyId`. Den som är bunden till en klinik eller till policyer ser inga ansökningar.
+**Kön.** `GET /v1/applications?status=referred` är kön för manuell prövning, äldst först. Listan kan också filtreras på `market`, `animalId` och `policyholderPartyId`. Den som är bunden till en klinik eller till policyer ser inga ansökningar. En ansökan i kön har en sista dag för beslut (`deadline`): dagen den kom in plus produktens `policy.applicationExpiryDays`, förval 30 dagar.
+
+## Manuell prövning
+
+En ansökan i kön kan beslutas en gång. Beslutet sparas bredvid det automatiska utfallet, så båda syns (`decision`), och `status` visar beslutet.
+
+**Beslut:** `POST /v1/applications/{id}/decisions` kräver rättigheten `policies:underwrite`, som rollen `underwriter` har. Varje beslut kräver en motivering (`note`).
+- **Godkänn** (`"outcome": "accept"`): policyn tecknas till premien kunden ansökte till. Om tariffen i dag ger ett annat pris sparas kundens pris som ett manuellt pris, med ansökan som skäl. Förbehållen blir de som reglerna föreslog, eller de som anges i `riders` (`source: "manual"`). Om startdagen har passerat anges en ny med `startDate`. Godkännandet från ansökan följer med till policyn.
+- **Avslå** (`"outcome": "decline"`): kräver en skälskod i `reason`, som kanalen förklarar för kunden (FAL 7 kap. 6 §).
+
+```http
+POST /v1/applications/app_…/decisions
+{ "outcome": "accept", "note": "Journalen visar en förkylning som är över" }
+```
+
+**Återkalla:** `POST /v1/applications/{id}/withdrawals` med en valfri `reason`, rättighet `policies:write`. Kanalen använder den när kunden inte längre vill ha försäkringen.
+
+**Utgång:** `POST /v1/application-expiry-runs`, rättighet `policies:renew`, avslutar varje ansökan i kön vars sista dag har passerat. Den körs schemalagt som förnyelsen. En ansökan som har gått ut kan inte beslutas (`409`).
 
 **Gallring (ADR 0028).** En ansökan räknas som en relation till sökanden. En ansökan som väntar håller relationen pågående, och de andra räknas från dagen de kom in. En godkänd ansökan har dessutom policyn, som gäller längre.
 
@@ -119,7 +136,7 @@ Samma regler och samma underlag ger samma utfall och samma `inputHash`. Vid en s
 
 Dev-servern har teckningsreglerna `SE-HUND-UW@1` med frågorna på svenska och engelska, och produkten `SE-HUND-PLUS@2026.1` som använder dem. Lena (`pty_owner004`) har tre ansökningar:
 - Kajsa uppgav en öroninflammation och fick ett förbehåll för `ORA-OTIT`.
-- Rocky har symtom som ingen veterinär har undersökt och väntar i kön.
+- Rocky har symtom som ingen veterinär har undersökt och väntar i kön. Token `dev-underwriter` kan besluta om honom.
 - Sixten är 12 år och avslogs med skälet `too-old`.
 
-*Inte byggt än:* besluten i kön med rättigheten `policies:underwrite`, att en kanal återkallar en ansökan, att en ansökan löper ut, brevet med skälen vid avslag (F2), och ansökan från kundkanalen.
+*Inte byggt än:* brevet med skälen vid avslag (F2), ansökan från kundkanalen, och en kortare lagringstid för avslagna ansökningar.

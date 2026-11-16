@@ -361,3 +361,48 @@ test('an application on a product with health questions: accepted with a rider, 
   assert.ok(validatorFor('Quote')(structuredClone(quote.body)), JSON.stringify(validatorFor('Quote').errors));
   assert.deepEqual([quote.body.underwriting.outcome, quote.body.underwriting.reasons], ['decline', ['too-old']]);
 });
+
+test('the queue: a person decides with policies:underwrite, the channel withdraws, and the expiry run ends the rest (ADR 0031)', async () => {
+  const call = await setup();
+  const no = (question: string) => ({ question, value: false });
+  const referred = (animalId: string, policyholderPartyId: string) =>
+    call('POST', '/v1/applications', 'seller', {
+      ...issueBody,
+      animalId,
+      policyholderPartyId,
+      productVersion: 'SE-HUND-UW@1',
+      answers: [{ question: 'previous-illness', value: true, diagnosisCodes: ['ORA-OTIT'] }, { question: 'ongoing-symptoms', value: true }, no('lameness')],
+    });
+  const lo = (await referred('ani_lo', 'pty_bo')).body;
+  assert.deepEqual([lo.status, lo.deadline], ['referred', '2026-12-15']);
+
+  const accept = { outcome: 'accept', note: 'The vet record shows a cold, now over' };
+  assert.equal((await call('POST', `/v1/applications/${lo.id}/decisions`, 'seller', accept)).status, 403); // no policies:underwrite
+  assert.equal((await call('POST', `/v1/applications/${lo.id}/decisions`, 'underwriter', { outcome: 'accept' })).status, 422);
+  assert.equal((await call('POST', `/v1/applications/${lo.id}/decisions`, 'underwriter', { outcome: 'decline', note: 'x' })).status, 422); // no reason code
+  const decided = await call('POST', `/v1/applications/${lo.id}/decisions`, 'underwriter', accept);
+  assert.equal(decided.status, 201);
+  assert.ok(validatorFor('Application')(structuredClone(decided.body)), JSON.stringify(validatorFor('Application').errors));
+  assert.deepEqual([decided.body.status, decided.body.decision.decidedBy, decided.body.decision.riders[0].source], ['accepted', 'uw@example.test', 'underwriting']);
+  const policy = (await call('GET', `/v1/policies/${decided.body.policyId}`, 'handler')).body;
+  assert.deepEqual([policy.animalId, policy.terms[0].riders[0].diagnosisCodes], ['ani_lo', ['ORA-OTIT']]);
+  assert.equal((await call('POST', `/v1/applications/${lo.id}/decisions`, 'underwriter', accept)).status, 409);
+  assert.equal((await call('POST', `/v1/applications/${lo.id}/withdrawals`, 'seller', {})).status, 409);
+
+  // Rex: withdrawn by the channel.
+  const rex = (await referred('ani_rex', 'pty_anna')).body;
+  assert.equal((await call('POST', `/v1/applications/${rex.id}/withdrawals`, 'sellerDe', {})).status, 404);
+  const withdrawn = await call('POST', `/v1/applications/${rex.id}/withdrawals`, 'seller', { reason: 'The customer changed their mind' });
+  assert.deepEqual([withdrawn.status, withdrawn.body.status], [201, 'withdrawn']);
+
+  // Rex again, never decided: the expiry run ends it after the deadline.
+  const again = (await referred('ani_rex', 'pty_anna')).body;
+  assert.deepEqual((await call('POST', '/v1/application-expiry-runs', 'job')).body.expired, []);
+  call.clock.set('2026-12-16T10:00:00.000Z');
+  assert.equal((await call('POST', `/v1/applications/${again.id}/decisions`, 'underwriter', accept)).status, 409);
+  assert.equal((await call('POST', '/v1/application-expiry-runs', 'seller')).status, 403);
+  const run = await call('POST', '/v1/application-expiry-runs', 'job');
+  assert.deepEqual(run.body.expired.map((a: any) => [a.id, a.status]), [[again.id, 'expired']]);
+  assert.deepEqual((await call('GET', '/v1/applications?status=expired', 'underwriter')).body.items.map((a: any) => a.id), [again.id]);
+  assert.deepEqual((await call('GET', '/v1/applications?status=referred', 'underwriter')).body.items, []);
+});

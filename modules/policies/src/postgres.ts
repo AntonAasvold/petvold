@@ -5,13 +5,16 @@
  * of a policy and two active policies for one animal on the same day.
  * Migration 0022 adds cancellation fields and the outbox (ADR 0008, 0029), and
  * migration 0023 renewal, migration 0025 proposals and transfer, and migration
- * 0026 changes during a term. Migration 0029 adds applications (ADR 0031).
+ * 0026 changes during a term. Migration 0029 adds applications (ADR 0031),
+ * and migration 0030 the decisions on referred ones.
  */
 import type pg from 'pg';
 import {
   PolicyConflictError,
   type Application,
+  type ApplicationDecision,
   type ApplicationFilter,
+  type IssueExtra,
   type ISODate,
   type Policy,
   type PolicyEvent,
@@ -303,21 +306,28 @@ export class PostgresPolicyStore implements PolicyStore {
   }
 
   async getApplication(id: string): Promise<Application | null> {
-    const { rows } = await this.pool.query(`${APPLICATIONS} where application_id = $1`, [id]);
+    const { rows } = await this.pool.query(`${APPLICATIONS} where a.application_id = $1`, [id]);
     return rows[0] ? toApplication(rows[0]) : null;
   }
 
   async listApplications(f: ApplicationFilter): Promise<Application[]> {
     const { rows } = await this.pool.query(
-      `${APPLICATIONS} where ($1::text is null or status = $1) and ($2::text is null or market = $2)
-         and ($3::text is null or animal_id = $3) and ($4::text is null or policyholder_party_id = $4)
-       order by received_at, application_id`,
+      `${APPLICATIONS} where ($1::text is null or coalesce(d.outcome, a.status) = $1) and ($2::text is null or a.market = $2)
+         and ($3::text is null or a.animal_id = $3) and ($4::text is null or a.policyholder_party_id = $4)
+       order by a.received_at, a.application_id`,
       [f.status ?? null, f.market ?? null, f.animalId ?? null, f.policyholderPartyId ?? null],
     );
     return rows.map(toApplication);
   }
 
-  async issue(p: Policy, t: Term, v: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[], application?: Application): Promise<void> {
+  async decideApplication(applicationId: string, decision: ApplicationDecision, events: PolicyEvent[]): Promise<void> {
+    await this.tx(async (db) => {
+      await insertApplicationDecision(db, applicationId, decision);
+      await insertEvents(db, events);
+    }, applicationId);
+  }
+
+  async issue(p: Policy, t: Term, v: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[], { application, decision }: IssueExtra = {}): Promise<void> {
     await this.tx(async (db) => {
       await db.query(`insert into policies.policy (policy_id, market, animal_id, inception_date, created_by, created_at) values ($1, $2, $3, $4, $5, $6)`, [
         p.id,
@@ -331,6 +341,7 @@ export class PostgresPolicyStore implements PolicyStore {
       await insertTerm(db, t);
       await insertVersion(db, v, p.animalId);
       if (application) await insertApplication(db, application);
+      if (decision) await insertApplicationDecision(db, decision.applicationId, decision.decision);
       await insertEvents(db, events);
     }, p.id, p.animalId);
   }
@@ -471,15 +482,30 @@ async function insertEvents(db: pg.PoolClient, events: PolicyEvent[]) {
 
 const iso = (d: Date | string) => new Date(d).toISOString();
 
-const APPLICATIONS = `select application_id, market, animal_id, policyholder_party_id, product_version, start_date::text as start_date, choices,
-  acceptance, premium, currency, status, underwriting, policy_id, received_by, received_at from policies.application`;
+const APPLICATIONS = `select a.application_id, a.market, a.animal_id, a.policyholder_party_id, a.product_version, a.start_date::text as start_date, a.choices,
+  a.acceptance, a.premium, a.currency, a.status, a.deadline::text as deadline, a.underwriting, a.policy_id, a.received_by, a.received_at,
+  d.outcome, d.riders, d.reason, d.note, d.policy_id as decision_policy_id, d.decided_by, d.decided_at
+  from policies.application a left join policies.application_decision d using (application_id)`;
+
+async function insertApplicationDecision(db: pg.PoolClient, applicationId: string, d: ApplicationDecision) {
+  // Two decisions at once: the primary key lets one win, and the other gets a unique violation (a conflict).
+  const { rows } = await db.query(
+    `select a.status, d.outcome from policies.application a left join policies.application_decision d using (application_id) where a.application_id = $1`,
+    [applicationId],
+  );
+  if (rows[0]?.status !== 'referred' || rows[0]?.outcome) throw new PolicyConflictError(`Application ${applicationId} is not waiting for a decision`);
+  await db.query(
+    `insert into policies.application_decision (application_id, outcome, riders, reason, note, policy_id, decided_by, decided_at) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [applicationId, d.outcome, d.riders ? JSON.stringify(d.riders) : null, d.reason ?? null, d.note ?? null, d.policyId ?? null, d.decidedBy, d.decidedAt],
+  );
+}
 
 async function insertApplication(db: pg.PoolClient, a: Application) {
   const choices = { ...(a.vetCare ? { vetCare: a.vetCare } : {}), ...(a.groupId ? { groupId: a.groupId } : {}), ...(a.campaignCode ? { campaignCode: a.campaignCode } : {}) };
   await db.query(
     `insert into policies.application (application_id, market, animal_id, policyholder_party_id, product_version, start_date, choices, acceptance,
-       premium, currency, status, underwriting, policy_id, received_by, received_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+       premium, currency, status, underwriting, policy_id, received_by, received_at, deadline)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
     [
       a.id,
       a.market,
@@ -496,6 +522,7 @@ async function insertApplication(db: pg.PoolClient, a: Application) {
       a.policyId ?? null,
       a.receivedBy,
       a.receivedAt,
+      a.deadline ?? null,
     ],
   );
 }
@@ -511,9 +538,23 @@ function toApplication(r: Record<string, any>): Application {
     ...r.choices,
     acceptance: r.acceptance,
     premium: { amount: Number(r.premium), currency: r.currency },
-    status: r.status,
+    status: r.outcome ?? r.status,
+    ...(r.deadline === null ? {} : { deadline: r.deadline }),
+    ...(r.outcome === null
+      ? {}
+      : {
+          decision: {
+            outcome: r.outcome,
+            ...(r.riders === null ? {} : { riders: r.riders }),
+            ...(r.reason === null ? {} : { reason: r.reason }),
+            ...(r.note === null ? {} : { note: r.note }),
+            ...(r.decision_policy_id === null ? {} : { policyId: r.decision_policy_id }),
+            decidedBy: r.decided_by,
+            decidedAt: iso(r.decided_at),
+          },
+        }),
     underwriting: r.underwriting,
-    ...(r.policy_id === null ? {} : { policyId: r.policy_id }),
+    ...((r.policy_id ?? r.decision_policy_id) === null ? {} : { policyId: r.policy_id ?? r.decision_policy_id }),
     receivedBy: r.received_by,
     receivedAt: iso(r.received_at),
   };

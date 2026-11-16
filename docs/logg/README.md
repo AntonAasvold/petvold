@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-16 | [Manuell prövning av ansökningar](2026-11-16-manuell-provning.md) | #67 |
 | 2026-11-16 | [Ansökan med teckningsregler och godkännande](2026-11-16-ansokan.md) | #66 |
 | 2026-11-15 | [Teckningsregler och `underwriting-core`](2026-11-15-teckningsregler.md) | #65 |
 | 2026-11-15 | [ADR om teckningsregler och ansökan](2026-11-15-teckningsregler-adr.md) | #64 |
