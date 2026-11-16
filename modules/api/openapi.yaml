@@ -44,6 +44,7 @@ tags:
   - name: previews
   - name: limits
   - name: notices
+  - name: webhooks
 
 paths:
   /v1/claims:
@@ -3066,6 +3067,164 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/webhook-subscriptions:
+    get:
+      tags: [webhooks]
+      operationId: listWebhookSubscriptions
+      x-permission: webhooks:read
+      summary: Webhook subscriptions, oldest first
+      description: Requires the permission `webhooks:read` (ADR 0033). Only subscriptions whose markets lie within the caller's. Never the secrets.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The subscriptions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/WebhookSubscription' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    post:
+      tags: [webhooks]
+      operationId: createWebhookSubscription
+      x-permission: webhooks:manage
+      summary: Subscribe an address to events
+      description: |
+        Requires the permission `webhooks:manage` (ADR 0033). Petvold sends each
+        matching event as a CloudEvent (`application/cloudevents+json`), signed
+        as Standard Webhooks: the headers `webhook-id`, `webhook-timestamp` and
+        `webhook-signature`, the HMAC-SHA256 of `id.timestamp.body` with the
+        secret. The secret is in this answer only; store it.
+
+        The address must use https and must not point at a local or private
+        address, unless the installation allows the host. The markets must lie
+        within the caller's; only a caller with every market may give `*`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookSubscriptionRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The subscription and its secret
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookSubscriptionWithSecret' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/webhook-subscriptions/{subscriptionId}:
+    get:
+      tags: [webhooks]
+      operationId: getWebhookSubscription
+      x-permission: webhooks:read
+      summary: A webhook subscription
+      description: Requires the permission `webhooks:read`. Outside the caller's markets it answers 404.
+      parameters:
+        - { name: subscriptionId, in: path, required: true, schema: { type: string, pattern: '^whs_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The subscription
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookSubscription' }
+    put:
+      tags: [webhooks]
+      operationId: changeWebhookSubscription
+      x-permission: webhooks:manage
+      summary: Change the address, types, markets or status
+      description: |
+        Requires the permission `webhooks:manage`. Based on the revision in
+        force (`409` otherwise). `status: active` turns a disabled subscription
+        on again, e.g. after the receiver answered 410 Gone; its pending
+        deliveries are sent.
+      parameters:
+        - { name: subscriptionId, in: path, required: true, schema: { type: string, pattern: '^whs_[A-Za-z0-9]+$' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookSubscriptionChange' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The changed subscription
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookSubscription' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/webhook-subscriptions/{subscriptionId}/secret-rotations:
+    post:
+      tags: [webhooks]
+      operationId: rotateWebhookSecret
+      x-permission: webhooks:manage
+      summary: A new secret
+      description: Requires the permission `webhooks:manage`. The previous secret also signs for 24 hours, so `webhook-signature` has two signatures meanwhile and the receiver can switch without losing events.
+      parameters:
+        - { name: subscriptionId, in: path, required: true, schema: { type: string, pattern: '^whs_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The subscription and its new secret
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookSubscriptionWithSecret' }
+
+  /v1/webhook-subscriptions/{subscriptionId}/deliveries:
+    get:
+      tags: [webhooks]
+      operationId: listWebhookDeliveries
+      x-permission: webhooks:read
+      summary: The subscription's deliveries, oldest first
+      description: |
+        Requires the permission `webhooks:read`. `pending` waits for its next
+        attempt, `delivered` was answered with 2xx, and `dead` gave up after
+        three days or on 410 Gone.
+      parameters:
+        - { name: subscriptionId, in: path, required: true, schema: { type: string, pattern: '^whs_[A-Za-z0-9]+$' } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, delivered, dead] } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/WebhookDelivery' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
 webhooks:
   claim.registered:
     post:
@@ -4160,6 +4319,97 @@ components:
         - cancellation-confirmation: the customer's cancellation confirmed (not required by law), cancellation-confirmation.v1
         - application-declined: the refusal with reasons (FAL 7 kap. 6 §), application-declined.v1
         - transfer-offer: the offer to the new owner of a sold animal to take over the policy (ADR 0029, not required by law), transfer-offer.v1
+
+    WebhookSubscriptionRequest:
+      type: object
+      additionalProperties: false
+      required: [url, eventTypes, markets]
+      properties:
+        url: { type: string, maxLength: 2000, description: 'https, e.g. https://hooks.example.com/petvold. Not a local or private address.' }
+        eventTypes:
+          type: array
+          minItems: 1
+          items: { type: string, pattern: '^(\*|[a-z]+\.(\*|[a-z_]+))$' }
+          description: 'Patterns: `*`, a group such as `policy.*`, or a type. Public types: policy.issued, policy.changed, policy.renewed, policy.transferred, policy.cancelled, policy.reinstated, application.received, application.accepted, application.referred, application.declined, application.withdrawn, application.expired, proposal.created.'
+        markets:
+          oneOf:
+            - { type: array, minItems: 1, items: { $ref: '#/components/schemas/Market' } }
+            - { const: '*' }
+        description: { type: string, maxLength: 200, description: 'e.g. CRM or the document system' }
+
+    WebhookSubscriptionChange:
+      type: object
+      additionalProperties: false
+      required: [basedOnRevision, url, eventTypes, markets, status]
+      description: The whole subscription as it should be, based on the revision in force.
+      properties:
+        basedOnRevision: { type: integer, minimum: 1 }
+        url: { $ref: '#/components/schemas/WebhookSubscriptionRequest/properties/url' }
+        eventTypes: { $ref: '#/components/schemas/WebhookSubscriptionRequest/properties/eventTypes' }
+        markets: { $ref: '#/components/schemas/WebhookSubscriptionRequest/properties/markets' }
+        description: { $ref: '#/components/schemas/WebhookSubscriptionRequest/properties/description' }
+        status: { type: string, enum: [active, disabled] }
+
+    WebhookSubscription:
+      type: object
+      required: [id, url, eventTypes, markets, status, revision, createdBy, createdAt, changedBy, changedAt]
+      properties:
+        id: { type: string, pattern: '^whs_[A-Za-z0-9]+$' }
+        url: { type: string }
+        eventTypes: { type: array, items: { type: string } }
+        markets:
+          oneOf:
+            - { type: array, items: { $ref: '#/components/schemas/Market' } }
+            - { const: '*' }
+        description: { type: string }
+        status: { type: string, enum: [active, disabled] }
+        disabledReason: { type: string, description: 'Why it is disabled, e.g. the receiver answered 410 Gone.' }
+        revision: { type: integer, minimum: 1 }
+        previousSecretUntil: { $ref: '#/components/schemas/DateTime', description: Until when the previous secret also signs. }
+        createdBy: { type: string }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        changedBy: { type: string }
+        changedAt: { $ref: '#/components/schemas/DateTime' }
+
+    WebhookSubscriptionWithSecret:
+      type: object
+      required: [subscription, secret]
+      properties:
+        subscription: { $ref: '#/components/schemas/WebhookSubscription' }
+        secret: { type: string, pattern: '^whsec_', description: 'The signing secret, as Standard Webhooks writes it. Shown only here.' }
+
+    CloudEvent:
+      type: object
+      description: An event as Petvold sends it (CloudEvents 1.0, ADR 0033). `data` has ids and fields that are not personal data.
+      required: [specversion, id, source, type, subject, time, datacontenttype, market, data]
+      properties:
+        specversion: { const: '1.0' }
+        id: { type: string, description: The event's id. The same at every attempt; use it to recognize repeats. }
+        source: { type: string, description: 'e.g. /petvold/policies' }
+        type: { type: string, description: 'e.g. petvold.policy.issued.v1' }
+        subject: { type: string, description: 'The resource, e.g. pol_91c2…' }
+        time: { $ref: '#/components/schemas/DateTime' }
+        datacontenttype: { const: application/json }
+        market: { $ref: '#/components/schemas/Market' }
+        data: { type: object, additionalProperties: true }
+
+    WebhookDelivery:
+      type: object
+      required: [id, subscriptionId, eventId, eventType, event, status, attempts, nextAttemptAt, createdAt]
+      properties:
+        id: { type: string, pattern: '^whd_[A-Za-z0-9]+$' }
+        subscriptionId: { type: string }
+        eventId: { type: string }
+        eventType: { type: string }
+        event: { $ref: '#/components/schemas/CloudEvent' }
+        status: { type: string, enum: [pending, delivered, dead] }
+        attempts: { type: integer, minimum: 0 }
+        nextAttemptAt: { $ref: '#/components/schemas/DateTime' }
+        lastAttemptAt: { $ref: '#/components/schemas/DateTime' }
+        lastStatus: { type: integer, description: The receiver's HTTP status at the last attempt. }
+        lastError: { type: string }
+        deliveredAt: { $ref: '#/components/schemas/DateTime' }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
 
     MarketNoticeSettings:
       type: object

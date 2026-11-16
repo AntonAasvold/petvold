@@ -86,13 +86,23 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **`npm run site` stoppar på trasiga länkar** till filer och rubriker.
   - **`docs/README.md`** listar alla sidor, och reglerna för hur vi skriver har fått två tillägg.
 
+- Webhooks, steg 1 (ADR 0033), PR #76:
+  - **Modulen `webhooks`** med eget schema och egen roll. Prenumerationer via API:t, och en kö per prenumeration som reläet fyller med policymodulens händelser.
+  - **CloudEvents 1.0**, tunna enligt `PUBLIC_EVENTS`, och **signatur enligt Standard Webhooks**. Hemligheten krypteras med `PETVOLD_WEBHOOK_KEY` och kan bytas med 24 timmars överlapp.
+  - **Arbetaren** tar förfallna utskick med `skip locked` och försöker igen under tre dygn. `410 Gone` stänger av prenumerationen.
+  - **Skydd** mot privata adresser, både när prenumerationen skapas och när adressen slås upp.
+  - **API:** sex operationer, 110 i kontraktet. Rättigheterna `webhooks:read` och `webhooks:manage`, och rollen `integration-admin`.
+  - **Migration 0033.** Provad ner och upp igen. En befintlig databas behöver rollen `webhooks_service`, och servern i drift behöver `PETVOLD_WEBHOOK_KEY`.
+- 435 tester och 121 databastester.
+
 **Nästa steg**
-1. Bygga ADR 0033, steg 1: modulen `webhooks` med prenumerationer, kö och arbetare. Med på köpet löses låset för reläet vid flera instanser för webhooks.
-2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
+1. Webhooks, steg 2: skador, djur och kundmeddelanden, och AsyncAPI-kontraktet.
+2. ADR om ett gränssnitt för handläggare och back office.
+3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
 - Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.
-- Flera instanser av servern kör var sitt relä. Ett relä med lås per outbox (pg-boss) behövs före drift med flera instanser.
+- Flera instanser av servern kör var sitt relä. Ett relä med lås per outbox behövs före drift med flera instanser. Webhooks klarar redan flera instanser (`skip locked`), men reläet som fyller kön gör det inte.
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).
 - Gallringen känner till djur, policyer, ansökningar och skador. Innan den körs skarpt hos ett försäkringsbolag behöver bolaget bekräfta lagringstiderna och att inga andra system har relationer som Petvold inte känner till, till exempel betalningar (M5).
 - Det sparas inte vem som slagit upp ett djur.

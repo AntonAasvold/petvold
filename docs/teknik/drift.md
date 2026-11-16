@@ -14,13 +14,15 @@ npm start            # node --import tsx modules/api/src/server.ts
 
 | Variabel | Krävs | Betyder |
 | --- | --- | --- |
-| `CLAIMS_DATABASE_URL`, `ACCESS_DATABASE_URL`, `DECISIONING_DATABASE_URL`, `CATALOG_DATABASE_URL`, `ANIMALS_DATABASE_URL`, `PARTIES_DATABASE_URL`, `POLICIES_DATABASE_URL`, `COMMUNICATIONS_DATABASE_URL` | Ja, alla | En databasadress per modul, med modulens egen tjänsteroll (ADR 0001) |
+| `CLAIMS_DATABASE_URL`, `ACCESS_DATABASE_URL`, `DECISIONING_DATABASE_URL`, `CATALOG_DATABASE_URL`, `ANIMALS_DATABASE_URL`, `PARTIES_DATABASE_URL`, `POLICIES_DATABASE_URL`, `COMMUNICATIONS_DATABASE_URL`, `WEBHOOKS_DATABASE_URL` | Ja, alla | En databasadress per modul, med modulens egen tjänsteroll (ADR 0001) |
 | `PETVOLD_VERSION` | Ja | Versionen som sparas med varje beslut (ADR 0018) |
 | `PETVOLD_AUTH_ISSUER` | Ja | Utfärdaren av tokens, till exempel bolagets identitetstjänst |
 | `PETVOLD_AUTH_AUDIENCE` | Ja | Petvolds `aud` i tokens |
 | `PETVOLD_AUTH_JWKS_URL` | Om utfärdaren saknar OpenID-konfiguration | Var de publika nycklarna finns. Annars läses de från `{issuer}/.well-known/openid-configuration`. |
 | `PETVOLD_AUTH_ALGORITHMS` | Nej | Tillåtna algoritmer, förval `RS256,ES256`. Bara asymmetriska algoritmer godtas. |
 | `PETVOLD_AUTH_ROLES_CLAIM`, `PETVOLD_AUTH_MARKETS_CLAIM`, `PETVOLD_AUTH_CLINIC_CLAIM`, `PETVOLD_AUTH_POLICIES_CLAIM` | Nej | Var i token roller, marknader, klinik och försäkringar finns. Förval `roles`, `petvold_markets`, `petvold_clinic_id` och `petvold_policy_ids`. |
+| `PETVOLD_WEBHOOK_KEY` | Ja | 32 slumpade byte i base64, till exempel från `openssl rand -base64 32`. Krypterar hemligheterna för webhooks (ADR 0033). Förvara den som en hemlighet. Om den byts kan sparade hemligheter inte läsas, och varje prenumeration behöver en ny hemlighet. |
+| `PETVOLD_WEBHOOK_ALLOW_HOSTS` | Nej | Värdar som en webhook får peka på fast de är lokala eller använder `http`, kommaseparerat. Förval inga. |
 | `PORT` | Nej | Förval 8080 |
 | `PETVOLD_CORS_ORIGINS` | Om ett gränssnitt i webbläsaren anropar API:t från en annan adress | Tillåtna ursprung, kommaseparerat, till exempel `https://portal.bolaget.se`. Varje värde måste vara ett exakt ursprung. `*` godtas inte. Förval inga. |
 

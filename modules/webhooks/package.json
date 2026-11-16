@@ -1,0 +1,14 @@
+{
+  "name": "@petvold/webhooks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./postgres": "./src/postgres.ts",
+    "./test-suites/webhook-store": "./test-suites/webhook-store.ts"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}

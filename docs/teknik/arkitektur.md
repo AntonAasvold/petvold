@@ -42,6 +42,7 @@ Modulerna talar med varandra genom portar som `composition.ts` kopplar ihop, och
 | `underwriting-core` | Teckningsreglerna som en ren funktion: `underwrite(rules, input)`, `questionsFor`, `validateUnderwriting` och `underwritingCoverage` (ADR 0031). Ingen I/O. | inga |
 | `policies` | Policyer: `PolicyService` (också skademotorns `PolicyPort`), porten `PolicyStore`, lagring i minnet och i Postgres (schemat `policies`), `MARKET_PROFILES` och `toSnapshot` (ADR 0029). Ansökan med teckningsregler (ADR 0031). Läser produkter, djur, parter, tariffer och teckningsregler via portar. | `claims-core` (typer), `pricing-core`, `underwriting-core`, `pg` |
 | `communications` | Kundmeddelanden (ADR 0032): `CommunicationsService` gör meddelanden av policymodulens händelser, med lagrum och sista dag ur `NOTICE_RULES` per marknad, och tar emot dokumentsystemets rapporter om utskick. Porten `NoticeStore`, lagring i minnet och i Postgres (schemat `communications`). Läser policyer, ansökningar och parternas språk via portarna `PolicySource` och `PartySource`. | `common`, `pg` |
+| `webhooks` | Händelser till bolagets system (ADR 0033): `WebhookService` med prenumerationer och kön, `WebhookWorker` som skickar, `PUBLIC_EVENTS` med de fält varje händelse får ha, signaturen enligt Standard Webhooks (`sign`), `SecretBox` för hemligheterna och `fetchTransport` som vägrar privata adresser. Porten `WebhookStore`, lagring i minnet och i Postgres (schemat `webhooks`). | `pg` |
 | `access` | Rollinställningen som versioner: tjänsten `AccessService`, porten `RoleConfigStore`, lagring i minnet och i Postgres (schemat `access`, ADR 0020) | `pg` |
 | `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, `catalog`, `animals`, `parties`, `policies`, `communications`, Hono |
 
@@ -275,7 +276,13 @@ Händelser skrivs till modulens outbox i samma transaktion som ändringen (ADR 0
 | --- | --- |
 | `claims` | Loggas. Webhooks enligt ADR 0033 (beslutad, inte byggd). |
 | `animals` | `PolicyService.handleAnimalEvent`: ägarbyte och dödsfall blir förslag |
-| `policies` | `CommunicationsService.handlePolicyEvent` (kundmeddelanden), och `ClaimsService.reassessForPolicyChange` för `policy.version_superseded` |
+| `policies` | `CommunicationsService.handlePolicyEvent` (kundmeddelanden), `WebhookService.enqueue` för de publika händelserna, och `ClaimsService.reassessForPolicyChange` för `policy.version_superseded` |
+
+**Webhooks (migration 0033):**
+- **Kö per prenumeration.** `enqueue` gör om händelsen till en CloudEvent med `toCloudEvent`, som bara tar med fälten i `PUBLIC_EVENTS`, och lägger en rad i `webhooks.delivery` för varje aktiv prenumeration som matchar typ och marknad. `unique (subscription_id, event_id)` gör att en ny leverans från reläet inte ger dubbletter. Marknaden slås upp från policyn eller ansökan i `composition.ts`.
+- **Arbetaren** (`WebhookWorker`) startar bredvid reläet. `claimDue` tar förfallna rader med `for update skip locked` och flyttar fram `next_attempt_at` en minut som ett lån. Flera instanser skickar alltså aldrig samma händelse samtidigt.
+- **Ett försök** skickar kroppen exakt som den signerades, med `fetch`, utan omdirigeringar och med 15 sekunders timeout. `fetchTransport` slår upp värden och vägrar privata adresser, så att en DNS-post som byts efter att prenumerationen skapades inte når interna system. Utfallet sparas med `recordAttempt`.
+- **Hemligheterna** krypteras med AES-256-GCM och `PETVOLD_WEBHOOK_KEY` (`SecretBox`). Databasen ser dem aldrig i klartext. Efter ett byte signerar den gamla i 24 timmar.
 
 Ett fel stoppar källan i den rundan, så att senare händelser inte går förbi. Efter tio försök blir händelsen död post och syns i hälsokontrollen. Flera instanser av servern kör var sitt relä. Ett lås per outbox behövs före drift med flera instanser.
 

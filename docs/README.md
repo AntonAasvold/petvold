@@ -16,6 +16,7 @@ För försäkringsbolag, produktägare och handläggare. Ingen kod krävs för a
 - [Pris](funktion/pris.md): tariffer, prisvillkor och prisindikation
 - [Teckning](funktion/teckning.md): hälsofrågor, ansökan och manuell prövning
 - [Meddelanden](funktion/meddelanden.md): besked som lagen kräver, och bolagets dokumentsystem
+- [Webhooks](funktion/webhooks.md): händelser till bolagets system, med signatur och omförsök
 - [Behörighet](funktion/behorighet.md): roller, rättigheter, omfång och hur en installation ställer in dem
 
 ## Teknik: hur Petvold är byggt

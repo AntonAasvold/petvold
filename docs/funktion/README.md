@@ -16,6 +16,7 @@ Petvold installeras en gång per försäkringsbolag (ADR 0010). Varje kund har s
 | Parter | Personer och organisationer med kontaktuppgifter, personnummer och historik. | Byggd, se [Parter](parter.md) |
 | Policy | Försäkringar med full historik: vad som gällde när, och vad som var känt när. | Byggt: tecknande, ändring, förnyelse, avslut och överlåtelse, se [Policyer](policyer.md). Skademotorn läser policyn via ett gränssnitt och kan kopplas till ett befintligt system. |
 | Pris och teckning | Premie och teckningsregler per produktversion. | Byggt, se [Pris](pris.md) och [Teckning](teckning.md). |
+| Webhooks | Händelser till bolagets system: prenumerationer, signatur och omförsök. | Byggt för policyer, ansökningar och förslag, se [Webhooks](webhooks.md) |
 | Meddelanden | Besked som lagen kräver, till exempel försäkringsbrev och avslag med skäl. Petvold tar fram underlaget, och bolagets dokumentsystem gör och skickar dokumenten. | Byggt för policyer och ansökningar, se [Meddelanden](meddelanden.md) |
 | Billing och betalningar | Premier in, ersättningar ut, via flera betaltjänster. | *(planerat, M5)* |
 

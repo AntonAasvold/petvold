@@ -78,6 +78,10 @@ export const PERMISSIONS = [
   'notices:deliver',
   /** Change the insurer's notice settings: texts, days for "promptly" and optional types turned off (ADR 0032). */
   'notices:configure',
+  /** Read webhook subscriptions and their deliveries (ADR 0033). Never the secrets. */
+  'webhooks:read',
+  /** Create and change webhook subscriptions, and rotate their secrets. */
+  'webhooks:manage',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -167,6 +171,8 @@ export const DEFAULT_ROLES: RoleDefinitions = {
    * the documents with the recipient's name and address, and reports each delivery.
    */
   'document-service': { permissions: ['notices:read', 'notices:deliver', 'parties:read', 'policies:read', 'catalog:read'] },
+  /** Connects the insurer's systems to Petvold's events with webhooks (ADR 0033). */
+  'integration-admin': { permissions: ['webhooks:read', 'webhooks:manage'] },
   /** Writes the insurer's texts in notices and their settings, e.g. compliance or customer communications. */
   'communications-manager': { permissions: ['notices:read', 'notices:configure'] },
   /** Handles erasure and restriction of personal data (ADR 0028). Two people are needed to anonymize. */

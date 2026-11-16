@@ -12,6 +12,7 @@ create role animals_service login password 'animals_service';
 create role parties_service login password 'parties_service';
 create role policies_service login password 'policies_service';
 create role communications_service login password 'communications_service';
+create role webhooks_service login password 'webhooks_service';
 
 -- Separate database for tests, so tests never touch development data.
 create database petvold_test owner petvold;
