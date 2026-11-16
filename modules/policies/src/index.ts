@@ -419,6 +419,7 @@ export interface PolicyEvent {
     | 'policy.cancelled'
     | 'policy.reinstated'
     | 'policy.version_superseded'
+    | 'proposal.created'
     | 'application.received'
     | 'application.referred'
     | 'application.accepted'
@@ -474,7 +475,8 @@ export interface PolicyStore {
     extra?: ApplyExtra,
   ): Promise<void>;
   /** Stores a proposal unless one for the same source event exists. Returns whether it was stored. */
-  addProposal(p: Proposal): Promise<boolean>;
+  /** Stores a proposal and its events in one transaction. false, and no events, if its source event already gave one. */
+  addProposal(p: Proposal, events: PolicyEvent[]): Promise<boolean>;
   getProposal(id: string): Promise<Proposal | null>;
   /** Oldest first. */
   listProposals(filter: { policyId?: string; pending?: boolean }): Promise<Proposal[]>;
@@ -1204,14 +1206,14 @@ export class PolicyService implements PolicyPort {
         deadline: addDays(from > marketDate(p.market, now) ? from : marketDate(p.market, now), days),
         createdAt: now,
       };
-      return (await this.d.store.addProposal(proposal)) ? proposal : null;
+      return (await this.d.store.addProposal(proposal, [this.proposalEvent(proposal)])) ? proposal : null;
     }
     if (e.type === 'animal.died') {
       const deceasedOn = String(e.data.deceasedOn);
       const p = await this.policyInForce(e.animalId, deceasedOn);
       if (!p) return null;
       const proposal: Proposal = { id: this.d.ids.next('ppr'), policyId: p.id, market: p.market, kind: 'cancel-death', sourceEventId: e.id, details: { deceasedOn }, createdAt: now };
-      return (await this.d.store.addProposal(proposal)) ? proposal : null;
+      return (await this.d.store.addProposal(proposal, [this.proposalEvent(proposal)])) ? proposal : null;
     }
     return null;
   }
@@ -1741,6 +1743,11 @@ export class PolicyService implements PolicyPort {
     return { id: this.d.ids.next('pev'), type, policyId, occurredAt: at, data };
   }
 
+  /** A proposal for someone to accept or reject, e.g. the new owner of a sold animal (ADR 0029, 0032). */
+  private proposalEvent(p: Proposal): PolicyEvent {
+    return this.event('proposal.created', p.policyId, p.createdAt, { proposalId: p.id, kind: p.kind, ...structuredClone(p.details), ...(p.deadline ? { deadline: p.deadline } : {}) });
+  }
+
   private appEvent(type: PolicyEvent['type'], applicationId: string, policyId: string | undefined, at: Timestamp, data: Record<string, unknown>): PolicyEvent {
     return { id: this.d.ids.next('pev'), type, ...(policyId ? { policyId } : {}), applicationId, occurredAt: at, data };
   }
@@ -2228,9 +2235,10 @@ export class InMemoryPolicyStore implements PolicyStore {
     Object.assign(m, { to: end.to, endedBy: end.endedBy, endedAt: end.endedAt, endReason: end.reason });
   }
 
-  async addProposal(p: Proposal) {
+  async addProposal(p: Proposal, events: PolicyEvent[]) {
     if (this.proposals.some((x) => x.sourceEventId === p.sourceEventId)) return false;
     this.proposals.push(structuredClone(p));
+    this.outbox.push(...structuredClone(events));
     return true;
   }
 

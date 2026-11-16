@@ -1534,7 +1534,7 @@ paths:
         system reads `status=pending`, makes and sends the document, and reports
         each attempt with `POST /v1/notices/{noticeId}/deliveries`.
 
-        - `attention=true`: the queue for a person, failed and overdue notices.
+        - `attention=true`: the queue for a person, failed, overdue and incomplete unsent notices.
         - `overdue=true`: not sent and `dueBy` has passed.
         - `late=true`: first sent after `dueBy`. For `insurer-termination` a person
           checks whether the effective date still holds; Petvold never moves it.
@@ -1619,6 +1619,79 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Notice' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/notice-settings:
+    get:
+      tags: [notices]
+      operationId: getNoticeSettings
+      x-permission: notices:read
+      summary: The insurer's notice settings per market
+      description: |
+        Requires the permission `notices:read` (ADR 0032). Per market: the days
+        "promptly" gives, the types the law does not require that are turned
+        off, and texts per language, such as how a decision is reviewed. Version
+        1 is empty: Petvold's rules apply, and the insurer writes its texts.
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The current settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NoticeSettings' }
+
+  /v1/notice-settings/versions:
+    get:
+      tags: [notices]
+      operationId: listNoticeSettings
+      x-permission: notices:read
+      summary: Every version of the notice settings, oldest first
+      description: Requires the permission `notices:read`. Each notice names the version it was made with (`settingsVersion`).
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/NoticeSettings' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+    post:
+      tags: [notices]
+      operationId: changeNoticeSettings
+      x-permission: notices:configure
+      summary: Change the notice settings
+      description: |
+        Requires the permission `notices:configure`. Replaces every market's
+        settings with a new version, based on the version in force (`409`
+        otherwise). A type the market's law requires cannot be turned off.
+        Notices already made keep what they were made with.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeNoticeSettingsRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The new version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NoticeSettings' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
@@ -4078,13 +4151,55 @@ components:
 
     NoticeType:
       type: string
-      enum: [policy-confirmation, renewal-notice, insurer-termination, cancellation-confirmation, application-declined]
+      enum: [policy-confirmation, renewal-notice, insurer-termination, cancellation-confirmation, application-declined, transfer-offer]
       description: |
         - policy-confirmation: the written confirmation after issue (SE: FAL 2 kap. 4 §), schema policy-confirmation.v1
         - renewal-notice: the new term and what changed (FAL 3 kap. 5 §), renewal-notice.v1
         - insurer-termination: the insurer's cancellation (FAL 3 kap. 3 och 7 §§, 5 kap. 2 §), insurer-termination.v1
         - cancellation-confirmation: the customer's cancellation confirmed (not required by law), cancellation-confirmation.v1
         - application-declined: the refusal with reasons (FAL 7 kap. 6 §), application-declined.v1
+        - transfer-offer: the offer to the new owner of a sold animal to take over the policy (ADR 0029, not required by law), transfer-offer.v1
+
+    MarketNoticeSettings:
+      type: object
+      additionalProperties: false
+      properties:
+        promptlyDays: { type: integer, minimum: 1, maximum: 30, description: 'Days that "promptly" gives. Omitted: Petvold''s default (SE: 3).' }
+        disabledTypes: { type: array, items: { $ref: '#/components/schemas/NoticeType' }, description: Types the law does not require that are not made. }
+        texts:
+          type: object
+          description: Language (ISO 639-1) -> texts. A notice gets the texts in its language, else the market's.
+          propertyNames: { pattern: '^[a-z]{2}$' }
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            properties:
+              sender: { type: string, minLength: 1, maxLength: 2000, description: 'Who the notice is from. Copied to every notice as content.sender.' }
+              review: { type: string, minLength: 1, maxLength: 2000, description: 'How a decision is reviewed (SE: FAL 7 kap. 6 §). Copied to application-declined as content.review; without it the notice is incomplete.' }
+
+    NoticeSettings:
+      type: object
+      required: [version, markets, changedBy, changedAt, reason]
+      properties:
+        version: { type: integer, minimum: 1 }
+        markets:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/MarketNoticeSettings' }
+        changedBy: { type: string }
+        changedAt: { $ref: '#/components/schemas/DateTime' }
+        reason: { type: string }
+
+    ChangeNoticeSettingsRequest:
+      type: object
+      additionalProperties: false
+      required: [basedOnVersion, markets, reason]
+      properties:
+        basedOnVersion: { type: integer, minimum: 1 }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        markets:
+          type: object
+          propertyNames: { pattern: '^[A-Z]{2}$' }
+          additionalProperties: { $ref: '#/components/schemas/MarketNoticeSettings' }
 
     Notice:
       type: object
@@ -4115,10 +4230,14 @@ components:
             What the law requires, as fields, per schema. No names or addresses.
             - policy-confirmation.v1 and renewal-notice.v1: policyId, animalId, termNo, productVersion, startDate, endDate, premium, vetCare, deductibleOption, riders. The confirmation adds acceptedDocuments; the renewal adds changes (product-version, premium, vet-care, riders) and previous.
             - insurer-termination.v1 and cancellation-confirmation.v1: policyId, animalId, reason, receivedOn, effectiveDate, refund; the insurer's grounds, and for unpaid premium voidIfPaidBefore.
-            - application-declined.v1: applicationId, animalId, productVersion, reasons (codes) and decidedBy (rules or person).
+            - application-declined.v1: applicationId, animalId, productVersion, reasons (codes) and decidedBy (rules or person), and review from the settings.
+            - transfer-offer.v1: policyId, animalId, proposalId, fromPartyId, from, deadline, and the term as in the confirmation.
+            Every type gets sender from the settings when it is set.
         status: { type: string, enum: [pending, sent, failed], description: 'sent once any delivery was sent; failed if every delivery failed.' }
         late: { type: boolean, description: First sent after dueBy. }
         overdue: { type: boolean, description: Not sent and dueBy has passed. }
+        incomplete: { type: array, items: { type: string }, description: 'Texts the insurer''s settings lacked when it was made, e.g. review. Unsent, it is in the queue (attention=true).' }
+        settingsVersion: { type: integer, minimum: 1, description: 'The version of the notice settings it was made with. Omitted: made before the settings existed.' }
         createdAt: { $ref: '#/components/schemas/DateTime' }
         deliveries:
           type: array

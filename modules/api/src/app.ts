@@ -14,7 +14,7 @@ import {
   type PartyRecord,
 } from '@petvold/parties';
 import { InMemoryPolicyStore, PolicyError, PolicyService, type Application, type ApplicationStatus, type PolicyGroup, type PolicyRecord, type Proposal } from '@petvold/policies';
-import { CommunicationsError, CommunicationsService, InMemoryNoticeStore, NOTICE_TYPES, type NoticeType, type NoticeView } from '@petvold/communications';
+import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_TYPES, type NoticeType, type NoticeView } from '@petvold/communications';
 import { animalPort, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
 import { tariffCoverage } from '@petvold/pricing-core';
 import { questionsFor, underwritingCoverage } from '@petvold/underwriting-core';
@@ -931,6 +931,7 @@ export function createApp(d: AppDeps) {
     d.communications ??
     new CommunicationsService({
       store: new InMemoryNoticeStore(),
+      settings: new InMemoryNoticeSettingsStore(),
       policies: policySource(policies),
       parties: partySource(parties),
       clock: d.clock,
@@ -973,6 +974,16 @@ export function createApp(d: AppDeps) {
   });
 
   app.get('/v1/notices/:noticeId', async (c) => send(c, await visibleNotice(c)));
+
+  app.get('/v1/notice-settings', async (c) => send(c, await communications.settings()));
+
+  app.get('/v1/notice-settings/versions', async (c) => sendPage(c, await communications.settingsVersions()));
+
+  app.post('/v1/notice-settings/versions', async (c) => {
+    const r = await readJson(c, 'ChangeNoticeSettingsRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await communications.changeSettings(r.body, c.get('principal').subject) }));
+  });
 
   app.post('/v1/notices/:noticeId/deliveries', async (c) => {
     const n = await visibleNotice(c);

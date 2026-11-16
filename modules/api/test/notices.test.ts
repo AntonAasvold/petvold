@@ -18,6 +18,7 @@ async function setup() {
     handler: { subject: 'h@example.test', roles: ['handler'], markets: '*' },
     portal: { subject: 'portal', roles: ['customer-channel'], markets: ['SE'], policyIds: [confirmation.policyId!] },
     clinic: { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
+    comms: { subject: 'comms@example.test', roles: ['communications-manager'], markets: ['SE'] },
   };
   const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
   let n = 0;
@@ -53,7 +54,8 @@ test('the document system reads pending notices and reports deliveries; the queu
   const failed = await call('POST', path, 'docs', { outcome: 'failed', channel: 'letter', reason: 'No postal address' });
   assert.equal(failed.status, 201);
   assert.ok(validatorFor('Notice')(structuredClone(failed.body)), JSON.stringify(validatorFor('Notice').errors));
-  assert.deepEqual((await call('GET', '/v1/notices?attention=true', 'handler')).body.items.map((n: any) => n.id), [confirmation.id]);
+  // Failed, and the refusal that lacks the insurer's review text.
+  assert.deepEqual((await call('GET', '/v1/notices?attention=true', 'handler')).body.items.map((n: any) => n.status === 'failed' ? n.id : n.type), [confirmation.id, 'application-declined']);
 
   at('2026-11-16T09:00:00.000Z');
   const sent = await call('POST', path, 'docs', { outcome: 'sent', channel: 'digital-mailbox', sentAt: '2026-11-16T08:30:00Z', documentId: 'arch-2026-000123', sha256: 'c'.repeat(64) });
@@ -76,4 +78,23 @@ test('the customer portal sees only notices on its policies, and a clinic none',
   assert.equal((await call('GET', `/v1/notices/${other.id}`, 'portal')).status, 404);
   assert.equal((await call('GET', '/v1/notices', 'clinic')).status, 403);
   assert.equal((await call('GET', '/v1/notices/ntc_none', 'handler')).status, 404);
+});
+
+test('the insurer writes its texts in versioned settings; a refusal without review text waits in the queue (ADR 0032)', async () => {
+  const { call } = await setup();
+  const declined = (await call('GET', '/v1/notices?type=application-declined', 'handler')).body.items[0];
+  assert.deepEqual([declined.settingsVersion, declined.incomplete], [1, ['review']]);
+  assert.ok((await call('GET', '/v1/notices?attention=true', 'handler')).body.items.some((n: any) => n.id === declined.id));
+
+  const v1 = await call('GET', '/v1/notice-settings', 'docs');
+  assert.equal(v1.status, 200);
+  assert.ok(validatorFor('NoticeSettings')(structuredClone(v1.body)), JSON.stringify(validatorFor('NoticeSettings').errors));
+  const body = { basedOnVersion: 1, reason: 'Swedish texts', markets: { SE: { promptlyDays: 5, texts: { sv: { sender: 'Example Insurance', review: 'Contact our complaints function.' } } } } };
+  assert.equal((await call('POST', '/v1/notice-settings/versions', 'docs', body)).status, 403);
+  assert.equal((await call('POST', '/v1/notice-settings/versions', 'comms', { ...body, markets: { SE: { disabledTypes: ['policy-confirmation'] } } })).status, 422);
+  assert.equal((await call('POST', '/v1/notice-settings/versions', 'comms', { ...body, markets: { SE: { texts: { sv: { footer: 'x' } } } } })).status, 422, 'the contract');
+  const v2 = await call('POST', '/v1/notice-settings/versions', 'comms', body);
+  assert.deepEqual([v2.status, v2.body.version], [201, 2]);
+  assert.equal((await call('POST', '/v1/notice-settings/versions', 'comms', body)).status, 409);
+  assert.deepEqual((await call('GET', '/v1/notice-settings/versions', 'comms')).body.items.map((v: any) => v.version), [1, 2]);
 });

@@ -16,7 +16,7 @@ import { addDays, marketDate, marketLanguage } from '@petvold/common';
 export type ISODate = string;
 export type Timestamp = string;
 
-export const NOTICE_TYPES = ['policy-confirmation', 'renewal-notice', 'insurer-termination', 'cancellation-confirmation', 'application-declined'] as const;
+export const NOTICE_TYPES = ['policy-confirmation', 'renewal-notice', 'insurer-termination', 'cancellation-confirmation', 'application-declined', 'transfer-offer'] as const;
 export type NoticeType = (typeof NOTICE_TYPES)[number];
 
 /** The content schema of each type. A new legal requirement gives a new field or version. */
@@ -26,6 +26,13 @@ export const NOTICE_SCHEMAS: Record<NoticeType, string> = {
   'insurer-termination': 'insurer-termination.v1',
   'cancellation-confirmation': 'cancellation-confirmation.v1',
   'application-declined': 'application-declined.v1',
+  'transfer-offer': 'transfer-offer.v1',
+};
+
+/** Fields an insurer's text fills, per type: a notice without them is incomplete and in the queue. */
+export const REQUIRED_TEXTS: Partial<Record<NoticeType, (keyof NoticeTexts)[]>> = {
+  // Chapter 7 section 6: what the applicant must do to have the decision reviewed.
+  'application-declined': ['review'],
 };
 
 /**
@@ -84,6 +91,8 @@ export const NOTICE_RULES: Record<string, MarketNoticeRules> = {
         ],
       },
       'cancellation-confirmation': { required: false, due: 'promptly', legalBasis: [] },
+      // The new owner of a sold animal may take over the policy (ADR 0029); the law does not require the offer.
+      'transfer-offer': { required: false, due: 'promptly', legalBasis: [] },
       'application-declined': {
         required: true,
         due: 'promptly',
@@ -114,6 +123,41 @@ export interface Delivery {
   reportedAt: Timestamp;
 }
 
+/** The insurer's texts in one language (ADR 0032). */
+export interface NoticeTexts {
+  /** Who the notice is from, e.g. the insurer's name and contact details. */
+  sender?: string;
+  /** How a decision is reviewed: the insurer's complaints function and the bodies the customer can turn to. */
+  review?: string;
+}
+
+/** The insurer's choices for a market. Laws cannot be weakened: required types cannot be turned off. */
+export interface MarketNoticeSettings {
+  /** Days that "promptly" gives, 1-30. Omitted: the market rules' default. */
+  promptlyDays?: number;
+  /** Types the law does not require that the insurer does not want. */
+  disabledTypes?: NoticeType[];
+  /** Language (ISO 639-1) -> texts. */
+  texts?: Record<string, NoticeTexts>;
+}
+
+export interface NoticeSettings {
+  /** 1, 2, 3 … Version 1 comes from the installation's defaults. */
+  version: number;
+  markets: Record<string, MarketNoticeSettings>;
+  changedBy: string;
+  changedAt: Timestamp;
+  reason: string;
+}
+
+export interface NoticeSettingsStore {
+  current(): Promise<NoticeSettings | null>;
+  /** Oldest first. */
+  versions(): Promise<NoticeSettings[]>;
+  /** Throws NoticeConflictError unless it is the next version. */
+  append(s: NoticeSettings): Promise<void>;
+}
+
 export interface Notice {
   id: string;
   type: NoticeType;
@@ -133,6 +177,8 @@ export interface Notice {
   dueBy: ISODate;
   /** What the law requires as fields, per schema. No names or addresses. */
   content: Record<string, unknown>;
+  /** The version of the insurer's settings it was made with. Omitted: made before settings existed (migration 0032). */
+  settingsVersion?: number;
   createdAt: Timestamp;
   deliveries: Delivery[];
 }
@@ -147,6 +193,8 @@ export interface NoticeView extends Notice {
   late?: boolean;
   /** Not sent and dueBy has passed. */
   overdue?: boolean;
+  /** Texts the insurer's settings lacked when it was made, e.g. review. The document system cannot send it as it is. */
+  incomplete?: string[];
 }
 
 /** An event from another module, as the relay hands it over. */
@@ -187,6 +235,17 @@ export interface TransactionView {
   acceptedDocuments?: { type: string; language: string; sha256: string }[];
 }
 
+export interface ProposalView {
+  id: string;
+  kind: string;
+  fromPartyId: string;
+  toPartyId: string;
+  /** The day the new owner took over the animal. */
+  from: ISODate;
+  /** The last day to accept. */
+  deadline: ISODate;
+}
+
 export interface ApplicationView {
   id: string;
   market: string;
@@ -203,6 +262,7 @@ export interface PolicySource {
   policy(policyId: string): Promise<PolicyView | null>;
   transaction(policyId: string, transactionId: string): Promise<TransactionView | null>;
   application(applicationId: string): Promise<ApplicationView | null>;
+  proposal(proposalId: string): Promise<ProposalView | null>;
 }
 
 /** What the module reads from the parties module. */
@@ -264,8 +324,12 @@ export interface CommunicationsDeps {
   parties: PartySource;
   clock: { now(): Timestamp };
   ids: { next(prefix: string): string };
+  /** The insurer's versioned settings. */
+  settings: NoticeSettingsStore;
   /** Defaults to NOTICE_RULES. */
   rules?: Record<string, MarketNoticeRules>;
+  /** Version 1 of the settings. Defaults to an empty setting per market with rules. */
+  defaults?: Record<string, MarketNoticeSettings>;
 }
 
 const INSURER_REASONS = new Set(['insurer-term-end', 'insurer-breach', 'unpaid-premium']);
@@ -276,7 +340,8 @@ export function viewOf(n: Notice, now: Timestamp): NoticeView {
   const status: NoticeStatus = sent ? 'sent' : n.deliveries.length ? 'failed' : 'pending';
   const late = sent ? marketDate(n.market, sent.sentAt!) > n.dueBy : false;
   const overdue = !sent && marketDate(n.market, now) > n.dueBy;
-  return { ...structuredClone(n), status, ...(late ? { late } : {}), ...(overdue ? { overdue } : {}) };
+  const incomplete = (REQUIRED_TEXTS[n.type] ?? []).filter((k) => typeof n.content[k] !== 'string');
+  return { ...structuredClone(n), status, ...(late ? { late } : {}), ...(overdue ? { overdue } : {}), ...(incomplete.length ? { incomplete } : {}) };
 }
 
 export class CommunicationsService {
@@ -297,9 +362,17 @@ export class CommunicationsService {
     const rules = this.rulesFor(planned.market);
     if (!rules) return null;
     const rule = rules.types[planned.type];
+    const settings = await this.settings();
+    const ms = settings.markets[planned.market] ?? {};
+    if (!rule.required && ms.disabledTypes?.includes(planned.type)) return null;
     const language = (await this.d.parties.languageOf(planned.recipientPartyId)) ?? marketLanguage(planned.market) ?? 'en';
+    // The texts in the notice's language, else the market's.
+    const texts = ms.texts?.[language] ?? ms.texts?.[marketLanguage(planned.market) ?? ''] ?? {};
     const eventDate = marketDate(planned.market, e.occurredAt);
-    const dueBy = rule.due === 'promptly' ? addDays(eventDate, rules.promptlyDays) : rule.due === 'term-start' ? planned.termStart! : planned.sentOn!;
+    const dueBy =
+      rule.due === 'promptly' ? addDays(eventDate, ms.promptlyDays ?? rules.promptlyDays) : rule.due === 'term-start' ? planned.termStart! : planned.sentOn!;
+    const wanted = new Set<string>(['sender', ...(REQUIRED_TEXTS[planned.type] ?? [])]);
+    const fromSettings = Object.fromEntries(Object.entries(texts).filter(([k, v]) => wanted.has(k) && v));
     const notice: Notice = {
       id: this.d.ids.next('ntc'),
       type: planned.type,
@@ -312,7 +385,8 @@ export class CommunicationsService {
       source: { eventId: e.id, eventType: e.type, occurredAt: e.occurredAt },
       legalBasis: [...rule.legalBasis],
       dueBy,
-      content: planned.content,
+      content: { ...planned.content, ...fromSettings },
+      settingsVersion: settings.version,
       createdAt: this.d.clock.now(),
       deliveries: [],
     };
@@ -344,7 +418,8 @@ export class CommunicationsService {
         content: { applicationId: a.id, animalId: a.animalId, productVersion: a.productVersion, reasons: [...a.reasons], decidedBy: a.decidedBy },
       };
     }
-    if (!e.policyId || !['policy.issued', 'policy.renewed', 'policy.cancelled'].includes(e.type)) return null;
+    if (!e.policyId || !['policy.issued', 'policy.renewed', 'policy.cancelled', 'proposal.created'].includes(e.type)) return null;
+    if (e.type === 'proposal.created' && e.data.kind !== 'transfer') return null;
     const p = await this.d.policies.policy(e.policyId);
     if (!p) throw new Error(`The policy ${e.policyId} of event ${e.id} does not exist`);
     const txId = String(e.data.transactionId ?? '');
@@ -388,6 +463,27 @@ export class CommunicationsService {
       };
     }
 
+    if (e.type === 'proposal.created') {
+      const pr = await this.d.policies.proposal(String(e.data.proposalId ?? ''));
+      if (!pr) throw new Error(`The proposal ${e.data.proposalId} of event ${e.id} does not exist`);
+      const term = p.terms.find((t) => t.startDate <= pr.from && pr.from < t.endDate) ?? p.terms.at(-1)!;
+      return {
+        type: 'transfer-offer',
+        market: p.market,
+        recipientPartyId: pr.toPartyId,
+        policyId: p.id,
+        content: {
+          policyId: p.id,
+          animalId: p.animalId,
+          proposalId: pr.id,
+          fromPartyId: pr.fromPartyId,
+          from: pr.from,
+          deadline: pr.deadline,
+          ...termContent(term),
+        },
+      };
+    }
+
     // policy.cancelled
     const tx = await this.d.policies.transaction(p.id, txId);
     const c = tx?.cancellation;
@@ -411,19 +507,87 @@ export class CommunicationsService {
       : { type: 'cancellation-confirmation', market: p.market, recipientPartyId, policyId: p.id, content };
   }
 
+  /** The insurer's settings in force. Version 1 is stored the first time, from the defaults. */
+  async settings(): Promise<NoticeSettings> {
+    const cur = await this.d.settings.current();
+    if (cur) return cur;
+    const markets = this.d.defaults ?? Object.fromEntries(Object.keys(this.d.rules ?? NOTICE_RULES).map((m) => [m, {}]));
+    const first: NoticeSettings = { version: 1, markets: structuredClone(markets), changedBy: 'petvold-defaults', changedAt: this.d.clock.now(), reason: 'Petvold default notice settings (ADR 0032)' };
+    await this.d.settings.append(first).catch((e: unknown) => {
+      if (!(e instanceof NoticeConflictError)) throw e; // someone else stored version 1 first
+    });
+    return (await this.d.settings.current())!;
+  }
+
+  async settingsVersions(): Promise<NoticeSettings[]> {
+    await this.settings();
+    return this.d.settings.versions();
+  }
+
+  /** A new version of the settings, based on the one in force. */
+  async changeSettings(input: { markets: Record<string, MarketNoticeSettings>; basedOnVersion: number; reason: string }, by: string): Promise<NoticeSettings> {
+    const cur = await this.settings();
+    if (cur.version !== input.basedOnVersion) throw new CommunicationsError('conflict', `The notice settings are at version ${cur.version}, not ${input.basedOnVersion}`);
+    const reason = (input.reason ?? '').trim();
+    const fail = (m: string): never => {
+      throw new CommunicationsError('validation', m);
+    };
+    if (!reason) fail('A reason is required');
+    const markets: Record<string, MarketNoticeSettings> = {};
+    for (const [market, s] of Object.entries(input.markets ?? {})) {
+      const rules = this.rulesFor(market);
+      if (!rules) fail(`Petvold has no notice rules for '${market}'`);
+      const out: MarketNoticeSettings = {};
+      if (s.promptlyDays !== undefined) {
+        if (!Number.isInteger(s.promptlyDays) || s.promptlyDays < 1 || s.promptlyDays > 30) fail(`promptlyDays for ${market} must be 1-30`);
+        out.promptlyDays = s.promptlyDays;
+      }
+      if (s.disabledTypes !== undefined) {
+        for (const t of s.disabledTypes) {
+          if (!(NOTICE_TYPES as readonly string[]).includes(t)) fail(`Unknown notice type '${t}'`);
+          if (rules!.types[t].required) fail(`${t} is required by law in ${market} and cannot be turned off`);
+        }
+        out.disabledTypes = [...new Set(s.disabledTypes)].sort();
+      }
+      if (s.texts !== undefined) {
+        out.texts = {};
+        for (const [lang, t] of Object.entries(s.texts)) {
+          if (!/^[a-z]{2}$/.test(lang)) fail(`Invalid language '${lang}', ISO 639-1, e.g. sv`);
+          const clean: NoticeTexts = {};
+          for (const k of ['sender', 'review'] as const) {
+            const v = t?.[k];
+            if (v === undefined) continue;
+            if (typeof v !== 'string' || !v.trim() || v.length > 2000) fail(`${market} ${lang} ${k} must be text of at most 2000 characters`);
+            clean[k] = v.trim();
+          }
+          const unknown = Object.keys(t ?? {}).filter((k) => k !== 'sender' && k !== 'review');
+          if (unknown.length) fail(`Unknown texts: ${unknown.join(', ')}`);
+          out.texts[lang] = clean;
+        }
+      }
+      markets[market] = out;
+    }
+    const next: NoticeSettings = { version: cur.version + 1, markets, changedBy: by, changedAt: this.d.clock.now(), reason };
+    await this.d.settings.append(next).catch((e: unknown) => {
+      if (e instanceof NoticeConflictError) throw new CommunicationsError('conflict', e.message);
+      throw e;
+    });
+    return next;
+  }
+
   async get(id: string): Promise<NoticeView> {
     const n = await this.d.store.get(id);
     if (!n) throw new CommunicationsError('not_found', `Notice ${id} does not exist`);
     return viewOf(n, this.d.clock.now());
   }
 
-  /** Notices, oldest first. `overdue`/`late` keep only those flagged; `attention` keeps failed and overdue ones: the queue for a person. */
+  /** Notices, oldest first. `overdue`/`late` keep only those flagged; `attention` keeps failed, overdue and incomplete unsent ones: the queue for a person. */
   async list(filter: NoticeFilter & { overdue?: boolean; late?: boolean; attention?: boolean } = {}): Promise<NoticeView[]> {
     const { overdue, late, attention, ...stored } = filter;
     if (attention && stored.status === 'sent') return [];
     const now = this.d.clock.now();
     const all = (await this.d.store.list(attention ? { ...stored } : stored)).map((n) => viewOf(n, now));
-    return all.filter((n) => (!overdue || n.overdue) && (!late || n.late) && (!attention || n.status === 'failed' || n.overdue));
+    return all.filter((n) => (!overdue || n.overdue) && (!late || n.late) && (!attention || n.status === 'failed' || n.overdue || (n.status === 'pending' && n.incomplete)));
   }
 
   /** The document system's report: sent, with channel, time, archive id and checksum, or failed with a reason. */
@@ -545,5 +709,22 @@ export class InMemoryNoticeStore implements NoticeStore {
     const n = this.rows.find((x) => x.id === noticeId);
     if (!n) throw new NoticeConflictError(`Notice ${noticeId} does not exist`);
     n.deliveries.push(structuredClone(d));
+  }
+}
+
+export class InMemoryNoticeSettingsStore implements NoticeSettingsStore {
+  private list: NoticeSettings[] = [];
+
+  async current() {
+    return structuredClone(this.list.at(-1) ?? null);
+  }
+
+  async versions() {
+    return structuredClone(this.list);
+  }
+
+  async append(s: NoticeSettings) {
+    if (s.version !== (this.list.at(-1)?.version ?? 0) + 1) throw new NoticeConflictError(`Notice settings version ${s.version} is not the next`);
+    this.list.push(structuredClone(s));
   }
 }

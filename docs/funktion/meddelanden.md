@@ -8,7 +8,7 @@ Lagen kräver att kunden får vissa besked, till exempel ett försäkringsbrev n
 2. **Petvold skapar ett kundmeddelande** från händelsen. Meddelandet anger typ, mottagare, språk, innehåll och lagrum, och sista dagen då det ska vara skickat (`dueBy`).
 3. **Dokumentsystemet hämtar meddelandena som väntar** med `GET /v1/notices?status=pending`. Det hämtar namn och adress från parten, väljer mall efter typ och språk, gör dokumentet och skickar det.
 4. **Dokumentsystemet rapporterar** med `POST /v1/notices/{id}/deliveries`: att meddelandet skickades, eller att utskicket misslyckades.
-5. **En person tar hand om det som fastnar.** `GET /v1/notices?attention=true` visar meddelanden som misslyckats eller inte skickats i tid.
+5. **En person tar hand om det som fastnar.** `GET /v1/notices?attention=true` visar meddelanden som misslyckats, inte skickats i tid eller saknar en text som lagen kräver.
 
 Samma händelse ger aldrig två meddelanden av samma typ, även om den levereras flera gånger.
 
@@ -21,16 +21,14 @@ Samma händelse ger aldrig två meddelanden av samma typ, även om den levereras
 | `insurer-termination` | Bolaget säger upp policyn (`insurer-term-end`, `insurer-breach` eller `unpaid-premium`) | Dagen bolaget anger att uppsägningen skickades (`receivedOn`) | FAL 3 kap. 3 och 7 §§, 5 kap. 2 § |
 | `cancellation-confirmation` | Kunden säger upp, ångrar sig eller behovet faller bort | Tre dagar efter uppsägningen | Ingen lag |
 | `application-declined` | En ansökan avslås, av reglerna eller av en person | Tre dagar efter avslaget | FAL 7 kap. 6 § |
+| `transfer-offer` | Djuret har sålts, och den nya ägaren erbjuds att ta över policyn (förslaget `transfer`) | Tre dagar efter förslaget | Ingen lag (ADR 0029) |
 
-- **Tre dagar** är Petvolds tolkning av "snarast", eftersom lagen inte anger något antal dagar. Bolaget ska kunna ändra det i sina inställningar.
-- **Mottagaren** är försäkringstagaren när beskedet gäller, vid en uppsägning den sista dagen policyn gällde. Vid ett avslag är det den sökande.
+- **Tre dagar** är Petvolds tolkning av "snarast", eftersom lagen inte anger något antal dagar. Bolaget kan ändra det i [inställningarna](#bolagets-inställningar).
+- **Mottagaren** är försäkringstagaren när beskedet gäller, vid en uppsägning den sista dagen policyn gällde. Vid ett avslag är det den sökande, och vid ett erbjudande den nya ägaren.
 - **Språket** är partens språk, annars marknadens, i Sverige svenska.
+- **Typer som lagen inte kräver** (`cancellation-confirmation` och `transfer-offer`) kan stängas av i inställningarna.
 
-*Inte byggt än:*
-- erbjudandet om överlåtelse till en ny ägare
-- bolagets egna texter per marknad, som hur ett beslut prövas och avsändaren
-- att stänga av typer som lagen inte kräver
-- skadebesked
+*Inte byggt än:* skadebesked.
 
 ## Innehållet
 
@@ -42,7 +40,10 @@ Innehållet är fält, inte text. Varje typ har ett schema med versionsnummer, t
 | `renewal-notice.v1` | Samma fält om termen som försäkringsbrevet, och `changes` med det som ändrats mot förra termen (`product-version`, `premium`, `vet-care` eller `riders`) och `previous` med förra termens produkt, premie och villkor |
 | `insurer-termination.v1` | `policyId`, `animalId`, `reason`, `receivedOn`, `effectiveDate`, `refund`, och bolagets motivering (`grounds`) om den finns. Vid obetald premie också `voidIfPaidBefore`: uppsägningen gäller inte om premien betalas före den dagen (FAL 5 kap. 2 §). |
 | `cancellation-confirmation.v1` | `policyId`, `animalId`, `reason`, `receivedOn`, `effectiveDate` och `refund` |
-| `application-declined.v1` | `applicationId`, `animalId`, `productVersion`, `reasons` (skälskoderna) och `decidedBy` (`rules` eller `person`) |
+| `application-declined.v1` | `applicationId`, `animalId`, `productVersion`, `reasons` (skälskoderna), `decidedBy` (`rules` eller `person`) och `review`, bolagets text om hur beslutet prövas |
+| `transfer-offer.v1` | `policyId`, `animalId`, `proposalId`, `fromPartyId` (den förra ägaren), `from` (dagen den nya ägaren tog över djuret), `deadline` (sista dagen att godkänna) och termens fält som i försäkringsbrevet |
+
+Varje typ får också `sender` från inställningarna när bolaget har angett en avsändare. Meddelandet anger vilken version av inställningarna det skapades med (`settingsVersion`).
 
 **Exempel:** Kajsas försäkringsbrev.
 
@@ -103,15 +104,50 @@ Skälet får inte innehålla personuppgifter.
 | `status: failed` | Alla utskick misslyckades |
 | `overdue: true` | Inte skickat, och `dueBy` har passerat |
 | `late: true` | Det första lyckade utskicket kom efter `dueBy` |
+| `incomplete: ["review"]` | Inställningarna saknade en text som lagen kräver när meddelandet skapades, till exempel hur ett avslag prövas |
 
 **Ett sent besked om uppsägning flyttar inte upphörandedagen.** Lagens frister räknas från dagen beskedet skickades. Om bolagets uppsägning skickades efter dagen den räknades från, visar `GET /v1/notices?type=insurer-termination&late=true` den. En person avgör då om upphörandedagen håller, och avslutar eller återkallar uppsägningen i så fall.
+
+## Bolagets inställningar
+
+Bolagets val och texter ligger i en versionerad inställning per marknad (ADR 0032). En ny version ersätter den gamla, och ett meddelande som redan skapats behåller det det skapades med.
+
+| Fält | Betyder | Exempel |
+| --- | --- | --- |
+| `promptlyDays` | Dagar som "snarast" ger, 1–30. Utelämnat: Petvolds förval, i Sverige 3. | 5 |
+| `disabledTypes` | Typer som lagen inte kräver och som inte ska skapas. En typ som lagen kräver kan inte stängas av. | `["cancellation-confirmation"]` |
+| `texts` | Texter per språk: `sender` (avsändaren) och `review` (hur ett beslut prövas). Ett meddelande får texterna på sitt språk, annars på marknadens. | se nedan |
+
+```http
+POST /v1/notice-settings/versions
+{
+  "basedOnVersion": 1,
+  "reason": "Svenska texter",
+  "markets": {
+    "SE": {
+      "promptlyDays": 5,
+      "texts": {
+        "sv": {
+          "sender": "Exempelbolaget Försäkring AB",
+          "review": "Kontakta i första hand vår klagomålsansvarige. Du kan också vända dig till Konsumenternas försäkringsbyrå eller Allmänna reklamationsnämnden, eller väcka talan i allmän domstol."
+        }
+      }
+    }
+  }
+}
+```
+
+- **Version 1 är tom.** Petvolds lagregler gäller, och bolaget skriver sina egna texter. Petvold skriver inga texter åt bolaget.
+- **Utan `review`** blir ett avslag `incomplete` och hamnar i kön. Lagen kräver att avslaget anger hur sökanden får beslutet prövat (FAL 7 kap. 6 §).
+- **`basedOnVersion`** måste vara versionen som gäller, annars `409`. Två samtidiga ändringar ger en vinnare.
+- **Läsa:** `GET /v1/notice-settings` och `.../versions` med `notices:read`. **Ändra:** `notices:configure`, till exempel rollen `communications-manager`.
 
 ## Listor
 
 `GET /v1/notices` kan filtreras på:
 - `status` och `type`
 - `market`, `policyId`, `applicationId` och `recipientPartyId`
-- `attention=true`, `overdue=true` och `late=true`
+- `attention=true` (misslyckade, försenade och ofullständiga som inte skickats), `overdue=true` och `late=true`
 
 Listan är äldst först och kommer en sida i taget.
 
@@ -122,12 +158,13 @@ Listan är äldst först och kommer en sida i taget.
 | `document-service` | Läsa meddelanden och parter, och rapportera utskick |
 | `handler`, `policy-registrar` och `underwriter` | Läsa meddelanden |
 | `customer-channel` | Läsa meddelanden om sina egna policyer |
+| `communications-manager` | Läsa meddelanden och ändra bolagets inställningar |
 
 En klinik ser inga meddelanden. Se [Behörighet](behorighet.md).
 
 ## Exempeldata
 
-Dev-servern skapar meddelanden för exempeldatans policyer och för Sixtens avslagna ansökan. Token `dev-documents` är dokumentsystemet:
+Dev-servern skapar meddelanden för exempeldatans policyer och för Sixtens avslagna ansökan. Sixtens avslag är ofullständigt tills bolagets text om prövning finns. Token `dev-documents` är dokumentsystemet, och `dev-communications` kan ändra inställningarna:
 
 ```bash
 curl -H 'authorization: Bearer dev-documents' 'localhost:8787/v1/notices?status=pending'

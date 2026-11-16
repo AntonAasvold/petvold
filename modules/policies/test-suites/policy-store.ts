@@ -198,11 +198,14 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
         deadline: '2027-07-01',
         createdAt: at,
       };
-      assert.equal(await store.addProposal(pr), true);
-      assert.equal(await store.addProposal({ ...pr, id: 'ppr_2' }), false);
+      const created: PolicyEvent = { id: 'pev_p1', type: 'proposal.created', policyId: 'pol_t1', occurredAt: at, data: { proposalId: 'ppr_1', kind: 'transfer' } };
+      const pendingBefore = (await store.pendingEvents(100)).length;
+      assert.equal(await store.addProposal(pr, [created]), true);
+      assert.equal(await store.addProposal({ ...pr, id: 'ppr_2' }, [{ ...created, id: 'pev_p2' }]), false);
+      assert.deepEqual((await store.pendingEvents(100)).slice(pendingBefore).map((e) => e.id), ['pev_p1'], 'the event only with the stored proposal');
       assert.deepEqual(await store.getProposal('ppr_1'), pr);
       const death: Proposal = { id: 'ppr_3', policyId: 'pol_t1', market: 'SE', kind: 'cancel-death', sourceEventId: 'aev_3', details: { deceasedOn: '2027-03-01' }, createdAt: at };
-      await store.addProposal(death);
+      await store.addProposal(death, []);
       assert.deepEqual((await store.listProposals({ pending: true })).map((p) => p.id), ['ppr_1', 'ppr_3']);
 
       const rejected = { outcome: 'rejected' as const, reason: 'Wrong animal', decidedBy: 'cs', decidedAt: at };

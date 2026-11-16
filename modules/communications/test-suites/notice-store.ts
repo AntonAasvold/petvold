@@ -1,7 +1,7 @@
 /** The NoticeStore contract, run against every implementation. */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NoticeConflictError, type Delivery, type Notice, type NoticeStore } from '../src/index.ts';
+import { NoticeConflictError, type Delivery, type Notice, type NoticeSettings, type NoticeSettingsStore, type NoticeStore } from '../src/index.ts';
 
 export function notice(n = 1, o: Partial<Notice> = {}): Notice {
   return {
@@ -16,6 +16,7 @@ export function notice(n = 1, o: Partial<Notice> = {}): Notice {
     legalBasis: ['Insurance Contracts Act (2005:104) chapter 2 section 4'],
     dueBy: '2026-11-19',
     content: { policyId: `pol_${n}`, premium: { amount: 480_000, currency: 'SEK' } },
+    settingsVersion: 1,
     createdAt: '2026-11-16T10:00:01.000Z',
     deliveries: [],
     ...o,
@@ -74,6 +75,28 @@ export function noticeStoreSuite(name: string, make: () => Promise<{ store: Noti
       assert.deepEqual(await ids({ policyId: 'pol_2' }), ['ntc_2']);
       assert.deepEqual(await ids({ recipientPartyId: 'pty_bo' }), []);
       assert.deepEqual(await ids({ type: 'policy-confirmation', market: 'SE' }), ['ntc_1', 'ntc_2', 'ntc_3']);
+    });
+  });
+}
+
+export function noticeSettingsStoreSuite(name: string, make: () => Promise<{ settings: NoticeSettingsStore }>) {
+  describe(name, () => {
+    test('settings are versions, appended only as the next one', async () => {
+      const { settings } = await make();
+      const v = (version: number): NoticeSettings => ({
+        version,
+        markets: { SE: { promptlyDays: 3 + version, texts: { sv: { review: `Review ${version}` } } } },
+        changedBy: 'comms',
+        changedAt: `2026-11-1${version}T10:00:00.000Z`,
+        reason: `Version ${version}`,
+      });
+      assert.equal(await settings.current(), null);
+      await assert.rejects(settings.append(v(2)), NoticeConflictError);
+      await settings.append(v(1));
+      await assert.rejects(settings.append(v(1)), NoticeConflictError);
+      await settings.append(v(2));
+      assert.deepEqual(await settings.current(), v(2));
+      assert.deepEqual(await settings.versions(), [v(1), v(2)]);
     });
   });
 }

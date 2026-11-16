@@ -253,13 +253,18 @@ export class PostgresPolicyStore implements PolicyStore {
     }));
   }
 
-  async addProposal(p: Proposal): Promise<boolean> {
-    const res = await this.pool.query(
-      `insert into policies.proposal (proposal_id, policy_id, market, kind, source_event_id, details, deadline, created_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (source_event_id) do nothing`,
-      [p.id, p.policyId, p.market, p.kind, p.sourceEventId, JSON.stringify(p.details), p.deadline ?? null, p.createdAt],
-    );
-    return res.rowCount === 1;
+  async addProposal(p: Proposal, events: PolicyEvent[]): Promise<boolean> {
+    let added = false;
+    await this.tx(async (db) => {
+      const res = await db.query(
+        `insert into policies.proposal (proposal_id, policy_id, market, kind, source_event_id, details, deadline, created_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (source_event_id) do nothing`,
+        [p.id, p.policyId, p.market, p.kind, p.sourceEventId, JSON.stringify(p.details), p.deadline ?? null, p.createdAt],
+      );
+      added = res.rowCount === 1;
+      if (added) await insertEvents(db, events);
+    }, p.policyId);
+    return added;
   }
 
   async getProposal(id: string): Promise<Proposal | null> {

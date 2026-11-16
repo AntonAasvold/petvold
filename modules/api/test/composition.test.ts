@@ -33,6 +33,12 @@ test('the relay turns the policy module\'s events into notices to the customer (
   assert.ok(byType('policy-confirmation').length >= policies && policies > 0, 'every issued policy is confirmed');
   const declined = byType('application-declined');
   assert.deepEqual(declined.map((n) => [n.recipientPartyId, n.content.reasons, n.status]), [['pty_owner004', ['too-old'], 'pending']]);
+  // Bella is sold to Erik: the policy module proposes a transfer, and Erik gets the offer.
+  await inst.deps.animals!.transfer('ani_bella', { partyId: 'pty_owner002', from: '2026-11-14' }, 'registrar');
+  while ((await inst.relay.tick()) > 0);
+  const offers = await inst.deps.communications!.list({ type: 'transfer-offer' });
+  assert.deepEqual(offers.map((n) => [n.recipientPartyId, n.policyId, n.content.fromPartyId, n.content.from]), [['pty_owner002', 'pol_bella', 'pty_owner001', '2026-11-14']]);
+  notices.push(...offers);
   // Delivered again: no new notices.
   await seedSampleData(inst, clock);
   while ((await inst.relay.tick()) > 0);

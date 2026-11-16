@@ -76,6 +76,8 @@ export const PERMISSIONS = [
   'notices:read',
   /** Report that a notice was sent, with the document's id and checksum, or that it failed: the insurer's document system. */
   'notices:deliver',
+  /** Change the insurer's notice settings: texts, days for "promptly" and optional types turned off (ADR 0032). */
+  'notices:configure',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -165,6 +167,8 @@ export const DEFAULT_ROLES: RoleDefinitions = {
    * the documents with the recipient's name and address, and reports each delivery.
    */
   'document-service': { permissions: ['notices:read', 'notices:deliver', 'parties:read', 'policies:read', 'catalog:read'] },
+  /** Writes the insurer's texts in notices and their settings, e.g. compliance or customer communications. */
+  'communications-manager': { permissions: ['notices:read', 'notices:configure'] },
   /** Handles erasure and restriction of personal data (ADR 0028). Two people are needed to anonymize. */
   'privacy-officer': { permissions: ['parties:read', 'parties:privacy', 'parties:erase', 'parties:retention'] },
   /** The scheduled retention run. Only asks; a privacy officer approves each request. */

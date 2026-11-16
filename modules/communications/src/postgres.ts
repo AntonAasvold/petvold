@@ -4,13 +4,13 @@
  * so notices and deliveries never change.
  */
 import type pg from 'pg';
-import { NoticeConflictError, type Delivery, type Notice, type NoticeFilter, type NoticeStore } from './index.ts';
+import { NoticeConflictError, type Delivery, type Notice, type NoticeFilter, type NoticeSettings, type NoticeSettingsStore, type NoticeStore } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
 const FOREIGN_KEY_VIOLATION = '23503';
 
 const NOTICE = `n.notice_id, n.type, n.schema, n.market, n.recipient_party_id, n.language, n.policy_id, n.application_id,
-  n.source_event_id, n.source_event_type, n.source_occurred_at, n.legal_basis, n.due_by::text as due_by, n.content, n.created_at,
+  n.source_event_id, n.source_event_type, n.source_occurred_at, n.legal_basis, n.due_by::text as due_by, n.content, n.settings_version, n.created_at,
   coalesce((select json_agg(json_build_object(
       'id', d.delivery_id, 'outcome', d.outcome, 'channel', d.channel, 'sentAt', d.sent_at, 'documentId', d.document_id,
       'sha256', d.sha256, 'reason', d.reason, 'reportedBy', d.reported_by, 'reportedAt', d.reported_at)
@@ -25,8 +25,8 @@ export class PostgresNoticeStore implements NoticeStore {
   async add(n: Notice): Promise<boolean> {
     const r = await this.pool.query(
       `insert into communications.notice (notice_id, type, schema, market, recipient_party_id, language, policy_id, application_id,
-         source_event_id, source_event_type, source_occurred_at, legal_basis, due_by, content, created_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         source_event_id, source_event_type, source_occurred_at, legal_basis, due_by, content, settings_version, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        on conflict (source_event_id, type) do nothing`,
       [
         n.id,
@@ -43,6 +43,7 @@ export class PostgresNoticeStore implements NoticeStore {
         JSON.stringify(n.legalBasis),
         n.dueBy,
         JSON.stringify(n.content),
+        n.settingsVersion ?? null,
         n.createdAt,
       ],
     );
@@ -108,6 +109,7 @@ function toNotice(r: Record<string, any>): Notice {
     legalBasis: r.legal_basis,
     dueBy: r.due_by,
     content: r.content,
+    ...(r.settings_version === null ? {} : { settingsVersion: r.settings_version }),
     createdAt: iso(r.created_at),
     deliveries: (r.deliveries as Record<string, any>[]).map((d) => ({
       id: d.id,
@@ -121,4 +123,39 @@ function toNotice(r: Record<string, any>): Notice {
       reportedAt: iso(d.reportedAt),
     })),
   };
+}
+
+/** The insurer's notice settings as versions (migration 0032). Append-only. */
+export class PostgresNoticeSettingsStore implements NoticeSettingsStore {
+  constructor(private readonly pool: pg.Pool) {}
+
+  async current(): Promise<NoticeSettings | null> {
+    const { rows } = await this.pool.query(`select * from communications.notice_settings order by version desc limit 1`);
+    return rows[0] ? toSettings(rows[0]) : null;
+  }
+
+  async versions(): Promise<NoticeSettings[]> {
+    const { rows } = await this.pool.query(`select * from communications.notice_settings order by version`);
+    return rows.map(toSettings);
+  }
+
+  async append(s: NoticeSettings): Promise<void> {
+    await this.pool
+      .query(
+        `insert into communications.notice_settings (version, markets, changed_by, changed_at, reason)
+         select $1, $2, $3, $4, $5 where $1 = coalesce((select max(version) from communications.notice_settings), 0) + 1`,
+        [s.version, JSON.stringify(s.markets), s.changedBy, s.changedAt, s.reason],
+      )
+      .then((r) => {
+        if (r.rowCount !== 1) throw new NoticeConflictError(`Notice settings version ${s.version} is not the next`);
+      })
+      .catch((e: { code?: string }) => {
+        if (e.code === UNIQUE_VIOLATION) throw new NoticeConflictError(`Notice settings version ${s.version} exists`);
+        throw e;
+      });
+  }
+}
+
+function toSettings(r: Record<string, any>): NoticeSettings {
+  return { version: r.version, markets: r.markets, changedBy: r.changed_by, changedAt: iso(r.changed_at), reason: r.reason };
 }
