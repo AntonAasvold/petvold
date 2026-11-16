@@ -12,7 +12,9 @@ const UI_PORT = 5181;
 
 export default defineConfig({
   testDir: 'e2e',
+  // One worker: the tests share one API server and its sample data, and some depend on the order.
   fullyParallel: false,
+  workers: 1,
   reporter: process.env.CI ? 'github' : 'list',
   use: { baseURL: `http://127.0.0.1:${UI_PORT}`, trace: 'retain-on-failure' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], locale: 'en-GB' } }],

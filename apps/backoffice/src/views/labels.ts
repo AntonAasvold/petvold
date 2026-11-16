@@ -84,6 +84,18 @@ export function problemLabel(id: string): string {
       return msg('Give a reason code in lowercase, e.g. ongoing-symptoms.', { id: 'application.needReason' });
     case 'application.startInPast':
       return msg('The start date cannot be in the past.', { id: 'application.startInPast' });
+    case 'settings.badMarket':
+      return msg('A market is two capital letters, e.g. SE.', { id: 'settings.badMarket' });
+    case 'settings.badYears':
+      return msg('Years are whole numbers, 1-100.', { id: 'settings.badYears' });
+    case 'settings.repeatedMarket':
+      return msg('A market is listed twice.', { id: 'settings.repeatedMarket' });
+    case 'settings.needReason':
+      return msg('Give a reason for the change.', { id: 'settings.needReason' });
+    case 'settings.badPromptly':
+      return msg('Days are a whole number, 1-30.', { id: 'settings.badPromptly' });
+    case 'settings.badAmount':
+      return msg('Give the amount as a number, e.g. 25000.', { id: 'settings.badAmount' });
     case 'webhooks.needHttps':
       return msg('Give an address that uses https.', { id: 'webhooks.needHttps' });
     case 'webhooks.needTypes':

@@ -148,8 +148,14 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Webhooks:** prenumerationer och döda händelser. Skapa, stänga av och sätta på, ny hemlighet som visas en gång, och skicka igen.
   - **Tester:** 18 enhetstester och 14 flöden i Chromium.
 
+- #83 mergad.
+- Back office, steg 5a (ADR 0035), PR #84:
+  - **Inställningar:** roller och gränser, gallring och bolagets texter för meddelanden. Varje ändring blir en version med skäl, och historiken visas.
+  - **Flödestesterna körs med en enda arbetare.** De delar en server och bygger på ordningen, och med flera arbetare kördes filerna samtidigt.
+  - **Tester:** 22 enhetstester och 17 flöden i Chromium.
+
 **Nästa steg**
-1. Back office, steg 5: inställningar.
+1. Back office, steg 5b: produkter och regler med fyra ögon.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
