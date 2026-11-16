@@ -1,0 +1,661 @@
+asyncapi: 3.0.0
+info:
+  title: Petvold events
+  version: 0.1.0
+  description: |
+    The events Petvold sends to the insurer's systems with webhooks (ADR 0033).
+    Each is a CloudEvent 1.0 in structured mode, signed as Standard Webhooks.
+    `data` holds ids and fields that are not personal data; fetch the rest with
+    the API (`modules/api/openapi.yaml`) and your own token.
+
+    Subscribe with `POST /v1/webhook-subscriptions`. Check `webhook-signature`:
+    the HMAC-SHA256 of `webhook-id.webhook-timestamp.body` with the secret after
+    `whsec_`, base64. Reject a timestamp more than five minutes off. Use
+    `webhook-id` (the event's `id`) to recognize repeats; delivery is at least
+    once and in no promised order.
+
+    The fields of `data` per type are the contract. `lint:openapi` checks them
+    against the catalog in `modules/webhooks/src/index.ts` (`PUBLIC_EVENTS`).
+defaultContentType: application/cloudevents+json
+
+channels:
+  subscription:
+    address: '{url}'
+    description: The address of a webhook subscription.
+    parameters:
+      url:
+        description: The subscription's url.
+    messages:
+      claimRegistered: { $ref: '#/components/messages/claimRegistered' }
+      claimDecisionProposed: { $ref: '#/components/messages/claimDecisionProposed' }
+      claimProposalReturned: { $ref: '#/components/messages/claimProposalReturned' }
+      claimDecided: { $ref: '#/components/messages/claimDecided' }
+      claimPayoutOrdered: { $ref: '#/components/messages/claimPayoutOrdered' }
+      claimReviewRequested: { $ref: '#/components/messages/claimReviewRequested' }
+      animalOwnershipChanged: { $ref: '#/components/messages/animalOwnershipChanged' }
+      animalDied: { $ref: '#/components/messages/animalDied' }
+      policyIssued: { $ref: '#/components/messages/policyIssued' }
+      policyChanged: { $ref: '#/components/messages/policyChanged' }
+      policyRenewed: { $ref: '#/components/messages/policyRenewed' }
+      policyTransferred: { $ref: '#/components/messages/policyTransferred' }
+      policyCancelled: { $ref: '#/components/messages/policyCancelled' }
+      policyReinstated: { $ref: '#/components/messages/policyReinstated' }
+      applicationReceived: { $ref: '#/components/messages/applicationReceived' }
+      applicationAccepted: { $ref: '#/components/messages/applicationAccepted' }
+      applicationReferred: { $ref: '#/components/messages/applicationReferred' }
+      applicationDeclined: { $ref: '#/components/messages/applicationDeclined' }
+      applicationWithdrawn: { $ref: '#/components/messages/applicationWithdrawn' }
+      applicationExpired: { $ref: '#/components/messages/applicationExpired' }
+      proposalCreated: { $ref: '#/components/messages/proposalCreated' }
+      noticeCreated: { $ref: '#/components/messages/noticeCreated' }
+      noticeDelivered: { $ref: '#/components/messages/noticeDelivered' }
+      noticeFailed: { $ref: '#/components/messages/noticeFailed' }
+
+operations:
+  sendEvent:
+    action: send
+    channel: { $ref: '#/channels/subscription' }
+    summary: Petvold posts an event to the subscription's address.
+    messages:
+      - { $ref: '#/channels/subscription/messages/claimRegistered' }
+      - { $ref: '#/channels/subscription/messages/claimDecisionProposed' }
+      - { $ref: '#/channels/subscription/messages/claimProposalReturned' }
+      - { $ref: '#/channels/subscription/messages/claimDecided' }
+      - { $ref: '#/channels/subscription/messages/claimPayoutOrdered' }
+      - { $ref: '#/channels/subscription/messages/claimReviewRequested' }
+      - { $ref: '#/channels/subscription/messages/animalOwnershipChanged' }
+      - { $ref: '#/channels/subscription/messages/animalDied' }
+      - { $ref: '#/channels/subscription/messages/policyIssued' }
+      - { $ref: '#/channels/subscription/messages/policyChanged' }
+      - { $ref: '#/channels/subscription/messages/policyRenewed' }
+      - { $ref: '#/channels/subscription/messages/policyTransferred' }
+      - { $ref: '#/channels/subscription/messages/policyCancelled' }
+      - { $ref: '#/channels/subscription/messages/policyReinstated' }
+      - { $ref: '#/channels/subscription/messages/applicationReceived' }
+      - { $ref: '#/channels/subscription/messages/applicationAccepted' }
+      - { $ref: '#/channels/subscription/messages/applicationReferred' }
+      - { $ref: '#/channels/subscription/messages/applicationDeclined' }
+      - { $ref: '#/channels/subscription/messages/applicationWithdrawn' }
+      - { $ref: '#/channels/subscription/messages/applicationExpired' }
+      - { $ref: '#/channels/subscription/messages/proposalCreated' }
+      - { $ref: '#/channels/subscription/messages/noticeCreated' }
+      - { $ref: '#/channels/subscription/messages/noticeDelivered' }
+      - { $ref: '#/channels/subscription/messages/noticeFailed' }
+
+components:
+  messageTraits:
+    webhook:
+      headers:
+        type: object
+        required: [webhook-id, webhook-timestamp, webhook-signature]
+        properties:
+          webhook-id: { type: string, description: The event's id. The same at every attempt. }
+          webhook-timestamp: { type: string, description: Unix seconds when this attempt was signed. }
+          webhook-signature: { type: string, description: "One or more 'v1,<base64>', separated by spaces: two during a rotation of the secret." }
+
+  messages:
+    claimRegistered:
+      name: petvold.claim.registered.v1
+      title: claim.registered
+      summary: 'A claim was registered.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.registered.v1 }
+              data: { $ref: '#/components/schemas/ClaimRegisteredData' }
+    claimDecisionProposed:
+      name: petvold.claim.decision_proposed.v1
+      title: claim.decision_proposed
+      summary: "A decision above the handler's limit waits for approval (ADR 0019)."
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.decision_proposed.v1 }
+              data: { $ref: '#/components/schemas/ClaimDecisionProposedData' }
+    claimProposalReturned:
+      name: petvold.claim.proposal_returned.v1
+      title: claim.proposal_returned
+      summary: 'An approver returned a decision proposal.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.proposal_returned.v1 }
+              data: { $ref: '#/components/schemas/ClaimProposalReturnedData' }
+    claimDecided:
+      name: petvold.claim.decided.v1
+      title: claim.decided
+      summary: 'A claim was decided or reassessed.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.decided.v1 }
+              data: { $ref: '#/components/schemas/ClaimDecidedData' }
+    claimPayoutOrdered:
+      name: petvold.claim.payout_ordered.v1
+      title: claim.payout_ordered
+      summary: 'A decision raised the payout: pay the difference.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.payout_ordered.v1 }
+              data: { $ref: '#/components/schemas/ClaimPayoutOrderedData' }
+    claimReviewRequested:
+      name: petvold.claim.review_requested.v1
+      title: claim.review_requested
+      summary: 'The customer asked for a person to review an automated decision (ADR 0018).'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.review_requested.v1 }
+              data: { $ref: '#/components/schemas/ClaimReviewRequestedData' }
+    animalOwnershipChanged:
+      name: petvold.animal.ownership_changed.v1
+      title: animal.ownership_changed
+      summary: 'An animal has a new owner.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.animal.ownership_changed.v1 }
+              data: { $ref: '#/components/schemas/AnimalOwnershipChangedData' }
+    animalDied:
+      name: petvold.animal.died.v1
+      title: animal.died
+      summary: 'An animal died.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.animal.died.v1 }
+              data: { $ref: '#/components/schemas/AnimalDiedData' }
+    policyIssued:
+      name: petvold.policy.issued.v1
+      title: policy.issued
+      summary: 'A policy was issued.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.policy.issued.v1 }
+              data: { $ref: '#/components/schemas/PolicyIssuedData' }
+    policyChanged:
+      name: petvold.policy.changed.v1
+      title: policy.changed
+      summary: 'The choices changed during a term.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.policy.changed.v1 }
+              data: { $ref: '#/components/schemas/PolicyChangedData' }
+    policyRenewed:
+      name: petvold.policy.renewed.v1
+      title: policy.renewed
+      summary: 'A new term.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.policy.renewed.v1 }
+              data: { $ref: '#/components/schemas/PolicyRenewedData' }
+    policyTransferred:
+      name: petvold.policy.transferred.v1
+      title: policy.transferred
+      summary: 'A new policyholder took over the policy.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.policy.transferred.v1 }
+              data: { $ref: '#/components/schemas/PolicyTransferredData' }
+    policyCancelled:
+      name: petvold.policy.cancelled.v1
+      title: policy.cancelled
+      summary: 'A policy ends early or at the end of a term.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.policy.cancelled.v1 }
+              data: { $ref: '#/components/schemas/PolicyCancelledData' }
+    policyReinstated:
+      name: petvold.policy.reinstated.v1
+      title: policy.reinstated
+      summary: 'A cancellation was reversed.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.policy.reinstated.v1 }
+              data: { $ref: '#/components/schemas/PolicyReinstatedData' }
+    applicationReceived:
+      name: petvold.application.received.v1
+      title: application.received
+      summary: 'An application came in.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.application.received.v1 }
+              data: { $ref: '#/components/schemas/ApplicationReceivedData' }
+    applicationAccepted:
+      name: petvold.application.accepted.v1
+      title: application.accepted
+      summary: 'An application was accepted and the policy issued.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.application.accepted.v1 }
+              data: { $ref: '#/components/schemas/ApplicationAcceptedData' }
+    applicationReferred:
+      name: petvold.application.referred.v1
+      title: application.referred
+      summary: 'An application waits for a person.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.application.referred.v1 }
+              data: { $ref: '#/components/schemas/ApplicationReferredData' }
+    applicationDeclined:
+      name: petvold.application.declined.v1
+      title: application.declined
+      summary: 'An application was declined, by the rules (reasons) or a person (reason).'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.application.declined.v1 }
+              data: { $ref: '#/components/schemas/ApplicationDeclinedData' }
+    applicationWithdrawn:
+      name: petvold.application.withdrawn.v1
+      title: application.withdrawn
+      summary: 'The channel withdrew a referred application.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.application.withdrawn.v1 }
+              data: { $ref: '#/components/schemas/ApplicationWithdrawnData' }
+    applicationExpired:
+      name: petvold.application.expired.v1
+      title: application.expired
+      summary: 'A referred application was not decided in time.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.application.expired.v1 }
+              data: { $ref: '#/components/schemas/ApplicationExpiredData' }
+    proposalCreated:
+      name: petvold.proposal.created.v1
+      title: proposal.created
+      summary: 'A proposal to accept or reject: a transfer to a new owner, or a cancellation when the animal died.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.proposal.created.v1 }
+              data: { $ref: '#/components/schemas/ProposalCreatedData' }
+    noticeCreated:
+      name: petvold.notice.created.v1
+      title: notice.created
+      summary: 'A notice the law requires was made (ADR 0032). Fetch it with GET /v1/notices/{id}.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.notice.created.v1 }
+              data: { $ref: '#/components/schemas/NoticeCreatedData' }
+    noticeDelivered:
+      name: petvold.notice.delivered.v1
+      title: notice.delivered
+      summary: 'The document system reported a notice sent.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.notice.delivered.v1 }
+              data: { $ref: '#/components/schemas/NoticeDeliveredData' }
+    noticeFailed:
+      name: petvold.notice.failed.v1
+      title: notice.failed
+      summary: 'The document system reported a notice that could not be sent.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.notice.failed.v1 }
+              data: { $ref: '#/components/schemas/NoticeFailedData' }
+
+  schemas:
+    CloudEvent:
+      type: object
+      required: [specversion, id, source, type, subject, time, datacontenttype, market, data]
+      properties:
+        specversion: { const: '1.0' }
+        id: { type: string, description: Unique per source. Use it to recognize repeats. }
+        source: { type: string, enum: [/petvold/claims, /petvold/animals, /petvold/policies, /petvold/communications] }
+        type: { type: string, pattern: '^petvold\.[a-z]+\.[a-z_]+\.v[0-9]+$' }
+        subject: { type: string, description: The id of the resource the event concerns. }
+        time: { type: string, format: date-time }
+        datacontenttype: { const: application/json }
+        market: { type: string, pattern: '^[A-Z]{2}$' }
+        data: { type: object }
+    Date: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    PartyId: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' }
+    Money:
+      type: object
+      required: [amount, currency]
+      additionalProperties: false
+      properties:
+        amount: { type: integer, description: Minor units. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    ClaimRegisteredData:
+      type: object
+      additionalProperties: false
+      required: [claimId, claimNo, policyId, animalId, channel, treatmentFrom, treatmentTo, diagnosisCode, currency]
+      properties:
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        claimNo: { type: string }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        animalId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
+        channel: { type: string }
+        clinicId: { type: string }
+        treatmentFrom: { $ref: '#/components/schemas/Date' }
+        treatmentTo: { $ref: '#/components/schemas/Date' }
+        diagnosisCode: { type: string }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    ClaimDecisionProposedData:
+      type: object
+      additionalProperties: false
+      required: [claimId, proposalId, action, outcome, payout, currency, deviatesFromProposal]
+      properties:
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        proposalId: { type: string }
+        action: { type: string, enum: [accept, reject] }
+        outcome: { type: string }
+        payout: { type: integer, minimum: 0, description: Minor units. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        deviatesFromProposal: { type: boolean }
+        reasonCode: { type: string }
+    ClaimProposalReturnedData:
+      type: object
+      additionalProperties: false
+      required: [claimId, proposalId]
+      properties:
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        proposalId: { type: string }
+    ClaimDecidedData:
+      type: object
+      additionalProperties: false
+      required: [claimId, decisionId, seq, outcome, payout, currency, automated, deviatesFromProposal]
+      properties:
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        decisionId: { type: string }
+        seq: { type: integer, minimum: 1 }
+        outcome: { type: string }
+        payout: { type: integer, minimum: 0, description: Minor units. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        automated: { type: boolean, description: No person judged the outcome. }
+        deviatesFromProposal: { type: boolean }
+        reasonCode: { type: string }
+        reviewRequestId: { type: string }
+    ClaimPayoutOrderedData:
+      type: object
+      additionalProperties: false
+      required: [claimId, payoutOrderId, decisionId, policyId, amount, currency, channel]
+      properties:
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        payoutOrderId: { type: string }
+        decisionId: { type: string }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        amount: { type: integer, minimum: 1, description: Minor units. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        channel: { type: string }
+        clinicId: { type: string }
+    ClaimReviewRequestedData:
+      type: object
+      additionalProperties: false
+      required: [claimId, reviewRequestId, decisionId, decisionSeq]
+      properties:
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        reviewRequestId: { type: string }
+        decisionId: { type: string }
+        decisionSeq: { type: integer, minimum: 1 }
+    AnimalOwnershipChangedData:
+      type: object
+      additionalProperties: false
+      required: [animalId, fromPartyId, toPartyId, from]
+      properties:
+        animalId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
+        fromPartyId: { $ref: '#/components/schemas/PartyId' }
+        toPartyId: { $ref: '#/components/schemas/PartyId' }
+        from: { $ref: '#/components/schemas/Date' }
+    AnimalDiedData:
+      type: object
+      additionalProperties: false
+      required: [animalId, deceasedOn]
+      properties:
+        animalId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
+        deceasedOn: { $ref: '#/components/schemas/Date' }
+    PolicyIssuedData:
+      type: object
+      additionalProperties: false
+      required: [policyId, transactionId, animalId, policyholderPartyId, productVersion, startDate, endDate, premium]
+      properties:
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        transactionId: { type: string, pattern: '^ptx_' }
+        animalId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
+        policyholderPartyId: { $ref: '#/components/schemas/PartyId' }
+        productVersion: { type: string, description: 'e.g. SE-HUND-PLUS@2026.1' }
+        startDate: { $ref: '#/components/schemas/Date' }
+        endDate: { $ref: '#/components/schemas/Date', description: Exclusive. }
+        premium: { $ref: '#/components/schemas/Money' }
+        applicationId: { type: string, pattern: '^app_[A-Za-z0-9]+$' }
+    PolicyChangedData:
+      type: object
+      additionalProperties: false
+      required: [policyId, transactionId, termNo, changeNo, from]
+      properties:
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        transactionId: { type: string, pattern: '^ptx_' }
+        termNo: { type: integer, minimum: 1 }
+        changeNo: { type: integer, minimum: 1 }
+        from: { $ref: '#/components/schemas/Date' }
+        premiumAdjustment: { type: integer, description: Minor units; negative is money back. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    PolicyRenewedData:
+      type: object
+      additionalProperties: false
+      required: [policyId, transactionId, termNo, startDate, endDate, productVersion, premium]
+      properties:
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        transactionId: { type: string, pattern: '^ptx_' }
+        termNo: { type: integer, minimum: 1 }
+        startDate: { $ref: '#/components/schemas/Date' }
+        endDate: { $ref: '#/components/schemas/Date', description: Exclusive. }
+        productVersion: { type: string, description: 'e.g. SE-HUND-PLUS@2026.1' }
+        premium: { $ref: '#/components/schemas/Money' }
+    PolicyTransferredData:
+      type: object
+      additionalProperties: false
+      required: [policyId, transactionId, fromPartyId, toPartyId, from]
+      properties:
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        transactionId: { type: string, pattern: '^ptx_' }
+        fromPartyId: { $ref: '#/components/schemas/PartyId' }
+        toPartyId: { $ref: '#/components/schemas/PartyId' }
+        from: { $ref: '#/components/schemas/Date' }
+        premium: { $ref: '#/components/schemas/Money' }
+    PolicyCancelledData:
+      type: object
+      additionalProperties: false
+      required: [policyId, transactionId, reason, effectiveDate, refund]
+      properties:
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        transactionId: { type: string, pattern: '^ptx_' }
+        reason: { type: string, description: A reason code. }
+        effectiveDate: { $ref: '#/components/schemas/Date', description: The first day the policy no longer applies. }
+        refund: { $ref: '#/components/schemas/Money' }
+    PolicyReinstatedData:
+      type: object
+      additionalProperties: false
+      required: [policyId, transactionId, reverses]
+      properties:
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        transactionId: { type: string, pattern: '^ptx_' }
+        reverses: { type: string, description: The transaction reversed. }
+        refundReversed: { $ref: '#/components/schemas/Money' }
+    ApplicationReceivedData:
+      type: object
+      additionalProperties: false
+      required: [applicationId, animalId, productVersion]
+      properties:
+        applicationId: { type: string, pattern: '^app_[A-Za-z0-9]+$' }
+        animalId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
+        productVersion: { type: string, description: 'e.g. SE-HUND-PLUS@2026.1' }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+    ApplicationAcceptedData:
+      type: object
+      additionalProperties: false
+      required: [applicationId, policyId]
+      properties:
+        applicationId: { type: string, pattern: '^app_[A-Za-z0-9]+$' }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        outcome: { type: string }
+        riders: { type: integer, minimum: 0, description: How many riders the policy got. }
+    ApplicationReferredData:
+      type: object
+      additionalProperties: false
+      required: [applicationId, outcome, reasons]
+      properties:
+        applicationId: { type: string, pattern: '^app_[A-Za-z0-9]+$' }
+        outcome: { type: string }
+        reasons: { type: array, items: { type: string }, description: Reason codes. }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+    ApplicationDeclinedData:
+      type: object
+      additionalProperties: false
+      required: [applicationId]
+      properties:
+        applicationId: { type: string, pattern: '^app_[A-Za-z0-9]+$' }
+        outcome: { type: string }
+        reasons: { type: array, items: { type: string }, description: Reason codes. }
+        reason: { type: string, description: A reason code. }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+    ApplicationWithdrawnData:
+      type: object
+      additionalProperties: false
+      required: [applicationId]
+      properties:
+        applicationId: { type: string, pattern: '^app_[A-Za-z0-9]+$' }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+    ApplicationExpiredData:
+      type: object
+      additionalProperties: false
+      required: [applicationId, deadline]
+      properties:
+        applicationId: { type: string, pattern: '^app_[A-Za-z0-9]+$' }
+        deadline: { $ref: '#/components/schemas/Date' }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+    ProposalCreatedData:
+      type: object
+      additionalProperties: false
+      required: [policyId, proposalId, kind]
+      properties:
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        proposalId: { type: string }
+        kind: { type: string, enum: [transfer, cancel-death] }
+        fromPartyId: { $ref: '#/components/schemas/PartyId' }
+        toPartyId: { $ref: '#/components/schemas/PartyId' }
+        from: { $ref: '#/components/schemas/Date' }
+        deadline: { $ref: '#/components/schemas/Date' }
+        deceasedOn: { $ref: '#/components/schemas/Date' }
+    NoticeCreatedData:
+      type: object
+      additionalProperties: false
+      required: [noticeId, noticeType, schema, recipientPartyId, language, dueBy]
+      properties:
+        noticeId: { type: string, pattern: '^ntc_[A-Za-z0-9]+$' }
+        noticeType: { type: string }
+        schema: { type: string, description: 'e.g. renewal-notice.v1' }
+        recipientPartyId: { $ref: '#/components/schemas/PartyId' }
+        language: { type: string, pattern: '^[a-z]{2}$' }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        applicationId: { type: string, pattern: '^app_[A-Za-z0-9]+$' }
+        dueBy: { $ref: '#/components/schemas/Date' }
+    NoticeDeliveredData:
+      type: object
+      additionalProperties: false
+      required: [noticeId, deliveryId, channel, sentAt, documentId, late]
+      properties:
+        noticeId: { type: string, pattern: '^ntc_[A-Za-z0-9]+$' }
+        deliveryId: { type: string }
+        channel: { type: string }
+        sentAt: { type: string, format: date-time }
+        documentId: { type: string, description: The document's id in the insurer's archive. }
+        late: { type: boolean, description: Sent after dueBy. }
+    NoticeFailedData:
+      type: object
+      additionalProperties: false
+      required: [noticeId, deliveryId]
+      properties:
+        noticeId: { type: string, pattern: '^ntc_[A-Za-z0-9]+$' }
+        deliveryId: { type: string }
+        channel: { type: string }

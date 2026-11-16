@@ -280,14 +280,27 @@ export interface NoticeFilter {
   recipientPartyId?: string;
 }
 
+/** What the module tells others (ADR 0008, 0033): a notice made, sent or failed. Written with the change. */
+export interface NoticeEvent {
+  id: string;
+  type: 'notice.created' | 'notice.delivered' | 'notice.failed';
+  noticeId: string;
+  market: string;
+  occurredAt: Timestamp;
+  data: Record<string, unknown>;
+}
+
 export interface NoticeStore {
-  /** false if the source event already gave a notice of the type. */
-  add(n: Notice): Promise<boolean>;
+  /** Stores the notice and its events in one transaction. false, and no events, if the source event already gave a notice of the type. */
+  add(n: Notice, events: NoticeEvent[]): Promise<boolean>;
   get(id: string): Promise<Notice | null>;
   /** Oldest first. */
   list(filter: NoticeFilter): Promise<Notice[]>;
-  /** Throws NoticeConflictError if the notice does not exist. */
-  addDelivery(noticeId: string, d: Delivery): Promise<void>;
+  /** Stores the delivery and its events in one transaction. Throws NoticeConflictError if the notice does not exist. */
+  addDelivery(noticeId: string, d: Delivery, events: NoticeEvent[]): Promise<void>;
+  /** Unpublished events, oldest first. */
+  pendingEvents(limit: number): Promise<NoticeEvent[]>;
+  markPublished(ids: string[], at: Timestamp): Promise<void>;
 }
 
 export class NoticeConflictError extends Error {
@@ -390,7 +403,23 @@ export class CommunicationsService {
       createdAt: this.d.clock.now(),
       deliveries: [],
     };
-    return (await this.d.store.add(notice)) ? notice : null;
+    const created: NoticeEvent = {
+      id: this.d.ids.next('nev'),
+      type: 'notice.created',
+      noticeId: notice.id,
+      market: notice.market,
+      occurredAt: notice.createdAt,
+      data: {
+        noticeType: notice.type,
+        schema: notice.schema,
+        recipientPartyId: notice.recipientPartyId,
+        language: notice.language,
+        ...(notice.policyId ? { policyId: notice.policyId } : {}),
+        ...(notice.applicationId ? { applicationId: notice.applicationId } : {}),
+        dueBy: notice.dueBy,
+      },
+    };
+    return (await this.d.store.add(notice, [created])) ? notice : null;
   }
 
   /** What notice an event calls for, read through the ports. */
@@ -628,7 +657,20 @@ export class CommunicationsService {
     } else {
       return fail('outcome must be sent or failed');
     }
-    await this.d.store.addDelivery(noticeId, d).catch((e: unknown) => {
+    const event: NoticeEvent = {
+      id: this.d.ids.next('nev'),
+      type: d.outcome === 'sent' ? 'notice.delivered' : 'notice.failed',
+      noticeId,
+      market: n.market,
+      occurredAt: now,
+      data: {
+        deliveryId: d.id,
+        ...(d.channel ? { channel: d.channel } : {}),
+        ...(d.sentAt ? { sentAt: d.sentAt, late: marketDate(n.market, d.sentAt) > n.dueBy } : {}),
+        ...(d.documentId ? { documentId: d.documentId } : {}),
+      },
+    };
+    await this.d.store.addDelivery(noticeId, d, [event]).catch((e: unknown) => {
       if (e instanceof NoticeConflictError) throw new CommunicationsError('conflict', e.message);
       throw e;
     });
@@ -677,11 +719,21 @@ function sorted(v: unknown): unknown {
 /** In-memory store, for tests and the dev server without a database. */
 export class InMemoryNoticeStore implements NoticeStore {
   private rows: Notice[] = [];
+  private outbox: (NoticeEvent & { publishedAt?: Timestamp })[] = [];
 
-  async add(n: Notice) {
+  async add(n: Notice, events: NoticeEvent[]) {
     if (this.rows.some((r) => r.source.eventId === n.source.eventId && r.type === n.type)) return false;
     this.rows.push(structuredClone({ ...n, deliveries: [] }));
+    this.outbox.push(...structuredClone(events));
     return true;
+  }
+
+  async pendingEvents(limit: number) {
+    return structuredClone(this.outbox.filter((e) => !e.publishedAt).slice(0, limit)).map(({ publishedAt: _p, ...e }) => e);
+  }
+
+  async markPublished(ids: string[], at: Timestamp) {
+    for (const e of this.outbox) if (ids.includes(e.id) && !e.publishedAt) e.publishedAt = at;
   }
 
   async get(id: string) {
@@ -705,10 +757,11 @@ export class InMemoryNoticeStore implements NoticeStore {
     );
   }
 
-  async addDelivery(noticeId: string, d: Delivery) {
+  async addDelivery(noticeId: string, d: Delivery, events: NoticeEvent[]) {
     const n = this.rows.find((x) => x.id === noticeId);
     if (!n) throw new NoticeConflictError(`Notice ${noticeId} does not exist`);
     n.deliveries.push(structuredClone(d));
+    this.outbox.push(...structuredClone(events));
   }
 }
 

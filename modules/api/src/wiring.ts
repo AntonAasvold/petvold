@@ -5,7 +5,8 @@
  */
 import { AnimalError, type AnimalService } from '@petvold/animals';
 import { CatalogError, onSale, policySettingsOf, productVersionId, vetCareTermsFor, type ProductService } from '@petvold/catalog';
-import type { ClaimsService } from '@petvold/claims-core';
+import { eventClaimId, type ClaimsEvent, type ClaimsService } from '@petvold/claims-core';
+import type { SourceEvent as WebhookSourceEvent } from '@petvold/webhooks';
 import type { PartySource, PolicySource } from '@petvold/communications';
 import { PartyError, type ActivitySource, type PartyService } from '@petvold/parties';
 import { PolicyError, type AnimalPort, type PolicyService, type ProductPort } from '@petvold/policies';
@@ -154,4 +155,75 @@ export function partySource(parties: PartyService): PartySource {
       return p?.language;
     },
   };
+}
+
+/**
+ * A claims event as the webhooks module takes it (ADR 0033): flat, with the
+ * fields the public catalog allows to pick from. Who decided, the customer's
+ * statement and the assessment stay inside Petvold.
+ */
+export async function claimsEventForWebhooks(
+  entry: { id: string; event: ClaimsEvent },
+  marketOf: (claimId: string) => Promise<{ market: string; currency: string }>,
+): Promise<WebhookSourceEvent> {
+  const e = entry.event;
+  const claimId = eventClaimId(e);
+  const claim = e.type === 'claim.registered' ? { market: e.claim.market, currency: e.claim.currency } : await marketOf(claimId);
+  const base = { id: entry.id, type: e.type, claimId, market: claim.market, occurredAt: e.occurredAt };
+  switch (e.type) {
+    case 'claim.registered': {
+      const c = e.claim;
+      return {
+        ...base,
+        data: {
+          claimNo: c.claimNo,
+          policyId: c.policyId,
+          animalId: c.animalId,
+          channel: c.channel,
+          ...(c.clinicId ? { clinicId: c.clinicId } : {}),
+          treatmentFrom: c.treatmentFrom,
+          treatmentTo: c.treatmentTo,
+          diagnosisCode: c.diagnosisCode,
+          currency: c.currency,
+        },
+      };
+    }
+    case 'claim.decided': {
+      const d = e.decision;
+      return {
+        ...base,
+        data: {
+          decisionId: d.id,
+          seq: d.seq,
+          outcome: d.outcome,
+          payout: d.payout,
+          currency: claim.currency,
+          automated: d.automated,
+          deviatesFromProposal: d.deviatesFromProposal,
+          ...(d.reasonCode ? { reasonCode: d.reasonCode } : {}),
+          ...(d.reviewRequestId ? { reviewRequestId: d.reviewRequestId } : {}),
+        },
+      };
+    }
+    case 'claim.decision_proposed':
+    case 'claim.proposal_returned': {
+      const p = e.proposal;
+      return {
+        ...base,
+        data:
+          e.type === 'claim.proposal_returned'
+            ? { proposalId: p.id }
+            : { proposalId: p.id, action: p.action, outcome: p.outcome, payout: p.payout, currency: p.currency, deviatesFromProposal: p.deviatesFromProposal, ...(p.reasonCode ? { reasonCode: p.reasonCode } : {}) },
+      };
+    }
+    case 'claim.payout_ordered': {
+      const o = e.order;
+      return {
+        ...base,
+        data: { payoutOrderId: o.id, decisionId: o.decisionId, policyId: o.policyId, amount: o.amount, currency: o.currency, channel: o.channel, ...(o.clinicId ? { clinicId: o.clinicId } : {}) },
+      };
+    }
+    case 'claim.review_requested':
+      return { ...base, data: { reviewRequestId: e.request.id, decisionId: e.request.decisionId, decisionSeq: e.request.decisionSeq } };
+  }
 }

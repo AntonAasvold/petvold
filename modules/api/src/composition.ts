@@ -42,7 +42,7 @@ import { underwritingCoverage } from '@petvold/underwriting-core';
 import { InMemoryIdempotencyStore, type AppDeps, type IdempotencyStore } from './app.ts';
 import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './permissions.ts';
 import { Relay, relaySource } from './relay.ts';
-import { animalPort, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
+import { animalPort, claimsActivity, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
 
 export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks'] as const;
 export type DatabaseName = (typeof DATABASES)[number];
@@ -256,7 +256,12 @@ export async function compose(config: InstallationConfig): Promise<Installation>
       relaySource({
         name: 'claims',
         pending: async (limit) => (await claimsStore.pendingEvents(limit)).map((e) => ({ id: e.id, event: e.event })),
-        deliver: async ({ event: e }) => log(`[event] ${e.type} ${e.type === 'claim.decided' ? `${e.decision.claimId}#${e.decision.seq}` : eventClaimId(e)}`),
+        deliver: async (entry) => {
+          const e = entry.event;
+          log(`[event] ${e.type} ${e.type === 'claim.decided' ? `${e.decision.claimId}#${e.decision.seq}` : eventClaimId(e)}`);
+          const queued = await webhooks.enqueue(await claimsEventForWebhooks(entry, (claimId) => service.getClaim(claimId)));
+          if (queued) log(`[webhook] ${e.type} ${entry.id} queued for ${queued} subscription(s)`);
+        },
         markPublished: (ids, at) => claimsStore.markPublished(ids, at),
       }),
       relaySource({
@@ -265,6 +270,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
         deliver: async (e) => {
           const proposal = await policies.handleAnimalEvent(e);
           log(`[event] ${e.type} ${e.animalId}${proposal ? ` -> ${proposal.kind} proposal ${proposal.id}` : ''}`);
+          await webhooks.enqueue({ ...e, market: String(e.data.market) });
         },
         markPublished: (ids, at) => animalStore.markPublished(ids, at),
       }),
@@ -286,6 +292,15 @@ export async function compose(config: InstallationConfig): Promise<Installation>
           }
         },
         markPublished: (ids, at) => policyStore.markPublished(ids, at),
+      }),
+      relaySource({
+        name: 'communications',
+        pending: (limit) => noticeStore.pendingEvents(limit),
+        deliver: async (e) => {
+          const queued = await webhooks.enqueue({ ...e });
+          if (queued) log(`[webhook] ${e.type} ${e.noticeId} queued for ${queued} subscription(s)`);
+        },
+        markPublished: (ids, at) => noticeStore.markPublished(ids, at),
       }),
     ],
     { clock, log },

@@ -202,6 +202,8 @@ for (const page of pages) {
 }
 mkdirSync(join(OUT, 'api'), { recursive: true });
 cpSync(SPEC, join(OUT, 'api', 'openapi.yaml'));
+// The events' contract (ADR 0033), next to the API's.
+cpSync('modules/api/asyncapi.yaml', join(OUT, 'api', 'asyncapi.yaml'));
 writeFileSync(join(OUT, 'api', 'index.html'), docsPage({ specUrl: 'openapi.yaml' }));
 writeFileSync(join(OUT, '.nojekyll'), '');
 

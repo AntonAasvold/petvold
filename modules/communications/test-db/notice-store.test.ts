@@ -15,7 +15,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate communications.delivery, communications.notice, communications.notice_settings cascade');
+const clean = () => admin.query('truncate communications.outbox, communications.delivery, communications.notice, communications.notice_settings cascade');
 
 noticeStoreSuite('PostgresNoticeStore', async () => {
   await clean();
@@ -30,13 +30,13 @@ noticeSettingsStoreSuite('PostgresNoticeSettingsStore', async () => {
 test('notices and deliveries never change, and a delivery must be complete', async () => {
   await clean();
   const store = new PostgresNoticeStore(pool);
-  await store.add(notice());
-  await store.addDelivery('ntc_1', sent(1));
+  await store.add(notice(), []);
+  await store.addDelivery('ntc_1', sent(1), []);
   await assert.rejects(pool.query(`update communications.notice set due_by = '2027-01-01'`), /permission denied/);
   await assert.rejects(pool.query(`delete from communications.delivery`), /permission denied/);
   await assert.rejects(
     pool.query(`insert into communications.delivery (delivery_id, notice_id, outcome, reported_by, reported_at) values ('ndl_x', 'ntc_1', 'sent', 'x', now())`),
     /check/,
   );
-  await assert.rejects(store.add(notice(2, { policyId: undefined })), /check/);
+  await assert.rejects(store.add(notice(2, { policyId: undefined }), []), /check/);
 });

@@ -5,6 +5,7 @@ import { createHmac } from 'node:crypto';
 import { compose } from '../src/composition.ts';
 import { seedSampleData } from '../src/seed.ts';
 import { createApp, validatorFor, type Principal } from '../src/index.ts';
+import { eventValidator } from '../src/events-contract.ts';
 
 async function setup() {
   const clock = { now: () => '2026-11-15T10:00:00.000Z' };
@@ -77,4 +78,30 @@ test('a subscription is changed by revision and its secret rotated; the caller s
   assert.deepEqual([rotated.status, rotated.body.subscription.revision, rotated.body.subscription.previousSecretUntil], [201, 3, '2026-11-16T10:00:00.000Z']);
   assert.equal((await call('GET', `/v1/webhook-subscriptions/${subscription.id}/deliveries?status=lost`, 'integration')).status, 422);
   assert.equal((await call('GET', '/v1/webhook-subscriptions/whs_none', 'integration')).status, 404);
+});
+
+test('every event a subscription to everything gets follows asyncapi.yaml: claims, animals, policies and notices', async () => {
+  const { inst, call, received, clock } = await setup();
+  await call('POST', '/v1/webhook-subscriptions', 'integration', { url: 'https://lake.example.com/petvold', eventTypes: ['*'], markets: '*' });
+  await seedSampleData(inst, clock);
+  // Bella is sold, and a notice is sent: an animal event, a proposal and a delivery.
+  await inst.deps.animals!.transfer('ani_bella', { partyId: 'pty_owner002', from: '2026-11-14' }, 'registrar');
+  while ((await inst.relay.tick()) > 0);
+  const [notice] = await inst.deps.communications!.list({ status: 'pending' });
+  await inst.deps.communications!.addDelivery(notice!.id, { outcome: 'sent', channel: 'letter', sentAt: clock.now(), documentId: 'arch-1', sha256: 'a'.repeat(64) }, 'docs');
+  while ((await inst.relay.tick()) > 0);
+  while ((await inst.webhookWorker.tick()).delivered > 0);
+
+  const events = received.map((r) => JSON.parse(r.body) as { type: string; data: Record<string, unknown> });
+  const types = new Set(events.map((e) => e.type.replace(/^petvold\.|\.v1$/g, '')));
+  for (const t of ['claim.registered', 'claim.decided', 'claim.decision_proposed', 'claim.review_requested', 'animal.ownership_changed', 'policy.issued', 'proposal.created', 'application.declined', 'notice.created', 'notice.delivered']) {
+    assert.ok(types.has(t), `${t} was sent`);
+  }
+  for (const e of events) {
+    const v = eventValidator(e.type.replace(/^petvold\.|\.v1$/g, ''));
+    assert.ok(v(e), `${e.type}: ${JSON.stringify(v.errors)}`);
+  }
+  const review = events.find((e) => e.type === 'petvold.claim.review_requested.v1')!;
+  assert.equal('statement' in review.data, false, "the customer's own words stay in Petvold");
+  assert.equal(events.some((e) => JSON.stringify(e).includes('@example.test')), false, 'no one who did it');
 });

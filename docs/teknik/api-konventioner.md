@@ -91,4 +91,4 @@ En produktversion och en version av en regeluppsättning skrivs `{namn}@{version
 
 - **`Idempotency-Key`** krävs på anrop som skapar något.
 - **Varje operation har en rättighet i `x-permission`** (ADR 0016), ett `operationId` i camelCase och en tagg **(CI)**.
-- **Webhooks och händelser** beskrivs i AsyncAPI i steg 2 av ADR 0033. Till dess beskriver schemat `CloudEvent` i OpenAPI-kontraktet kuvertet.
+- **Händelserna** har ett eget kontrakt, `modules/api/asyncapi.yaml` (AsyncAPI 3.0, ADR 0033). En typ heter `petvold.{grupp}.{händelse}.v{N}`, och `data` har bara id:n och fält som inte är personuppgifter. Fälten i kontraktet och `PUBLIC_EVENTS` i `modules/webhooks` ska vara desamma **(CI)**.

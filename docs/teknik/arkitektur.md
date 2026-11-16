@@ -58,7 +58,7 @@ Kärnorna (`claims-core`, `pricing-core`, `underwriting-core`) är rena: ingen I
 | `RulesPort` | Produktens skaderegler per version | `DecisioningRulesPort`, som går från produktversionen till regelserien. Statiska regler i tester. |
 | `ClaimsStore` | Ärenden, beslut, självriskperioder, förbrukat belopp | Minne och Postgres. Båda klarar samma testsvit. |
 | `ClaimsOutbox` | Händelser som väntar på att publiceras | Minne och Postgres |
-| `EventSink` | Var reläet publicerar | Logg i dag. Webhooks enligt ADR 0033 (beslutad, inte byggd). |
+| `EventSink` | Var `relayOutbox` i `claims-core` publicerar | Används i skademotorns egna tester. Installationen använder reläet i `api` och modulen `webhooks` (ADR 0033). |
 | `Clock`, `IdGenerator` | Tid och id:n | Fasta i tester, riktiga i drift |
 
 **Portar mellan andra moduler:**
@@ -270,13 +270,14 @@ Databasen kontrollerar källan (migration 0010). En beslutsjournal pekar alltid 
 
 ## Händelser
 
-Händelser skrivs till modulens outbox i samma transaktion som ändringen (ADR 0008): `claims.outbox`, `animals.outbox` och `policies.outbox`. Reläet i `modules/api/src/relay.ts` läser varje outbox i ordning, lämnar händelsen till mottagarna och markerar den som publicerad först efteråt. Leveransen sker minst en gång, så mottagarna tål dubbletter.
+Händelser skrivs till modulens outbox i samma transaktion som ändringen (ADR 0008): `claims.outbox`, `animals.outbox`, `policies.outbox` och `communications.outbox`. Reläet i `modules/api/src/relay.ts` läser varje outbox i ordning, lämnar händelsen till mottagarna och markerar den som publicerad först efteråt. Leveransen sker minst en gång, så mottagarna tål dubbletter.
 
 | Källa | Mottagare |
 | --- | --- |
-| `claims` | Loggas. Webhooks enligt ADR 0033 (beslutad, inte byggd). |
-| `animals` | `PolicyService.handleAnimalEvent`: ägarbyte och dödsfall blir förslag |
+| `claims` | `WebhookService.enqueue`, efter `claimsEventForWebhooks` i `wiring.ts` som plattar ut händelsen till tillåtna fält |
+| `animals` | `PolicyService.handleAnimalEvent`: ägarbyte och dödsfall blir förslag. `WebhookService.enqueue`. |
 | `policies` | `CommunicationsService.handlePolicyEvent` (kundmeddelanden), `WebhookService.enqueue` för de publika händelserna, och `ClaimsService.reassessForPolicyChange` för `policy.version_superseded` |
+| `communications` | `WebhookService.enqueue`: `notice.created`, `notice.delivered` och `notice.failed` (outboxen från migration 0034) |
 
 **Webhooks (migration 0033):**
 - **Kö per prenumeration.** `enqueue` gör om händelsen till en CloudEvent med `toCloudEvent`, som bara tar med fälten i `PUBLIC_EVENTS`, och lägger en rad i `webhooks.delivery` för varje aktiv prenumeration som matchar typ och marknad. `unique (subscription_id, event_id)` gör att en ny leverans från reläet inte ger dubbletter. Marknaden slås upp från policyn eller ansökan i `composition.ts`.
