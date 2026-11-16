@@ -302,6 +302,11 @@ async function seedApplications(inst: Installation, now: string, by: string): Pr
       { seq: 1, partyId: 'pty_owner004', validFrom: a.birthDate, recordedBy: by, recordedAt: now },
     );
   }
+  // The customer was shown the Swedish terms and pre-contract information (ADR 0032),
+  // as the stored version has them: an older local database may have the product without documents.
+  const shown = ((await stores.products.get('SE-HUND-PLUS', '2026.1'))?.content.documents ?? [])
+    .filter((x) => x.language === 'sv' && x.type !== 'ipid')
+    .map((x) => ({ type: x.type, language: x.language, sha256: x.sha256 }));
   const apply = (animalId: string, answers: { question: string; value: boolean; diagnosisCodes?: string[] }[]) =>
     policies.apply(
       {
@@ -310,7 +315,7 @@ async function seedApplications(inst: Installation, now: string, by: string): Pr
         policyholderPartyId: 'pty_owner004',
         productVersion: 'SE-HUND-PLUS@2026.1',
         startDate: marketDate('SE', now),
-        acceptance: { channel: 'web', reference: `seed-${animalId}`, acceptedAt: now },
+        acceptance: { channel: 'web', reference: `seed-${animalId}`, acceptedAt: now, ...(shown.length ? { documents: shown } : {}) },
         answers,
       },
       by,

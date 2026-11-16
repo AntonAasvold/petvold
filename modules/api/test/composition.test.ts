@@ -60,6 +60,8 @@ test('the sample data fills every work queue and prices the households with the 
       ['ani_sixten', 'declined', ['too-old']],
     ],
   );
+  // The customer was shown the Swedish terms and pre-contract information (ADR 0032).
+  assert.deepEqual(applications[0]!.acceptance.documents?.map((d) => `${d.type}/${d.language}`), ['pre-contract/sv', 'terms/sv']);
   const [kajsa] = await policies.findByAnimal('ani_kajsa');
   assert.deepEqual(kajsa!.terms[0]!.riders.map((r) => [r.diagnosisCodes, r.source]), [[['ORA-OTIT'], 'underwriting']]);
   await inst.close();

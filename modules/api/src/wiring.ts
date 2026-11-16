@@ -35,6 +35,7 @@ export function productPort(products: ProductService): ProductPort {
         ...(v.content.tariffSeries ? { tariffSeries: v.content.tariffSeries } : {}),
         ...(v.content.priceTermsSeries ? { priceTermsSeries: v.content.priceTermsSeries } : {}),
         ...(v.content.underwritingSeries ? { underwritingSeries: v.content.underwritingSeries } : {}),
+        ...(v.content.documents?.length ? { documents: v.content.documents.map((x) => ({ type: x.type, language: x.language, sha256: x.sha256 })) } : {}),
         vetCareTermsFor: (choice) => ({ ...vetCareTermsFor(v, choice), deductibleOption: choice.deductible ?? v.content.vetCare.defaultDeductible }),
       };
     },

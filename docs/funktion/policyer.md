@@ -33,13 +33,25 @@ Petvold kontrollerar att:
 - produktversionen säljs på startdagen, i marknaden och för djurets art
 - valen finns i produkten. Ett utelämnat val ger produktens förval.
 - premien är i produktens valuta
-- godkännandet har en kanal och en tid som inte ligger i framtiden
+- godkännandet har en kanal och en tid som inte ligger i framtiden, och anger produktens villkor och förköpsinformation om produkten har dokument
 - **startdagen inte ligger före dagen för tecknandet**
 - **djuret inte redan har en policy** för någon av dagarna (`409`)
 
 Termens längd kommer från produkten (`policy.termMonths`, förval 12 månader). Den får inte vara längre än marknaden tillåter, i Sverige ett år (FAL 3 kap. 2 §). Transaktionen går igenom stegen utkast, prissatt, riskbedömd och utfärdad. **Premien** räknas med produktens tariff ([Pris](pris.md#priset-på-policyn)). För en produkt utan tariff anger anroparen den. Steget riskbedömd visar om teckningsregler prövades och vilken version som godkände.
 
-**Kundens godkännande (ADR 0031).** `acceptance` har kanalen (till exempel `web`, `app`, `phone` eller `paper`), en referens om kanalen har en, till exempel ett sessions-id eller en signering, och tiden då kunden godkände. Petvold lägger till tiden då anropet kom fram, och sparar godkännandet på transaktionen (`issue.acceptance`). Tiden från kanalen får ligga högst fem minuter efter Petvolds klocka, eftersom klockorna kan skilja sig åt. Godkännandet gäller produktversionen och priset i svaret. Förköpsinformationen och villkoren som visades sparas när dokument finns (F2).
+**Kundens godkännande (ADR 0031).** `acceptance` har kanalen (till exempel `web`, `app`, `phone` eller `paper`), en referens om kanalen har en, till exempel ett sessions-id eller en signering, och tiden då kunden godkände. Petvold lägger till tiden då anropet kom fram, och sparar godkännandet på transaktionen (`issue.acceptance`). Tiden från kanalen får ligga högst fem minuter efter Petvolds klocka, eftersom klockorna kan skilja sig åt. Godkännandet gäller produktversionen och priset i svaret.
+
+**Dokumenten kunden fick se (ADR 0032).** För en produkt med [dokument](produktkonfiguration.md#produktens-dokument) anger `acceptance.documents` vilka dokument kanalen visade, med typ, språk och kontrollsumma, som produkten listar dem. Villkoren (`terms`) och förköpsinformationen (`pre-contract`) måste finnas med. Ett dokument som produktversionen inte har, eller en annan kontrollsumma, ger `422`. Listan sparas med godkännandet, sorterad.
+
+```json
+"acceptance": {
+  "channel": "web", "reference": "sess-41b7", "acceptedAt": "2026-11-16T09:12:00Z",
+  "documents": [
+    { "type": "terms", "language": "sv", "sha256": "c4aa50fc…" },
+    { "type": "pre-contract", "language": "sv", "sha256": "704d4d94…" }
+  ]
+}
+```
 
 ## Ändra val under termen
 

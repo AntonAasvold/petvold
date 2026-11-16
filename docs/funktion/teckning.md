@@ -83,7 +83,13 @@ POST /v1/applications
 {
   "market": "SE", "animalId": "ani_kajsa", "policyholderPartyId": "pty_owner004",
   "productVersion": "SE-HUND-PLUS@2026.1", "startDate": "2026-12-01",
-  "acceptance": { "channel": "web", "reference": "sess-41b7", "acceptedAt": "2026-11-16T09:12:00Z" },
+  "acceptance": {
+    "channel": "web", "reference": "sess-41b7", "acceptedAt": "2026-11-16T09:12:00Z",
+    "documents": [
+      { "type": "terms", "language": "sv", "sha256": "c4aa50fc…" },
+      { "type": "pre-contract", "language": "sv", "sha256": "704d4d94…" }
+    ]
+  },
   "answers": [
     { "question": "previous-illness", "value": true, "diagnosisCodes": ["ORA-OTIT"] },
     { "question": "ongoing-symptoms", "value": false },
@@ -92,7 +98,7 @@ POST /v1/applications
 }
 ```
 
-Petvold gör samma kontroller som vid tecknande och räknar fram priset. Sedan körs teckningsreglerna som gäller på ansökningsdagen, och ansökan sparas. Svaret är `201` för alla utfall:
+Petvold gör samma kontroller som vid tecknande och räknar fram priset. Godkännandet ska ange de dokument kunden fick se, eftersom produkten har dokument ([Policyer](policyer.md)). Sedan körs teckningsreglerna som gäller på ansökningsdagen, och ansökan sparas. Svaret är `201` för alla utfall:
 
 | `status` | Utfall | Vad händer |
 | --- | --- | --- |
@@ -134,7 +140,7 @@ POST /v1/applications/app_…/decisions
 
 ## Exempeldata
 
-Dev-servern har teckningsreglerna `SE-HUND-UW@1` med frågorna på svenska och engelska, och produkten `SE-HUND-PLUS@2026.1` som använder dem. Lena (`pty_owner004`) har tre ansökningar:
+Dev-servern har teckningsreglerna `SE-HUND-UW@1` med frågorna på svenska och engelska, och produkten `SE-HUND-PLUS@2026.1` som använder dem. Produkten har påhittade dokument på svenska och engelska, och Lenas ansökningar anger de svenska villkoren och förköpsinformationen. Lena (`pty_owner004`) har tre ansökningar:
 - Kajsa uppgav en öroninflammation och fick ett förbehåll för `ORA-OTIT`.
 - Rocky har symtom som ingen veterinär har undersökt och väntar i kön. Token `dev-underwriter` kan besluta om honom.
 - Sixten är 12 år och avslogs med skälet `too-old`.

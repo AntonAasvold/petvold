@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { InMemoryPolicyStore, PolicyError, PolicyService, addMonths, type ApplicationInput, type IssueInput, type ProductOffer } from '../src/index.ts';
+import { InMemoryPolicyStore, PolicyError, PolicyService, addMonths, type AcceptedDocument, type ApplicationInput, type IssueInput, type ProductOffer } from '../src/index.ts';
 import { underwrite } from '@petvold/underwriting-core';
 import { UNDERWRITING } from '@petvold/underwriting-core/fixtures';
 import { TARIFF } from '@petvold/pricing-core/fixtures';
@@ -621,13 +621,14 @@ test("'today' is the market's date: at 00:30 in Stockholm a policy can start tha
 });
 
 // Applications and underwriting (ADR 0031).
-function applicationSetup(o: { rulesInForce?: boolean; tariff?: boolean } = {}) {
+function applicationSetup(o: { rulesInForce?: boolean; tariff?: boolean; documents?: AcceptedDocument[] } = {}) {
   let n = 0;
   let now = '2026-11-15T10:00:00.000Z';
   const store = new InMemoryPolicyStore();
   const ref = { series: 'SE-UW', version: 1, checksum: 'u' };
   const uwOffer = offer({
     underwritingSeries: 'SE-UW',
+    ...(o.documents ? { documents: o.documents } : {}),
     ...(o.tariff ? { tariffSeries: 'SE-HUND-TARIFF', vetCareTermsFor: (c) => ({ ...vetCare, annualLimit: c.annualLimit ?? 6_000_000, deductibleOption: c.deductible ?? 'standard' }) } : {}),
   });
   const s = new PolicyService({
@@ -807,4 +808,36 @@ test('a person declines with a reason code; the channel withdraws; an applicatio
   assert.deepEqual((await store.pendingEvents(20)).filter((e) => e.type === 'application.withdrawn' || e.type === 'application.expired').map((e) => e.type), ['application.withdrawn', 'application.expired']);
   // Nothing waits any more: the party's last relation is the latest decision.
   assert.deepEqual(await s.activityOf('pty_anna'), { lastDate: '2026-12-16' });
+});
+
+// The documents the customer was shown (ADR 0032).
+const docs: AcceptedDocument[] = [
+  { type: 'terms', language: 'sv', sha256: 'a'.repeat(64) },
+  { type: 'pre-contract', language: 'sv', sha256: 'b'.repeat(64) },
+  { type: 'ipid', language: 'sv', sha256: 'c'.repeat(64) },
+];
+const shown = (list: AcceptedDocument[]) => ({ channel: 'web', reference: 'sess-1', acceptedAt: '2026-11-15T09:58:00.000Z', documents: list });
+
+test('the acceptance names the product\'s documents the customer was shown, with their checksums (ADR 0032)', async () => {
+  const s = setup({ 'SE-HUND@1': offer({ documents: docs }), 'SE-BARE@1': offer() });
+  await rejects(s.issue(input(), by), 'validation', /must name the terms and pre-contract/);
+  await rejects(s.issue(input({ acceptance: shown([docs[0]!]) }), by), 'validation', /must name the pre-contract/);
+  await rejects(s.issue(input({ acceptance: shown([docs[0]!, { ...docs[1]!, sha256: 'd'.repeat(64) }]) }), by), 'validation', /pre-contract document in 'sv' is not the one SE-HUND@1 has/);
+  await rejects(s.issue(input({ acceptance: shown([...docs, { type: 'terms', language: 'en', sha256: 'a'.repeat(64) }]) }), by), 'validation', /has no terms document in 'en'/);
+  await rejects(s.issue(input({ acceptance: shown([docs[0]!, docs[0]!]) }), by), 'validation', /twice/);
+  await rejects(s.issue(input({ productVersion: 'SE-BARE@1', acceptance: shown([docs[0]!]) }), by), 'validation', /SE-BARE@1 has no terms document/);
+
+  // Upper-case hex is the same checksum; the stored list is sorted.
+  const p = await s.issue(input({ acceptance: shown([{ ...docs[1]!, sha256: 'B'.repeat(64) }, docs[0]!]) }), by);
+  assert.deepEqual((await s.transactions(p.id))[0]!.issue?.acceptance.documents, [docs[1], docs[0]]);
+});
+
+test('an application keeps the documents, and a person\'s acceptance of it issues with them', async () => {
+  const { s } = applicationSetup({ documents: docs });
+  await rejects(s.apply(application({ answers: symptoms }), by), 'validation', /must name the terms/);
+  const a = await s.apply(application({ answers: symptoms, acceptance: shown(docs.slice(0, 2)) }), by);
+  assert.deepEqual([a.status, a.acceptance.documents], ['referred', [docs[1], docs[0]]]);
+  const d = await s.decideApplication(a.id, { outcome: 'accept', note: 'The symptoms were a cold' }, 'uw');
+  const tx = (await s.transactions(d.policyId!))[0]!;
+  assert.deepEqual(tx.issue?.acceptance, a.acceptance);
 });

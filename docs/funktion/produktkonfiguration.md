@@ -153,8 +153,34 @@ En produktversion säger vad som kan säljas och med vilka val (ADR 0023). Id:t 
 | `policy.renewalLeadDays` | Dagar före förfallodagen som förnyelsen körs, 1–120 och kortare än termen. Om pris eller villkor ändras vid förnyelsen bör kunden få besked mer än en månad före förfallodagen. | 45 (förval) |
 | `policy.transferAcceptanceDays` | Dagar som en ny ägare har på sig att godkänna en överlåten policy | 30 (förval) |
 | `policy.applicationExpiryDays` | Dagar som en ansökan får vänta på manuell prövning innan den går ut ([Teckning](teckning.md#manuell-prövning)), 1–90 | 30 (förval) |
+| `documents` | Produktens dokument till kunden (ADR 0032), se [Produktens dokument](#produktens-dokument) | villkor, förköpsinformation och faktablad på svenska och engelska |
 
 Inställningarna under `policy` kan utelämnas, och då gäller förvalen. De låses med resten av innehållet när versionen publiceras.
+
+### Produktens dokument
+
+Dokumenten ligger i bolagets arkiv. Produktversionen har adressen och en kontrollsumma för varje dokument, så att det går att visa exakt vilket dokument kunden fick se (ADR 0032).
+
+| Fält | Betyder |
+| --- | --- |
+| `type` | `terms` (villkoren), `pre-contract` (förköpsinformationen) eller `ipid` (faktabladet enligt IDD artikel 20) |
+| `language` | Språket, ISO 639-1, till exempel `sv` |
+| `uri` | Dokumentets adress i bolagets arkiv |
+| `sha256` | Kontrollsumman av dokumentets bytes, med små bokstäver |
+
+```json
+"documents": [
+  { "type": "terms", "language": "sv", "uri": "https://documents.example.com/se-hund-plus/2026.1/terms-sv.pdf", "sha256": "c4aa50fc…" },
+  { "type": "pre-contract", "language": "sv", "uri": "https://documents.example.com/se-hund-plus/2026.1/pre-contract-sv.pdf", "sha256": "704d4d94…" },
+  { "type": "ipid", "language": "sv", "uri": "https://documents.example.com/se-hund-plus/2026.1/ipid-sv.pdf", "sha256": "75833243…" }
+]
+```
+
+- **Ett dokument per typ och språk.**
+- **Låses med innehållet.** Dokumenten ingår i produktens kontrollsumma, så ett nytt dokument kräver en ny produktversion.
+- **Granskningen kräver marknadens språk.** En produkt med dokument måste ha alla tre typerna på marknadens språk, i Sverige svenska (FAL 2 kap. 1 §). Andra språk får finnas utöver dem.
+- **En produkt utan dokument** fungerar som förut, och kundens godkännande anger då inga dokument.
+- **Godkännandet anger dokumenten.** Vid tecknande och ansökan anger kanalen vilka dokument kunden fick se ([Policyer](policyer.md)).
 
 **Livscykel:**
 

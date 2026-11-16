@@ -8,7 +8,7 @@
  * needs someone other than the submitter. A published version never changes,
  * except that its sales can be ended earlier, with a reason.
  */
-import { marketDate } from '@petvold/common';
+import { marketDate, marketLanguage } from '@petvold/common';
 import { canonicalJson, sha256, type DeductibleTerms, type ISODate, type MinorUnits, type VetCareTerms } from '@petvold/claims-core';
 import { CatalogError } from './errors.ts';
 
@@ -69,6 +69,26 @@ export function policySettingsOf(c: ProductContent): Required<PolicySettings> {
   return { ...POLICY_SETTING_DEFAULTS, ...(c.policy ?? {}) };
 }
 
+/** The documents a customer is shown before buying (ADR 0032). */
+export const PRODUCT_DOCUMENT_TYPES = ['terms', 'pre-contract', 'ipid'] as const;
+export type ProductDocumentType = (typeof PRODUCT_DOCUMENT_TYPES)[number];
+
+/**
+ * A document of a product version, kept in the insurer's archive (ADR 0032).
+ * Petvold holds the address and the checksum, not the document, so a customer's
+ * acceptance can say exactly which document they were shown.
+ */
+export interface ProductDocument {
+  /** terms: the full terms; pre-contract: information before the contract; ipid: the product information document (IDD art. 20). */
+  type: ProductDocumentType;
+  /** ISO 639-1, e.g. 'sv'. */
+  language: string;
+  /** Where the insurer's archive keeps it, e.g. https://documents.example.com/terms-sv.pdf. */
+  uri: string;
+  /** sha256 of the document's bytes, lowercase hex. */
+  sha256: string;
+}
+
 /** What an author writes, and what review and publication lock. */
 export interface ProductContent {
   market: string;
@@ -86,6 +106,11 @@ export interface ProductContent {
   underwritingSeries?: string;
   vetCare: VetCareCover;
   policy?: PolicySettings;
+  /**
+   * The documents per type and language (ADR 0032). Locked with the content at
+   * review. Omitted: the product has none in Petvold and acceptance names none.
+   */
+  documents?: ProductDocument[];
 }
 
 export interface ProductVersion {
@@ -335,6 +360,12 @@ export class ProductService {
       if (problems === null) throw new CatalogError('validation', `The underwriting series ${uw} has no published version in force on ${v.salesFrom}`);
       if (problems.length) throw new CatalogError('validation', `The underwriting series ${uw} does not cover the product: ${problems.join('; ')}`);
     }
+    const docs = v.content.documents ?? [];
+    const language = marketLanguage(v.content.market);
+    if (docs.length && language) {
+      const missing = PRODUCT_DOCUMENT_TYPES.filter((t) => !docs.some((d) => d.type === t && d.language === language));
+      if (missing.length) throw new CatalogError('validation', `The product's documents lack ${missing.join(', ')} in '${language}', the language of ${v.content.market}`);
+    }
   }
 
   private async inStatus(product: string, version: string, status: ProductStatus): Promise<ProductVersion> {
@@ -418,6 +449,7 @@ export class ProductService {
         fail('policy.applicationExpiryDays must be 1-90');
       }
     }
+    if (c.documents !== undefined) validateDocuments(c.documents, fail);
   }
 }
 
@@ -436,6 +468,20 @@ function validateDeductible(code: string, t: DeductibleTerms, fail: (m: string) 
   if (!bp(t.variableBp)) fail(`${at}: variableBp must be 0-10000`);
   for (const s of t.variableBpByAge ?? []) {
     if (!Number.isSafeInteger(s.fromAgeYears) || s.fromAgeYears < 1 || !bp(s.bp)) fail(`${at}: invalid age step`);
+  }
+}
+
+function validateDocuments(docs: ProductDocument[], fail: (m: string) => never): void {
+  if (!Array.isArray(docs)) fail('documents must be a list');
+  const seen = new Set<string>();
+  for (const d of docs) {
+    if (!PRODUCT_DOCUMENT_TYPES.includes(d?.type)) fail(`Invalid document type '${d?.type}', one of ${PRODUCT_DOCUMENT_TYPES.join(', ')}`);
+    if (!/^[a-z]{2}$/.test(d.language ?? '')) fail(`The ${d.type} document needs a language in ISO 639-1, e.g. sv`);
+    const key = `${d.type}/${d.language}`;
+    if (seen.has(key)) fail(`The ${d.type} document in '${d.language}' is listed twice`);
+    seen.add(key);
+    if (typeof d.uri !== 'string' || d.uri.length > 500 || !/^[a-z][a-z0-9+.-]*:\S+$/.test(d.uri)) fail(`The ${key} document needs an absolute uri`);
+    if (!/^[0-9a-f]{64}$/.test(d.sha256 ?? '')) fail(`The ${key} document needs a sha256 checksum in lowercase hex`);
   }
 }
 

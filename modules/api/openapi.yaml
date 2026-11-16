@@ -3781,6 +3781,11 @@ components:
         priceTermsSeries: { type: string, description: 'The price terms series: discounts after the base price (ADR 0030). Only with tariffSeries. At review, a version must be in force when sales start.' }
         tariffSeries: { type: string, description: 'The tariff series that prices it (ADR 0030). Omitted: the premium is given by hand. At review, a version must be in force when sales start and cover every species, annual limit and deductible option.' }
         underwritingSeries: { type: string, description: 'The underwriting rules series (ADR 0031): new policies are applied for with POST /v1/applications. Omitted: policies are issued directly. At review, a version must be in force when sales start, for the market and with age limits for every species.' }
+        documents:
+          type: array
+          maxItems: 60
+          items: { $ref: '#/components/schemas/ProductDocument' }
+          description: 'The documents of the version per type and language (ADR 0032), locked by the checksum at review. When there are any, review needs terms, pre-contract and ipid in the market''s language (SE: sv), and an acceptance must name the terms and pre-contract the customer was shown.'
         policy:
           type: object
           additionalProperties: false
@@ -3978,6 +3983,32 @@ components:
         channel: { type: string, minLength: 1, maxLength: 40, description: 'e.g. web, app, phone or paper.' }
         reference: { type: string, maxLength: 200, description: 'e.g. a session id, a signing reference or a recording.' }
         acceptedAt: { $ref: '#/components/schemas/DateTime', description: When the customer accepted, as the channel says. Not in the future. }
+        documents:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/AcceptedDocument' }
+          description: 'The product version''s documents the channel showed the customer (ADR 0032), as GET /v1/products lists them. Required for a product with documents: at least terms and pre-contract. A document the version does not have, or another checksum, gives 422.'
+
+    ProductDocument:
+      type: object
+      additionalProperties: false
+      required: [type, language, uri, sha256]
+      description: A document in the insurer's archive (ADR 0032). Petvold keeps the address and checksum, not the document.
+      properties:
+        type: { type: string, enum: [terms, pre-contract, ipid], description: 'terms: the full terms; pre-contract: information before the contract; ipid: the insurance product information document (IDD art. 20).' }
+        language: { type: string, pattern: '^[a-z]{2}$', description: ISO 639-1. }
+        uri: { type: string, maxLength: 500, description: 'Where the archive keeps it, e.g. https://documents.example.com/terms-sv.pdf.' }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$', description: sha256 of the document's bytes. }
+
+    AcceptedDocument:
+      type: object
+      additionalProperties: false
+      required: [type, language, sha256]
+      description: A product document the customer was shown (ADR 0032).
+      properties:
+        type: { type: string, enum: [terms, pre-contract, ipid] }
+        language: { type: string, pattern: '^[a-z]{2}$' }
+        sha256: { type: string, pattern: '^[0-9a-fA-F]{64}$' }
 
     ApplicationRequest:
       type: object
@@ -4345,6 +4376,10 @@ components:
         reference: { type: string, description: e.g. a signing reference. }
         acceptedAt: { $ref: '#/components/schemas/DateTime', description: 'At issue: as the channel says. At a transfer: when Petvold recorded it.' }
         receivedAt: { $ref: '#/components/schemas/DateTime', description: At issue, when Petvold received it. }
+        documents:
+          type: array
+          items: { $ref: '#/components/schemas/AcceptedDocument' }
+          description: The product documents the customer was shown (ADR 0032), sorted by type and language.
 
     AcceptProposalRequest:
       type: object

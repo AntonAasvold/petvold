@@ -78,7 +78,9 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Listor för ett gränssnitt: ärenden med arbetsköer, produkter och regelserier
 - [x] Inför ett gränssnitt: `GET /v1/me`, CORS, rikare exempeldata och `AGENTS.md`
 - [x] Godkännande av villkoren sparas vid tecknande (F3), ADR 0031
-- [ ] ADR om dokument och meddelanden till kunden: förköpsinformation, villkor, försäkringsbrev, besked om förnyelse och uppsägning (F2), ADR 0032 (beslutad, bygget återstår)
+- [x] ADR om dokument och meddelanden till kunden: förköpsinformation, villkor, försäkringsbrev, besked om förnyelse och uppsägning (F2), ADR 0032
+- [x] Produktens dokument med kontrollsumma, och godkännandet anger vilka som visades (ADR 0032)
+- [ ] Meddelandemodulen `communications`: kundmeddelanden från händelserna, utskick och kö (ADR 0032)
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
 
 **M4 – Pris och teckning**
