@@ -42,6 +42,7 @@ test('a list grows a page at a time with the cursor', () => {
 test('sections follow the permissions from /v1/me', () => {
   const me = (permissions: string[]) => ({ subject: 's', roles: [], permissions, scope: { markets: '*' as const } });
   assert.deepEqual(sectionsFor(me(['claims:read'])).map((s) => s.path), ['/claims']);
-  assert.deepEqual(sectionsFor(me(['policies:read'])), []);
+  assert.deepEqual(sectionsFor(me(['policies:read'])).map((s) => s.path), ['/policies', '/applications', '/proposals']);
+  assert.deepEqual(sectionsFor(me(['notices:read'])), []);
   assert.deepEqual(sectionsFor(null), []);
 });

@@ -17,6 +17,10 @@ Appen ligger i `apps/backoffice` (ADR 0035). Den är byggd med Lit 3, Web Awesom
 | `src/format.ts`, `grid-keys.ts`, `pager.ts`, `permissions.ts`, `decide.ts` | Ren logik utan webbläsare: formatering, tangentbord, sidindelning med markör, menyer, och vad ett beslut kräver och vem som får göra vad. Testas med `node:test`. |
 | `src/components/claim-actions.ts` | `<pv-claim-actions>`: besluta, attestera, skicka tillbaka, begära prövning och ompröva. Varje åtgärd skickar `Idempotency-Key` (`IdempotencyKeys`, samma nyckel tills åtgärden gått igenom) och beslutet `expectedInputHash`. `409` blir ett besked med "Ladda om". |
 | `src/components/explanation-dialog.ts` | `<pv-explanation-dialog>`: förklaringen till ett beslut i en `wa-dialog` |
+| `src/views/policies-search.ts`, `policy-detail.ts` | Sökning och policy. `parseSearch` i `policy-logic.ts` avgör vad som söks. `versionOn` väljer versionen som gäller i dag, som den är känd nu. |
+| `src/views/applications-queue.ts`, `application-detail.ts` | Ansökningar och prövning. `applicationDecisionProblems` stoppar ett beslut utan motivering eller skälkod. |
+| `src/views/proposals-queue.ts` | Förslag som väntar. Förslaget besvaras i `policy-detail.ts`. |
+| `src/actions.ts` | `act` skickar en åtgärd och gör svaret till ett besked. `409` blir "Ladda om". Används av vyerna i steg 3, och `claim-actions` gör samma sak. |
 | `src/icons.ts`, `icons.json`, `scripts/copy-icons.mjs` | Ikoner från Font Awesome Free (npm), kopierade till `public/icons` före dev och bygge. `wa-icon` läser dem därifrån och aldrig från ett CDN. |
 
 ## `<pv-data-grid>`
@@ -41,5 +45,5 @@ API:t måste tillåta appens adress i `PETVOLD_CORS_ORIGINS` (drift.md).
 ## Test
 
 - **`npm run ui:test`** testar den rena logiken. Den kontrollerar också att varje ikon som koden använder finns i `icons.json`, och att varje text-id i koden har en svensk översättning i `sv.ts` och inget mer.
-- **`npm run ui:e2e`** kör flödena i Chromium med Playwright: köerna, tangentbordet, språket, besluta mot förslaget, besluta, attestera med fyra ögon, pröva och förklaringen. Testerna delar en API-server och körs i ordning. Attesten körs före andra beslut på Bellas skador, eftersom de delar försäkringsbelopp. Det startar API:ts dev-server i minnet på port 8797 och Vite på 5181. Egna portar, och aldrig en server som redan kör, så att en annan app på de vanliga portarna inte testas av misstag.
+- **`npm run ui:e2e`** kör flödena i Chromium med Playwright: köerna, tangentbordet, språket, besluta mot förslaget, besluta, attestera med fyra ögon, pröva och förklaringen. Testerna delar en API-server och körs i ordning. Attesten körs före andra beslut på Bellas skador, eftersom de delar försäkringsbelopp. Testet för överlåtelse byter ägare på Doris med API:t, och väntar tills reläet har gjort ett förslag av det. Det startar API:ts dev-server i minnet på port 8797 och Vite på 5181. Egna portar, och aldrig en server som redan kör, så att en annan app på de vanliga portarna inte testas av misstag.
 - **CI-jobbet `ui`** genererar typerna och jämför dem, typkontrollerar, kör båda testerna och bygger.

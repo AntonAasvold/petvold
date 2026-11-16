@@ -18,6 +18,9 @@ export interface Section {
 
 export const SECTIONS: Section[] = [
   { path: '/claims', label: 'nav.claims', icon: 'file-invoice', anyOf: ['claims:read'] },
+  { path: '/policies', label: 'nav.policies', icon: 'paw', anyOf: ['policies:read'] },
+  { path: '/applications', label: 'nav.applications', icon: 'list-check', anyOf: ['policies:read'] },
+  { path: '/proposals', label: 'nav.proposals', icon: 'user-check', anyOf: ['policies:read'] },
 ];
 
 export const can = (me: Me | null, permission: string): boolean => !!me?.permissions.includes(permission);
