@@ -36,5 +36,6 @@
 | [0032](0032-meddelanden-och-dokument-till-kunden.md) | Meddelanden och dokument till kunden | Beslutad |
 | [0033](0033-handelser-till-bolagets-system.md) | Händelser till bolagets system med webhooks | Beslutad |
 | [0034](0034-api-konventioner.md) | Konventioner för API-kontraktet | Beslutad |
+| [0035](0035-granssnitt-for-back-office.md) | Ett gränssnitt för handläggare och back office | Beslutad |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.
