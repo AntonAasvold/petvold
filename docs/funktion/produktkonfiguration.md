@@ -203,4 +203,6 @@ En publicerad version ändras aldrig utom slutdatumet för försäljningen. Poli
 
 **Så hittar skademotorn reglerna:** policyns produktversion ger regelserien, och regelserien ger den version som gäller på behandlingsdatumet. Om produktversionen inte finns eller inte är publicerad svarar skademotorn `409`.
 
-*Inte byggt än:* andra moment än veterinärvård, och pris (M4).
+Priset ställs in med tariff och prisvillkor, se [Pris](pris.md).
+
+*Inte byggt än:* andra moment än veterinärvård, till exempel liv (F4).

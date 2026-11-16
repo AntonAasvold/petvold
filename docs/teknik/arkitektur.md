@@ -8,14 +8,23 @@ Petvold är en modulär monolit (ADR 0001): en process och en databas per instal
 
 ```mermaid
 flowchart LR
-  client[Klient: kundens system, klinik, handläggare] -->|HTTP + JWT| api[api<br/>Hono, kontrakt, behörighet, idempotens]
-  api --> core[claims-core<br/>ren domän: bedömning, beräkning, beslut]
-  core -->|PolicyPort| policy[(Policy<br/>extern eller egen)]
-  core -->|RulesPort| rules[(Produktregler)]
-  core -->|ClaimsStore| store[claims-store-postgres]
-  store --> db[(Postgres<br/>schema claims)]
-  db -->|outbox| relay[Relä] --> sink[EventSink<br/>logg i dag]
+  client[Bolagets system: kanaler, handläggare, kliniker, dokumentsystem] -->|HTTP + JWT| api[api<br/>kontrakt, behörighet, omfång, idempotens]
+  api --> claims[claims-core<br/>skador]
+  api --> policies[policies<br/>policyer och ansökningar]
+  api --> catalog[catalog<br/>produkter och referensdata]
+  api --> decisioning[decisioning<br/>regler, tariffer, teckningsregler]
+  api --> animals[animals]
+  api --> parties[parties]
+  api --> comms[communications<br/>kundmeddelanden]
+  api --> access[access<br/>roller]
+  claims -->|PolicyPort| policies
+  claims -->|RulesPort| decisioning
+  policies -->|portar| catalog & animals & parties & decisioning
+  db[(Postgres<br/>ett schema och en roll per modul)]
+  claims & policies & animals --> outbox[outboxar] --> relay[Relä] --> policies & comms & claims
 ```
+
+Modulerna talar med varandra genom portar som `composition.ts` kopplar ihop, och genom händelser via reläet. Ingen modul läser en annan moduls tabeller.
 
 ## Moduler i dag
 
@@ -38,26 +47,42 @@ flowchart LR
 
 ## Portar och adaptrar
 
-Kärnan (`*-core`) är ren: ingen I/O, inget ramverk och inga texter för användare. Allt den behöver från omvärlden får den via gränssnitt i `claims-core/src/ports.ts`:
+Kärnorna (`claims-core`, `pricing-core`, `underwriting-core`) är rena: ingen I/O, inget ramverk och inga texter för användare. Allt de behöver från omvärlden får de via gränssnitt. Adaptrarna mellan modulerna finns i `modules/api/src/wiring.ts`, och `composition.ts` kopplar ihop dem.
+
+**Skademotorns portar** (`claims-core/src/ports.ts`):
 
 | Port | Ger kärnan | Implementationer |
 | --- | --- | --- |
-| `PolicyPort` | Policyn som den gällde ett datum, enligt det som var känt vid en tidpunkt | Minne (exempeldata). Senare policymodulen eller ett externt system. |
-| `RulesPort` | Produktens skaderegler per version | Minne (exempeldata). Senare produktkatalogen. |
+| `PolicyPort` | Policyn som den gällde ett datum, enligt det som var känt vid en tidpunkt | Policymodulen (`PolicyService`), eller ett externt policysystem. Minne i tester. |
+| `RulesPort` | Produktens skaderegler per version | `DecisioningRulesPort`, som går från produktversionen till regelserien. Statiska regler i tester. |
 | `ClaimsStore` | Ärenden, beslut, självriskperioder, förbrukat belopp | Minne och Postgres. Båda klarar samma testsvit. |
 | `ClaimsOutbox` | Händelser som väntar på att publiceras | Minne och Postgres |
-| `EventSink` | Var reläet publicerar | Logg i dev-servern |
+| `EventSink` | Var reläet publicerar | Logg i dag. Webhooks enligt ADR 0033 (föreslagen). |
 | `Clock`, `IdGenerator` | Tid och id:n | Fasta i tester, riktiga i drift |
 
-En ny lagring är klar när den klarar den gemensamma sviten i `claims-core/test-suites/claims-store.ts` (ADR 0012).
+**Portar mellan andra moduler:**
+
+| Modul | Port | Ger | Adapter |
+| --- | --- | --- | --- |
+| `policies` | `ProductPort` | Produktversionen som den säljs: val, inställningar, serier och dokument | `productPort` |
+| `policies` | `AnimalPort` | Djurets art, ras, födelsedag och dödsdag | `animalPort` |
+| `policies` | `PartyPort` | Partens marknad och postnummer | `PartyService` direkt |
+| `policies` | `TariffPort`, `UnderwritingPort` | Tariff, prisvillkor och teckningsregler som gäller | `DecisioningService` direkt |
+| `catalog` | `ProductDeps` | Om arter, regelserier, tariffer och teckningsregler täcker produkten | Funktioner i `composition.ts` |
+| `animals` | `ReferencePort`, `PartyPort` | Referensdata och att ägaren finns | `ReferenceDataStore`, `PartyService` |
+| `parties` | `ActivitySource` | När en part senast hade en relation, för gallringen | `animals`, `policies` och `claimsActivity` |
+| `communications` | `PolicySource`, `PartySource` | Policyer, transaktioner, ansökningar, förslag och partens språk | `policySource`, `partySource` |
+
+En ny lagring är klar när den klarar modulens gemensamma testsvit i `test-suites/`, till exempel `claims-core/test-suites/claims-store.ts` (ADR 0012).
 
 ## Lagring
 
-- **Ett schema per modul** (`claims`), och varje modul ansluter med sin egen roll (`claims_service`). Rollen får läsa och lägga till, men inte ändra historik.
-- **Databasen upprätthåller reglerna själv:**
+- **Ett schema per modul**, och varje modul ansluter med sin egen roll: `claims_service`, `access_service`, `decisioning_service`, `catalog_service`, `animals_service`, `parties_service`, `policies_service` och `communications_service`. Rollen får läsa och lägga till, men inte ändra historik. Adresserna står i `DATABASE_ENV` i `composition.ts`.
+- **Databasen upprätthåller reglerna själv**, till exempel:
   - varje journal balanserar (uppskjuten trigger)
   - självriskperioder för samma djur och grupp överlappar inte (exclusion constraint)
-  - beslut och bokföring kan inte ändras eller raderas
+  - beslut, bokföring, policyversioner, ansökningar och meddelanden kan inte ändras eller raderas
+  - två aktiva policyer för samma djur samma dag går inte (exclusion constraint)
 - **Migreringar** med dbmate i `db/migrations/`. En körd migration ändras aldrig. CI provar att den senaste kan rullas tillbaka med data i tabellerna.
 - **Belopp** är `bigint` i minsta enhet med suffixet `_minor`, och valutan står en gång per rad (ADR 0014).
 
@@ -244,7 +269,15 @@ Databasen kontrollerar källan (migration 0010). En beslutsjournal pekar alltid 
 
 ## Händelser
 
-Händelser skrivs till `claims.outbox` i samma transaktion som ändringen (ADR 0008). Ett relä läser outboxen i ordning, publicerar och markerar händelserna som publicerade. Leveransen sker minst en gång, så mottagare måste tåla dubbletter. Bara ett relä per outbox åt gången.
+Händelser skrivs till modulens outbox i samma transaktion som ändringen (ADR 0008): `claims.outbox`, `animals.outbox` och `policies.outbox`. Reläet i `modules/api/src/relay.ts` läser varje outbox i ordning, lämnar händelsen till mottagarna och markerar den som publicerad först efteråt. Leveransen sker minst en gång, så mottagarna tål dubbletter.
+
+| Källa | Mottagare |
+| --- | --- |
+| `claims` | Loggas. Webhooks enligt ADR 0033 (föreslagen). |
+| `animals` | `PolicyService.handleAnimalEvent`: ägarbyte och dödsfall blir förslag |
+| `policies` | `CommunicationsService.handlePolicyEvent` (kundmeddelanden), och `ClaimsService.reassessForPolicyChange` för `policy.version_superseded` |
+
+Ett fel stoppar källan i den rundan, så att senare händelser inte går förbi. Efter tio försök blir händelsen död post och syns i hälsokontrollen. Flera instanser av servern kör var sitt relä. Ett lås per outbox behövs före drift med flera instanser.
 
 **Kundmeddelanden (migration 0031, ADR 0032):**
 - **Från händelser.** Reläets källa `policies` i `composition.ts` lämnar varje händelse till `CommunicationsService.handlePolicyEvent`, efter loggen och före omprövningen av skador. `policy.issued`, `policy.renewed`, `policy.cancelled` och `application.declined` ger ett meddelande. Typen vid en uppsägning följer skälet: bolagets skäl ger `insurer-termination`, kundens `cancellation-confirmation`.
@@ -260,7 +293,7 @@ Händelser skrivs till `claims.outbox` i samma transaktion som ändringen (ADR 0
 
 - **Kontraktet först** (ADR 0002). `modules/api/openapi.yaml` är källan. Anrop valideras mot schemat, och `lint:openapi` kontrollerar att kontrakt och kod har exakt samma operationer.
 - **Fel** som `application/problem+json` (RFC 9457).
-- **Sidindelning (ADR 0002, granskningen A4):** alla 19 listor svarar med `{ items, nextCursor? }` och tar `limit` (1–200, förval 50) och `cursor`. `pageOf` i `app.ts` skär ut sidan, och markören är en base64url-kodad position (`{"o": 50}`) som klienten inte ska tolka. En felaktig markör eller gräns ger `422`. Listorna räknas ut i sin helhet och skärs i API-lagret, eftersom omfånget filtreras där. Listor som kan bli stora (ärenden) bör senare få markörer i databasfrågan.
+- **Sidindelning (ADR 0002, granskningen A4):** alla listor svarar med `{ items, nextCursor? }` och tar `limit` (1–200, förval 50) och `cursor`. `pageOf` i `app.ts` skär ut sidan, och markören är en base64url-kodad position (`{"o": 50}`) som klienten inte ska tolka. En felaktig markör eller gräns ger `422`. Listorna räknas ut i sin helhet och skärs i API-lagret, eftersom omfånget filtreras där. Listor som kan bli stora (ärenden) bör senare få markörer i databasfrågan.
 - **Anroparen och CORS:** `GET /v1/me` har `x-permission: signed-in`, en markör som inte är en rättighet och som ingen roll kan ge. Middleware släpper igenom alla inloggade till den, men räknar fortfarande ut omfånget. Testerna kontrollerar att ingen annan operation har markören. CORS (`hono/cors`) ligger före inloggningen så att en preflight besvaras utan token, och bara uppräknade ursprung (`corsOrigins`) får svar.
 - **Listor för ett gränssnitt:** `GET /v1/claims` med status per ärende (`ClaimsStore.listClaims`, räknad i databasfrågan från förslag, begäranden om prövning och beslut), `GET /v1/products` (`ProductStore.productNames`) och `GET /v1/rule-sets` (`RuleSetStore.seriesNames`).
 - **Idempotens:** anrop som skapar något kräver `Idempotency-Key`. Svaret sparas per anropare och nyckel, i Postgres när dev-servern kör mot databasen.

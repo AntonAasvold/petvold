@@ -60,9 +60,28 @@ function slug(text: string): string {
 
 const esc = (s: string) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
+/** Links to a file or heading that does not exist. The build fails on any. */
+const broken: string[] = [];
+/** The heading ids of a page, as the renderer gives them. */
+function headingIds(page: Page): Set<string> {
+  const ids = new Set<string>();
+  const used = new Map<string, number>();
+  for (const m of page.markdown.replace(/```[\s\S]*?```/g, '').matchAll(/^#{1,6}\s+(.+)$/gm)) {
+    const base = slug(new Marked().parseInline(m[1]!.trim(), { async: false }) as string);
+    const n = used.get(base) ?? 0;
+    used.set(base, n + 1);
+    ids.add(n ? `${base}-${n}` : base);
+  }
+  return ids;
+}
+
 /** Rewrites a link found in `from` so it works on the site. */
 function rewrite(from: Page, href: string): string {
-  if (/^([a-z]+:|#|\/\/)/i.test(href)) return href;
+  if (href.startsWith('#')) {
+    if (!headingIds(from).has(decodeURI(href.slice(1)))) broken.push(`${from.src}: ${href}`);
+    return href;
+  }
+  if (/^([a-z]+:|\/\/)/i.test(href)) return href;
   const [path = '', hash] = href.split('#', 2);
   const suffix = hash === undefined ? '' : `#${hash}`;
   let target = posix.normalize(posix.join(posix.dirname(from.src), decodeURI(path)));
@@ -71,7 +90,9 @@ function rewrite(from: Page, href: string): string {
     target = posix.join(target, 'README.md');
   }
   const page = bySrc.get(target);
+  if (page && hash !== undefined && !headingIds(page).has(decodeURI(hash))) broken.push(`${from.src}: ${href}`);
   if (page) return posix.relative(posix.dirname(from.out), page.out) + suffix;
+  if (!existsSync(target)) broken.push(`${from.src}: ${href}`);
   return `https://github.com/${REPO}/blob/${BRANCH}/${encodeURI(target)}${suffix}`;
 }
 
@@ -194,4 +215,9 @@ if (missing.length) {
   console.error(`Broken links:\n${missing.join('\n')}`);
   process.exit(1);
 }
-console.log(`OK – ${pages.length} pages and the API page in ${relative('.', OUT)}/`);
+const brokenLinks = [...new Set(broken)];
+if (brokenLinks.length) {
+  console.error(`Broken links (${brokenLinks.length}):\n${brokenLinks.map((b) => `  ${b}`).join('\n')}`);
+  process.exit(1);
+}
+console.log(`OK – ${pages.length} pages and the API page in ${relative('.', OUT)}/, no broken links`);

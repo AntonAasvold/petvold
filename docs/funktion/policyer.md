@@ -223,4 +223,4 @@ Svaret har en term från 1 december 2026 till 1 december 2027 (slutdagen räknas
 
 Dev-servern lägger in Bellas policy `pol_bella` första gången, med ägaren `pty_owner001` och förbehållet för hälta. Lenas tre ansökningar på `SE-HUND-PLUS@2026.1` finns också, en med varje utfall (se [Utvecklingsmiljö](../teknik/utvecklingsmiljo.md)). Exemplet har bara den gällande termen. Token `dev-seller` tecknar policyer. Skademotorn läser policyerna från modulen.
 
-*Inte byggt än:* nytt pris vid förnyelse och ändring (M4), ny karenstid för ett höjt försäkringsbelopp, grupprabatt (M4), gemensam faktura (M5), och att teckna en hel kull i ett anrop.
+*Inte byggt än:* ny karenstid för ett höjt försäkringsbelopp, gemensam faktura (M5), och att teckna en hel kull i ett anrop.

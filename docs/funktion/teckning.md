@@ -147,4 +147,4 @@ Dev-servern har teckningsreglerna `SE-HUND-UW@1` med frågorna på svenska och e
 
 Ett avslag ger ett kundmeddelande med skälen till dokumentsystemet, se [Meddelanden](meddelanden.md).
 
-*Inte byggt än:* bolagets text om hur ett avslag prövas i meddelandet, ansökan från kundkanalen, och en kortare lagringstid för avslagna ansökningar.
+*Inte byggt än:* ansökan från kundkanalen, och en kortare lagringstid för avslagna ansökningar.

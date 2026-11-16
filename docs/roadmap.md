@@ -84,7 +84,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Meddelanden, del 3: erbjudande om överlåtelse, bolagets texter per marknad (prövning av beslut, avsändare, sista dag för "snarast") och typer som kan stängas av (ADR 0032)
 - [x] Konventioner för API-kontraktet, kontrollerade i CI (ADR 0034)
 - [x] Rätta adresserna enligt konventionerna (ADR 0034)
-- [ ] Gå igenom dokumentationen: inaktuella texter, arkitekturen för alla moduler, arkiv för `status.md`
+- [x] Gå igenom dokumentationen: inaktuella texter, arkitekturen för alla moduler, arkiv för `status.md` och kontroll av länkar
 - [ ] ADR om leverans av händelser till bolagets system: webhooks med prenumerationer, signatur, CloudEvents och AsyncAPI (ADR 0008, granskningen C1)
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
 
