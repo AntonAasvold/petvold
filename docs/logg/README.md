@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-16 | [Back office, steg 5b: produkter och regler](2026-11-16-backoffice-produkter.md) | #85 |
 | 2026-11-16 | [Back office, steg 5a: inställningar](2026-11-16-backoffice-installningar.md) | #84 |
 | 2026-11-16 | [Back office, steg 4: meddelanden och webhooks](2026-11-16-backoffice-integration.md) | #83 |
 | 2026-11-16 | [Back office, steg 3: policyer och ansökningar](2026-11-16-backoffice-policyer.md) | #82 |

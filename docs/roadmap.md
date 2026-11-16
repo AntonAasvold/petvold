@@ -95,7 +95,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Back office, steg 3: policyer och ansökningar
 - [x] Back office, steg 4: meddelanden och webhooks
 - [x] Back office, steg 5a: inställningar för roller och gränser, gallring och meddelanden
-- [ ] Back office, steg 5b: produkter och regler med fyra ögon
+- [x] Back office, steg 5b: produkter och regler med fyra ögon
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
 
 **M4 – Pris och teckning**

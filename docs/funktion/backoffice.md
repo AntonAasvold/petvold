@@ -19,7 +19,10 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 
 | Inställningar | Roller och gränser, gallring och bolagets texter för meddelanden, som versioner med skäl och historik | `access:read`, `parties:privacy` eller `notices:read`. Att ändra kräver `access:manage`, `parties:erase` eller `notices:configure`. |
 
-*Inte byggt än:* produkter och regler med fyra ögon (steg 5b).
+| Produkter | Produkterna och varje produktversion med innehåll, säljperiod och livscykel | `catalog:read`, `catalog:write` för utkast, `catalog:publish` för att publicera, skicka tillbaka och avsluta försäljning |
+| Regeluppsättningar | Serierna (skaderegler, tariffer, prisvillkor och teckningsregler) och varje version med livscykel | `rules:read`, `rules:write` för utkast, `rules:publish` för att publicera, skicka tillbaka och avveckla |
+
+*Inte byggt än:* simulering av en regelversion mot sparade beslut, och formulär för innehållet i stället för JSON.
 
 ## Logga in
 
@@ -91,6 +94,16 @@ Varje inställning är versionerad (ADR 0020, 0028, 0032). En ändring blir en n
   - avsändare och text om prövning på svenska och engelska
 
   Utan text om prövning blir ett avslag ofullständigt (ADR 0032).
+
+## Produkter och regler
+
+Produkter och regeluppsättningar har samma livscykel (ADR 0021, 0023): utkast, granskning och publicering. En produkts försäljning kan sedan avslutas, och en regelversion kan avvecklas.
+
+1. **Nytt utkast.** "Nytt utkast från den här" kopierar innehållet från vald version. För en produkt föreslås nästa versionsnamn, till exempel `2026.2`. Regelversioner numreras av API:t.
+2. **Ändra.** Innehållet redigeras som JSON. API:t kontrollerar det mot kontraktet och produktens regler, och appen visar varje fält som är fel.
+3. **Skicka till granskning.** Innehållet låses med en kontrollsumma.
+4. **Publicera eller skicka tillbaka.** Den som skickade in kan inte publicera (fyra ögon), och appen säger det. Att skicka tillbaka kräver ett skäl.
+5. **Avsluta.** En produkts försäljning avslutas från en dag, med skäl. Två versioner av en produkt kan inte säljas samma dag, så den gamla avslutas innan den nya publiceras. En regelversion avvecklas med skäl.
 
 ## Språk
 

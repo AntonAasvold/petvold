@@ -27,6 +27,8 @@ export const DEV_TOKENS = [
   'dev-admin',
   'dev-catalog',
   'dev-catalog-publisher',
+  'dev-author',
+  'dev-publisher',
   'dev-registrar',
   'dev-privacy',
 ] as const;

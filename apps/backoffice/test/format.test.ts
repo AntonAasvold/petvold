@@ -45,6 +45,7 @@ test('sections follow the permissions from /v1/me', () => {
   assert.deepEqual(sectionsFor(me(['policies:read'])).map((s) => s.path), ['/policies', '/applications', '/proposals']);
   assert.deepEqual(sectionsFor(me(['notices:read'])).map((s) => s.path), ['/notices', '/settings']);
   assert.deepEqual(sectionsFor(me(['access:read'])).map((s) => s.path), ['/settings']);
-  assert.deepEqual(sectionsFor(me(['catalog:read'])), []);
+  assert.deepEqual(sectionsFor(me(['catalog:read'])).map((s) => s.path), ['/products']);
+  assert.deepEqual(sectionsFor(me(['limits:read'])), []);
   assert.deepEqual(sectionsFor(null), []);
 });
