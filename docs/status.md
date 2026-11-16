@@ -30,9 +30,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Migration 0030:** `policies.application_decision` och `application.deadline`. En trigger tillåter bara beslut om en ansökan i kön. Provad ner och upp igen.
   - Tre nya operationer, 98 i kontraktet. En befintlig rollinställning behöver `npm run roles:sync -- --apply`.
 - 401 tester och 114 databastester.
+- #67 mergad. ADR 0031 är byggd.
+- ADR 0032 om meddelanden och dokument till kunden (F2), beslutad 2026-11-16 (PR #68):
+  - **Petvold avgör vad som ska skickas**, och bolagets dokumentsystem gör och skickar dokumentet. Ett kundmeddelande har typ, mottagare, innehåll som fält, lagrum och sista dag.
+  - **En ny modul, `communications`,** skapar meddelanden från händelserna: försäkringsbrev, besked vid förnyelse, bolagets uppsägning, bekräftad uppsägning, avslag med skäl och erbjudande om överlåtelse.
+  - **Bevis:** dokumentsystemet rapporterar kanal, tid, dokumentets id och kontrollsumma. Ett meddelande som inte skickats i tid hamnar i en kö.
+  - **Produktens dokument** (villkor, förköpsinformation och faktablad) med kontrollsumma, och godkännandet anger vilka som visades.
+  - **Källor:** FAL 2 kap. 1–2 och 4–6 §§, 3 kap. 3, 5 och 7 §§, 5 kap. 2 § och 7 kap. 6 §, distansavtalslagen 3 kap., IDD artikel 20 och förordning (EU) 2017/1469.
 
 **Nästa steg**
-1. Ett beslut om dokument till kunden (F2): förköpsinformation, villkor, försäkringsbrev och brevet med skälen vid avslag.
+1. Bygga ADR 0032: först produktens dokument och godkännandet, sedan meddelandemodulen.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
