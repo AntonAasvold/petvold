@@ -63,8 +63,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Migration 0032:** `communications.notice_settings`, `notice.settings_version` och typen `transfer-offer`. Provad ner och upp igen.
 - 421 tester och 118 databastester. ADR 0032 är byggd, utom skadebesked.
 
+- #71 mergad. ADR 0032 är byggd, utom skadebesked. ADR 0033 om webhooks föreslagen i PR #72.
+- Konventioner för API-kontraktet (ADR 0034), PR #73:
+  - **`docs/teknik/api-konventioner.md`:** regler för adresser, handlingar, inställningar, parametrar, id, fel och listor, och en ordlista över vad "version" betyder.
+  - **`lint:openapi` kontrollerar reglerna** med `conventions.ts`. De 29 avvikelser som finns står i `KNOWN_DEVIATIONS`. Listan kan bara krympa.
+  - **`/v1` rättas direkt** tills första kanalen är i drift. Därefter krävs `/v2` för en brytande ändring.
+
 **Nästa steg**
-1. ADR om leverans av händelser till bolagets system (webhooks). I dag beskriver kontraktet `claim.registered` och `claim.decided` under `webhooks`, men reläet bara loggar.
+1. Rätta adresserna enligt konventionerna, så att `KNOWN_DEVIATIONS` blir tom.
+2. Gå igenom dokumentationen.
+3. Ta ställning till ADR 0033 om webhooks.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
