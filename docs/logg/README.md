@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-16 | [Produktens dokument och godkännandet](2026-11-16-produktdokument.md) | #69 |
 | 2026-11-16 | [ADR om meddelanden och dokument till kunden](2026-11-16-meddelanden-adr.md) | #68 |
 | 2026-11-16 | [Manuell prövning av ansökningar](2026-11-16-manuell-provning.md) | #67 |
 | 2026-11-16 | [Ansökan med teckningsregler och godkännande](2026-11-16-ansokan.md) | #66 |

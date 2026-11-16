@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CatalogError, InMemoryProductStore, ProductService, policySettingsOf, vetCareTermsFor, type ProductDraft } from '../src/index.ts';
+import { CatalogError, InMemoryProductStore, ProductService, policySettingsOf, productChecksum, vetCareTermsFor, type ProductDraft } from '../src/index.ts';
 import { content } from '../test-suites/product-store.ts';
 
 function setup(opts: { species?: string[]; series?: Record<string, string> } = {}) {
@@ -200,4 +200,26 @@ test('underwriting rules need a version in force that covers the product (ADR 00
   await rejects(s.submit('XX-DOG-VC', '2026.1', author), 'validation', /does not cover the product: No age limits for cat/);
   problems = [];
   assert.equal((await s.submit('XX-DOG-VC', '2026.1', author)).status, 'in_review');
+});
+
+test('documents are checked, need terms, pre-contract and ipid in the market language, and are locked by the checksum (ADR 0032)', async () => {
+  const s = setup();
+  const doc = (type: string, language = 'sv', sha = 'a'.repeat(64)) => ({ type, language, uri: `https://documents.example.test/${type}-${language}.pdf`, sha256: sha }) as never;
+  const withDocs = (documents: unknown[]) => draft({ content: { ...content(), market: 'SE', documents: documents as never } });
+  await rejects(s.createDraft('XX-DOG-X', withDocs([doc('brochure')]), author), 'validation', /document type 'brochure'/);
+  await rejects(s.createDraft('XX-DOG-X', withDocs([doc('terms', 'swe')]), author), 'validation', /ISO 639-1/);
+  await rejects(s.createDraft('XX-DOG-X', withDocs([doc('terms'), doc('terms')]), author), 'validation', /listed twice/);
+  await rejects(s.createDraft('XX-DOG-X', withDocs([{ ...(doc('terms') as object), uri: 'not a uri' }]), author), 'validation', /absolute uri/);
+  await rejects(s.createDraft('XX-DOG-X', withDocs([doc('terms', 'sv', 'A'.repeat(64))]), author), 'validation', /sha256/);
+
+  await s.createDraft('XX-DOG-VC', withDocs([doc('terms'), doc('pre-contract'), doc('ipid', 'en')]), author);
+  await rejects(s.submit('XX-DOG-VC', '2026.1', author), 'validation', /lack ipid in 'sv', the language of SE/);
+  await s.updateDraft('XX-DOG-VC', '2026.1', { content: withDocs([doc('terms'), doc('pre-contract'), doc('ipid'), doc('ipid', 'en')]).content, salesFrom: '2026-01-01' });
+  const submitted = await s.submit('XX-DOG-VC', '2026.1', author);
+  const without = await setup().createDraft('XX-DOG-VC', withDocs([doc('terms'), doc('pre-contract'), doc('ipid', 'sv', 'b'.repeat(64))]), author);
+  assert.notEqual(productChecksum(without), submitted.checksum, 'another document gives another checksum');
+  // A market without a default language only has the documents' form checked.
+  const other = setup();
+  await other.createDraft('XX-DOG-VC', draft({ content: { ...content(), documents: [doc('terms', 'en')] } }), author);
+  assert.equal((await other.submit('XX-DOG-VC', '2026.1', author)).status, 'in_review');
 });

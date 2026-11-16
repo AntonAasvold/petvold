@@ -272,6 +272,18 @@ export interface Acceptance {
   acceptedAt: Timestamp;
   /** At issue: when Petvold received it. */
   receivedAt?: Timestamp;
+  /** The product's documents the channel showed the customer (ADR 0032). */
+  documents?: AcceptedDocument[];
+}
+
+/** A product document the customer was shown, as the product version lists it (ADR 0032). */
+export interface AcceptedDocument {
+  /** terms, pre-contract or ipid. */
+  type: string;
+  /** ISO 639-1. */
+  language: string;
+  /** The document's checksum in the product version. */
+  sha256: string;
 }
 
 /** The customer's acceptance as the channel gives it at issue (ADR 0031). */
@@ -279,7 +291,12 @@ export interface AcceptanceInput {
   channel: string;
   reference?: string;
   acceptedAt: Timestamp;
+  /** Required for a product with documents: at least the terms and the pre-contract information (ADR 0032). */
+  documents?: AcceptedDocument[];
 }
+
+/** The documents an acceptance must name for a product with documents (ADR 0032). */
+export const REQUIRED_ACCEPTED_DOCUMENTS = ['terms', 'pre-contract'] as const;
 
 /** accepted, referred or declined by the rules; a referred one becomes accepted, declined, withdrawn or expired by its decision. */
 export type ApplicationStatus = 'accepted' | 'referred' | 'declined' | 'withdrawn' | 'expired';
@@ -518,6 +535,8 @@ export interface ProductOffer {
   priceTermsSeries?: string;
   /** The underwriting rules series (ADR 0031). Omitted: policies are issued directly, without questions. */
   underwritingSeries?: string;
+  /** The product version's documents (ADR 0032). Omitted or empty: the acceptance names none. */
+  documents?: AcceptedDocument[];
   /** The product's setting for the customer's cancellation during a term (ADR 0029). */
   midTermCancellation: 'term-end' | 'immediate';
   /** The length of a term in months. */
@@ -703,6 +722,38 @@ export function refundFor(terms: Term[], activeBefore: PolicyVersion[], from: IS
     total += Math.round(lost / termDays);
   }
   return total;
+}
+
+/** The documents of an acceptance, checked for form and sorted. Throws a validation error. Pure. */
+function acceptedDocumentsOf(docs: AcceptedDocument[]): AcceptedDocument[] {
+  if (!Array.isArray(docs)) throw new PolicyError('validation', 'acceptance.documents must be a list');
+  const out: AcceptedDocument[] = [];
+  for (const d of docs) {
+    if (typeof d?.type !== 'string' || typeof d.language !== 'string' || typeof d.sha256 !== 'string') {
+      throw new PolicyError('validation', 'Each of acceptance.documents needs type, language and sha256');
+    }
+    if (out.some((o) => o.type === d.type && o.language === d.language)) throw new PolicyError('validation', `acceptance.documents names ${d.type} in '${d.language}' twice`);
+    out.push({ type: d.type, language: d.language, sha256: d.sha256.toLowerCase() });
+  }
+  return out.sort((a, b) => (a.type + a.language < b.type + b.language ? -1 : 1));
+}
+
+/**
+ * The documents an acceptance names must be the product version's, with the
+ * same checksum, and a product with documents needs the terms and the
+ * pre-contract information (ADR 0032). Pure.
+ */
+export function checkAcceptedDocuments(acceptance: Pick<Acceptance, 'documents'>, offer: Pick<ProductOffer, 'documents'>, productVersion: string): void {
+  const product = offer.documents ?? [];
+  const named = acceptance.documents ?? [];
+  for (const d of named) {
+    const p = product.find((x) => x.type === d.type && x.language === d.language);
+    if (!p) throw new PolicyError('validation', `${productVersion} has no ${d.type} document in '${d.language}'`);
+    if (p.sha256 !== d.sha256) throw new PolicyError('validation', `The ${d.type} document in '${d.language}' is not the one ${productVersion} has: its checksum differs`);
+  }
+  if (!product.length) return;
+  const missing = REQUIRED_ACCEPTED_DOCUMENTS.filter((t) => !named.some((d) => d.type === t));
+  if (missing.length) throw new PolicyError('validation', `acceptance.documents must name the ${missing.join(' and ')} the customer was shown`);
 }
 
 /** The choices and premium a version follows: the term's, or a change's. Pure. */
@@ -1837,7 +1888,12 @@ export class PolicyService implements PolicyPort {
       // The customer accepted this premium; a different price from the tariff today is kept as a manual one with its reason.
       premium: a.premium,
       priceOverride: { reason: `The premium the customer applied at (${a.id})` },
-      acceptance: { channel: a.acceptance.channel, ...(a.acceptance.reference ? { reference: a.acceptance.reference } : {}), acceptedAt: a.acceptance.acceptedAt },
+      acceptance: {
+        channel: a.acceptance.channel,
+        ...(a.acceptance.reference ? { reference: a.acceptance.reference } : {}),
+        acceptedAt: a.acceptance.acceptedAt,
+        ...(a.acceptance.documents ? { documents: a.acceptance.documents } : {}),
+      },
     };
     const plan = { ...(await this.planIssue(issueInput, by, { mayOverridePrice: true })), acceptance: a.acceptance };
     const base = { validFrom: startDate, applicationId: id };
@@ -1937,6 +1993,7 @@ export class PolicyService implements PolicyPort {
     if (!offer.onSale) throw new PolicyError('validation', `${input.productVersion} is not on sale on ${input.startDate}`);
     if (offer.market !== input.market) throw new PolicyError('validation', `${input.productVersion} is not sold in market ${input.market}`);
     if (!offer.species.includes(animal.species)) throw new PolicyError('validation', `${input.productVersion} does not cover ${animal.species}`);
+    checkAcceptedDocuments(acceptance, offer, input.productVersion);
     let vetCare: VetCareTerms & { deductibleOption: string };
     try {
       vetCare = offer.vetCareTermsFor(input.vetCare ?? {});
@@ -2055,7 +2112,8 @@ export class PolicyService implements PolicyPort {
     // A few minutes for clocks that differ between the channel and Petvold.
     if (at > Date.parse(now) + 5 * 60_000) throw new PolicyError('validation', 'acceptance.acceptedAt cannot be in the future');
     const reference = a?.reference?.trim();
-    return { channel, ...(reference ? { reference } : {}), acceptedAt: new Date(at).toISOString(), receivedAt: now };
+    const documents = a?.documents === undefined ? undefined : acceptedDocumentsOf(a.documents);
+    return { channel, ...(reference ? { reference } : {}), acceptedAt: new Date(at).toISOString(), receivedAt: now, ...(documents?.length ? { documents } : {}) };
   }
 
   /** The periods the party held a policy, as known now: for retention, to find the party's claims (ADR 0028). */

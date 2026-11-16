@@ -41,6 +41,13 @@ const content = {
   },
 };
 
+const DOCUMENTS = (['terms', 'pre-contract', 'ipid'] as const).map((type, i) => ({
+  type,
+  language: 'sv',
+  uri: `https://documents.example.test/se-hund-doc/1/${type}-sv.pdf`,
+  sha256: String(i + 1).repeat(64),
+}));
+
 async function setup() {
   const clock = new FixedClock('2026-11-15T10:00:00.000Z');
   let n = 0;
@@ -62,6 +69,9 @@ async function setup() {
   await products.createDraft('SE-HUND-UW', { version: '1', salesFrom: '2026-11-01', content: { ...content, underwritingSeries: 'SE-UW' } } as never, 'author');
   await products.submit('SE-HUND-UW', '1', 'author');
   await products.publish('SE-HUND-UW', '1', 'publisher');
+  await products.createDraft('SE-HUND-DOC', { version: '1', salesFrom: '2026-11-01', content: { ...content, documents: DOCUMENTS } } as never, 'author');
+  await products.submit('SE-HUND-DOC', '1', 'author');
+  await products.publish('SE-HUND-DOC', '1', 'publisher');
   const partyStore = new InMemoryPartyStore();
   await partyStore.register({ id: 'pty_anna', revision: 1, kind: 'person', market: 'SE', givenName: 'Anna', familyName: 'Example', changedBy: 't', changedAt: clock.now() }, []);
   await partyStore.register({ id: 'pty_bo', revision: 1, kind: 'person', market: 'SE', givenName: 'Bo', familyName: 'Example', changedBy: 't', changedAt: clock.now() }, []);
@@ -405,4 +415,23 @@ test('the queue: a person decides with policies:underwrite, the channel withdraw
   assert.deepEqual(run.body.expired.map((a: any) => [a.id, a.status]), [[again.id, 'expired']]);
   assert.deepEqual((await call('GET', '/v1/applications?status=expired', 'underwriter')).body.items.map((a: any) => a.id), [again.id]);
   assert.deepEqual((await call('GET', '/v1/applications?status=referred', 'underwriter')).body.items, []);
+});
+
+test('the acceptance names the product documents the customer was shown, as the product lists them (ADR 0032)', async () => {
+  const call = await setup();
+  const product = (await call('GET', '/v1/products/SE-HUND-DOC/versions', 'handler')).body.items[0];
+  assert.deepEqual(product.content.documents, DOCUMENTS);
+  const shown = DOCUMENTS.filter((d) => d.type !== 'ipid').map(({ type, language, sha256 }) => ({ type, language, sha256 }));
+  const body = { ...issueBody, productVersion: 'SE-HUND-DOC@1' };
+  const missing = await call('POST', '/v1/policies', 'seller', body);
+  assert.deepEqual([missing.status, missing.body.title], [422, 'acceptance.documents must name the terms and pre-contract the customer was shown']);
+  const changed = await call('POST', '/v1/policies', 'seller', { ...body, acceptance: { ...body.acceptance, documents: [shown[0], { ...shown[1], sha256: '9'.repeat(64) }] } });
+  assert.equal(changed.status, 422);
+  assert.match(changed.body.title, /checksum differs/);
+  assert.equal((await call('POST', '/v1/policies', 'seller', { ...body, acceptance: { ...body.acceptance, documents: [{ type: 'brochure', language: 'sv', sha256: '1'.repeat(64) }] } })).status, 422);
+
+  const ok = await call('POST', '/v1/policies', 'seller', { ...body, acceptance: { ...body.acceptance, documents: shown } });
+  assert.equal(ok.status, 201);
+  const history = (await call('GET', `/v1/policies/${ok.body.id}/history`, 'handler')).body;
+  assert.deepEqual(history.transactions[0].issue.acceptance.documents, [shown[1], shown[0]]);
 });

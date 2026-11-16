@@ -38,8 +38,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Produktens dokument** (villkor, förköpsinformation och faktablad) med kontrollsumma, och godkännandet anger vilka som visades.
   - **Källor:** FAL 2 kap. 1–2 och 4–6 §§, 3 kap. 3, 5 och 7 §§, 5 kap. 2 § och 7 kap. 6 §, distansavtalslagen 3 kap., IDD artikel 20 och förordning (EU) 2017/1469.
 
+- #68 mergad. ADR 0032 är beslutad.
+- Produktens dokument och godkännandet (ADR 0032, del 1), PR #69:
+  - **`documents` på produktversionen:** villkor, förköpsinformation och faktablad per språk, med adress i bolagets arkiv och kontrollsumma. De låses med produktens kontrollsumma. Granskningen kräver alla tre på marknadens språk.
+  - **`acceptance.documents`** vid tecknande och ansökan. Villkoren och förköpsinformationen krävs för en produkt med dokument, och ett okänt dokument eller en annan kontrollsumma ger `422`.
+  - **`MARKET_LANGUAGES`** i `common` med marknadens språk för dokument.
+  - Ingen migrering. Exempelprodukten `SE-HUND-PLUS` har påhittade dokument.
+- 405 tester och 114 databastester.
+
 **Nästa steg**
-1. Bygga ADR 0032: först produktens dokument och godkännandet, sedan meddelandemodulen.
+1. Meddelandemodulen `communications` (ADR 0032, del 2): kundmeddelanden från händelserna, utskick, kö och bolagets texter.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
