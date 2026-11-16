@@ -95,8 +95,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Migration 0033.** Provad ner och upp igen. En befintlig databas behöver rollen `webhooks_service`, och servern i drift behöver `PETVOLD_WEBHOOK_KEY`.
 - 435 tester och 121 databastester.
 
+- #76 mergad.
+- Webhooks, steg 2 (ADR 0033), PR #77:
+  - **Skador, djur och kundmeddelanden** går ut med webhooks. Skadornas händelser plattas ut i `claimsEventForWebhooks`, utan vem som beslutade, kundens ord eller bedömningen.
+  - **En outbox i `communications`** (migration 0034) med `notice.created`, `notice.delivered` och `notice.failed`, skrivna i samma transaktion som ändringen.
+  - **`modules/api/asyncapi.yaml`** (AsyncAPI 3.0) med 24 händelser och fälten i `data`. `lint:openapi` stoppar om kontraktet och `PUBLIC_EVENTS` skiljer sig åt. Ett test kontrollerar varje händelse som skickas mot kontraktet. Granskningens punkt C1 är därmed klar.
+  - **OpenAPI-kontraktets gamla `webhooks`** med hela skadeobjekt är borttagna.
+- 437 tester och 122 databastester.
+
 **Nästa steg**
-1. Webhooks, steg 2: skador, djur och kundmeddelanden, och AsyncAPI-kontraktet.
+1. Webhooks, steg 3: död post, skicka igen, automatisk avstängning och gallring av innehållet efter 30 dagar.
 2. ADR om ett gränssnitt för handläggare och back office.
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 

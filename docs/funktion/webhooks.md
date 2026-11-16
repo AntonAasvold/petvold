@@ -16,10 +16,23 @@ Bolagets system kan få veta när något händer i Petvold, utan att fråga. En 
 | Policyer | `policy.issued`, `policy.changed`, `policy.renewed`, `policy.transferred`, `policy.cancelled`, `policy.reinstated` | policyns id |
 | Ansökningar | `application.received`, `application.accepted`, `application.referred`, `application.declined`, `application.withdrawn`, `application.expired` | ansökans id |
 | Förslag | `proposal.created`: överlåtelse till en ny ägare, eller avslut när djuret dött | policyns id |
+| Skador | `claim.registered`, `claim.decision_proposed`, `claim.proposal_returned`, `claim.decided`, `claim.payout_ordered`, `claim.review_requested` | skadans id |
+| Djur | `animal.ownership_changed`, `animal.died` | djurets id |
+| Kundmeddelanden | `notice.created`, `notice.delivered`, `notice.failed` | meddelandets id |
 
 En prenumeration anger typer som `*` (alla), en grupp (`policy.*`) eller en enskild typ (`application.declined`).
 
-*Inte byggt än:* skador, djur och kundmeddelanden, och ett kontrakt för händelserna i AsyncAPI (steg 2). Död post, att skicka igen och att stänga av en prenumeration automatiskt (steg 3).
+**Kontraktet för händelserna** är [`asyncapi.yaml`](../../modules/api/asyncapi.yaml) (AsyncAPI 3.0). Det har fälten i `data` för varje typ och vilka som alltid finns. `npm run lint:openapi` stoppar om kontraktet och listan över vilka fält som får gå ut skiljer sig åt.
+
+Några exempel på vad som stannar i Petvold:
+- vem som beslutade eller gjorde något
+- kundens egna ord i en begäran om prövning
+- skälet i texten vid ett ägarbyte
+- bedömningen bakom ett skadebeslut
+
+Mottagaren hämtar sådant med API:t om den har rätt till det.
+
+*Inte byggt än:* död post, att skicka igen och att stänga av en prenumeration automatiskt (steg 3).
 
 ## Hur en händelse ser ut
 

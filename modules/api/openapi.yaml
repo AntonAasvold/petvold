@@ -3225,23 +3225,6 @@ paths:
                   nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
-webhooks:
-  claim.registered:
-    post:
-      requestBody:
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/ClaimRegisteredEvent' }
-      responses:
-        '2XX': { description: Received }
-  claim.decided:
-    post:
-      requestBody:
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/ClaimDecidedEvent' }
-      responses:
-        '2XX': { description: Received }
 
 components:
   securitySchemes:
@@ -5803,53 +5786,11 @@ components:
         consumed: { $ref: '#/components/schemas/Money' }
         remaining: { $ref: '#/components/schemas/Money' }
 
-    ClaimRegisteredEvent:
-      type: object
-      required: [type, occurredAt, claim]
-      properties:
-        type: { const: claim.registered }
-        occurredAt: { $ref: '#/components/schemas/DateTime' }
-        claim: { $ref: '#/components/schemas/Claim' }
 
-    ClaimDecidedEvent:
-      type: object
-      required: [type, occurredAt, decision]
-      properties:
-        type: { const: claim.decided }
-        occurredAt: { $ref: '#/components/schemas/DateTime' }
-        decision: { $ref: '#/components/schemas/Decision' }
 
-    ClaimReviewRequestedEvent:
-      type: object
-      required: [type, occurredAt, request]
-      properties:
-        type: { const: claim.review_requested }
-        occurredAt: { $ref: '#/components/schemas/DateTime' }
-        request: { $ref: '#/components/schemas/ReviewRequest' }
 
-    ClaimDecisionProposedEvent:
-      type: object
-      required: [type, occurredAt, proposal]
-      properties:
-        type: { const: claim.decision_proposed }
-        occurredAt: { $ref: '#/components/schemas/DateTime' }
-        proposal: { $ref: '#/components/schemas/DecisionProposal' }
 
-    ClaimProposalReturnedEvent:
-      type: object
-      required: [type, occurredAt, proposal]
-      properties:
-        type: { const: claim.proposal_returned }
-        occurredAt: { $ref: '#/components/schemas/DateTime' }
-        proposal: { $ref: '#/components/schemas/DecisionProposal' }
 
-    ClaimPayoutOrderedEvent:
-      type: object
-      required: [type, occurredAt, order]
-      properties:
-        type: { const: claim.payout_ordered }
-        occurredAt: { $ref: '#/components/schemas/DateTime' }
-        order: { $ref: '#/components/schemas/PayoutOrder' }
 
     Problem:
       type: object

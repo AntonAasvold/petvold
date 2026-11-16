@@ -198,4 +198,4 @@ Händelser skrivs i samma transaktion som ändringen:
 | `claim.decision_proposed` | Ett beslut över gränsen blir ett förslag |
 | `claim.proposal_returned` | Ett förslag skickas tillbaka |
 | `claim.payout_ordered` | Ett beslut höjer ersättningen |
-| `claim.review_requested` | Kunden begär mänsklig prövning | Händelserna levereras minst en gång, i ordning. I dag loggas de bara. Leverans till andra system (webhook eller kö) kommer när det finns en mottagare (ADR 0008).
+| `claim.review_requested` | Kunden begär mänsklig prövning | Händelserna levereras minst en gång, i ordning. Bolagets system får dem med [webhooks](webhooks.md), utan den sökandes ord eller vem som beslutade (ADR 0033).

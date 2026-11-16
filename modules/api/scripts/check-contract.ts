@@ -4,6 +4,8 @@ import { createApp, implementedOperations, contractOperations, operationPermissi
 import { InMemoryIdempotencyStore } from '../src/app.ts';
 import { openapi } from '../src/contract.ts';
 import { conventionCheck, KNOWN_DEVIATIONS } from '../src/conventions.ts';
+import { eventContractProblems } from '../src/events-contract.ts';
+import { PUBLIC_EVENTS } from '@petvold/webhooks';
 
 // Every operation must name one known permission, or signed-in (ADR 0016).
 const withoutPermission = [...operationPermissions()].filter(([, p]) => !isOperationPermission(p)).map(([op, p]) => `${op} (${String(p)})`);
@@ -37,4 +39,12 @@ if (conventions.problems.length || conventions.fixed.length) {
   process.exit(1);
 }
 console.log(`OK – ${spec.size} operations in the contract, all implemented, all with a permission`);
+// The events (ADR 0033): asyncapi.yaml and the webhooks catalog agree.
+const events = eventContractProblems();
+if (events.length) {
+  console.error('asyncapi.yaml and PUBLIC_EVENTS differ:');
+  for (const p of events) console.error(`  ${p}`);
+  process.exit(1);
+}
+console.log(`OK – ${Object.keys(PUBLIC_EVENTS).length} events in asyncapi.yaml, as the webhooks catalog lets them through`);
 console.log(`OK – the conventions hold${KNOWN_DEVIATIONS.length ? `, with ${KNOWN_DEVIATIONS.length} known breaks left` : ''}`);

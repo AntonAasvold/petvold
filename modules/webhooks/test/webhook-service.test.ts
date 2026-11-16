@@ -83,7 +83,7 @@ test('a subscription is validated, its secret shown once and sealed in the store
   await rejects(service.create({ ...input, url: 'https://10.0.0.5/hook' }, 'ia'), 'validation', /private/);
   await rejects(service.create({ ...input, url: 'https://localhost/hook' }, 'ia'), 'validation', /private/);
   await rejects(service.create({ ...input, url: 'https://user:pw@hooks.example.com' }, 'ia'), 'validation', /credentials/);
-  await rejects(service.create({ ...input, eventTypes: ['claim.decided'] }, 'ia'), 'validation', /no public event type/);
+  await rejects(service.create({ ...input, eventTypes: ['claim.reopened'] }, 'ia'), 'validation', /no public event type/);
   await rejects(service.create({ ...input, markets: ['se'] }, 'ia'), 'validation', /market/);
   const { subscription, secret } = await service.create({ ...input, eventTypes: ['policy.*', 'application.declined', 'policy.*'] }, 'ia');
   assert.match(secret, /^whsec_[A-Za-z0-9+/]{43}=$/);

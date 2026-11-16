@@ -4,7 +4,7 @@
  * so notices and deliveries never change.
  */
 import type pg from 'pg';
-import { NoticeConflictError, type Delivery, type Notice, type NoticeFilter, type NoticeSettings, type NoticeSettingsStore, type NoticeStore } from './index.ts';
+import { NoticeConflictError, type Delivery, type Notice, type NoticeEvent, type NoticeFilter, type NoticeSettings, type NoticeSettingsStore, type NoticeStore } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
 const FOREIGN_KEY_VIOLATION = '23503';
@@ -22,8 +22,32 @@ const iso = (t: unknown) => (t instanceof Date ? t.toISOString() : new Date(Stri
 export class PostgresNoticeStore implements NoticeStore {
   constructor(private readonly pool: pg.Pool) {}
 
-  async add(n: Notice): Promise<boolean> {
-    const r = await this.pool.query(
+  /** Runs fn in one transaction. */
+  private async tx<T>(fn: (db: pg.PoolClient) => Promise<T>): Promise<T> {
+    const db = await this.pool.connect();
+    try {
+      await db.query('begin');
+      const out = await fn(db);
+      await db.query('commit');
+      return out;
+    } catch (e) {
+      await db.query('rollback');
+      throw e;
+    } finally {
+      db.release();
+    }
+  }
+
+  async add(n: Notice, events: NoticeEvent[]): Promise<boolean> {
+    return this.tx(async (db) => {
+      const added = await this.insertNotice(db, n);
+      if (added) await insertEvents(db, events);
+      return added;
+    });
+  }
+
+  private async insertNotice(db: pg.PoolClient, n: Notice): Promise<boolean> {
+    const r = await db.query(
       `insert into communications.notice (notice_id, type, schema, market, recipient_party_id, language, policy_id, application_id,
          source_event_id, source_event_type, source_occurred_at, legal_basis, due_by, content, settings_version, created_at)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
@@ -80,18 +104,45 @@ export class PostgresNoticeStore implements NoticeStore {
     return r.rows.map(toNotice);
   }
 
-  async addDelivery(noticeId: string, d: Delivery): Promise<void> {
-    await this.pool
-      .query(
+  async addDelivery(noticeId: string, d: Delivery, events: NoticeEvent[]): Promise<void> {
+    await this.tx(async (db) => {
+      await db.query(
         `insert into communications.delivery (delivery_id, notice_id, outcome, channel, sent_at, document_id, sha256, reason, reported_by, reported_at)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [d.id, noticeId, d.outcome, d.channel ?? null, d.sentAt ?? null, d.documentId ?? null, d.sha256 ?? null, d.reason ?? null, d.reportedBy, d.reportedAt],
-      )
+      );
+      await insertEvents(db, events);
+    })
       .catch((e: { code?: string; message?: string }) => {
         if (e.code === FOREIGN_KEY_VIOLATION) throw new NoticeConflictError(`Notice ${noticeId} does not exist`);
         if (e.code === UNIQUE_VIOLATION) throw new NoticeConflictError(`Delivery ${d.id} exists`);
         throw e;
       });
+  }
+
+  async pendingEvents(limit: number): Promise<NoticeEvent[]> {
+    const { rows } = await this.pool.query(
+      `select event_id, type, notice_id, market, occurred_at, data from communications.outbox where published_at is null order by seq limit $1`,
+      [limit],
+    );
+    return rows.map((r) => ({ id: r.event_id, type: r.type, noticeId: r.notice_id, market: r.market, occurredAt: iso(r.occurred_at), data: r.data }));
+  }
+
+  async markPublished(ids: string[], at: string): Promise<void> {
+    await this.pool.query(`update communications.outbox set published_at = $2 where event_id = any($1) and published_at is null`, [ids, at]);
+  }
+}
+
+async function insertEvents(db: pg.PoolClient, events: NoticeEvent[]): Promise<void> {
+  for (const e of events) {
+    await db.query(`insert into communications.outbox (event_id, type, notice_id, market, occurred_at, data) values ($1, $2, $3, $4, $5, $6)`, [
+      e.id,
+      e.type,
+      e.noticeId,
+      e.market,
+      e.occurredAt,
+      JSON.stringify(e.data),
+    ]);
   }
 }
 

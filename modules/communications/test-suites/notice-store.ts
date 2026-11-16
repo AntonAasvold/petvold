@@ -48,24 +48,36 @@ export function noticeStoreSuite(name: string, make: () => Promise<{ store: Noti
   describe(name, () => {
     test('a notice is stored once per event and type, and read back as it was', async () => {
       const { store } = await make();
-      assert.equal(await store.add(notice()), true);
-      assert.equal(await store.add(notice(2, { source: notice().source })), false, 'the same event and type again');
-      assert.equal(await store.add(notice(3, { type: 'cancellation-confirmation', schema: 'cancellation-confirmation.v1', source: notice().source })), true);
+      assert.equal(await store.add(notice(), []), true);
+      assert.equal(await store.add(notice(2, { source: notice().source }), []), false, 'the same event and type again');
+      assert.equal(await store.add(notice(3, { type: 'cancellation-confirmation', schema: 'cancellation-confirmation.v1', source: notice().source }), []), true);
       assert.deepEqual(await store.get('ntc_1'), notice());
       assert.equal(await store.get('ntc_2'), null);
       const app = notice(4, { policyId: undefined, applicationId: 'app_1', type: 'application-declined', schema: 'application-declined.v1' });
       delete (app as { policyId?: string }).policyId;
-      await store.add(app);
+      await store.add(app, []);
       assert.deepEqual(await store.get('ntc_4'), app);
+    });
+
+    test('events are written with the notice or delivery, and published once', async () => {
+      const { store } = await make();
+      const ev = (id: string, type: 'notice.created' | 'notice.delivered', noticeId = 'ntc_1') => ({ id, type, noticeId, market: 'SE', occurredAt: '2026-11-16T10:00:01.000Z', data: { noticeType: 'policy-confirmation' } });
+      await store.add(notice(), [ev('nev_1', 'notice.created')]);
+      assert.equal(await store.add(notice(2, { source: notice().source }), [ev('nev_2', 'notice.created', 'ntc_2')]), false);
+      await store.addDelivery('ntc_1', sent(1), [ev('nev_3', 'notice.delivered')]);
+      assert.deepEqual((await store.pendingEvents(10)).map((e) => [e.id, e.type, e.noticeId]), [['nev_1', 'notice.created', 'ntc_1'], ['nev_3', 'notice.delivered', 'ntc_1']]);
+      assert.deepEqual((await store.pendingEvents(10))[0], ev('nev_1', 'notice.created'));
+      await store.markPublished(['nev_1'], '2026-11-16T10:00:02.000Z');
+      assert.deepEqual((await store.pendingEvents(10)).map((e) => e.id), ['nev_3']);
     });
 
     test('deliveries are added in order and give the status the list filters on', async () => {
       const { store } = await make();
-      for (const n of [1, 2, 3]) await store.add(notice(n));
-      await store.addDelivery('ntc_2', failed(1));
-      await store.addDelivery('ntc_3', failed(2));
-      await store.addDelivery('ntc_3', sent(3));
-      await assert.rejects(store.addDelivery('ntc_none', sent(4)), NoticeConflictError);
+      for (const n of [1, 2, 3]) await store.add(notice(n), []);
+      await store.addDelivery('ntc_2', failed(1), []);
+      await store.addDelivery('ntc_3', failed(2), []);
+      await store.addDelivery('ntc_3', sent(3), []);
+      await assert.rejects(store.addDelivery('ntc_none', sent(4), []), NoticeConflictError);
       assert.deepEqual((await store.get('ntc_3'))!.deliveries, [failed(2), sent(3)]);
       const ids = async (f: Parameters<NoticeStore['list']>[0]) => (await store.list(f)).map((n) => n.id);
       assert.deepEqual(await ids({}), ['ntc_1', 'ntc_2', 'ntc_3']);

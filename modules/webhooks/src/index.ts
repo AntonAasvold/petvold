@@ -17,7 +17,20 @@ export type Timestamp = string;
  * and 6). Anything else in a module's event stays inside Petvold: names, notes,
  * who did it. Types are versioned: a breaking change is a new `.vN`.
  */
-export const PUBLIC_EVENTS: Record<string, { source: string; subject: 'policyId' | 'applicationId'; fields: string[] }> = {
+export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId';
+
+export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectField; fields: string[] }> = {
+  'claim.registered': { source: 'claims', subject: 'claimId', fields: ['claimNo', 'policyId', 'animalId', 'channel', 'clinicId', 'treatmentFrom', 'treatmentTo', 'diagnosisCode', 'currency'] },
+  'claim.decision_proposed': { source: 'claims', subject: 'claimId', fields: ['proposalId', 'action', 'outcome', 'payout', 'currency', 'deviatesFromProposal', 'reasonCode'] },
+  'claim.proposal_returned': { source: 'claims', subject: 'claimId', fields: ['proposalId'] },
+  'claim.decided': { source: 'claims', subject: 'claimId', fields: ['decisionId', 'seq', 'outcome', 'payout', 'currency', 'automated', 'deviatesFromProposal', 'reasonCode', 'reviewRequestId'] },
+  'claim.payout_ordered': { source: 'claims', subject: 'claimId', fields: ['payoutOrderId', 'decisionId', 'policyId', 'amount', 'currency', 'channel', 'clinicId'] },
+  'claim.review_requested': { source: 'claims', subject: 'claimId', fields: ['reviewRequestId', 'decisionId', 'decisionSeq'] },
+  'animal.ownership_changed': { source: 'animals', subject: 'animalId', fields: ['fromPartyId', 'toPartyId', 'from'] },
+  'animal.died': { source: 'animals', subject: 'animalId', fields: ['deceasedOn'] },
+  'notice.created': { source: 'communications', subject: 'noticeId', fields: ['noticeType', 'schema', 'recipientPartyId', 'language', 'policyId', 'applicationId', 'dueBy'] },
+  'notice.delivered': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel', 'sentAt', 'documentId', 'late'] },
+  'notice.failed': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel'] },
   'policy.issued': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'animalId', 'policyholderPartyId', 'productVersion', 'startDate', 'endDate', 'premium', 'applicationId'] },
   'policy.changed': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'termNo', 'changeNo', 'from', 'premiumAdjustment', 'currency'] },
   'policy.renewed': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'termNo', 'startDate', 'endDate', 'productVersion', 'premium'] },
@@ -33,12 +46,15 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: 'policyId'
   'proposal.created': { source: 'policies', subject: 'policyId', fields: ['proposalId', 'kind', 'fromPartyId', 'toPartyId', 'from', 'deadline', 'deceasedOn'] },
 };
 
-/** An event from a module's outbox, with its market, as the relay hands it over. */
+/** An event from a module's outbox, with its market, as the relay hands it over. The subject's id is in its field. */
 export interface SourceEvent {
   id: string;
   type: string;
   policyId?: string;
   applicationId?: string;
+  claimId?: string;
+  animalId?: string;
+  noticeId?: string;
   market: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;
@@ -61,10 +77,11 @@ export interface CloudEvent {
 export function toCloudEvent(e: SourceEvent): CloudEvent | null {
   const spec = PUBLIC_EVENTS[e.type];
   if (!spec) return null;
-  const subject = spec.subject === 'policyId' ? e.policyId : e.applicationId;
+  const subject = e[spec.subject];
   if (!subject) return null;
   const data: Record<string, unknown> = { [spec.subject]: subject };
   for (const f of spec.fields) if (e.data[f] !== undefined) data[f] = structuredClone(e.data[f]);
+  // An application that led to a policy names it.
   if (spec.subject === 'applicationId' && e.policyId) data.policyId = e.policyId;
   return { specversion: '1.0', id: e.id, source: `/petvold/${spec.source}`, type: `petvold.${e.type}.v1`, subject, time: e.occurredAt, datacontenttype: 'application/json', market: e.market, data };
 }

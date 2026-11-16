@@ -12,6 +12,8 @@ Lagen kräver att kunden får vissa besked, till exempel ett försäkringsbrev n
 
 Samma händelse ger aldrig två meddelanden av samma typ, även om den levereras flera gånger.
 
+**Dokumentsystemet kan få veta direkt** i stället för att fråga. Det prenumererar då på `notice.created` med [webhooks](webhooks.md), och `notice.delivered` och `notice.failed` säger när ett utskick har rapporterats.
+
 ## Typer
 
 | Typ | När | Sista dag | Krävs av (Sverige) |
