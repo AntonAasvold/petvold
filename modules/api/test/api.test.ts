@@ -182,7 +182,7 @@ test('a clinic may not make decisions', async () => {
 
 test('a clinic may not read limits, and the problem names the permission', async () => {
   const { call } = setup();
-  const res = await call('GET', '/v1/policies/pol_bella/animals/ani_bella/limits?onDate=2026-11-13', { token: 'clinic' });
+  const res = await call('GET', '/v1/policies/pol_bella/limits?onDate=2026-11-13', { token: 'clinic' });
   assert.equal(res.status, 403);
   const body = (await res.json()) as any;
   assertSchema('Problem', body);
@@ -284,7 +284,7 @@ test('the customer channel sees only claims on the customer\'s policies, and lim
 test('limits: within the markets for a handler, never by policy id for a clinic', async () => {
   const roles = { ...DEFAULT_ROLES, clinic: { ...DEFAULT_ROLES.clinic!, permissions: [...DEFAULT_ROLES.clinic!.permissions, 'limits:read' as const] } };
   const { call, as } = setup({ roles });
-  const path = '/v1/policies/pol_bella/animals/ani_bella/limits?onDate=2026-11-13';
+  const path = '/v1/policies/pol_bella/limits?onDate=2026-11-13';
   assert.equal((await call('GET', path)).status, 200);
   assert.equal((await call('GET', path, { token: 'clinic' })).status, 404);
   const de = as({ subject: 'h-de', roles: ['handler'], markets: ['DE'] });
@@ -411,7 +411,7 @@ test('pre-approval for the clinic in English, with amounts formatted in the righ
   const res = await call('POST', '/v1/claim-previews', {
     token: 'clinic',
     lang: 'en',
-    body: input(cruciateClaim({ id: 'draft', claimNo: 'draft' })),
+    body: input(cruciateClaim({ id: 'clm_draft', claimNo: 'draft' })),
   });
   assert.equal(res.status, 200);
   const a = (await res.json()) as any;
@@ -429,7 +429,7 @@ test('EUR claim: amounts and texts follow the market', async () => {
   assert.equal(body.assessment.calculation.vatExcluded, 5_700);
   assert.equal(body.decision.payout, 17_500);
 
-  const limits = (await (await call('GET', '/v1/policies/pol_rex/animals/ani_rex/limits?onDate=2026-10-02')).json()) as any;
+  const limits = (await (await call('GET', '/v1/policies/pol_rex/limits?onDate=2026-10-02')).json()) as any;
   assertSchema('Limits', limits);
   assert.equal(limits.currency, 'EUR');
   assert.equal(limits.remaining, 500_000 - 17_500);
@@ -590,15 +590,15 @@ test('the amount limit of several roles: only roles with the permission count, a
 test('an admin lowers the handler limit through the API, and the next decision needs approval at once', async () => {
   const { call } = setup();
   await call('POST', '/v1/claims', { token: 'clinic', key: 'key-00000601', body: input(cruciateClaim()) });
-  assert.equal((await call('GET', '/v1/access/roles')).status, 403, 'a handler cannot read the role settings');
+  assert.equal((await call('GET', '/v1/settings/roles')).status, 403, 'a handler cannot read the role settings');
 
-  const current = (await (await call('GET', '/v1/access/roles', { token: 'admin' })).json()) as any;
+  const current = (await (await call('GET', '/v1/settings/roles', { token: 'admin' })).json()) as any;
   assertSchema('RoleConfig', current);
   assert.equal(current.version, 1);
   assert.equal(current.roles.handler.decisionLimits.SEK, 2_500_000);
 
   const roles = { ...current.roles, handler: { ...current.roles.handler, decisionLimits: { SEK: 1_000_000, EUR: 100_000 } } };
-  const res = await call('POST', '/v1/access/roles/versions', {
+  const res = await call('POST', '/v1/settings/roles/versions', {
     token: 'admin',
     key: 'key-00000602',
     body: { basedOnVersion: 1, roles, reason: 'Lower limit for new handlers' },
@@ -612,14 +612,14 @@ test('an admin lowers the handler limit through the API, and the next decision n
   const decided = await call('POST', '/v1/claims/clm_048213/decisions', { key: 'key-00000603', body: { action: 'accept' } });
   assert.equal(decided.status, 202, 'SEK 12,165 is now above the limit');
 
-  const history = (await (await call('GET', '/v1/access/roles/versions', { token: 'admin' })).json()) as any;
+  const history = (await (await call('GET', '/v1/settings/roles/versions', { token: 'admin' })).json()) as any;
   assert.deepEqual(history.items.map((v: { version: number }) => v.version), [1, 2]);
 });
 
 test('role settings: an old version gives 409, own roles 403, an invalid set 422', async () => {
   const { call } = setup();
-  const current = (await (await call('GET', '/v1/access/roles', { token: 'admin' })).json()) as any;
-  const change = (key: string, body: unknown) => call('POST', '/v1/access/roles/versions', { token: 'admin', key, body });
+  const current = (await (await call('GET', '/v1/settings/roles', { token: 'admin' })).json()) as any;
+  const change = (key: string, body: unknown) => call('POST', '/v1/settings/roles/versions', { token: 'admin', key, body });
 
   const ownRole = { ...current.roles, admin: { permissions: ['access:read', 'access:manage', 'claims:approve'] } };
   assert.equal((await change('key-00000611', { basedOnVersion: 1, roles: ownRole, reason: 'More power' })).status, 403);
@@ -698,11 +698,11 @@ test('claims are listed in work queues within the scope, a page at a time', asyn
   await call('POST', '/v1/claims', { key: 'key-00000902', body: input(otitisClaim()) });
   const all = (await (await call('GET', '/v1/claims')).json()) as any;
   assertSchema('ClaimSummary', all.items[0]);
-  const byState = Object.fromEntries(all.items.map((x: any) => [x.id, x.state]));
+  const byState = Object.fromEntries(all.items.map((x: any) => [x.id, x.status]));
   assert.deepEqual(byState, { clm_048213: 'awaiting-decision', clm_021877: 'decided' });
-  const queue = (await (await call('GET', '/v1/claims?state=awaiting-decision')).json()) as any;
+  const queue = (await (await call('GET', '/v1/claims?status=awaiting-decision')).json()) as any;
   assert.deepEqual(queue.items.map((x: any) => x.id), ['clm_048213']);
-  assert.equal((await call('GET', '/v1/claims?state=lost')).status, 422);
+  assert.equal((await call('GET', '/v1/claims?status=lost')).status, 422);
   // The customer portal sees only Bella's claims; the clinic only its own.
   assert.equal(((await (await call('GET', '/v1/claims', { token: 'customer' })).json()) as any).items.length, 2);
   assert.deepEqual(((await (await call('GET', '/v1/claims', { token: 'clinic' })).json()) as any).items.map((x: any) => x.id), ['clm_048213']);

@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-16 | [Adresserna enligt konventionerna](2026-11-16-api-adresser.md) | #74 |
 | 2026-11-16 | [Konventioner för API-kontraktet](2026-11-16-api-konventioner.md) | #73 |
 | 2026-11-16 | [Bolagets inställningar för meddelanden och erbjudande om överlåtelse](2026-11-16-meddelandeinstallningar.md) | #71 |
 | 2026-11-16 | [Kundmeddelanden](2026-11-16-kundmeddelanden.md) | #70 |

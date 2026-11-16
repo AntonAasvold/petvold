@@ -233,8 +233,8 @@ test('a sale in the animal register becomes a transfer proposal, accepted throug
   const now = (await call('GET', `/v1/policies/${p.id}`, 'handler')).body;
   assert.deepEqual(now.versions.map((v: any) => v.policyholderPartyId), ['pty_anna', 'pty_bo']);
   assert.equal((await call('POST', `/v1/policy-proposals/${pr.id}/rejections`, 'seller', { reason: 'x' })).status, 409);
-  assert.deepEqual((await call('POST', '/v1/proposal-expiry-runs', 'job')).body, { expired: [] });
-  assert.equal((await call('POST', '/v1/proposal-expiry-runs', 'seller')).status, 403);
+  assert.deepEqual((await call('POST', '/v1/policy-proposal-expiry-runs', 'job')).body, { expired: [] });
+  assert.equal((await call('POST', '/v1/policy-proposal-expiry-runs', 'seller')).status, 403);
 });
 
 test('the choices are changed from a day during the term', async () => {
@@ -274,7 +274,7 @@ test('a household group is created, a policy joins and leaves', async () => {
   assert.equal((await call('GET', `/v1/policy-groups/${g.body.id}`, 'sellerDe')).status, 404);
   assert.equal((await call('GET', '/v1/policy-groups', 'handler')).status, 422);
   call.clock.set('2027-01-10T10:00:00.000Z');
-  const left = await call('POST', `/v1/policy-groups/${g.body.id}/members/${p.id}/ends`, 'seller', { reason: 'Moved out' });
+  const left = await call('POST', `/v1/policy-groups/${g.body.id}/members/${p.id}/endings`, 'seller', { reason: 'Moved out' });
   assert.deepEqual([left.status, left.body.members[0].to], [201, '2027-01-10']);
 });
 

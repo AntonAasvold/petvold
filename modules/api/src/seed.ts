@@ -132,7 +132,7 @@ export async function seedSampleData(inst: Installation, clock: { now(): string 
 }
 
 /**
- * Bella's claims, one in each work queue (GET /v1/claims?state=…):
+ * Bella's claims, one in each work queue (GET /v1/claims?status=…):
  * decided automatically, review requested, awaiting decision and awaiting approval.
  */
 async function seedClaims(inst: Installation): Promise<void> {

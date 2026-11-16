@@ -119,7 +119,7 @@ Bolagets val och texter ligger i en versionerad inställning per marknad (ADR 00
 | `texts` | Texter per språk: `sender` (avsändaren) och `review` (hur ett beslut prövas). Ett meddelande får texterna på sitt språk, annars på marknadens. | se nedan |
 
 ```http
-POST /v1/notice-settings/versions
+POST /v1/settings/notices/versions
 {
   "basedOnVersion": 1,
   "reason": "Svenska texter",
@@ -140,7 +140,7 @@ POST /v1/notice-settings/versions
 - **Version 1 är tom.** Petvolds lagregler gäller, och bolaget skriver sina egna texter. Petvold skriver inga texter åt bolaget.
 - **Utan `review`** blir ett avslag `incomplete` och hamnar i kön. Lagen kräver att avslaget anger hur sökanden får beslutet prövat (FAL 7 kap. 6 §).
 - **`basedOnVersion`** måste vara versionen som gäller, annars `409`. Två samtidiga ändringar ger en vinnare.
-- **Läsa:** `GET /v1/notice-settings` och `.../versions` med `notices:read`. **Ändra:** `notices:configure`, till exempel rollen `communications-manager`.
+- **Läsa:** `GET /v1/settings/notices` och `.../versions` med `notices:read`. **Ändra:** `notices:configure`, till exempel rollen `communications-manager`.
 
 ## Listor
 

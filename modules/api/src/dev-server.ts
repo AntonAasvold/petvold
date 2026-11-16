@@ -87,12 +87,12 @@ const where = (m: keyof typeof inst.storage) => (inst.storage[m] === 'postgres' 
 console.log(`Petvold listening on http://localhost:${port}`);
 console.log(`  Claims:    ${where('claims')}`);
 console.log(`  Rules:     ${where('decisioning')}, series ${SAMPLE_RULE_SERIES} (GET /v1/rule-sets/${SAMPLE_RULE_SERIES}/versions)`);
-console.log(`  Catalog:   ${where('catalog')} (GET /v1/products/on-sale?date=2026-11-15)`);
+console.log(`  Catalog:   ${where('catalog')} (GET /v1/product-versions?onSale=2026-11-15)`);
 console.log(`  Animals:   ${where('animals')} (GET /v1/animals/ani_bella)`);
 console.log(`  Parties:   ${where('parties')} (GET /v1/parties/pty_owner001)`);
 console.log(`  Policies:  ${where('policies')} (GET /v1/policies/pol_bella)`);
 console.log(`  Notices:   ${where('communications')} (GET /v1/notices?status=pending, token dev-documents)`);
-console.log(`  Roles:     ${where('access')}, versioned (GET /v1/access/roles)`);
+console.log(`  Roles:     ${where('access')}, versioned (GET /v1/settings/roles)`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);
 console.log(`  Tokens:    ${Object.keys(DEV_TOKENS).join(', ')}`);

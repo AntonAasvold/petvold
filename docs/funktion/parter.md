@@ -20,14 +20,14 @@ Parter är de personer och organisationer som andra delar pekar på, till exempe
 - **Id-nummer är unika per land.** Samma personnummer kan bara höra till en part.
 - **Svenska nummer kontrolleras.** Personnummer anges med 12 siffror (`ÅÅÅÅMMDD-NNNK`), och datum och kontrollsiffra måste stämma. Samordningsnummer godtas. Organisationsnummer har 10 siffror och kontrollsiffra. För andra länder kontrolleras bara att numret består av bokstäver och siffror.
 - **Personnummer visas aldrig.** Alla svar visar `19850312-****` och `masked: true`. Organisationsnummer visas.
-- **Sökning sker i anropets innehåll.** `POST /v1/party-searches` med numret i innehållet, så att numret inte hamnar i adresser och loggar.
+- **Sökning sker i anropets innehåll.** `POST /v1/parties/searches` med numret i innehållet, så att numret inte hamnar i adresser och loggar.
 - **Roller finns där relationen finns.** Att Anna äger Bella står i djurregistret, och att hon är försäkringstagare kommer att stå på policyn.
 
 ## Anrop
 
 | Anrop | Rättighet | Gör |
 | --- | --- | --- |
-| `POST /v1/party-searches` | `parties:read` | Hittar en part på personnummer eller organisationsnummer |
+| `POST /v1/parties/searches` | `parties:read` | Hittar en part på personnummer eller organisationsnummer |
 | `POST /v1/parties` | `parties:write` | Registrerar en person eller organisation |
 | `GET /v1/parties/{id}` | `parties:read` | Parten med id-nummer |
 | `PUT /v1/parties/{id}` | `parties:write` | Ändrar uppgifterna, med `basedOnRevision` och `reason` |
@@ -51,7 +51,7 @@ POST /v1/parties
 
 Svaret har `"value": "20990101-****"` och `"masked": true`. Numret är fött 2099, så det kan inte tillhöra någon riktig person.
 
-**Kundservice söker när Anna ringer:** `POST /v1/party-searches` med `{ "type": "personal-number", "country": "SE", "value": "209901011230" }`. Svaret är `{ "items": [ … ] }`, eller en tom lista.
+**Kundservice söker när Anna ringer:** `POST /v1/parties/searches` med `{ "type": "personal-number", "country": "SE", "value": "209901011230" }`. Svaret är `{ "items": [ … ] }`, eller en tom lista.
 
 **Anna flyttar:** `PUT /v1/parties/{id}` med alla uppgifter, den nya adressen, `"basedOnRevision": 1` och `"reason": "Flytt"`.
 
@@ -77,9 +77,9 @@ Motiveringarna får inte innehålla personuppgifter. De sparas för att visa vad
 
 | Anrop | Rättighet | Gör |
 | --- | --- | --- |
-| `GET /v1/retention-settings` | `parties:privacy` | Gällande lagringstider |
-| `GET /v1/retention-settings/versions` | `parties:privacy` | Alla versioner |
-| `POST /v1/retention-settings/versions` | `parties:erase` | Ny version med `basedOnVersion`, `markets` och `reason` |
+| `GET /v1/settings/retention` | `parties:privacy` | Gällande lagringstider |
+| `GET /v1/settings/retention/versions` | `parties:privacy` | Alla versioner |
+| `POST /v1/settings/retention/versions` | `parties:erase` | Ny version med `basedOnVersion`, `markets` och `reason` |
 | `POST /v1/retention-runs` | `parties:retention` | Gallringskörning. Med `"dryRun": true` visas bara vilka parter som skulle beröras. |
 
 **Sista relationen** är det senaste av:

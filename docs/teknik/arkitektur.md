@@ -152,7 +152,7 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 - **Tabeller** (migration 0017):
   - `parties.party_revision`, med en rad per revision. En constraint kräver namnfälten som hör till sorten, och en trigger kontrollerar att sort och marknad aldrig ändras. Adressen är `jsonb`.
   - `parties.party_identifier`, med primärnyckeln `(type, country, value)`. Tjänsterollen får bara läsa och lägga till.
-- **Maskering i API-lagret.** Tjänsten returnerar hela numret, eftersom andra moduler kan behöva det, och `publicView(record)` maskerar det i varje svar. Sökningen är `POST /v1/party-searches` med numret i innehållet.
+- **Maskering i API-lagret.** Tjänsten returnerar hela numret, eftersom andra moduler kan behöva det, och `publicView(record)` maskerar det i varje svar. Sökningen är `POST /v1/parties/searches` med numret i innehållet.
 - **Omfång** som för djuren: partens marknad mot anroparens marknader, och inga parter för roller bundna till klinik eller försäkringar.
 - **Anonymisering (ADR 0028, migration 0019):**
   - `parties.erasure_request` och `parties.erasure_decision` får bara läsas och läggas till. En trigger stoppar ett godkännande av den som begärde.

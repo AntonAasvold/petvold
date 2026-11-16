@@ -121,10 +121,10 @@ test('products on sale, terms for a choice, and the end of sales', async () => {
   await call('POST', `${base}/2026.2/submissions`, 'catalog', {});
   await call('POST', `${base}/2026.2/publications`, 'publisher', {});
 
-  const sale = async (q: string) => (await (await call('GET', `/v1/products/on-sale?${q}`, 'clinic')).json()) as any;
-  assert.deepEqual((await sale('date=2026-11-20&market=SE&species=dog')).items.map((v: any) => v.id), ['SE-HUND-VV-LIV@2026.2']);
-  assert.deepEqual((await sale('date=2026-11-20&species=cat')).items, []);
-  assert.equal((await call('GET', '/v1/products/on-sale', 'clinic')).status, 422);
+  const sale = async (q: string) => (await (await call('GET', `/v1/product-versions?${q}`, 'clinic')).json()) as any;
+  assert.deepEqual((await sale('onSale=2026-11-20&market=SE&species=dog')).items.map((v: any) => v.id), ['SE-HUND-VV-LIV@2026.2']);
+  assert.deepEqual((await sale('onSale=2026-11-20&species=cat')).items, []);
+  assert.equal((await call('GET', '/v1/product-versions', 'clinic')).status, 422);
 
   const terms = await call('GET', `${base}/2026.2/vet-care-terms?annualLimit=3000000`, 'clinic');
   assert.equal(terms.status, 200);
@@ -133,10 +133,10 @@ test('products on sale, terms for a choice, and the end of sales', async () => {
   assert.deepEqual([t.annualLimit, t.deductible.fixed], [3_000_000, 200_000]);
   assert.equal((await call('GET', `${base}/2026.2/vet-care-terms?annualLimit=1`, 'clinic')).status, 422);
 
-  const ended = await call('POST', `${base}/2026.2/sales-ends`, 'publisher', { salesTo: '2026-12-01', reason: 'Replaced by 2027.1' });
+  const ended = await call('POST', `${base}/2026.2/sales-endings`, 'publisher', { salesTo: '2026-12-01', reason: 'Replaced by 2027.1' });
   assert.equal(ended.status, 200);
-  assert.deepEqual((await sale('date=2026-12-01')).items, []);
-  assert.equal((await call('POST', `${base}/2026.2/sales-ends`, 'catalog', { salesTo: '2026-11-20', reason: 'x' })).status, 403);
+  assert.deepEqual((await sale('onSale=2026-12-01')).items, []);
+  assert.equal((await call('POST', `${base}/2026.2/sales-endings`, 'catalog', { salesTo: '2026-11-20', reason: 'x' })).status, 403);
 });
 
 test('errors: unknown versions, invalid drafts, locked versions', async () => {

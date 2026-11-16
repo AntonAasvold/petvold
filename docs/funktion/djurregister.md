@@ -38,7 +38,7 @@ Registret håller ordning på de försäkrade djuren: vad djuret är, hur det id
 | `POST /v1/animals/{id}/ownerships` | `animals:write` | Ny ägare från ett datum |
 | `POST /v1/litters` | `animals:write` | Registrerar en kull med alla djur, ägda av uppfödaren från födelsedatumet |
 | `GET /v1/litters/{id}` | `animals:read` | Kullen med föräldrar, uppfödare och djur |
-| `GET /v1/animal-lookup?microchip=…` | `animals:lookup` | Slår upp ett djur som är öppet för uppslagning. Visar inga ägare. Det går också att använda `registration` eller `passport`. |
+| `GET /v1/animal-summaries?microchip=…` | `animals:lookup` | Slår upp ett djur som är öppet för uppslagning. Visar inga ägare. Det går också att använda `registration` eller `passport`. |
 
 ## Exempel
 
@@ -58,7 +58,7 @@ POST /v1/animals
 
 **Ägaren låter kliniker hitta Rex:** `PUT /v1/animals/{id}` med alla uppgifter, `"allowLookup": true` och `"reason": "Ägaren godkänner uppslagning"`.
 
-**Kliniken läser chipet:** `GET /v1/animal-lookup?microchip=752098100000042` ger
+**Kliniken läser chipet:** `GET /v1/animal-summaries?microchip=752098100000042` ger
 
 ```json
 { "items": [{ "id": "ani_…", "market": "SE", "species": "dog", "breed": "dog-beagle", "sex": "male",
@@ -92,7 +92,7 @@ Båda valparna ägs av kenneln från 1 september. Om båda föräldrarna är bea
 - `handler` och `approver` kan läsa.
 - Alla ser bara djur i sina egna marknader. Ett djur i en annan marknad ger `404`.
 - **Roller som är bundna till klinik eller försäkringar ser inga hela djur.** Registret kan inte avgöra vilka djur som hör till en viss klinik eller försäkring, och ett helt djur visar ägaren.
-- **Kliniker slår upp djur** med `GET /v1/animal-lookup` (rättigheten `animals:lookup`, som rollen `clinic` har). De hittar bara djur som är öppna (`allowLookup`) och i klinikens marknader, och ser aldrig ägare eller historik. Det går inte att söka på ägare. Se ADR 0025.
+- **Kliniker slår upp djur** med `GET /v1/animal-summaries` (rättigheten `animals:lookup`, som rollen `clinic` har). De hittar bara djur som är öppna (`allowLookup`) och i klinikens marknader, och ser aldrig ägare eller historik. Det går inte att söka på ägare. Se ADR 0025.
 
 ## Spärrar
 

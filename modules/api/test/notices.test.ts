@@ -86,15 +86,15 @@ test('the insurer writes its texts in versioned settings; a refusal without revi
   assert.deepEqual([declined.settingsVersion, declined.incomplete], [1, ['review']]);
   assert.ok((await call('GET', '/v1/notices?attention=true', 'handler')).body.items.some((n: any) => n.id === declined.id));
 
-  const v1 = await call('GET', '/v1/notice-settings', 'docs');
+  const v1 = await call('GET', '/v1/settings/notices', 'docs');
   assert.equal(v1.status, 200);
   assert.ok(validatorFor('NoticeSettings')(structuredClone(v1.body)), JSON.stringify(validatorFor('NoticeSettings').errors));
   const body = { basedOnVersion: 1, reason: 'Swedish texts', markets: { SE: { promptlyDays: 5, texts: { sv: { sender: 'Example Insurance', review: 'Contact our complaints function.' } } } } };
-  assert.equal((await call('POST', '/v1/notice-settings/versions', 'docs', body)).status, 403);
-  assert.equal((await call('POST', '/v1/notice-settings/versions', 'comms', { ...body, markets: { SE: { disabledTypes: ['policy-confirmation'] } } })).status, 422);
-  assert.equal((await call('POST', '/v1/notice-settings/versions', 'comms', { ...body, markets: { SE: { texts: { sv: { footer: 'x' } } } } })).status, 422, 'the contract');
-  const v2 = await call('POST', '/v1/notice-settings/versions', 'comms', body);
+  assert.equal((await call('POST', '/v1/settings/notices/versions', 'docs', body)).status, 403);
+  assert.equal((await call('POST', '/v1/settings/notices/versions', 'comms', { ...body, markets: { SE: { disabledTypes: ['policy-confirmation'] } } })).status, 422);
+  assert.equal((await call('POST', '/v1/settings/notices/versions', 'comms', { ...body, markets: { SE: { texts: { sv: { footer: 'x' } } } } })).status, 422, 'the contract');
+  const v2 = await call('POST', '/v1/settings/notices/versions', 'comms', body);
   assert.deepEqual([v2.status, v2.body.version], [201, 2]);
-  assert.equal((await call('POST', '/v1/notice-settings/versions', 'comms', body)).status, 409);
-  assert.deepEqual((await call('GET', '/v1/notice-settings/versions', 'comms')).body.items.map((v: any) => v.version), [1, 2]);
+  assert.equal((await call('POST', '/v1/settings/notices/versions', 'comms', body)).status, 409);
+  assert.deepEqual((await call('GET', '/v1/settings/notices/versions', 'comms')).body.items.map((v: any) => v.version), [1, 2]);
 });

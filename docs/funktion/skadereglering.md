@@ -16,16 +16,16 @@ Hur skademotorn bedömer, räknar ut och beslutar ett ärende. Exemplen bygger p
 
 `GET /v1/claims` (rättighet `claims:read`) listar ärenden inom anroparens omfång, äldst först. Varje rad visar ärendet, var det står och det senaste beslutet. Det är underlaget för arbetsköer i ett gränssnitt.
 
-| `state` | Betyder | Kö för |
+| `status` | Betyder | Kö för |
 | --- | --- | --- |
 | `awaiting-decision` | Inget beslut än, eller ett förslag som skickats tillbaka | Handläggare |
 | `awaiting-approval` | Ett förslag över gränsen väntar på attest | Attestant |
 | `review-requested` | Kunden har begärt mänsklig prövning | Handläggare |
 | `decided` | Beslutat och inget öppet | – |
 
-Om flera stämmer gäller den som står först av `awaiting-approval`, `review-requested`, `decided` och `awaiting-decision`. Listan filtreras med `state`, `market`, `policyId` och `animalId`. En klinik ser bara sina egna ärenden och kundkanalen bara ärenden på sina försäkringar.
+Om flera stämmer gäller den som står först av `awaiting-approval`, `review-requested`, `decided` och `awaiting-decision`. Listan filtreras med `status`, `market`, `policyId` och `animalId`. En klinik ser bara sina egna ärenden och kundkanalen bara ärenden på sina försäkringar.
 
-**Exempel:** `GET /v1/claims?state=awaiting-decision&market=SE&limit=20` ger handläggarens kö i Sverige, 20 åt gången.
+**Exempel:** `GET /v1/claims?status=awaiting-decision&market=SE&limit=20` ger handläggarens kö i Sverige, 20 åt gången.
 
 ## Reglerna
 
@@ -97,7 +97,7 @@ Två skäl gör att skadan hamnar hos en handläggare. Ersättningen är över 1
 
 Varje beslut bokförs i en ledger med dubbel bokföring. Förbrukat försäkringsbelopp räknas fram ur bokföringen per djur, moment, försäkringsår och valuta. Det finns ingen separat räknare som kan glida isär från bokföringen.
 
-Anropet `GET /v1/policies/{policy}/animals/{djur}/limits?onDate=` visar årets försäkringsbelopp, vad som förbrukats och vad som återstår.
+Anropet `GET /v1/policies/{policy}/limits?onDate=` visar årets försäkringsbelopp, vad som förbrukats och vad som återstår.
 
 ## Beslut och spårbarhet
 

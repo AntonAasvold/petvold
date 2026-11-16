@@ -75,7 +75,7 @@ Kärnan pratar med omvärlden via portar (`modules/claims-core/src/ports.ts`):
 | `POST /v1/claims/{id}/decisions` | Handläggarbeslut. `expectedInputHash` skyddar mot beslut på inaktuellt underlag (409). |
 | `POST /v1/claims/{id}/reassessments` | Omprövning efter t.ex. retroaktiv policyändring. Ledgern bokar bara skillnaden. |
 | `POST /v1/claim-previews` | Förhandsbesked i klinikens kassa. Sparar ingenting. |
-| `GET /v1/policies/{p}/animals/{a}/limits?onDate=` | Förbrukat och återstående försäkringsbelopp. |
+| `GET /v1/policies/{p}/limits?onDate=` | Förbrukat och återstående försäkringsbelopp. |
 
 Alla skapande anrop kräver `Idempotency-Key`. Fel returneras som `application/problem+json`.
 

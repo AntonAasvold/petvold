@@ -93,37 +93,7 @@ export function conventionProblems(doc: ContractLike): ConventionProblem[] {
  * They are fixed one by one; the check fails on a new break and on an entry
  * that no longer breaks anything, so the list only shrinks.
  */
-export const KNOWN_DEVIATIONS: readonly string[] = [
-  'query GET /v1/claims',
-  'id-pattern GET /v1/claims/{claimId}',
-  'id-pattern GET /v1/claims/{claimId}/assessment',
-  'id-pattern GET /v1/claims/{claimId}/decisions',
-  'id-pattern POST /v1/claims/{claimId}/decisions',
-  'id-pattern GET /v1/claims/{claimId}/proposals',
-  'id-pattern POST /v1/claims/{claimId}/proposals/{proposalId}/approvals',
-  'id-pattern POST /v1/claims/{claimId}/proposals/{proposalId}/returns',
-  'filter /v1/products/on-sale',
-  'segment /v1/products/{product}/versions/{version}/sales-ends',
-  'search /v1/party-searches',
-  'settings /v1/retention-settings',
-  'settings /v1/retention-settings/versions',
-  'filter /v1/retention-settings/versions',
-  'settings /v1/notice-settings',
-  'settings /v1/notice-settings/versions',
-  'filter /v1/notice-settings/versions',
-  'query GET /v1/policy-groups',
-  'segment /v1/policy-groups/{groupId}/members/{policyId}/ends',
-  'segment /v1/animal-lookup',
-  'filter /v1/access/roles',
-  'filter /v1/access/roles/versions',
-  'id-pattern POST /v1/claims/{claimId}/decisions/{seq}/replays',
-  'id-pattern GET /v1/claims/{claimId}/decisions/{seq}/explanation',
-  'id-pattern POST /v1/claims/{claimId}/decisions/{seq}/review-requests',
-  'id-pattern GET /v1/claims/{claimId}/review-requests',
-  'id-pattern POST /v1/claims/{claimId}/reassessments',
-  'nesting /v1/policies/{policyId}/animals/{animalId}/limits',
-  'id-pattern GET /v1/policies/{policyId}/animals/{animalId}/limits',
-];
+export const KNOWN_DEVIATIONS: readonly string[] = [];
 
 /** The breaks not in the known list, and the known entries that no longer break anything. */
 export function conventionCheck(doc: ContractLike, known: readonly string[] = KNOWN_DEVIATIONS): { problems: ConventionProblem[]; fixed: string[] } {

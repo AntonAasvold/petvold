@@ -44,30 +44,30 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `rules:write` | Skapa och ändra utkast, skicka till granskning | `POST .../versions`, `PUT .../{v}`, `.../submissions` |
 | `rules:publish` | Publicera, skicka tillbaka eller avveckla. Aldrig den egna inskickade versionen. | `.../publications`, `.../returns`, `.../retirements` |
 | `rules:simulate` | Simulera en regelversion mot sparade beslut. Visar uppgifter ur ärenden inom anroparens omfång. | `.../simulations` |
-| `catalog:read` | Läsa referensdata (ADR 0022) och produktversioner, produkter till salu och villkor för ett val (ADR 0023) | `GET /v1/reference-data/…`, `GET /v1/products/on-sale`, `GET /v1/products/{p}/versions…`, `.../{v}/vet-care-terms` |
+| `catalog:read` | Läsa referensdata (ADR 0022) och produktversioner, produkter till salu och villkor för ett val (ADR 0023) | `GET /v1/reference-data/…`, `GET /v1/product-versions`, `GET /v1/products/{p}/versions…`, `.../{v}/vet-care-terms` |
 | `catalog:write` | Skapa och ändra referensdata. Skriva produktutkast och skicka dem till granskning. | `PUT /v1/reference-data/{sort}/{kod}`, `POST`/`PUT /v1/products/{p}/versions…`, `.../submissions` |
-| `catalog:publish` | Publicera eller skicka tillbaka produktversioner, aldrig den egna inskickade, och avsluta försäljning | `.../publications`, `.../returns`, `.../sales-ends` |
+| `catalog:publish` | Publicera eller skicka tillbaka produktversioner, aldrig den egna inskickade, och avsluta försäljning | `.../publications`, `.../returns`, `.../sales-endings` |
 | `parties:privacy` | Se begränsade parter, registrera och avslå begäranden om radering (ADR 0028) | `POST /v1/parties/{id}/erasure-requests`, `GET /v1/erasure-requests`, `.../rejections` |
-| `parties:erase` | Godkänna någon annans begäran om radering, vilket anonymiserar parten, och ändra lagringstider | `POST /v1/erasure-requests/{id}/approvals`, `POST /v1/retention-settings/versions` |
+| `parties:erase` | Godkänna någon annans begäran om radering, vilket anonymiserar parten, och ändra lagringstider | `POST /v1/erasure-requests/{id}/approvals`, `POST /v1/settings/retention/versions` |
 | `parties:retention` | Köra gallringen, som begär anonymisering av parter vars lagringstid har gått ut | `POST /v1/retention-runs` |
 | `animals:read` | Läsa djurregistret: djur, id-nummer, ägare och historik (ADR 0024) | `GET /v1/animals`, `.../{id}`, `.../{id}/revisions` |
 | `animals:write` | Registrera djur, rätta uppgifter, lägga till id-nummer och byta ägare | `POST /v1/animals`, `PUT .../{id}`, `.../identifiers`, `.../ownerships` |
-| `animals:lookup` | Slå upp ett djur på id-nummer, utan ägare eller historik. Hittar bara djur som är öppna för uppslagning (ADR 0025). | `GET /v1/animal-lookup` |
+| `animals:lookup` | Slå upp ett djur på id-nummer, utan ägare eller historik. Hittar bara djur som är öppna för uppslagning (ADR 0025). | `GET /v1/animal-summaries` |
 | `policies:read` | Läsa policyer, termer och historik (ADR 0029) | `GET /v1/policies`, `.../{id}`, `.../history`, `.../snapshot` |
 | `policies:quote` | Prisindikation, utan att något sparas (ADR 0030) | `POST /v1/quotes` |
 | `policies:price-override` | Sätta en annan premie än tariffens, med motivering (ADR 0030) | `POST /v1/policies`, `.../changes`, `.../renewals` med `premium` och `priceOverride` |
 | `policies:write` | Teckna, ändra, förnya, avsluta och återkalla avslut av policyer, och besvara förslag, och hantera grupper | `POST /v1/policies`, `POST /v1/policy-groups`, `.../members`, `.../changes`, `.../renewals`, `.../cancellations`, `.../reinstatements`, `POST /v1/policy-proposals/{id}/acceptances`, `.../rejections` |
-| `policies:renew` | Schemalagda körningar: förnyelse, avslut av överlåtelser som inte godkändes i tid, och utgång av ansökningar | `POST /v1/renewal-runs`, `POST /v1/proposal-expiry-runs`, `POST /v1/application-expiry-runs` |
+| `policies:renew` | Schemalagda körningar: förnyelse, avslut av överlåtelser som inte godkändes i tid, och utgång av ansökningar | `POST /v1/renewal-runs`, `POST /v1/policy-proposal-expiry-runs`, `POST /v1/application-expiry-runs` |
 | `policies:underwrite` | Besluta om en ansökan i kön för manuell prövning: godkänna, med eller utan förbehåll, eller avslå med skälskod (ADR 0031) | `POST /v1/applications/{id}/decisions` |
-| `notices:read` | Läsa kundmeddelanden och deras utskick (ADR 0032), och bolagets inställningar för dem. Meddelandena har partens id, inte namn eller adress. | `GET /v1/notices`, `.../{id}`, `GET /v1/notice-settings`, `.../versions` |
+| `notices:read` | Läsa kundmeddelanden och deras utskick (ADR 0032), och bolagets inställningar för dem. Meddelandena har partens id, inte namn eller adress. | `GET /v1/notices`, `.../{id}`, `GET /v1/settings/notices`, `.../versions` |
 | `notices:deliver` | Rapportera att ett meddelande skickades, med dokumentets id och kontrollsumma, eller att utskicket misslyckades | `POST /v1/notices/{id}/deliveries` |
-| `notices:configure` | Ändra bolagets inställningar för meddelanden: texter, dagar för "snarast" och typer som stängs av | `POST /v1/notice-settings/versions` |
-| `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/access/roles`, `.../versions` |
-| `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/access/roles/versions` |
+| `notices:configure` | Ändra bolagets inställningar för meddelanden: texter, dagar för "snarast" och typer som stängs av | `POST /v1/settings/notices/versions` |
+| `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/settings/roles`, `.../versions` |
+| `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/settings/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
 | `claims:request-review` | Begära mänsklig prövning av ett automatiskt beslut för kundens räkning (ADR 0018) | `POST /v1/claims/{id}/decisions/{seq}/review-requests` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
-| `limits:read` | Se förbrukat och återstående försäkringsbelopp | `GET /v1/policies/{p}/animals/{a}/limits` |
+| `limits:read` | Se förbrukat och återstående försäkringsbelopp | `GET /v1/policies/{p}/limits` |
 
 ## Standardroller
 
@@ -172,15 +172,15 @@ Rollinställningen är konfiguration per installation. Den ändras via API:et, u
 
 | Anrop | Rättighet | Gör |
 | --- | --- | --- |
-| `GET /v1/access/roles` | `access:read` | Visar gällande version: roller, rättigheter, bindningar och gränser |
-| `GET /v1/access/roles/versions` | `access:read` | Visar alla versioner, äldst först |
-| `POST /v1/access/roles/versions` | `access:manage` | Sparar en ny version av hela inställningen. Gäller direkt. |
+| `GET /v1/settings/roles` | `access:read` | Visar gällande version: roller, rättigheter, bindningar och gränser |
+| `GET /v1/settings/roles/versions` | `access:read` | Visar alla versioner, äldst först |
+| `POST /v1/settings/roles/versions` | `access:manage` | Sparar en ny version av hela inställningen. Gäller direkt. |
 
 Så höjer en administratör handläggarnas gräns till 50 000 kr:
 
-1. Hämta gällande version med `GET /v1/access/roles`. Anta att den är version 3.
+1. Hämta gällande version med `GET /v1/settings/roles`. Anta att den är version 3.
 2. Ändra `handler.decisionLimits.SEK` till `5000000` i `roles`.
-3. Skicka `POST /v1/access/roles/versions` med `{ "basedOnVersion": 3, "roles": { … }, "reason": "Nya gränser från 1 december" }`.
+3. Skicka `POST /v1/settings/roles/versions` med `{ "basedOnVersion": 3, "roles": { … }, "reason": "Nya gränser från 1 december" }`.
 
 Spärrar:
 - **Historiken sparas.** Varje version har `changedBy`, `changedAt` och en motivering, och ingen version ändras i efterhand. Det går därför att se vilken gräns som gällde när ett visst beslut fattades.

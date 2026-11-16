@@ -55,14 +55,14 @@ paths:
       description: |
         Requires the permission `claims:read`. Oldest received first. Only claims
         in the caller's scope: its markets, a clinic's own claims, or the bound
-        policies' claims. A work queue is a state:
+        policies' claims. A work queue is a status:
 
         - `awaiting-decision`: no decision yet, e.g. sent to a handler
         - `awaiting-approval`: a decision proposal waits for an approver (ADR 0019)
         - `review-requested`: the customer asked for a person to review an automated decision (ADR 0018)
         - `decided`
       parameters:
-        - { name: state, in: query, schema: { type: string, enum: [awaiting-decision, awaiting-approval, review-requested, decided] } }
+        - { name: status, in: query, schema: { type: string, enum: [awaiting-decision, awaiting-approval, review-requested, decided] } }
         - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
         - { name: policyId, in: query, schema: { type: string } }
         - { name: animalId, in: query, schema: { type: string } }
@@ -465,10 +465,10 @@ paths:
                     items: { $ref: '#/components/schemas/ReferenceItem' }
 
                   nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
-  /v1/products/on-sale:
+  /v1/product-versions:
     get:
       tags: [products]
-      operationId: listProductsOnSale
+      operationId: listProductVersionsOnSale
       x-permission: catalog:read
       summary: Published product versions on sale on a date
       description: |
@@ -477,11 +477,10 @@ paths:
         At most one version of each product is on sale on a day (ADR 0023).
         `name` is in the language asked for with `Accept-Language`.
       parameters:
-        - name: date
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
+        - name: onSale
           in: query
           required: true
+          description: The date the versions are on sale.
           schema: { $ref: '#/components/schemas/Date' }
         - name: market
           in: query
@@ -490,6 +489,8 @@ paths:
           in: query
           description: A species code from the reference data, e.g. `dog`.
           schema: { type: string }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -755,7 +756,7 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
-  /v1/products/{product}/versions/{version}/sales-ends:
+  /v1/products/{product}/versions/{version}/sales-endings:
     post:
       tags: [products]
       operationId: endProductSales
@@ -793,7 +794,7 @@ paths:
         Requires the permission `animals:read`. Give exactly one of the filters.
         Only animals in the caller's markets are returned. Roles bound to a
         clinic or to policies see no animals (ADR 0024); a clinic uses
-        `GET /v1/animal-lookup` instead (ADR 0025).
+        `GET /v1/animal-summaries` instead (ADR 0025).
       parameters:
         - { name: microchip, in: query, schema: { type: string }, description: '15 digits (ISO 11784). Spaces and hyphens are ignored.' }
         - { name: registration, in: query, schema: { type: string } }
@@ -844,7 +845,7 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
-  /v1/party-searches:
+  /v1/parties/searches:
     post:
       tags: [parties]
       operationId: searchParties
@@ -1144,7 +1145,7 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
-  /v1/retention-settings:
+  /v1/settings/retention:
     get:
       tags: [parties]
       operationId: getRetentionSettings
@@ -1163,7 +1164,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/RetentionSettings' }
 
-  /v1/retention-settings/versions:
+  /v1/settings/retention/versions:
     get:
       tags: [parties]
       operationId: listRetentionSettings
@@ -1622,7 +1623,7 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
-  /v1/notice-settings:
+  /v1/settings/notices:
     get:
       tags: [notices]
       operationId: getNoticeSettings
@@ -1642,7 +1643,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/NoticeSettings' }
 
-  /v1/notice-settings/versions:
+  /v1/settings/notices/versions:
     get:
       tags: [notices]
       operationId: listNoticeSettings
@@ -2018,7 +2019,7 @@ paths:
       summary: Groups of a policyholder, or that a policy is or was in
       description: Requires the permission `policies:read`. Give exactly one filter.
       parameters:
-        - { name: holderPartyId, in: query, schema: { type: string } }
+        - { name: policyholderPartyId, in: query, schema: { type: string } }
         - { name: policyId, in: query, schema: { type: string } }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
@@ -2087,7 +2088,7 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
-  /v1/policy-groups/{groupId}/members/{policyId}/ends:
+  /v1/policy-groups/{groupId}/members/{policyId}/endings:
     post:
       tags: [policies]
       operationId: endPolicyGroupMember
@@ -2115,7 +2116,7 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
-  /v1/proposal-expiry-runs:
+  /v1/policy-proposal-expiry-runs:
     post:
       tags: [policies]
       operationId: expirePolicyProposals
@@ -2271,7 +2272,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Litter' }
 
-  /v1/animal-lookup:
+  /v1/animal-summaries:
     get:
       tags: [animals]
       operationId: lookupAnimal
@@ -2458,7 +2459,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
 
-  /v1/access/roles:
+  /v1/settings/roles:
     get:
       tags: [access]
       operationId: getRoles
@@ -2478,7 +2479,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/RoleConfig' }
 
-  /v1/access/roles/versions:
+  /v1/settings/roles/versions:
     get:
       tags: [access]
       operationId: listRoleVersions
@@ -3034,22 +3035,18 @@ paths:
               schema: { $ref: '#/components/schemas/Assessment' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
-  /v1/policies/{policyId}/animals/{animalId}/limits:
+  /v1/policies/{policyId}/limits:
     get:
       tags: [limits]
       operationId: getLimits
       x-permission: limits:read
       summary: Consumed and remaining annual limit
-      description: Requires the permission `limits:read`.
+      description: Requires the permission `limits:read`. A policy covers one animal (ADR 0007), so the policy is enough.
       parameters:
         - name: policyId
           in: path
           required: true
-          schema: { type: string }
-        - name: animalId
-          in: path
-          required: true
-          schema: { type: string }
+          schema: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
         - name: onDate
           in: query
           required: true
@@ -3095,7 +3092,7 @@ components:
       name: claimId
       in: path
       required: true
-      schema: { type: string }
+      schema: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
     ReferenceKind:
       name: kind
       in: path
@@ -3175,7 +3172,7 @@ components:
       name: proposalId
       in: path
       required: true
-      schema: { type: string, minLength: 1 }
+      schema: { type: string, pattern: '^prp_[A-Za-z0-9]+$' }
     Seq:
       name: seq
       in: path
@@ -3346,7 +3343,7 @@ components:
       type: object
       required: [id, claimNo, policyId, animalId, market, currency, channel, treatmentFrom, treatmentTo, diagnosisCode, lines]
       properties:
-        id: { type: string, minLength: 1 }
+        id: { type: string, pattern: '^clm_[A-Za-z0-9_]+$', description: 'Chosen by the client, e.g. clm_021877. Unique.' }
         claimNo: { type: string, minLength: 1 }
         policyId: { type: string, minLength: 1 }
         animalId: { type: string, minLength: 1 }
@@ -4814,7 +4811,7 @@ components:
 
     ClaimSummary:
       type: object
-      required: [id, claimNo, policyId, animalId, market, currency, channel, treatmentFrom, diagnosisCode, receivedAt, state]
+      required: [id, claimNo, policyId, animalId, market, currency, channel, treatmentFrom, diagnosisCode, receivedAt, status]
       properties:
         id: { type: string }
         claimNo: { type: string }
@@ -4827,7 +4824,7 @@ components:
         treatmentFrom: { $ref: '#/components/schemas/Date' }
         diagnosisCode: { type: string }
         receivedAt: { $ref: '#/components/schemas/DateTime' }
-        state: { type: string, enum: [awaiting-decision, awaiting-approval, review-requested, decided] }
+        status: { type: string, enum: [awaiting-decision, awaiting-approval, review-requested, decided] }
         latestDecision:
           type: object
           required: [seq, outcome, payout, decidedAt]
