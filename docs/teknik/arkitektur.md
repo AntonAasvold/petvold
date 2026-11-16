@@ -57,7 +57,7 @@ Kärnorna (`claims-core`, `pricing-core`, `underwriting-core`) är rena: ingen I
 | `RulesPort` | Produktens skaderegler per version | `DecisioningRulesPort`, som går från produktversionen till regelserien. Statiska regler i tester. |
 | `ClaimsStore` | Ärenden, beslut, självriskperioder, förbrukat belopp | Minne och Postgres. Båda klarar samma testsvit. |
 | `ClaimsOutbox` | Händelser som väntar på att publiceras | Minne och Postgres |
-| `EventSink` | Var reläet publicerar | Logg i dag. Webhooks enligt ADR 0033 (föreslagen). |
+| `EventSink` | Var reläet publicerar | Logg i dag. Webhooks enligt ADR 0033 (beslutad, inte byggd). |
 | `Clock`, `IdGenerator` | Tid och id:n | Fasta i tester, riktiga i drift |
 
 **Portar mellan andra moduler:**
@@ -273,7 +273,7 @@ Händelser skrivs till modulens outbox i samma transaktion som ändringen (ADR 0
 
 | Källa | Mottagare |
 | --- | --- |
-| `claims` | Loggas. Webhooks enligt ADR 0033 (föreslagen). |
+| `claims` | Loggas. Webhooks enligt ADR 0033 (beslutad, inte byggd). |
 | `animals` | `PolicyService.handleAnimalEvent`: ägarbyte och dödsfall blir förslag |
 | `policies` | `CommunicationsService.handlePolicyEvent` (kundmeddelanden), och `ClaimsService.reassessForPolicyChange` för `policy.version_superseded` |
 

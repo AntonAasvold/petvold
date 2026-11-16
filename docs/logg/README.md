@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-16 | [ADR om händelser till bolagets system](2026-11-16-webhooks-adr.md) | #72 |
 | 2026-11-16 | [Genomgång av dokumentationen](2026-11-16-dokumentationsgenomgang.md) | #75 |
 | 2026-11-16 | [Adresserna enligt konventionerna](2026-11-16-api-adresser.md) | #74 |
 | 2026-11-16 | [Konventioner för API-kontraktet](2026-11-16-api-konventioner.md) | #73 |

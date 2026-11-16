@@ -64,6 +64,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 - 421 tester och 118 databastester. ADR 0032 är byggd, utom skadebesked.
 
 - #71 mergad. ADR 0032 är byggd, utom skadebesked. ADR 0033 om webhooks föreslagen i PR #72.
+- #73, #74 och #75 mergade. ADR 0033 beslutad och mergad (#72).
 - Konventioner för API-kontraktet (ADR 0034), PR #73:
   - **`docs/teknik/api-konventioner.md`:** regler för adresser, handlingar, inställningar, parametrar, id, fel och listor, och en ordlista över vad "version" betyder.
   - **`lint:openapi` kontrollerar reglerna** med `conventions.ts`. De 29 avvikelser som finns står i `KNOWN_DEVIATIONS`. Listan kan bara krympa.
@@ -86,7 +87,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **`docs/README.md`** listar alla sidor, och reglerna för hur vi skriver har fått två tillägg.
 
 **Nästa steg**
-1. Ta ställning till ADR 0033 om webhooks.
+1. Bygga ADR 0033, steg 1: modulen `webhooks` med prenumerationer, kö och arbetare. Med på köpet löses låset för reläet vid flera instanser för webhooks.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
