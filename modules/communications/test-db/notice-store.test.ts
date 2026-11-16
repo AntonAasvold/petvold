@@ -2,8 +2,8 @@
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import { PostgresNoticeStore } from '../src/postgres.ts';
-import { notice, noticeStoreSuite, sent } from '../test-suites/notice-store.ts';
+import { PostgresNoticeSettingsStore, PostgresNoticeStore } from '../src/postgres.ts';
+import { notice, noticeSettingsStoreSuite, noticeStoreSuite, sent } from '../test-suites/notice-store.ts';
 
 const ownerUrl = process.env.TEST_DATABASE_URL;
 const serviceUrl = process.env.COMMUNICATIONS_TEST_DATABASE_URL;
@@ -15,11 +15,16 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate communications.delivery, communications.notice cascade');
+const clean = () => admin.query('truncate communications.delivery, communications.notice, communications.notice_settings cascade');
 
 noticeStoreSuite('PostgresNoticeStore', async () => {
   await clean();
   return { store: new PostgresNoticeStore(pool) };
+});
+
+noticeSettingsStoreSuite('PostgresNoticeSettingsStore', async () => {
+  await clean();
+  return { settings: new PostgresNoticeSettingsStore(pool) };
 });
 
 test('notices and deliveries never change, and a delivery must be complete', async () => {

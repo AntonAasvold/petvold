@@ -55,8 +55,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **Migration 0031:** `communications.notice` och `communications.delivery`. Provad ner och upp igen. En befintlig databas behöver rollen `communications_service` före migreringen.
 - 417 tester och 117 databastester.
 
+- #70 mergad.
+- Meddelanden, del 3 (ADR 0032), PR #71:
+  - **Erbjudande om överlåtelse** (`transfer-offer`) till den nya ägaren. Policymodulen skriver `proposal.created` i samma transaktion som förslaget.
+  - **Bolagets inställningar per marknad** som versioner: dagar för "snarast", typer som lagen inte kräver och som stängs av, och texter per språk (avsändare och hur ett beslut prövas). `GET /v1/notice-settings`, `.../versions` och `POST .../versions`, 104 operationer. Rättigheten `notices:configure` och rollen `communications-manager`.
+  - **Ofullständiga meddelanden:** ett avslag utan bolagets text om prövning får `incomplete` och hamnar i kön.
+  - **Migration 0032:** `communications.notice_settings`, `notice.settings_version` och typen `transfer-offer`. Provad ner och upp igen.
+- 421 tester och 118 databastester. ADR 0032 är byggd, utom skadebesked.
+
 **Nästa steg**
-1. Meddelanden, del 3 (ADR 0032): erbjudande om överlåtelse (kräver en händelse när ett förslag skapas), bolagets texter per marknad och typer som kan stängas av.
+1. ADR om leverans av händelser till bolagets system (webhooks). I dag beskriver kontraktet `claim.registered` och `claim.decided` under `webhooks`, men reläet bara loggar.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**

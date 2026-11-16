@@ -30,8 +30,8 @@ import { PostgresAnimalStore } from '@petvold/animals/postgres';
 import { InMemoryPartyStore, InMemoryRetentionStore, PartyService, RetentionService, type PartyStore } from '@petvold/parties';
 import { PostgresPartyStore, PostgresRetentionStore } from '@petvold/parties/postgres';
 import { InMemoryPolicyStore, PolicyService, type PolicyStore } from '@petvold/policies';
-import { CommunicationsService, InMemoryNoticeStore, type NoticeStore } from '@petvold/communications';
-import { PostgresNoticeStore } from '@petvold/communications/postgres';
+import { CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, type NoticeStore } from '@petvold/communications';
+import { PostgresNoticeSettingsStore, PostgresNoticeStore } from '@petvold/communications/postgres';
 import { PostgresPolicyStore } from '@petvold/policies/postgres';
 import { tariffCoverage } from '@petvold/pricing-core';
 import { underwritingCoverage } from '@petvold/underwriting-core';
@@ -166,7 +166,14 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   // Notices to the customer (ADR 0032), made from the policy module's events below.
   const communicationsPool = pool('communications', 2);
   const noticeStore: NoticeStore = communicationsPool ? new PostgresNoticeStore(communicationsPool) : new InMemoryNoticeStore();
-  const communications = new CommunicationsService({ store: noticeStore, policies: policySource(policies), parties: partySource(parties), clock, ids });
+  const communications = new CommunicationsService({
+    store: noticeStore,
+    settings: communicationsPool ? new PostgresNoticeSettingsStore(communicationsPool) : new InMemoryNoticeSettingsStore(),
+    policies: policySource(policies),
+    parties: partySource(parties),
+    clock,
+    ids,
+  });
 
   const service = new ClaimsService({
     policies,

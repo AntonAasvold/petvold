@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CommunicationsError, CommunicationsService, InMemoryNoticeStore, NOTICE_RULES, type PolicyView, type SourceEvent, type TermView, type TransactionView } from '../src/index.ts';
+import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_RULES, type PolicyView, type SourceEvent, type TermView, type TransactionView } from '../src/index.ts';
 
 const vetCare = { code: 'vet_care', annualLimit: 6_000_000, waitingPeriodDays: 30 };
 const term = (termNo: number, o: Partial<TermView> = {}): TermView => ({
@@ -41,7 +41,10 @@ function setup(o: { language?: string; policy?: Partial<PolicyView>; transaction
         id === 'app_1'
           ? { id, market: 'SE', animalId: 'ani_old', policyholderPartyId: 'pty_lena', productVersion: 'SE-UW@1', reasons: ['too-old'], decidedBy: 'rules' }
           : null,
+      proposal: async (id) =>
+        id === 'ppr_1' ? { id, kind: 'transfer', fromPartyId: 'pty_anna', toPartyId: 'pty_bo', from: '2027-06-01', deadline: '2027-07-10' } : null,
     },
+    settings: new InMemoryNoticeSettingsStore(),
     parties: { languageOf: async (id) => (id === 'pty_anna' ? o.language : undefined) },
     clock: { now: () => now },
     ids: { next: (p) => `${p}_${++n}` },
@@ -164,4 +167,41 @@ test('the document system reports a delivery: sent with evidence, or failed with
   assert.deepEqual(await s.list({ attention: true }), []);
   assert.deepEqual((await s.list({ late: true })).map((x) => x.id), [n.id]);
   assert.deepEqual((await s.list({ status: 'sent', attention: true })), []);
+});
+
+test('a sold animal\'s new owner gets the offer to take over the policy; a death gives no notice', async () => {
+  const { s } = setup();
+  const offer = (await s.handlePolicyEvent(event('proposal.created', { proposalId: 'ppr_1', kind: 'transfer' })))!;
+  assert.deepEqual([offer.type, offer.recipientPartyId, offer.legalBasis, offer.dueBy], ['transfer-offer', 'pty_bo', [], '2026-11-19']);
+  assert.deepEqual([offer.content.proposalId, offer.content.from, offer.content.deadline, offer.content.fromPartyId, offer.content.productVersion], ['ppr_1', '2027-06-01', '2027-07-10', 'pty_anna', 'SE-HUND@1']);
+  assert.equal(await s.handlePolicyEvent(event('proposal.created', { proposalId: 'ppr_2', kind: 'cancel-death' }, { id: 'pev_death' })), null);
+});
+
+test('the insurer\'s settings: versions, promptly days, optional types turned off and texts in the notice (ADR 0032)', async () => {
+  const { s } = setup({ transactions: { ptx_c: { type: 'cancel', cancellation: { reason: 'withdrawal', receivedOn: '2026-11-16', effectiveDate: '2026-11-17', refund: { amount: 0, currency: 'SEK' } } } } });
+  const v1 = await s.settings();
+  assert.deepEqual([v1.version, v1.markets, v1.changedBy], [1, { SE: {} }, 'petvold-defaults']);
+  const declined = (await s.handlePolicyEvent(event('application.declined', {}, { id: 'pev_d1', policyId: undefined, applicationId: 'app_1' })))!;
+  assert.equal(declined.settingsVersion, 1);
+  // Without the insurer's text on review, the refusal cannot be sent as it is: it is in the queue.
+  assert.deepEqual([(await s.get(declined.id)).incomplete, (await s.list({ attention: true })).map((n) => n.id)], [['review'], [declined.id]]);
+
+  const change = (markets: unknown, basedOnVersion = 1) => s.changeSettings({ markets: markets as never, basedOnVersion, reason: 'Texts for Sweden' }, 'comms');
+  await rejects(change({ SE: { disabledTypes: ['application-declined'] } }), 'validation', /required by law/);
+  await rejects(change({ SE: { promptlyDays: 0 } }), 'validation', /1-30/);
+  await rejects(change({ XX: {} }), 'validation', /no notice rules/);
+  await rejects(change({ SE: { texts: { swe: { review: 'x' } } } }), 'validation', /ISO 639-1/);
+  await rejects(change({ SE: { texts: { sv: { footer: 'x' } } } }), 'validation', /Unknown texts/);
+  await rejects(change({}, 7), 'conflict', /version 1, not 7/);
+  await rejects(s.changeSettings({ markets: {}, basedOnVersion: 1, reason: ' ' }, 'comms'), 'validation', /reason/);
+  const review = 'Contact our complaints function first. You can also turn to the consumer insurance bureau or the national board for consumer disputes.';
+  const v2 = await change({ SE: { promptlyDays: 5, disabledTypes: ['cancellation-confirmation'], texts: { sv: { sender: 'Example Insurance', review } } } });
+  assert.equal(v2.version, 2);
+  assert.deepEqual((await s.settingsVersions()).map((v) => v.version), [1, 2]);
+
+  const again = (await s.handlePolicyEvent(event('application.declined', {}, { id: 'pev_d2', policyId: undefined, applicationId: 'app_1' })))!;
+  assert.deepEqual([again.settingsVersion, again.dueBy, again.content.review, again.content.sender, (await s.get(again.id)).incomplete], [2, '2026-11-21', review, 'Example Insurance', undefined]);
+  assert.equal(await s.handlePolicyEvent(event('policy.cancelled', { transactionId: 'ptx_c' })), null, 'turned off');
+  // The notice made before keeps what it was made with.
+  assert.equal((await s.get(declined.id)).content.review, undefined);
 });

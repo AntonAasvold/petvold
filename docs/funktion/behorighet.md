@@ -59,8 +59,9 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `policies:write` | Teckna, ändra, förnya, avsluta och återkalla avslut av policyer, och besvara förslag, och hantera grupper | `POST /v1/policies`, `POST /v1/policy-groups`, `.../members`, `.../changes`, `.../renewals`, `.../cancellations`, `.../reinstatements`, `POST /v1/policy-proposals/{id}/acceptances`, `.../rejections` |
 | `policies:renew` | Schemalagda körningar: förnyelse, avslut av överlåtelser som inte godkändes i tid, och utgång av ansökningar | `POST /v1/renewal-runs`, `POST /v1/proposal-expiry-runs`, `POST /v1/application-expiry-runs` |
 | `policies:underwrite` | Besluta om en ansökan i kön för manuell prövning: godkänna, med eller utan förbehåll, eller avslå med skälskod (ADR 0031) | `POST /v1/applications/{id}/decisions` |
-| `notices:read` | Läsa kundmeddelanden och deras utskick (ADR 0032). Meddelandena har partens id, inte namn eller adress. | `GET /v1/notices`, `.../{id}` |
+| `notices:read` | Läsa kundmeddelanden och deras utskick (ADR 0032), och bolagets inställningar för dem. Meddelandena har partens id, inte namn eller adress. | `GET /v1/notices`, `.../{id}`, `GET /v1/notice-settings`, `.../versions` |
 | `notices:deliver` | Rapportera att ett meddelande skickades, med dokumentets id och kontrollsumma, eller att utskicket misslyckades | `POST /v1/notices/{id}/deliveries` |
+| `notices:configure` | Ändra bolagets inställningar för meddelanden: texter, dagar för "snarast" och typer som stängs av | `POST /v1/notice-settings/versions` |
 | `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/access/roles`, `.../versions` |
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/access/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
@@ -84,6 +85,7 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `policy-registrar` | `policies:read`, `policies:write`, `policies:quote`, `animals:read`, `parties:read`, `catalog:read`, `notices:read` | – | Tecknar policyer, till exempel säljkanal eller kundservice |
 | `underwriter` | `policies:read`, `policies:write`, `policies:quote`, `policies:price-override`, `policies:underwrite`, `animals:read`, `parties:read`, `catalog:read`, `notices:read` | – | Beslutar om ansökningar och priser som behöver en person, till exempel manuellt pris |
 | `document-service` | `notices:read`, `notices:deliver`, `parties:read`, `policies:read`, `catalog:read` | – | Bolagets dokumentsystem: hämtar meddelanden, gör och skickar dokumenten och rapporterar utskicken (ADR 0032) |
+| `communications-manager` | `notices:read`, `notices:configure` | – | Skriver bolagets texter i meddelandena och ändrar inställningarna, till exempel compliance eller kundkommunikation |
 | `renewal-job` | `policies:renew` | – | Schemalagd förnyelse, avslut av överlåtelser som inte godkändes i tid och utgång av ansökningar |
 | `privacy-officer` | `parties:read`, `parties:privacy`, `parties:erase`, `parties:retention` | – | Dataskyddsansvarig. Två personer behövs för att anonymisera. |
 | `retention-job` | `parties:retention` | – | Schemalagd gallringskörning. Begär bara, och en dataskyddsansvarig godkänner. |
@@ -215,6 +217,7 @@ Dev-servern har de här tokens:
 | `dev-seller` | tecknar, förnyar och avslutar policyer | SE |
 | `dev-underwriter` | beslutar om ansökningar och manuella priser | SE |
 | `dev-documents` | bolagets dokumentsystem | SE |
+| `dev-communications` | bolagets inställningar för meddelanden | SE |
 | `dev-renewal-job` | förnyelsekörning | alla |
 | `dev-clinic` | klinik | SE, klinik `clinic_001` |
 | `dev-job` | omprövningsjobb | alla marknader |

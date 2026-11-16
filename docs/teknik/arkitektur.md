@@ -252,6 +252,8 @@ Händelser skrivs till `claims.outbox` i samma transaktion som ändringen (ADR 0
 - **Minst en gång.** `communications.notice` har `unique (source_event_id, type)`, och `PostgresNoticeStore.add` gör `on conflict do nothing`. Ett relä som levererar igen ger inget nytt.
 - **Inget ändras.** Tjänsterollen `communications_service` får bara läsa och lägga till i `notice` och `delivery`. En check-constraint kräver att ett lyckat utskick har kanal, tid, dokument-id och kontrollsumma, och att ett misslyckat har ett skäl.
 - **Status räknas vid läsning** i `viewOf`: `sent` om något utskick lyckades, annars `failed` om något rapporterats, annars `pending`. `late` och `overdue` räknas i marknadens datum mot `dueBy`. Statusfiltret i `list` görs i SQL med `exists`, och flaggorna i tjänsten.
+- **Bolagets inställningar (migration 0032):** `communications.notice_settings` har versioner som bara läggs till, som gallringens inställning. `CommunicationsService.settings` lägger in version 1 från förvalen första gången. `handlePolicyEvent` läser inställningen som gäller och kopierar `sender` och de texter typen kräver (`REQUIRED_TEXTS`) till innehållet. Meddelandet sparar versionen i `settings_version`. `viewOf` räknar `incomplete` från innehållet.
+- **Erbjudande om överlåtelse:** policymodulen skriver `proposal.created` i samma transaktion som förslaget (`PolicyStore.addProposal(p, events)`). Meddelandemodulen läser förslaget via `PolicySource.proposal`.
 - **Omfång** i `app.ts` (`seesNotice`): anroparens marknader, och för en roll bunden till policyer bara meddelanden med en av dess policyer. En klinik ser inga.
 
 ## API

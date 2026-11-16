@@ -135,6 +135,11 @@ export function policySource(policies: PolicyService): PolicySource {
         decidedBy: byPerson ? 'person' : 'rules',
       };
     },
+    async proposal(proposalId) {
+      const p = await orNull(policies.getProposal(proposalId));
+      if (!p || p.kind !== 'transfer' || !('toPartyId' in p.details)) return null;
+      return { id: p.id, kind: p.kind, fromPartyId: p.details.fromPartyId, toPartyId: p.details.toPartyId, from: p.details.from, deadline: p.deadline! };
+    },
   };
 }
 

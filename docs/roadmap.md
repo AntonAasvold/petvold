@@ -81,7 +81,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] ADR om dokument och meddelanden till kunden: förköpsinformation, villkor, försäkringsbrev, besked om förnyelse och uppsägning (F2), ADR 0032
 - [x] Produktens dokument med kontrollsumma, och godkännandet anger vilka som visades (ADR 0032)
 - [x] Meddelandemodulen `communications`: kundmeddelanden från policyhändelserna, rapporter om utskick och kö (ADR 0032)
-- [ ] Meddelanden, del 3: erbjudande om överlåtelse, bolagets texter per marknad (prövning av beslut, avsändare, sista dag för "snarast") och typer som kan stängas av (ADR 0032)
+- [x] Meddelanden, del 3: erbjudande om överlåtelse, bolagets texter per marknad (prövning av beslut, avsändare, sista dag för "snarast") och typer som kan stängas av (ADR 0032)
+- [ ] ADR om leverans av händelser till bolagets system: webhooks med prenumerationer, signatur, CloudEvents och AsyncAPI (ADR 0008, granskningen C1)
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
 
 **M4 – Pris och teckning**
