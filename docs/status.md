@@ -69,9 +69,17 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - **`lint:openapi` kontrollerar reglerna** med `conventions.ts`. De 29 avvikelser som finns står i `KNOWN_DEVIATIONS`. Listan kan bara krympa.
   - **`/v1` rättas direkt** tills första kanalen är i drift. Därefter krävs `/v2` för en brytande ändring.
 
+- Adresserna rättade enligt konventionerna (ADR 0034), PR #74. `KNOWN_DEVIATIONS` är tom:
+  - `/v1/settings/roles`, `/v1/settings/retention` och `/v1/settings/notices` i stället för `/v1/access/roles`, `/v1/retention-settings` och `/v1/notice-settings`
+  - `/v1/animal-summaries`, `/v1/parties/searches` och `/v1/product-versions?onSale=` i stället för `/v1/animal-lookup`, `/v1/party-searches` och `/v1/products/on-sale?date=`
+  - `/v1/policies/{policyId}/limits` utan djuret, och `getLimits(policyId, onDate)` i skademotorn
+  - `.../sales-endings`, `.../members/{policyId}/endings` och `/v1/policy-proposal-expiry-runs`
+  - `status` i stället för `state` för skadornas köer, och `policyholderPartyId` för grupper
+  - mönster för skadornas id (`clm_`) och beslutsförslag (`prp_`)
+  - ett fel i kontraktet rättat: parametrarna till produkter till salu låg i fel ordning, så `date` saknade `in`
+
 **Nästa steg**
-1. Rätta adresserna enligt konventionerna, så att `KNOWN_DEVIATIONS` blir tom.
-2. Gå igenom dokumentationen.
+1. Gå igenom dokumentationen.
 3. Ta ställning till ADR 0033 om webhooks.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 

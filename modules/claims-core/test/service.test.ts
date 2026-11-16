@@ -55,7 +55,7 @@ test('a small claim is settled automatically, booked and opens a deductible peri
   assert.equal(store.dump().periods.length, 1);
   assert.deepEqual((await store.pendingEvents(10)).map((e) => e.event.type), ['claim.registered', 'claim.decided', 'claim.payout_ordered']);
 
-  const limits = await service.getLimits('pol_bella', 'ani_bella', '2026-11-13');
+  const limits = await service.getLimits('pol_bella', '2026-11-13');
   assert.equal(limits.consumed, 150_000);
   assert.equal(limits.remaining, 6_000_000 - 150_000);
   assert.equal(limits.currency, 'SEK');
@@ -101,7 +101,7 @@ test('a decision on a stale basis is rejected', async () => {
 test('retroactive policy change: reassessment books only the difference, and knownAt shows the old picture', async () => {
   const { service, store, policies, clock } = setup();
   await service.registerClaim(otitisClaim()); // SEK 1,500
-  assert.equal((await service.getLimits('pol_bella', 'ani_bella', '2026-06-04')).consumed, 150_000);
+  assert.equal((await service.getLimits('pol_bella', '2026-06-04')).consumed, 150_000);
 
   // On 20 June a change is recorded that applies from 1 April: a lower variable deductible.
   policies.supersede('pv_bella_v4', '2026-06-20T10:00:00Z');
@@ -127,7 +127,7 @@ test('retroactive policy change: reassessment books only the difference, and kno
   assert.equal(journals.length, 2);
   assert.equal(journals[1]!.lines[0]!.amount, 20_000); // only the difference
   assertBalanced(store);
-  assert.equal((await service.getLimits('pol_bella', 'ani_bella', '2026-06-04')).consumed, 170_000);
+  assert.equal((await service.getLimits('pol_bella', '2026-06-04')).consumed, 170_000);
 
   // No change in the basis => no new decision
   assert.equal(await service.reassess('clm_021877', 'system', 'igen'), null);
@@ -167,7 +167,7 @@ test('rejection on reassessment reverses the full amount and closes the deductib
   const d = await service.reassess('clm_021877', 'system', 'Rider recorded retroactively');
   assert.equal(d!.outcome, 'rejected');
   assert.equal(d!.payout, 0);
-  assert.equal((await service.getLimits('pol_bella', 'ani_bella', '2026-06-04')).consumed, 0);
+  assert.equal((await service.getLimits('pol_bella', '2026-06-04')).consumed, 0);
   assert.equal(store.dump().periods.length, 0);
   assertBalanced(store);
 });

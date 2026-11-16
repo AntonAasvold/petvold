@@ -53,7 +53,7 @@ Ett id är ett prefix, ett understreck och bokstäver och siffror, till exempel 
 | `rvw_` | begäran om prövning | `po_` | utbetalningsorder |
 | `jrn_` | journal i ledgern | `dp_` | självriskperiod |
 
-Ett nytt prefix har två till fyra bokstäver och läggs till i tabellen.
+Ett nytt prefix har två till fyra bokstäver och läggs till i tabellen. En skadas id väljs av den som anmäler skadan och får också innehålla `_`, till exempel `clm_otit_204311`.
 
 ## Versioner
 

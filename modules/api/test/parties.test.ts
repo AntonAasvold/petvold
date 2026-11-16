@@ -65,7 +65,7 @@ test('a person is registered, found by personal number and changed, and the numb
   assert.deepEqual(res.body.identifiers.map((i: any) => [i.value, i.masked]), [['20990101-****', true]]);
   assert.ok(!JSON.stringify(res.body).includes('209901011230'));
 
-  const found = await call('POST', '/v1/party-searches', 'handler', { ...PNR, value: '209901011230' });
+  const found = await call('POST', '/v1/parties/searches', 'handler', { ...PNR, value: '209901011230' });
   assert.equal(found.status, 200);
   assert.deepEqual(found.body.items.map((p: any) => p.id), [res.body.id]);
   assert.ok(!JSON.stringify(found.body).includes('209901011230'));
@@ -92,7 +92,7 @@ test('scope: markets, bound roles and permissions', async () => {
   const call = setup();
   const p = (await call('POST', '/v1/parties', 'registrar', anna)).body;
   assert.equal((await call('GET', `/v1/parties/${p.id}`, 'registrarDe')).status, 404);
-  assert.deepEqual((await call('POST', '/v1/party-searches', 'registrarDe', PNR)).body.items, []);
+  assert.deepEqual((await call('POST', '/v1/parties/searches', 'registrarDe', PNR)).body.items, []);
   assert.equal((await call('POST', '/v1/parties', 'registrarDe', { ...anna, identifiers: [] })).status, 403);
   assert.equal((await call('GET', `/v1/parties/${p.id}`, 'bound')).status, 404);
   assert.equal((await call('POST', '/v1/parties', 'bound', { ...anna, identifiers: [] })).status, 403);
@@ -108,7 +108,7 @@ test('errors: duplicate numbers, invalid numbers and details, unknown parties', 
   assert.equal((await call('POST', '/v1/parties', 'registrar', { ...anna, identifiers: [{ ...PNR, value: '20990101-1231' }] })).status, 422);
   assert.equal((await call('POST', '/v1/parties', 'registrar', { ...anna, name: 'Anna AB', identifiers: [] })).status, 422);
   assert.equal((await call('POST', '/v1/parties', 'registrar', { ...anna, ssn: 'x' })).status, 422);
-  assert.equal((await call('POST', '/v1/party-searches', 'handler', { type: 'personal-number', value: '1' })).status, 422);
+  assert.equal((await call('POST', '/v1/parties/searches', 'handler', { type: 'personal-number', value: '1' })).status, 422);
   assert.equal((await call('GET', '/v1/parties/pty_none', 'handler')).status, 404);
   assert.equal((await call('PUT', '/v1/parties/pty_none', 'registrar', { basedOnRevision: 1, reason: 'x', givenName: 'A', familyName: 'B' })).status, 404);
 });
@@ -135,7 +135,7 @@ test('erasure: requested by one officer, approved by another, and the party is a
   assert.deepEqual([gone.anonymized, gone.givenName, gone.email, gone.identifiers], [true, undefined, undefined, []]);
   const revs = (await call('GET', `/v1/parties/${p.id}/revisions`, 'handler')).body.items;
   assert.ok(!JSON.stringify(revs).includes('Anna'));
-  assert.deepEqual((await call('POST', '/v1/party-searches', 'handler', PNR)).body.items, []);
+  assert.deepEqual((await call('POST', '/v1/parties/searches', 'handler', PNR)).body.items, []);
   assert.equal((await call('PUT', `/v1/parties/${p.id}`, 'registrar', { basedOnRevision: 1, reason: 'x', givenName: 'A', familyName: 'B' })).status, 409);
 });
 
@@ -147,7 +147,7 @@ test('erasure: a rejected request from the data subject hides the party from eve
   const no = await call('POST', `/v1/erasure-requests/${req.id}/rejections`, 'officerA', { reason: 'Claim within the ten-year limit', restrictUntil: '2036-11-15' });
   assert.equal(no.status, 201);
   assert.equal((await call('GET', `/v1/parties/${p.id}`, 'handler')).status, 404);
-  assert.deepEqual((await call('POST', '/v1/party-searches', 'handler', PNR)).body.items, []);
+  assert.deepEqual((await call('POST', '/v1/parties/searches', 'handler', PNR)).body.items, []);
   const seen = await call('GET', `/v1/parties/${p.id}`, 'officerB');
   assert.deepEqual([seen.status, seen.body.restrictedUntil, seen.body.givenName], [200, '2036-11-15', 'Anna']);
   assert.equal((await call('POST', `/v1/erasure-requests/${req.id}/approvals`, 'officerB', {})).status, 409); // already decided
@@ -156,15 +156,15 @@ test('erasure: a rejected request from the data subject hides the party from eve
 
 test('retention: settings as versions, and a run asks for anonymization of parties past their retention', async () => {
   const call = setup();
-  const v1 = await call('GET', '/v1/retention-settings', 'officerA');
+  const v1 = await call('GET', '/v1/settings/retention', 'officerA');
   assert.deepEqual([v1.status, v1.body.version, v1.body.markets], [200, 1, { SE: { years: 10 } }]);
-  assert.equal((await call('GET', '/v1/retention-settings', 'handler')).status, 403);
-  assert.equal((await call('POST', '/v1/retention-settings/versions', 'job', { basedOnVersion: 1, markets: {}, reason: 'x' })).status, 403);
-  assert.equal((await call('POST', '/v1/retention-settings/versions', 'officerA', { basedOnVersion: 1, markets: { SE: { years: 0 } }, reason: 'x' })).status, 422);
-  const v2 = await call('POST', '/v1/retention-settings/versions', 'officerA', { basedOnVersion: 1, markets: { SE: { years: 10 }, DE: { years: 10 } }, reason: 'Germany added' });
+  assert.equal((await call('GET', '/v1/settings/retention', 'handler')).status, 403);
+  assert.equal((await call('POST', '/v1/settings/retention/versions', 'job', { basedOnVersion: 1, markets: {}, reason: 'x' })).status, 403);
+  assert.equal((await call('POST', '/v1/settings/retention/versions', 'officerA', { basedOnVersion: 1, markets: { SE: { years: 0 } }, reason: 'x' })).status, 422);
+  const v2 = await call('POST', '/v1/settings/retention/versions', 'officerA', { basedOnVersion: 1, markets: { SE: { years: 10 }, DE: { years: 10 } }, reason: 'Germany added' });
   assert.equal(v2.status, 201);
-  assert.equal((await call('POST', '/v1/retention-settings/versions', 'officerA', { basedOnVersion: 1, markets: {}, reason: 'x' })).status, 409);
-  assert.deepEqual((await call('GET', '/v1/retention-settings/versions', 'officerB')).body.items.map((v: any) => v.version), [1, 2]);
+  assert.equal((await call('POST', '/v1/settings/retention/versions', 'officerA', { basedOnVersion: 1, markets: {}, reason: 'x' })).status, 409);
+  assert.deepEqual((await call('GET', '/v1/settings/retention/versions', 'officerB')).body.items.map((v: any) => v.version), [1, 2]);
 
   call.clock.set('2014-03-01T10:00:00.000Z');
   const old = (await call('POST', '/v1/parties', 'registrar', { ...anna, identifiers: [] })).body;
