@@ -1,7 +1,7 @@
 /** Shared PolicyStore tests, run against every implementation. */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PolicyConflictError, type Policy, type PolicyEvent, type PolicyStore, type PolicyTransaction, type PolicyVersion, type Proposal, type Term } from '../src/index.ts';
+import { PolicyConflictError, type Application, type Policy, type PolicyEvent, type PolicyStore, type PolicyTransaction, type PolicyVersion, type Proposal, type Term } from '../src/index.ts';
 
 export type PolicyStoreFactory = () => Promise<{ store: PolicyStore; cleanup?: () => Promise<void> }>;
 
@@ -255,6 +255,66 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
       const d = issued(4, { animalId: 'ani_bella' });
       await store.issue(d.policy, d.term, d.version, d.transaction, []);
       assert.deepEqual(await store.findByAnimal('ani_rex'), ['pol_t1', 'pol_t3']);
+    });
+
+    it('an application is stored alone, or with the policy it issued, and found by its filters (ADR 0031)', async (store) => {
+      const app = (id: string, o: Partial<Application> = {}): Application => ({
+        id,
+        market: 'SE',
+        animalId: 'ani_rex',
+        policyholderPartyId: 'pty_anna',
+        productVersion: 'SE-TEST@1',
+        startDate: '2026-12-01',
+        vetCare: { deductible: 'standard' },
+        acceptance: { channel: 'web', reference: 's1', acceptedAt: '2026-11-15T09:58:00.000Z', receivedAt: at },
+        premium: { amount: 480_000, currency: 'SEK' },
+        status: 'referred',
+        underwriting: {
+          input: { market: 'SE', species: 'dog', birthDate: '2024-03-01', startDate: '2026-12-01', answers: [{ question: 'ongoing-symptoms', value: true }] },
+          result: {
+            outcome: 'refer',
+            riders: [],
+            reasons: ['ongoing-symptoms'],
+            checks: [{ code: 'answer', result: 'refer', basis: 'ongoing-symptoms', reason: 'ongoing-symptoms' }],
+            facts: { ageDays: 1005, ageYears: 2 },
+            rules: { series: 'SE-UW', version: 1, checksum: 'u' },
+            inputHash: 'h',
+          },
+          engineVersion: 'test',
+        },
+        receivedBy: 'seller',
+        receivedAt: at,
+        ...o,
+      });
+      const referred = app('app_1');
+      await store.addApplication(referred, [{ id: 'pev_a1', type: 'application.referred', applicationId: 'app_1', occurredAt: at, data: {} }]);
+      assert.deepEqual(await store.getApplication('app_1'), referred);
+      await assert.rejects(store.addApplication(referred, []), PolicyConflictError);
+
+      const t = issued();
+      t.transaction.issue = { acceptance: referred.acceptance, applicationId: 'app_2' };
+      const accepted = app('app_2', { status: 'accepted', policyId: 'pol_t1', animalId: 'ani_bella', groupId: 'pgr_1', campaignCode: 'PUPPY' });
+      const { vetCare: _v, ...noChoices } = app('app_3', { status: 'declined', policyholderPartyId: 'pty_bo', receivedAt: '2026-11-15T11:00:00.000Z' });
+      await store.issue(t.policy, t.term, t.version, t.transaction, [{ id: 'pev_a2', type: 'policy.issued', policyId: 'pol_t1', occurredAt: at, data: { applicationId: 'app_2' } }], accepted);
+      await store.addApplication(noChoices, []);
+      assert.deepEqual(await store.getApplication('app_2'), accepted);
+      assert.deepEqual(await store.getApplication('app_3'), noChoices);
+      assert.deepEqual((await store.transactions('pol_t1'))[0]!.issue, t.transaction.issue);
+      assert.equal(await store.getApplication('app_none'), null);
+
+      const ids = async (f: Parameters<PolicyStore['listApplications']>[0]) => (await store.listApplications(f)).map((a) => a.id);
+      assert.deepEqual(await ids({}), ['app_1', 'app_2', 'app_3']);
+      assert.deepEqual(await ids({ status: 'referred' }), ['app_1']);
+      assert.deepEqual(await ids({ animalId: 'ani_bella' }), ['app_2']);
+      assert.deepEqual(await ids({ policyholderPartyId: 'pty_bo' }), ['app_3']);
+      assert.deepEqual(await ids({ market: 'DE' }), []);
+      assert.deepEqual(
+        (await store.pendingEvents(10)).map((e) => [e.id, e.policyId, e.applicationId]),
+        [
+          ['pev_a1', undefined, 'app_1'],
+          ['pev_a2', 'pol_t1', undefined],
+        ],
+      );
     });
   });
 }

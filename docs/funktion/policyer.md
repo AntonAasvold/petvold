@@ -23,7 +23,9 @@ Därför går det alltid att svara på vad som gällde en viss dag, och vad som 
 
 ## Teckna en policy
 
-`POST /v1/policies` med djur, försäkringstagare, produktversion, startdag, val och premie.
+`POST /v1/policies` med djur, försäkringstagare, produktversion, startdag, val, premie och kundens godkännande (`acceptance`).
+
+En produkt med teckningsregler (`underwritingSeries`) tecknas inte så. Den kräver en ansökan med svar på hälsofrågorna, `POST /v1/applications`, och `POST /v1/policies` svarar `422`. Se [Teckning](teckning.md#ansökan).
 
 Petvold kontrollerar att:
 - djuret finns i marknaden och lever
@@ -31,10 +33,13 @@ Petvold kontrollerar att:
 - produktversionen säljs på startdagen, i marknaden och för djurets art
 - valen finns i produkten. Ett utelämnat val ger produktens förval.
 - premien är i produktens valuta
+- godkännandet har en kanal och en tid som inte ligger i framtiden
 - **startdagen inte ligger före dagen för tecknandet**
 - **djuret inte redan har en policy** för någon av dagarna (`409`)
 
-Termens längd kommer från produkten (`policy.termMonths`, förval 12 månader). Den får inte vara längre än marknaden tillåter, i Sverige ett år (FAL 3 kap. 2 §). Transaktionen går igenom stegen utkast, prissatt, riskbedömd och utfärdad. **Premien** räknas med produktens tariff ([Pris](pris.md#priset-på-policyn)). För en produkt utan tariff anger anroparen den. Tills teckningsreglerna finns godkänns alla ansökningar, och stegen visar det.
+Termens längd kommer från produkten (`policy.termMonths`, förval 12 månader). Den får inte vara längre än marknaden tillåter, i Sverige ett år (FAL 3 kap. 2 §). Transaktionen går igenom stegen utkast, prissatt, riskbedömd och utfärdad. **Premien** räknas med produktens tariff ([Pris](pris.md#priset-på-policyn)). För en produkt utan tariff anger anroparen den. Steget riskbedömd visar om teckningsregler prövades och vilken version som godkände.
+
+**Kundens godkännande (ADR 0031).** `acceptance` har kanalen (till exempel `web`, `app`, `phone` eller `paper`), en referens om kanalen har en, till exempel ett sessions-id eller en signering, och tiden då kunden godkände. Petvold lägger till tiden då anropet kom fram, och sparar godkännandet på transaktionen (`issue.acceptance`). Tiden från kanalen får ligga högst fem minuter efter Petvolds klocka, eftersom klockorna kan skilja sig åt. Godkännandet gäller produktversionen och priset i svaret. Förköpsinformationen och villkoren som visades sparas när dokument finns (F2).
 
 ## Ändra val under termen
 
@@ -141,7 +146,7 @@ En **grupp** samlar policyer för en kull eller ett hushåll (ADR 0007). Gruppen
 
 **Skador omprövas.** När versioner ersätts, till exempel vid ett avslut bakåt i tiden, en överlåtelse eller en återkallelse, omprövar skademotorn varje skada vars senaste beslut fattades på en ersatt version. Om underlaget har ändrats blir det ett nytt automatiskt beslut, och ledgern bokför bara skillnaden. Om Rex dog 1 mars och en skada från 10 mars redan var ersatt, avslås den vid omprövningen, och utbetalningen bokas tillbaka. Om avslutet återkallas omprövas skadan igen och godkänns.
 
-**Händelser:** varje ändring skriver händelser i samma transaktion: `policy.issued`, `policy.changed`, `policy.renewed`, `policy.transferred`, `policy.cancelled` (med upphörandedag och premie tillbaka), `policy.reinstated` och `policy.version_superseded` för varje ersatt version. Dev-servern skriver ut dem i loggen.
+**Händelser:** varje ändring skriver händelser i samma transaktion: `policy.issued`, `policy.changed`, `policy.renewed`, `policy.transferred`, `policy.cancelled` (med upphörandedag och premie tillbaka), `policy.reinstated` och `policy.version_superseded` för varje ersatt version. En ansökan ger `application.received` och sedan `application.accepted`, `application.referred` eller `application.declined`. `policy.issued` har ansökans id när policyn kom från en ansökan. Dev-servern skriver ut dem i loggen.
 
 **Exempel:** Rex dör 1 mars 2027, och Anna hör av sig 20 mars. Kundservice skickar `{ "reason": "need-ceased", "effectiveDate": "2027-03-01", "note": "Djuret har dött" }`. Policyn upphör från 1 mars, och premien för 1 mars till 1 december betalas tillbaka. En skada på Rex efter 1 mars avslås, eftersom policyn är avslutad.
 
@@ -149,7 +154,11 @@ En **grupp** samlar policyer för en kull eller ett hushåll (ADR 0007). Gruppen
 
 | Anrop | Rättighet | Gör |
 | --- | --- | --- |
-| `POST /v1/policies` | `policies:write` | Tecknar en policy |
+| `POST /v1/policies` | `policies:write` | Tecknar en policy på en produkt utan teckningsregler |
+| `POST /v1/applications` | `policies:write` | Ansökan på en produkt med teckningsregler ([Teckning](teckning.md#ansökan)) |
+| `GET /v1/applications?status=referred` | `policies:read` | Ansökningar. `referred` är kön för manuell prövning. |
+| `GET /v1/applications/{id}` | `policies:read` | En ansökan med underlaget |
+| `GET /v1/application-questions?productVersion=…&species=…` | `policies:quote` | Hälsofrågorna att ställa |
 | `POST /v1/policies/{id}/changes` | `policies:write` | Ändrar valen från en dag under termen |
 | `POST /v1/policies/{id}/renewals` | `policies:write` | Förnyar en policy för hand |
 | `POST /v1/renewal-runs` | `policies:renew` | Förnyelsekörningen |
@@ -178,7 +187,8 @@ POST /v1/policies
   "market": "SE", "animalId": "ani_rex", "policyholderPartyId": "pty_anna",
   "productVersion": "SE-HUND-VV-LIV@2026.2", "startDate": "2026-12-01",
   "vetCare": { "annualLimit": 3000000, "deductible": "standard" },
-  "premium": { "amount": 480000, "currency": "SEK" }
+  "premium": { "amount": 480000, "currency": "SEK" },
+  "acceptance": { "channel": "web", "reference": "sess-8f2c", "acceptedAt": "2026-11-15T09:58:00Z" }
 }
 ```
 
@@ -188,13 +198,14 @@ Svaret har en term från 1 december 2026 till 1 december 2027 (slutdagen räknas
 
 ## Vem ser vad
 
-- `policy-registrar` tecknar policyer, till exempel säljkanalen eller kundservice.
+- `policy-registrar` tecknar policyer och skickar ansökningar, till exempel säljkanalen eller kundservice.
+- `underwriter` ser kön för manuell prövning. Besluten kommer i nästa steg.
 - `handler` och `approver` kan läsa.
 - `customer-channel` ser bara policyerna i sin token.
 - Alla ser bara policyer i sina marknader. Kliniker ser inga policyer.
 
 ## Lokalt
 
-Dev-servern lägger in Bellas policy `pol_bella` första gången, med ägaren `pty_owner001` och förbehållet för hälta. Exemplet har bara den gällande termen. Token `dev-seller` tecknar policyer. Skademotorn läser policyerna från modulen.
+Dev-servern lägger in Bellas policy `pol_bella` första gången, med ägaren `pty_owner001` och förbehållet för hälta. Lenas tre ansökningar på `SE-HUND-PLUS@2026.1` finns också, en med varje utfall (se [Utvecklingsmiljö](../teknik/utvecklingsmiljo.md)). Exemplet har bara den gällande termen. Token `dev-seller` tecknar policyer. Skademotorn läser policyerna från modulen.
 
 *Inte byggt än:* nytt pris vid förnyelse och ändring (M4), ny karenstid för ett höjt försäkringsbelopp, grupprabatt (M4), gemensam faktura (M5), och att teckna en hel kull i ett anrop.

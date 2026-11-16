@@ -1,0 +1,38 @@
+{
+  "market": "SE",
+  "ageLimits": [{ "species": "dog", "minAgeDays": 42, "maxAgeYears": 9 }],
+  "questions": [
+    {
+      "id": "previous-illness",
+      "type": "diagnoses",
+      "labels": {
+        "sv": "Har hunden varit sjuk, skadad eller behandlad av veterinär de senaste två åren?",
+        "en": "Has the dog been ill, injured or treated by a vet in the last two years?"
+      }
+    },
+    {
+      "id": "ongoing-symptoms",
+      "type": "boolean",
+      "labels": {
+        "sv": "Har hunden symtom just nu som en veterinär inte har undersökt?",
+        "en": "Does the dog have symptoms right now that a vet has not examined?"
+      }
+    },
+    {
+      "id": "lameness",
+      "type": "boolean",
+      "species": ["dog"],
+      "labels": {
+        "sv": "Har hunden någon gång haltat?",
+        "en": "Has the dog ever been lame?"
+      }
+    }
+  ],
+  "answerRules": [
+    { "question": "previous-illness", "outcome": "decline", "reason": "heart-disease", "onlyFor": ["CAR-MITRAL", "CAR-DCM"] },
+    { "question": "previous-illness", "outcome": "rider", "reason": "previous-illness", "riderDescription": "Uppgiven vid ansökan" },
+    { "question": "ongoing-symptoms", "outcome": "refer", "reason": "ongoing-symptoms" },
+    { "question": "lameness", "outcome": "rider", "reason": "previous-lameness", "diagnosisCodes": ["ORT-HALTA-HB-H", "ORT-HALTA-HB-V"], "riderDescription": "Hälta, bakben" }
+  ],
+  "breedRules": []
+}

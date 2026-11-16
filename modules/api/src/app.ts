@@ -13,9 +13,11 @@ import {
   type ErasureRequest,
   type PartyRecord,
 } from '@petvold/parties';
-import { InMemoryPolicyStore, PolicyError, PolicyService, type PolicyGroup, type PolicyRecord, type Proposal } from '@petvold/policies';
+import { InMemoryPolicyStore, PolicyError, PolicyService, type Application, type ApplicationStatus, type PolicyGroup, type PolicyRecord, type Proposal } from '@petvold/policies';
 import { animalPort, claimsActivity, productPort } from './wiring.ts';
 import { tariffCoverage } from '@petvold/pricing-core';
+import { questionsFor, underwritingCoverage } from '@petvold/underwriting-core';
+import { marketDate } from '@petvold/common';
 import {
   CatalogError,
   CatalogService,
@@ -556,6 +558,10 @@ export function createApp(d: AppDeps) {
         if (!t) return null;
         return t.content.market === product.market && t.content.currency === product.currency ? [] : [`The price terms are for ${t.content.market} in ${t.content.currency}`];
       },
+      underwritingProblems: async (series, onDate, product) => {
+        const u = await decisioning.underwritingInForce(series, onDate);
+        return u ? underwritingCoverage(u.content, product) : null;
+      },
     });
   const withName = (c: Context, v: ProductVersion) => ({
     ...v,
@@ -827,6 +833,7 @@ export function createApp(d: AppDeps) {
       animals: animalPort(animals),
       parties,
       tariffs: decisioning,
+      underwriting: decisioning,
       clock: d.clock,
       ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
     });
@@ -851,6 +858,64 @@ export function createApp(d: AppDeps) {
       return problem(c, 403, 'Not permitted', 'The market is outside the caller\'s scope');
     }
     return idempotent(c, r.body, async () => ({ status: 201, body: await policies.issue(r.body, c.get('principal').subject, priceRights(c)) }));
+  });
+
+  // Applications for products with underwriting rules (ADR 0031). A role bound to
+  // a clinic or to policies neither applies nor sees applications.
+  const seesApplication = (scope: Scope, a: Application) => !scope.clinicId && !scope.policyIds && (scope.markets === '*' || scope.markets.has(a.market));
+
+  app.post('/v1/applications', async (c) => {
+    const r = await readJson(c, 'ApplicationRequest');
+    if (!r.ok) return r.res;
+    const scope = c.get('scope');
+    if (scope.clinicId || scope.policyIds || !(scope.markets === '*' || scope.markets.has(r.body.market))) {
+      return problem(c, 403, 'Not permitted', 'The market is outside the caller\'s scope');
+    }
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.apply(r.body, c.get('principal').subject, priceRights(c)) }));
+  });
+
+  app.get('/v1/applications', async (c) => {
+    const status = c.req.query('status');
+    if (status !== undefined && !['accepted', 'referred', 'declined'].includes(status)) return problem(c, 422, 'status is accepted, referred or declined');
+    const q = (k: string) => c.req.query(k);
+    const items = await policies.listApplications({
+      ...(status ? { status: status as ApplicationStatus } : {}),
+      ...(q('market') ? { market: q('market') } : {}),
+      ...(q('animalId') ? { animalId: q('animalId') } : {}),
+      ...(q('policyholderPartyId') ? { policyholderPartyId: q('policyholderPartyId') } : {}),
+    });
+    return sendPage(c, items.filter((a) => seesApplication(c.get('scope'), a)));
+  });
+
+  app.get('/v1/applications/:applicationId', async (c) => {
+    const id = c.req.param('applicationId');
+    const a = await policies.getApplication(id);
+    if (!seesApplication(c.get('scope'), a)) throw new PolicyError('not_found', `Application ${id} does not exist`);
+    return send(c, a);
+  });
+
+  // The questions a channel asks before an application (ADR 0031), from the rules in force.
+  app.get('/v1/application-questions', async (c) => {
+    const productVersion = c.req.query('productVersion') ?? '';
+    const species = c.req.query('species') ?? '';
+    const [product, version] = productVersion.split('@');
+    if (!product || !version || !species) return problem(c, 422, 'Give productVersion, e.g. SE-HUND-BAS@2026.1, and species');
+    const v = await products.get(product, version);
+    const scope = c.get('scope');
+    if (!(scope.markets === '*' || scope.markets.has(v.content.market))) return problem(c, 403, 'Not permitted', 'The market is outside the caller\'s scope');
+    const date = c.req.query('date') ?? marketDate(v.content.market, d.clock.now());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return problem(c, 422, 'date must be YYYY-MM-DD');
+    const series = v.content.underwritingSeries;
+    if (!series) return problem(c, 409, `${productVersion} has no underwriting rules`);
+    const rules = await decisioning.underwritingInForce(series, date);
+    if (!rules) return problem(c, 409, `The underwriting series ${series} has no published version in force on ${date}`);
+    const lang = c.req.header('accept-language');
+    return send(c, {
+      productVersion,
+      species,
+      rules: rules.ref,
+      questions: questionsFor(rules.content, species).map((q) => ({ id: q.id, type: q.type, label: labelFor(q.labels, lang), labels: q.labels })),
+    });
   });
 
   app.get('/v1/policies', async (c) => {

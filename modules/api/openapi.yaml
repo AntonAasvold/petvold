@@ -1252,8 +1252,11 @@ paths:
         policyholder must exist in the market, and the product version must be
         on sale on the start date and cover the animal's species. A policy never
         starts before the day it is issued, and an animal has one policy at a
-        time (`409`). The first term is one year. Until the tariff exists, the
-        caller gives the premium for the term.
+        time (`409`). The first term is one year. A product with a tariff is
+        priced by it; otherwise the caller gives the premium for the term.
+        The customer's `acceptance` is stored on the transaction (ADR 0031).
+        A product with underwriting rules answers `422`: send an application
+        (`POST /v1/applications`) instead. This operation is removed in /v2.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1360,6 +1363,125 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/applications:
+    post:
+      tags: [policies]
+      operationId: apply
+      x-permission: policies:write
+      summary: Apply for a policy on a product with underwriting rules
+      description: |
+        Requires the permission `policies:write` (ADR 0031). Takes what
+        `POST /v1/policies` takes, and the `answers` to the product's
+        underwriting questions (`GET /v1/application-questions`). The rules in
+        force today decide, and the application is stored with the evidence:
+        the questions answered, every check, the rules' version and checksum.
+
+        - `accepted`: the policy is issued in the same transaction, with any
+          riders on its first term. `policyId` points at it.
+        - `referred`: the application waits for a person (step 3).
+        - `declined`: stored with the reason codes, which the channel explains
+          to the customer (FAL 7 kap. 6 §).
+
+        All three answer `201`. A product without underwriting rules answers
+        `422`: issue the policy with `POST /v1/policies`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplicationRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The application
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Application' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    get:
+      tags: [policies]
+      operationId: listApplications
+      x-permission: policies:read
+      summary: Applications, oldest first
+      description: |
+        Requires the permission `policies:read`. `status=referred` is the queue
+        for manual underwriting. Only applications in the caller's markets; a
+        role bound to a clinic or to policies sees none.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [accepted, referred, declined] } }
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - { name: animalId, in: query, schema: { type: string } }
+        - { name: policyholderPartyId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The applications
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Application' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/applications/{applicationId}:
+    get:
+      tags: [policies]
+      operationId: getApplication
+      x-permission: policies:read
+      summary: An application with its evidence
+      description: Requires the permission `policies:read`. An application outside the caller's scope answers 404.
+      parameters:
+        - { name: applicationId, in: path, required: true, schema: { type: string, pattern: '^app_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The application
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Application' }
+
+  /v1/application-questions:
+    get:
+      tags: [policies]
+      operationId: applicationQuestions
+      x-permission: policies:quote
+      summary: The underwriting questions to ask for a product and a species
+      description: |
+        Requires the permission `policies:quote` (ADR 0031). The questions in
+        the underwriting rules in force on `date` (default today) for the
+        product version, in order, with the text in the caller's language
+        (`Accept-Language`) and in every language the rules have. The channel
+        asks them and sends the answers with the application. A product
+        without underwriting rules answers `409`.
+      parameters:
+        - { name: productVersion, in: query, required: true, schema: { type: string } }
+        - { name: species, in: query, required: true, schema: { type: string } }
+        - { name: date, in: query, schema: { $ref: '#/components/schemas/Date' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The questions
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplicationQuestions' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/quotes:
     post:
       tags: [policies]
@@ -1375,7 +1497,8 @@ paths:
         the zone) or a `postalCode`. A caller bound to a clinic or to policies,
         such as a customer portal, gives the facts and the postal code. The
         postal code is never returned, only its zone. A product without a
-        tariff gives `409`.
+        tariff gives `409`. With `answers`, the quote also runs the product's
+        underwriting rules and says what an application would lead to.
       requestBody:
         required: true
         content:
@@ -3570,6 +3693,7 @@ components:
         ruleSeries: { type: string, pattern: '^[A-Z0-9][A-Z0-9-]{1,63}$', description: 'The rule series claims are assessed with, e.g. SE-HUND-VV.' }
         priceTermsSeries: { type: string, description: 'The price terms series: discounts after the base price (ADR 0030). Only with tariffSeries. At review, a version must be in force when sales start.' }
         tariffSeries: { type: string, description: 'The tariff series that prices it (ADR 0030). Omitted: the premium is given by hand. At review, a version must be in force when sales start and cover every species, annual limit and deductible option.' }
+        underwritingSeries: { type: string, description: 'The underwriting rules series (ADR 0031): new policies are applied for with POST /v1/applications. Omitted: policies are issued directly. At review, a version must be in force when sales start, for the market and with age limits for every species.' }
         policy:
           type: object
           additionalProperties: false
@@ -3730,9 +3854,10 @@ components:
     IssuePolicyRequest:
       type: object
       additionalProperties: false
-      required: [market, animalId, policyholderPartyId, productVersion, startDate]
+      required: [market, animalId, policyholderPartyId, productVersion, startDate, acceptance]
       properties:
         market: { $ref: '#/components/schemas/Market' }
+        acceptance: { $ref: '#/components/schemas/AcceptanceInput' }
         animalId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
         policyholderPartyId: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' }
         productVersion: { type: string, description: 'e.g. SE-HUND-VV-LIV@2026.2' }
@@ -3756,6 +3881,186 @@ components:
         groupId: { type: string, pattern: '^pgr_[A-Za-z0-9]+$', description: A group the policy joins from its start; gives the group discount. }
         campaignCode: { type: string, maxLength: 32 }
 
+    AcceptanceInput:
+      type: object
+      additionalProperties: false
+      required: [channel, acceptedAt]
+      description: How the customer accepted the offer (ADR 0031). Petvold adds the time it received it.
+      properties:
+        channel: { type: string, minLength: 1, maxLength: 40, description: 'e.g. web, app, phone or paper.' }
+        reference: { type: string, maxLength: 200, description: 'e.g. a session id, a signing reference or a recording.' }
+        acceptedAt: { $ref: '#/components/schemas/DateTime', description: When the customer accepted, as the channel says. Not in the future. }
+
+    ApplicationRequest:
+      type: object
+      additionalProperties: false
+      required: [market, animalId, policyholderPartyId, productVersion, startDate, acceptance, answers]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        acceptance: { $ref: '#/components/schemas/AcceptanceInput' }
+        animalId: { type: string, pattern: '^ani_[A-Za-z0-9]+$' }
+        policyholderPartyId: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' }
+        productVersion: { type: string, description: 'e.g. SE-HUND-VV-LIV@2026.2' }
+        startDate: { $ref: '#/components/schemas/Date' }
+        vetCare:
+          type: object
+          additionalProperties: false
+          description: The customer's choices. Omitted ones get the product's defaults.
+          properties:
+            annualLimit: { $ref: '#/components/schemas/NonNegativeMoney' }
+            deductible: { type: string, description: A deductible option code from the product. }
+        premium:
+          type: object
+          additionalProperties: false
+          required: [amount, currency]
+          description: 'The premium for the whole term. Omitted: the product''s tariff prices it (ADR 0030). For a product with a tariff, a different premium is a manual price: it needs priceOverride and the permission policies:price-override. Required for a product without a tariff.'
+          properties:
+            amount: { $ref: '#/components/schemas/NonNegativeMoney' }
+            currency: { $ref: '#/components/schemas/Currency' }
+        priceOverride: { $ref: '#/components/schemas/PriceOverride' }
+        groupId: { type: string, pattern: '^pgr_[A-Za-z0-9]+$', description: A group the policy joins from its start; gives the group discount. }
+        campaignCode: { type: string, maxLength: 32 }
+        answers:
+          type: array
+          description: An answer to every question for the animal's species (GET /v1/application-questions).
+          items: { $ref: '#/components/schemas/UnderwritingAnswer' }
+
+    UnderwritingAnswer:
+      type: object
+      additionalProperties: false
+      required: [question, value]
+      properties:
+        question: { type: string }
+        value: { type: boolean }
+        diagnosisCodes: { type: array, minItems: 1, items: { type: string }, description: 'For a diagnoses question answered yes: the declared diagnoses (reference data).' }
+
+    UnderwritingResult:
+      type: object
+      required: [outcome, riders, reasons, checks, facts, inputHash]
+      properties:
+        outcome: { type: string, enum: [accept, accept-with-riders, refer, decline] }
+        riders:
+          type: array
+          items:
+            type: object
+            required: [diagnosisCodes, description, question, reason]
+            properties:
+              diagnosisCodes: { type: array, items: { type: string } }
+              description: { type: string }
+              question: { type: string }
+              reason: { type: string }
+        reasons: { type: array, items: { type: string }, description: Reason codes for refer and decline, which the channel explains. }
+        checks:
+          type: array
+          description: Every check, in order.
+          items:
+            type: object
+            required: [code, result]
+            properties:
+              code: { type: string, enum: [species, min-age, max-age, breed, answer] }
+              result: { type: string, enum: [pass, rider, refer, decline] }
+              basis: { oneOf: [{ type: string }, { type: integer }], description: 'e.g. the age, the breed or the question.' }
+              reason: { type: string }
+        facts:
+          type: object
+          required: [ageDays, ageYears]
+          properties:
+            ageDays: { type: integer }
+            ageYears: { type: integer }
+        rules:
+          type: object
+          required: [series, version, checksum]
+          properties:
+            series: { type: string }
+            version: { type: integer }
+            checksum: { type: string }
+        inputHash: { type: string, description: sha256 over the rules and the input; the same application gives the same hash. }
+
+    Application:
+      type: object
+      required: [id, market, animalId, policyholderPartyId, productVersion, startDate, acceptance, premium, status, underwriting, receivedBy, receivedAt]
+      properties:
+        id: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        animalId: { type: string }
+        policyholderPartyId: { type: string }
+        productVersion: { type: string }
+        startDate: { $ref: '#/components/schemas/Date' }
+        vetCare:
+          type: object
+          properties:
+            annualLimit: { $ref: '#/components/schemas/NonNegativeMoney' }
+            deductible: { type: string }
+        groupId: { type: string }
+        campaignCode: { type: string }
+        acceptance: { $ref: '#/components/schemas/Acceptance' }
+        premium:
+          type: object
+          required: [amount, currency]
+          description: The premium for the term the customer applied at.
+          properties:
+            amount: { $ref: '#/components/schemas/NonNegativeMoney' }
+            currency: { $ref: '#/components/schemas/Currency' }
+        status: { type: string, enum: [accepted, referred, declined] }
+        underwriting:
+          type: object
+          required: [input, result, engineVersion]
+          description: The evidence (ADR 0018). Recomputing with the same rules and input gives the same result.
+          properties:
+            input:
+              type: object
+              required: [market, species, birthDate, startDate, answers]
+              description: What the rules were run on, with the animal as the register had it.
+              properties:
+                market: { $ref: '#/components/schemas/Market' }
+                species: { type: string }
+                breed: { type: string }
+                birthDate: { $ref: '#/components/schemas/Date' }
+                startDate: { $ref: '#/components/schemas/Date' }
+                answers: { type: array, items: { $ref: '#/components/schemas/UnderwritingAnswer' } }
+            result: { $ref: '#/components/schemas/UnderwritingResult' }
+            engineVersion: { type: string }
+        policyId: { type: string, description: The policy an accepted application issued. }
+        receivedBy: { type: string }
+        receivedAt: { $ref: '#/components/schemas/DateTime' }
+
+    ApplicationQuestions:
+      type: object
+      required: [productVersion, species, rules, questions]
+      properties:
+        productVersion: { type: string }
+        species: { type: string }
+        rules:
+          type: object
+          required: [series, version, checksum]
+          properties:
+            series: { type: string }
+            version: { type: integer }
+            checksum: { type: string }
+        questions:
+          type: array
+          items:
+            type: object
+            required: [id, type, labels]
+            properties:
+              id: { type: string }
+              type: { type: string, enum: [boolean, diagnoses] }
+              label: { type: string, description: 'The text in the caller''s language, else in English or the first language the rules have.' }
+              labels: { type: object, additionalProperties: { type: string } }
+
+    Rider:
+      type: object
+      required: [id, description, diagnosisCodes, validFrom]
+      properties:
+        id: { type: string }
+        description: { type: string }
+        diagnosisCodes: { type: array, items: { type: string }, description: Diagnosis codes excluded for this animal. }
+        validFrom: { $ref: '#/components/schemas/Date' }
+        validTo: { $ref: '#/components/schemas/Date' }
+        source: { type: string, enum: [underwriting, manual], description: 'Where it came from (ADR 0031). Omitted: set before ADR 0031.' }
+        applicationId: { type: string }
+        question: { type: string, description: The underwriting question it answers. }
+
     PolicyTerm:
       type: object
       required: [policyId, termNo, startDate, endDate, productVersion, currency, vetCare, deductibleOption, premium, riders, transactionId]
@@ -3769,7 +4074,7 @@ components:
         vetCare: { $ref: '#/components/schemas/VetCareTerms' }
         deductibleOption: { type: string }
         premium: { $ref: '#/components/schemas/NonNegativeMoney' }
-        riders: { type: array, items: { type: object } }
+        riders: { type: array, items: { $ref: '#/components/schemas/Rider' } }
         transactionId: { type: string }
         pricing: { $ref: '#/components/schemas/TermPricing' }
         changes:
@@ -3822,6 +4127,13 @@ components:
         requestedBy: { type: string }
         requestedAt: { $ref: '#/components/schemas/DateTime' }
         supersedes: { type: array, items: { type: string }, description: The versions this transaction ended in system time. }
+        issue:
+          type: object
+          required: [acceptance]
+          description: 'How the customer accepted at issue (ADR 0031). Omitted: issued before ADR 0031.'
+          properties:
+            acceptance: { $ref: '#/components/schemas/Acceptance' }
+            applicationId: { type: string }
         cancellation:
           type: object
           required: [reason, receivedOn, effectiveDate, refund]
@@ -3902,9 +4214,10 @@ components:
       type: object
       required: [channel, acceptedAt]
       properties:
-        channel: { type: string, description: 'Where the new policyholder accepted the terms, e.g. web, app or phone.' }
+        channel: { type: string, description: 'Where the policyholder accepted the terms, e.g. web, app or phone.' }
         reference: { type: string, description: e.g. a signing reference. }
-        acceptedAt: { $ref: '#/components/schemas/DateTime' }
+        acceptedAt: { $ref: '#/components/schemas/DateTime', description: 'At issue: as the channel says. At a transfer: when Petvold recorded it.' }
+        receivedAt: { $ref: '#/components/schemas/DateTime', description: At issue, when Petvold received it. }
 
     AcceptProposalRequest:
       type: object
@@ -3979,6 +4292,10 @@ components:
             kind: { type: string, enum: [litter, household] }
             memberNo: { type: integer, minimum: 1, description: The animal's place in the group, 1 = the first. }
         campaignCode: { type: string, maxLength: 32 }
+        answers:
+          type: array
+          description: 'Answers to the underwriting questions (ADR 0031): the quote then says what an application would lead to. Nothing is stored.'
+          items: { $ref: '#/components/schemas/UnderwritingAnswer' }
 
     PriceResult:
       type: object
@@ -4036,6 +4353,7 @@ components:
         vetCare: { $ref: '#/components/schemas/VetCareTerms' }
         deductibleOption: { type: string }
         price: { $ref: '#/components/schemas/PriceResult' }
+        underwriting: { $ref: '#/components/schemas/UnderwritingResult', description: 'What an application with the answers would lead to, if answers were given.' }
 
     ClaimSummary:
       type: object
@@ -4253,7 +4571,7 @@ components:
         policyYearStart: { $ref: '#/components/schemas/Date' }
         policyYearEnd: { $ref: '#/components/schemas/Date' }
         vetCare: { $ref: '#/components/schemas/VetCareTerms' }
-        riders: { type: array, items: { type: object } }
+        riders: { type: array, items: { $ref: '#/components/schemas/Rider' } }
 
     RetentionSettings:
       type: object

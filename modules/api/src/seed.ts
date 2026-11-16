@@ -8,6 +8,8 @@
  * - Doris in Gothenburg, with a policy priced by the tariff.
  * - A household in Malmo: Max and Ludde insured together with the household
  *   discount, and the cat Smilla without insurance.
+ * - Applications in Uppsala for the product with health questions (ADR 0031):
+ *   Kajsa accepted with a rider, Rocky referred and Sixten declined as too old.
  */
 import { CALCULATION_MODEL, type Claim } from '@petvold/claims-core';
 import { marketDate } from '@petvold/common';
@@ -17,6 +19,7 @@ import { ruleSetChecksum, type RuleSetStore, type RuleSetVersion } from '@petvol
 import { PRICE_TERMS, TARIFF } from '@petvold/pricing-core/fixtures';
 import referenceSeed from '@petvold/catalog/seed/reference-data.json' with { type: 'json' };
 import productSeed from '@petvold/catalog/seed/products.json' with { type: 'json' };
+import underwritingSeed from '../seed/underwriting-rules.json' with { type: 'json' };
 import type { Installation } from './composition.ts';
 
 export const SAMPLE_RULE_SERIES = 'SE-HUND-VV';
@@ -32,6 +35,7 @@ export async function seedSampleData(inst: Installation, clock: { now(): string 
   await publishSeries(stores.rules, SAMPLE_RULE_SERIES, rules, CALCULATION_MODEL, now);
   await publishSeries(stores.rules, 'SE-HUND-TARIFF', TARIFF, 'tariff.v1', now);
   await publishSeries(stores.rules, 'SE-HUND-TERMS', PRICE_TERMS, 'price-terms.v1', now);
+  await publishSeries(stores.rules, 'SE-HUND-UW', underwritingSeed, 'underwriting.v1', now);
 
   // Reference data: parents come first in the file.
   for (const [kind, items] of Object.entries(referenceSeed)) {
@@ -124,6 +128,7 @@ export async function seedSampleData(inst: Installation, clock: { now(): string 
 
   await seedClaims(inst);
   await seedHouseholds(inst, now, by);
+  await seedApplications(inst, now, by);
 }
 
 /**
@@ -227,7 +232,18 @@ async function seedHouseholds(inst: Installation, now: string, by: string): Prom
   };
   const insure = async (animalId: string, holder: string, groupId?: string) => {
     if ((await policies.findByAnimal(animalId)).length > 0) return;
-    await policies.issue({ market: 'SE', animalId, policyholderPartyId: holder, productVersion: 'SE-HUND-BAS@2026.1', startDate: today, ...(groupId ? { groupId } : {}) }, by);
+    await policies.issue(
+      {
+        market: 'SE',
+        animalId,
+        policyholderPartyId: holder,
+        productVersion: 'SE-HUND-BAS@2026.1',
+        startDate: today,
+        acceptance: { channel: 'web', reference: `seed-${animalId}`, acceptedAt: now },
+        ...(groupId ? { groupId } : {}),
+      },
+      by,
+    );
   };
 
   // Doris in Gothenburg.
@@ -245,6 +261,67 @@ async function seedHouseholds(inst: Installation, now: string, by: string): Prom
     await insure('ani_max', 'pty_owner003', group.id);
     await insure('ani_ludde', 'pty_owner003', group.id);
   }
+}
+
+/**
+ * Applications for SE-HUND-PLUS, which has health questions (ADR 0031): one in
+ * each outcome, so the queue for manual underwriting has one waiting.
+ */
+async function seedApplications(inst: Installation, now: string, by: string): Promise<void> {
+  const { stores } = inst;
+  const policies = inst.deps.policies!;
+  if ((await policies.listApplications({ policyholderPartyId: 'pty_owner004' })).length > 0) return;
+  if (!(await stores.parties.get('pty_owner004'))) {
+    await stores.parties.register(
+      {
+        id: 'pty_owner004',
+        revision: 1,
+        kind: 'person',
+        market: 'SE',
+        givenName: 'Lena',
+        familyName: 'Example',
+        email: 'lena@example.test',
+        address: { street: 'Example Lane 4', postalCode: '75310', city: 'Uppsala', country: 'SE' },
+        language: 'sv',
+        changedBy: by,
+        changedAt: now,
+      },
+      [],
+    );
+  }
+  const dogs = [
+    { id: 'ani_kajsa', name: 'Kajsa', breed: 'dog-labrador-retriever', sex: 'female' as const, birthDate: '2023-04-10', chip: '752098100000006' },
+    { id: 'ani_rocky', name: 'Rocky', breed: 'dog-mixed', sex: 'male' as const, birthDate: '2022-09-01', chip: '752098100000007' },
+    { id: 'ani_sixten', name: 'Sixten', breed: 'dog-golden-retriever', sex: 'male' as const, birthDate: '2014-06-20', chip: '752098100000008' },
+  ];
+  for (const a of dogs) {
+    if (await stores.animals.get(a.id)) continue;
+    await stores.animals.register(
+      { id: a.id, revision: 1, market: 'SE', species: 'dog', breed: a.breed, sex: a.sex, neutered: false, name: a.name, birthDate: a.birthDate, allowLookup: true, changedBy: by, changedAt: now },
+      [{ type: 'microchip', value: a.chip, addedBy: by, addedAt: now }],
+      { seq: 1, partyId: 'pty_owner004', validFrom: a.birthDate, recordedBy: by, recordedAt: now },
+    );
+  }
+  const apply = (animalId: string, answers: { question: string; value: boolean; diagnosisCodes?: string[] }[]) =>
+    policies.apply(
+      {
+        market: 'SE',
+        animalId,
+        policyholderPartyId: 'pty_owner004',
+        productVersion: 'SE-HUND-PLUS@2026.1',
+        startDate: marketDate('SE', now),
+        acceptance: { channel: 'web', reference: `seed-${animalId}`, acceptedAt: now },
+        answers,
+      },
+      by,
+    );
+  const no = (question: string) => ({ question, value: false });
+  // Kajsa had an ear infection: accepted with a rider for it.
+  await apply('ani_kajsa', [{ question: 'previous-illness', value: true, diagnosisCodes: ['ORA-OTIT'] }, no('ongoing-symptoms'), no('lameness')]);
+  // Rocky has symptoms no vet has examined: referred to a person.
+  await apply('ani_rocky', [no('previous-illness'), { question: 'ongoing-symptoms', value: true }, no('lameness')]);
+  // Sixten is 12 years old: declined.
+  await apply('ani_sixten', [no('previous-illness'), no('ongoing-symptoms'), no('lameness')]);
 }
 
 async function publishSeries(store: RuleSetStore, series: string, content: unknown, calculationModel: string, now: string): Promise<void> {

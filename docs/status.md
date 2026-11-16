@@ -2,6 +2,38 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
 
+## 2026-11-16 (pass 25)
+
+**Gjort**
+- #65 mergad.
+- Ansökan med teckningsregler och kundens godkännande (ADR 0031, steg 2 av 3), PR #66:
+  - **`POST /v1/applications`** för en produkt med `underwritingSeries`. Reglerna som gäller på ansökningsdagen körs, och ansökan sparas med underlaget: svaren, varje kontroll, reglernas version och kontrollsumma och motorns version.
+    - En godkänd ansökan tecknar policyn i samma transaktion.
+    - En ansökan som går till manuell prövning väntar i kön `GET /v1/applications?status=referred`.
+    - En avslagen ansökan sparas med skälskoderna.
+  - **Förbehåll på termen** från teckningsreglerna, med `source`, ansökans id och frågan. Skademotorn läser dem som andra förbehåll.
+  - **Godkännandet (F3):** `acceptance` med kanal, referens och kundens tid krävs nu också på `POST /v1/policies`. Petvold lägger till tiden då anropet kom fram, och sparar godkännandet på transaktionen.
+  - **`POST /v1/policies` svarar `422`** för en produkt med teckningsregler.
+  - **`underwritingSeries` på produktversionen**, med kontroll vid granskning (`underwritingCoverage`).
+  - **`GET /v1/application-questions`** ger frågorna på anroparens språk.
+  - **Prisindikationen** tar `answers` och säger vad en ansökan skulle leda till.
+  - **Händelser:** `application.received`, `.accepted`, `.referred` och `.declined`. Outboxen tar händelser utan policy.
+  - **Migration 0029:** `policies.application`, `policy_transaction.issue` och outboxens `application_id`. Provad ner och upp igen.
+  - **Exempeldata:** teckningsreglerna `SE-HUND-UW@1` på svenska och engelska, produkten `SE-HUND-PLUS@2026.1` och Lenas tre ansökningar i Uppsala, en med varje utfall. Provat mot Postgres.
+  - Fyra nya operationer, 95 i kontraktet.
+- 397 tester och 113 databastester.
+
+**Nästa steg**
+1. ADR 0031, steg 3: besluten i kön med rättigheten `policies:underwrite` (godkänn med eller utan förbehåll, eller avslå med skälskod och motivering), återkallelse från kanalen och utgång efter en tid per produkt.
+2. Därefter ett beslut om dokument till kunden (F2), med brevet vid avslag och förköpsinformationen som godkännandet gäller.
+
+**Öppet**
+- Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.
+- Flera instanser av servern kör var sitt relä. Ett relä med lås per outbox (pg-boss) behövs före drift med flera instanser.
+- En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).
+- Gallringen känner till djur, policyer, ansökningar och skador. Innan den körs skarpt hos ett försäkringsbolag behöver bolaget bekräfta lagringstiderna och att inga andra system har relationer som Petvold inte känner till, till exempel betalningar (M5).
+- Det sparas inte vem som slagit upp ett djur.
+
 ## 2026-11-15 (pass 24)
 
 **Gjort**

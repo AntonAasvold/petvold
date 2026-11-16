@@ -112,5 +112,65 @@
         "midTermCancellation": "immediate"
       }
     }
+  },
+  {
+    "product": "SE-HUND-PLUS",
+    "version": "2026.1",
+    "salesFrom": "2026-01-01",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "species": [
+        "dog"
+      ],
+      "names": {
+        "en": "Dog insurance Plus, with health questions",
+        "sv": "Hundförsäkring Plus, med hälsofrågor"
+      },
+      "ruleSeries": "SE-HUND-VV",
+      "tariffSeries": "SE-HUND-TARIFF",
+      "priceTermsSeries": "SE-HUND-TERMS",
+      "vetCare": {
+        "annualLimits": [
+          3000000,
+          6000000
+        ],
+        "defaultAnnualLimit": 6000000,
+        "deductibles": [
+          {
+            "code": "standard",
+            "labels": {
+              "en": "Standard",
+              "sv": "Standard"
+            },
+            "terms": {
+              "fixed": 200000,
+              "fixedPer": "period",
+              "periodDays": 125,
+              "variableBp": 2500
+            }
+          },
+          {
+            "code": "high",
+            "labels": {
+              "en": "High",
+              "sv": "Hög"
+            },
+            "terms": {
+              "fixed": 400000,
+              "fixedPer": "period",
+              "periodDays": 125,
+              "variableBp": 2500
+            }
+          }
+        ],
+        "defaultDeductible": "standard",
+        "waitingPeriodDays": 30
+      },
+      "policy": {
+        "midTermCancellation": "immediate"
+      },
+      "underwritingSeries": "SE-HUND-UW"
+    }
   }
 ]
