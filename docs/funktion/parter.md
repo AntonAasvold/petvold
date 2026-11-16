@@ -126,4 +126,4 @@ Motiveringarna får inte innehålla personuppgifter. De sparas för att visa vad
 
 Dev-servern registrerar Bellas ägare `pty_owner001` (Anna Example) utan personnummer. Tokens `dev-privacy` och `dev-privacy-2` är två dataskyddsansvariga, så att fyra ögon går att prova. `dev-retention-job` kör gallringen. Token `dev-registrar` får registrera och ändra parter i Sverige. Testerna använder personnummer födda 2099, som ingen levande person kan ha.
 
-*Inte byggt än:* kundens åtkomst till sin egen part, kontaktpersoner för organisationer, och kontaktpersoner för organisationer.
+*Inte byggt än:* kundens åtkomst till sin egen part, och kontaktpersoner för organisationer.

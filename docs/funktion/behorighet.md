@@ -97,18 +97,18 @@ Petvold levereras med de här rollerna som utgångspunkt:
 
 ## Omfång
 
-Rättigheten säger *vad* anroparen får göra. Omfånget säger *vilka ärenden* det gäller. Omfånget kommer från attribut i tokenen:
+Rättigheten säger *vad* anroparen får göra. Omfånget säger *vilka data* det gäller: skador, policyer, ansökningar, djur, parter och meddelanden. Omfånget kommer från attribut i tokenen:
 
 | Attribut | Betydelse | Krävs för |
 | --- | --- | --- |
-| `markets` | Marknaderna anroparen arbetar i, till exempel `["SE"]`, eller `"*"` för alla marknader i installationen | Alla. Utan `markets` ser anroparen inga ärenden. |
+| `markets` | Marknaderna anroparen arbetar i, till exempel `["SE"]`, eller `"*"` för alla marknader i installationen | Alla. Utan `markets` ser anroparen ingenting. |
 | `clinicId` | Klinikens id | Roller bundna till klinik |
 | `policyIds` | Försäkringarna anroparen får se, till exempel den inloggade kundens | Roller bundna till försäkringar |
 
 Reglerna:
-- **Marknad.** Alla ser bara ärenden i sina marknader.
-- **Klinik.** En roll bunden till klinik ser bara ärenden som kliniken själv har skickat in. När en klinik anmäler en skada sparas klinikens id från tokenen på ärendet. Det går inte att ange id:t i anropet.
-- **Försäkringar.** En roll bunden till försäkringar ser bara ärenden på de försäkringar som står i tokenen. Kundportalen slår upp kundens försäkringar och lägger dem i tokenen.
+- **Marknad.** Alla ser bara data i sina marknader.
+- **Klinik.** En roll bunden till klinik ser bara skador som kliniken själv har skickat in, och inga policyer, ansökningar eller meddelanden. När en klinik anmäler en skada sparas klinikens id från tokenen på ärendet. Det går inte att ange id:t i anropet.
+- **Försäkringar.** En roll bunden till försäkringar ser bara skador, policyer och meddelanden på de försäkringar som står i tokenen, och inga ansökningar. Kundportalen slår upp kundens försäkringar och lägger dem i tokenen.
 - **Den snävaste bindningen gäller.** Har anroparen flera roller och någon av dem är bunden, gäller bindningen.
 - **Saknat attribut stoppas.** Kräver rollen ett attribut som tokenen saknar, svarar Petvold `403`. Anroparen får aldrig ett bredare omfång för att något fattas.
 
@@ -122,6 +122,8 @@ Hur Petvold svarar utanför omfånget:
 | Djur i en annan marknad, eller för en roll bunden till klinik eller försäkringar | `404` vid läsning, `403` vid registrering (ADR 0024) |
 | Uppslagning av ett djur som är stängt, saknas eller finns i en annan marknad | Tom lista (ADR 0025) |
 | Försäkringsbelopp för en roll bunden till klinik | `404`. En klinik är inte knuten till försäkringar och kan därför inte slå upp försäkringsbelopp per försäkrings-id. |
+| Policy, ansökan eller meddelande utanför omfånget | `404` |
+| Teckna, ansöka eller köra en schemalagd körning i en annan marknad, eller för en roll bunden till klinik eller försäkringar | `403` |
 
 `404` i stället för `403` gör att det inte går att ta reda på vilka ärenden som finns genom att prova id:n (OWASP API1, *Broken Object Level Authorization*).
 
