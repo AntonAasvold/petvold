@@ -135,8 +135,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Idempotensnyckel och `expectedInputHash`** på varje åtgärd. `409` blir ett besked med "Ladda om".
   - **Tester:** varje text-id har en svensk översättning, och fem nya flöden i Chromium, nio totalt.
 
+- #81 mergad.
+- Back office, steg 3 (ADR 0035), PR #82:
+  - **Policyer:** sökning på id, personnummer (med `POST`) eller chip, och policyn med termer, förbehåll, versioner över tid och historik.
+  - **Ansökningar:** kön för manuell prövning, och godkänn eller avslå med motivering och skälkod, eller återkalla.
+  - **Förslag:** kön, och godkänn eller avböj en överlåtelse eller ett avslut från policyn.
+  - **Tester:** 15 enhetstester och 12 flöden i Chromium.
+
 **Nästa steg**
-1. Back office, steg 3: policyer och ansökningar.
+1. Back office, steg 4: meddelanden och webhooks.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**

@@ -19,6 +19,11 @@ import { match, navigate, type Route } from '../router.ts';
 import '../views/login-view.ts';
 import '../views/claims-queue.ts';
 import '../views/claim-detail.ts';
+import '../views/policies-search.ts';
+import '../views/policy-detail.ts';
+import '../views/applications-queue.ts';
+import '../views/application-detail.ts';
+import '../views/proposals-queue.ts';
 
 @customElement('pv-app')
 export class AppShell extends LitElement {
@@ -139,6 +144,11 @@ export class AppShell extends LitElement {
     return [
       { pattern: /^\/claims$/, render: () => html`<pv-claims-queue .api=${this.api}></pv-claims-queue>` },
       { pattern: /^\/claims\/(?<id>[^/]+)$/, render: (p) => html`<pv-claim-detail .api=${this.api} .me=${this.me} claim-id=${p.id!}></pv-claim-detail>` },
+      { pattern: /^\/policies$/, render: () => html`<pv-policies-search .api=${this.api}></pv-policies-search>` },
+      { pattern: /^\/policies\/(?<id>[^/]+)$/, render: (p) => html`<pv-policy-detail .api=${this.api} .me=${this.me} policy-id=${p.id!}></pv-policy-detail>` },
+      { pattern: /^\/applications$/, render: () => html`<pv-applications-queue .api=${this.api}></pv-applications-queue>` },
+      { pattern: /^\/applications\/(?<id>[^/]+)$/, render: (p) => html`<pv-application-detail .api=${this.api} .me=${this.me} application-id=${p.id!}></pv-application-detail>` },
+      { pattern: /^\/proposals$/, render: () => html`<pv-proposals-queue .api=${this.api}></pv-proposals-queue>` },
     ];
   }
 
@@ -182,6 +192,12 @@ export class AppShell extends LitElement {
     switch (id) {
       case 'nav.claims':
         return msg('Claims', { id: 'nav.claims' });
+      case 'nav.policies':
+        return msg('Policies', { id: 'nav.policies' });
+      case 'nav.applications':
+        return msg('Applications', { id: 'nav.applications' });
+      case 'nav.proposals':
+        return msg('Proposals', { id: 'nav.proposals' });
       default:
         return id;
     }

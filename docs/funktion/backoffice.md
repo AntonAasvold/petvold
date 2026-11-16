@@ -11,9 +11,11 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Attestera | Attestera eller skicka tillbaka någon annans förslag | `claims:approve` |
 | Pröva | Begär prövning av ett automatiskt beslut för kundens räkning, med kundens synpunkt. En begäran besvaras av ett nytt beslut. | `claims:request-review`, `claims:decide` |
 | Ompröva | Bedöm ärendet igen med det som är känt nu | `claims:reassess` |
+| Policyer | Sök på policy-, djur- eller part-id, personnummer eller chipnummer. Policyn med termer, förbehåll, versioner över tid och historik. | `policies:read`, och `parties:read` eller `animals:read` för personnummer och chip |
+| Ansökningar | Kön för manuell prövning, och godkända och avslagna ansökningar. Ansökan med svar och reglernas kontroller. Godkänn eller avslå med motivering, eller återkalla. | `policies:read`, `policies:underwrite` för att pröva, `policies:write` för att återkalla |
+| Förslag | Förslag som väntar på svar: överlåtelse till ny ägare och avslut när djuret dött. Godkänns eller avböjs från policyn. | `policies:read`, `policies:write` för att svara |
 
 *Inte byggt än:*
-- policyer och ansökningar (steg 3)
 - meddelanden och webhooks (steg 4)
 - inställningar (steg 5)
 
@@ -46,6 +48,22 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 5. **Förklaringen.** "Varför?" på ett beslut visar huvudskälet, eventuell avvikelse från förslaget och beräkningen steg för steg, på användarens språk.
 
 Varje åtgärd skickas med en idempotensnyckel. Om nätverket svajar och man försöker igen blir det inte två beslut.
+
+## Policyer, ansökningar och förslag
+
+- **Sökningen** känner igen vad man skriver: `pol_…` öppnar policyn, `ani_…` och `pty_…` listar djurets eller försäkringstagarens policyer.
+  - Ett personnummer söks med `POST /v1/parties/searches`, så att numret aldrig hamnar i en adress eller logg.
+  - Ett chipnummer på 15 siffror söks i djurregistret.
+- **Policyn** visar det som gäller i dag överst. Under det finns:
+  - termerna med försäkringsbelopp, självrisk och premie
+  - förbehållen och var de kom ifrån
+  - versionerna över tid, med när varje version blev känd och när den ersattes
+  - historiken över alla ändringar
+- **En ansökan i kön** visar djuret som det var när ansökan kom in, svaren och varje kontroll i reglerna med regelversion. Den som prövar godkänner eller avslår, alltid med en motivering:
+  - Ett godkännande tecknar policyn med de förbehåll som reglerna föreslår.
+  - Ett avslag kräver en skälkod, och den sökande får ett meddelande med skälen (ADR 0032).
+  - Har startdagen passerat anges en ny.
+- **Ett förslag** öppnas från policyn. En överlåtelse godkänns med var den nya ägaren godkände villkoren, till exempel per telefon. Ett avböjande kräver ett skäl.
 
 ## Språk
 

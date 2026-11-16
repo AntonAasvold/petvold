@@ -92,7 +92,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] ADR om ett gränssnitt för handläggare och back office, ADR 0035
 - [x] Back office, steg 1: grunden, `<pv-data-grid>` och skadornas köer
 - [x] Back office, steg 2: beslut, attest och prövning
-- [ ] Back office, steg 3: policyer och ansökningar
+- [x] Back office, steg 3: policyer och ansökningar
 - [ ] Back office, steg 4: meddelanden och webhooks
 - [ ] Back office, steg 5: inställningar
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
