@@ -6,10 +6,13 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 
 | Del | Gör | Kräver |
 | --- | --- | --- |
-| Skador | Arbetsköerna: väntar på beslut, väntar på attest, prövning begärd och beslutade. Ett ärende med uppgifter, beräkning, bedömning regel för regel och beslut. | `claims:read` |
+| Skador | Arbetsköerna: väntar på beslut, väntar på attest, prövning begärd och beslutade. Ett ärende med uppgifter, beräkning, bedömning regel för regel, beslut och förklaring. | `claims:read` |
+| Besluta | Godkänn eller avslå. Mot förslaget krävs skälkod och motivering. Över gränsen blir beslutet ett förslag. | `claims:decide`, och `claims:override` mot förslaget |
+| Attestera | Attestera eller skicka tillbaka någon annans förslag | `claims:approve` |
+| Pröva | Begär prövning av ett automatiskt beslut för kundens räkning, med kundens synpunkt. En begäran besvaras av ett nytt beslut. | `claims:request-review`, `claims:decide` |
+| Ompröva | Bedöm ärendet igen med det som är känt nu | `claims:reassess` |
 
 *Inte byggt än:*
-- att besluta, attestera och pröva (steg 2)
 - policyer och ansökningar (steg 3)
 - meddelanden och webhooks (steg 4)
 - inställningar (steg 5)
@@ -31,6 +34,18 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
   - Ctrl+Home och Ctrl+End går till listans första och sista cell
   - Page Up och Page Down flyttar tio rader
   - Enter öppnar ärendet
+
+## Besluta och attestera
+
+Ärendet visar de åtgärder som användaren har rätt till just nu.
+
+1. **Besluta.** Formuläret börjar på förslaget från bedömningen. Om man väljer det andra utfallet visar appen att beslutet går emot förslaget och kräver skälkod och motivering. De sparas med beslutet (ADR 0018).
+2. **Över gränsen.** Om ersättningen är högre än användarens gräns blir beslutet ett förslag som väntar på attest (ADR 0019). Appen säger det direkt.
+3. **Attestera.** Den som har rätt att attestera ser förslaget, vem som gjorde det och deras gräns, och kan attestera eller skicka tillbaka med en motivering. Den som gjorde förslaget ser att någon annan måste attestera det.
+4. **Underlaget ändrades.** Varje beslut skickar bedömningens `inputHash`. Om ärendet har ändrats sedan det öppnades, till exempel för att en annan skada förbrukat försäkringsbeloppet, svarar API:t `409`. Appen säger det och erbjuder att ladda om.
+5. **Förklaringen.** "Varför?" på ett beslut visar huvudskälet, eventuell avvikelse från förslaget och beräkningen steg för steg, på användarens språk.
+
+Varje åtgärd skickas med en idempotensnyckel. Om nätverket svajar och man försöker igen blir det inte två beslut.
 
 ## Språk
 

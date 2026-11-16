@@ -138,7 +138,7 @@ export class AppShell extends LitElement {
   private routes(): Route[] {
     return [
       { pattern: /^\/claims$/, render: () => html`<pv-claims-queue .api=${this.api}></pv-claims-queue>` },
-      { pattern: /^\/claims\/(?<id>[^/]+)$/, render: (p) => html`<pv-claim-detail .api=${this.api} claim-id=${p.id!}></pv-claim-detail>` },
+      { pattern: /^\/claims\/(?<id>[^/]+)$/, render: (p) => html`<pv-claim-detail .api=${this.api} .me=${this.me} claim-id=${p.id!}></pv-claim-detail>` },
     ];
   }
 
