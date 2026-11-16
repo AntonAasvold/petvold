@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-16 | [Back office, steg 4: meddelanden och webhooks](2026-11-16-backoffice-integration.md) | #83 |
 | 2026-11-16 | [Back office, steg 3: policyer och ansökningar](2026-11-16-backoffice-policyer.md) | #82 |
 | 2026-11-16 | [Back office, steg 2: beslut, attest och prövning](2026-11-16-backoffice-beslut.md) | #81 |
 | 2026-11-16 | [Back office, steg 1: grunden och skadornas köer](2026-11-16-backoffice-grund.md) | #80 |

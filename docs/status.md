@@ -142,8 +142,14 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Förslag:** kön, och godkänn eller avböj en överlåtelse eller ett avslut från policyn.
   - **Tester:** 15 enhetstester och 12 flöden i Chromium.
 
+- #82 mergad.
+- Back office, steg 4 (ADR 0035), PR #83:
+  - **Meddelanden:** kön med det som behöver en person, och meddelandet med innehåll, lagrum och utskick. Rapportera ett utskick.
+  - **Webhooks:** prenumerationer och döda händelser. Skapa, stänga av och sätta på, ny hemlighet som visas en gång, och skicka igen.
+  - **Tester:** 18 enhetstester och 14 flöden i Chromium.
+
 **Nästa steg**
-1. Back office, steg 4: meddelanden och webhooks.
+1. Back office, steg 5: inställningar.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
