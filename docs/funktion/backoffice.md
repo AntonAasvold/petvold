@@ -17,7 +17,9 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Meddelanden | Det som behöver en person: misslyckade, försenade och de som saknar en text som lagen kräver. Meddelandet med innehåll, lagrum och utskick. Rapportera ett utskick för hand. | `notices:read`, `notices:deliver` för att rapportera |
 | Webhooks | Prenumerationer och händelser som inte kom fram. Skapa en prenumeration, stänga av och sätta på, ny hemlighet och skicka igen. | `webhooks:read`, `webhooks:manage` för att ändra |
 
-*Inte byggt än:* inställningar (steg 5).
+| Inställningar | Roller och gränser, gallring och bolagets texter för meddelanden, som versioner med skäl och historik | `access:read`, `parties:privacy` eller `notices:read`. Att ändra kräver `access:manage`, `parties:erase` eller `notices:configure`. |
+
+*Inte byggt än:* produkter och regler med fyra ögon (steg 5b).
 
 ## Logga in
 
@@ -76,6 +78,19 @@ Varje åtgärd skickas med en idempotensnyckel. Om nätverket svajar och man fö
   - Fliken "Kom inte fram" listar döda händelser för alla prenumerationer.
   - En ny prenumeration visar hemligheten en enda gång, med en knapp för att kopiera den. Detsamma gäller en ny hemlighet.
   - Från prenumerationen kan man skicka döda händelser igen, en i taget eller alla, och stänga av eller sätta på den.
+
+## Inställningar
+
+Varje inställning är versionerad (ADR 0020, 0028, 0032). En ändring blir en ny version, bygger på den som gäller och kräver ett skäl. Hann någon annan ändra först, svarar API:t `409` och appen erbjuder att ladda om. Historiken visar varje version med vem, när och varför.
+
+- **Roller och gränser:** tabellen visar varje roll, vad den är bunden till, gränserna för att besluta och attestera, och rättigheterna. En gräns ändras per roll, sort och valuta i kronor eller euro, och ett tomt belopp tar bort gränsen för valutan. Rättigheter ändras med API:t (`POST /v1/settings/roles/versions`) eller `npm run roles:sync`.
+- **Gallring:** år efter den senaste relationen per marknad. En marknad som inte finns med gallras aldrig automatiskt.
+- **Meddelanden:** per marknad:
+  - dagar för "snarast"
+  - de typer som lagen inte kräver och som stängs av
+  - avsändare och text om prövning på svenska och engelska
+
+  Utan text om prövning blir ett avslag ofullständigt (ADR 0032).
 
 ## Språk
 

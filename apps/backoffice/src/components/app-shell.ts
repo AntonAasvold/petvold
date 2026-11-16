@@ -28,6 +28,7 @@ import '../views/notices-queue.ts';
 import '../views/notice-detail.ts';
 import '../views/webhooks-view.ts';
 import '../views/webhook-detail.ts';
+import '../views/settings-view.ts';
 
 @customElement('pv-app')
 export class AppShell extends LitElement {
@@ -156,6 +157,7 @@ export class AppShell extends LitElement {
       { pattern: /^\/notices$/, render: () => html`<pv-notices-queue .api=${this.api}></pv-notices-queue>` },
       { pattern: /^\/notices\/(?<id>[^/]+)$/, render: (p) => html`<pv-notice-detail .api=${this.api} .me=${this.me} notice-id=${p.id!}></pv-notice-detail>` },
       { pattern: /^\/webhooks$/, render: () => html`<pv-webhooks .api=${this.api} .me=${this.me}></pv-webhooks>` },
+      { pattern: /^\/settings$/, render: () => html`<pv-settings .api=${this.api} .me=${this.me}></pv-settings>` },
       { pattern: /^\/webhooks\/(?<id>[^/]+)$/, render: (p) => html`<pv-webhook-detail .api=${this.api} .me=${this.me} subscription-id=${p.id!}></pv-webhook-detail>` },
     ];
   }
@@ -210,6 +212,8 @@ export class AppShell extends LitElement {
         return msg('Notices', { id: 'nav.notices' });
       case 'nav.webhooks':
         return msg('Webhooks', { id: 'nav.webhooks' });
+      case 'nav.settings':
+        return msg('Settings', { id: 'nav.settings' });
       default:
         return id;
     }
