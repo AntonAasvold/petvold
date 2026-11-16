@@ -30,6 +30,7 @@ För utvecklare och drift.
 - [Drift](teknik/drift.md): starta en installation, konfiguration, inloggning, händelser och hälsa
 - [API-konventioner](teknik/api-konventioner.md): hur adresser, filter, id och versioner namnges
 - [Back office](teknik/backoffice.md): appen i `apps/backoffice`, datatabellen, språk, ikoner och test
+- [Designsystemet](teknik/designsystem.md): tokens, temat för Web Awesome, komponenter och regler för text
 - [API](../modules/api/openapi.yaml): kontraktet. Klickbar version på `/docs` när dev-servern kör.
 
 ## Styrning

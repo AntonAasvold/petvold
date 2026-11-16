@@ -161,10 +161,17 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **API:ts fel per fält** visas vid `422`.
   - **Tester:** 25 enhetstester och 19 flöden i Chromium.
 
+- #85 mergad. ADR 0035 är byggd.
+- Designsystemet Petvold, PR #86:
+  - `design/tokens.json` som källa, `petvold-tokens.css` och ett tema för Web Awesome (`wa-theme-petvold`). Svartvitt, med ramar i stället för skuggor, och tillstånd med helfylld eller streckad linje i stället för färg.
+  - Typsnitten Inter, Space Grotesk och IBM Plex Mono från `@fontsource`, inbyggda i appen.
+  - `design/components.css` med komponenterna som `pv-`-klasser, och riktlinjer i `docs/teknik/designsystem.md`. `CLAUDE.md` och `AGENTS.md` hänvisar dit.
+
 **Nästa steg**
-1. ADR om premier och betalningar (M5).
-2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
-3. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.
+1. Back office enligt designsystemet, i tre PR:er: toppraden och menyn, skadeärendet, och komponenterna `<pv-waterfall>` och `<pv-event-log>`.
+2. ADR om premier och betalningar (M5).
+3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
+4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.
 
 **Öppet**
 - Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.
