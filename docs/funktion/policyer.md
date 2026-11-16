@@ -159,6 +159,9 @@ En **grupp** samlar policyer för en kull eller ett hushåll (ADR 0007). Gruppen
 | `GET /v1/applications?status=referred` | `policies:read` | Ansökningar. `referred` är kön för manuell prövning. |
 | `GET /v1/applications/{id}` | `policies:read` | En ansökan med underlaget |
 | `GET /v1/application-questions?productVersion=…&species=…` | `policies:quote` | Hälsofrågorna att ställa |
+| `POST /v1/applications/{id}/decisions` | `policies:underwrite` | Godkänner eller avslår en ansökan i kön |
+| `POST /v1/applications/{id}/withdrawals` | `policies:write` | Återkallar en ansökan i kön |
+| `POST /v1/application-expiry-runs` | `policies:renew` | Avslutar ansökningar som inte beslutats i tid |
 | `POST /v1/policies/{id}/changes` | `policies:write` | Ändrar valen från en dag under termen |
 | `POST /v1/policies/{id}/renewals` | `policies:write` | Förnyar en policy för hand |
 | `POST /v1/renewal-runs` | `policies:renew` | Förnyelsekörningen |
@@ -199,7 +202,7 @@ Svaret har en term från 1 december 2026 till 1 december 2027 (slutdagen räknas
 ## Vem ser vad
 
 - `policy-registrar` tecknar policyer och skickar ansökningar, till exempel säljkanalen eller kundservice.
-- `underwriter` ser kön för manuell prövning. Besluten kommer i nästa steg.
+- `underwriter` beslutar om ansökningarna i kön för manuell prövning.
 - `handler` och `approver` kan läsa.
 - `customer-channel` ser bara policyerna i sin token.
 - Alla ser bara policyer i sina marknader. Kliniker ser inga policyer.

@@ -1411,7 +1411,7 @@ paths:
         for manual underwriting. Only applications in the caller's markets; a
         role bound to a clinic or to policies sees none.
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [accepted, referred, declined] } }
+        - { name: status, in: query, schema: { type: string, enum: [accepted, referred, declined, withdrawn, expired] } }
         - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
         - { name: animalId, in: query, schema: { type: string } }
         - { name: policyholderPartyId, in: query, schema: { type: string } }
@@ -1452,6 +1452,93 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Application' }
+
+  /v1/applications/{applicationId}/decisions:
+    post:
+      tags: [policies]
+      operationId: decideApplication
+      x-permission: policies:underwrite
+      summary: Decide on a referred application
+      description: |
+        Requires the permission `policies:underwrite` (ADR 0031), which the
+        role `underwriter` has. Only an application that waits (`referred`,
+        by its `deadline`) can be decided, once (`409` otherwise).
+
+        - `accept` issues the policy at the premium the customer applied at.
+          If today's tariff gives another price, the applied price is kept as a
+          manual one with its reason. The riders are the rules' proposals, or
+          the ones given (`source: manual`). `startDate` moves a start that has
+          passed.
+        - `decline` needs a reason code, which the channel explains to the
+          customer (FAL 7 kap. 6 §).
+
+        Both need `note`: the grounds, kept with the decision.
+      parameters:
+        - { name: applicationId, in: path, required: true, schema: { type: string, pattern: '^app_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplicationDecisionRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The application with its decision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Application' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/applications/{applicationId}/withdrawals:
+    post:
+      tags: [policies]
+      operationId: withdrawApplication
+      x-permission: policies:write
+      summary: Withdraw an application that waits for a person
+      description: Requires the permission `policies:write`. For the channel, e.g. when the customer no longer wants the policy. Only a `referred` application (`409` otherwise).
+      parameters:
+        - { name: applicationId, in: path, required: true, schema: { type: string, pattern: '^app_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplicationWithdrawalRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The withdrawn application
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Application' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/application-expiry-runs:
+    post:
+      tags: [policies]
+      operationId: expireApplications
+      x-permission: policies:renew
+      summary: End referred applications not decided by their deadline
+      description: Requires the permission `policies:renew`, like the other scheduled policy jobs. Every `referred` application in the caller's markets whose `deadline` has passed becomes `expired`. Running it twice is harmless.
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The applications that expired
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [expired]
+                properties:
+                  expired: { type: array, items: { $ref: '#/components/schemas/Application' } }
 
   /v1/application-questions:
     get:
@@ -3707,6 +3794,7 @@ components:
             termMonths: { type: integer, minimum: 1, maximum: 12, default: 12, description: 'The length of a term in months, at issue and at each renewal. The market''s law sets the maximum.' }
             renewalLeadDays: { type: integer, minimum: 1, maximum: 120, default: 45, description: 'Days before the term ends that it is renewed. Shorter than the term.' }
             transferAcceptanceDays: { type: integer, minimum: 1, maximum: 90, default: 30, description: Days a new owner has to accept a transferred policy. }
+            applicationExpiryDays: { type: integer, minimum: 1, maximum: 90, default: 30, description: 'Days an application referred to a person may wait before the expiry run ends it (ADR 0031).' }
         vetCare:
           type: object
           additionalProperties: false
@@ -4001,7 +4089,20 @@ components:
           properties:
             amount: { $ref: '#/components/schemas/NonNegativeMoney' }
             currency: { $ref: '#/components/schemas/Currency' }
-        status: { type: string, enum: [accepted, referred, declined] }
+        status: { type: string, enum: [accepted, referred, declined, withdrawn, expired], description: 'The decision''s outcome, else what the rules gave.' }
+        deadline: { $ref: '#/components/schemas/Date', description: 'A referred application: the last day for a decision. After it, the expiry run ends it.' }
+        decision:
+          type: object
+          required: [outcome, decidedBy, decidedAt]
+          description: What became of a referred application. It never changes.
+          properties:
+            outcome: { type: string, enum: [accepted, declined, withdrawn, expired] }
+            riders: { type: array, items: { $ref: '#/components/schemas/Rider' } }
+            reason: { type: string, description: A decline's reason code. }
+            note: { type: string, description: 'The grounds, or why it was withdrawn or expired.' }
+            policyId: { type: string }
+            decidedBy: { type: string }
+            decidedAt: { $ref: '#/components/schemas/DateTime' }
         underwriting:
           type: object
           required: [input, result, engineVersion]
@@ -4023,6 +4124,32 @@ components:
         policyId: { type: string, description: The policy an accepted application issued. }
         receivedBy: { type: string }
         receivedAt: { $ref: '#/components/schemas/DateTime' }
+
+    ApplicationDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [outcome, note]
+      properties:
+        outcome: { type: string, enum: [accept, decline] }
+        note: { type: string, minLength: 1, maxLength: 2000, description: The grounds for the decision. Must not contain more personal data than needed. }
+        reason: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$', description: 'decline: the reason code, e.g. ongoing-symptoms.' }
+        riders:
+          type: array
+          description: "accept: the riders, replacing the rules' proposals. Omitted: the proposals."
+          items:
+            type: object
+            additionalProperties: false
+            required: [diagnosisCodes, description]
+            properties:
+              diagnosisCodes: { type: array, minItems: 1, items: { type: string, minLength: 1 } }
+              description: { type: string, minLength: 1, maxLength: 200 }
+        startDate: { $ref: '#/components/schemas/Date', description: 'accept: a later start, when the one applied for has passed.' }
+
+    ApplicationWithdrawalRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason: { type: string, maxLength: 2000 }
 
     ApplicationQuestions:
       type: object

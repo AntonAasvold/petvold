@@ -152,6 +152,7 @@ En produktversion säger vad som kan säljas och med vilka val (ADR 0023). Id:t 
 | `policy.termMonths` | Termens längd i månader, vid tecknande och varje förnyelse. Marknaden sätter taket, i Sverige 12 (FAL 3 kap. 2 §). | 12 (förval) |
 | `policy.renewalLeadDays` | Dagar före förfallodagen som förnyelsen körs, 1–120 och kortare än termen. Om pris eller villkor ändras vid förnyelsen bör kunden få besked mer än en månad före förfallodagen. | 45 (förval) |
 | `policy.transferAcceptanceDays` | Dagar som en ny ägare har på sig att godkänna en överlåten policy | 30 (förval) |
+| `policy.applicationExpiryDays` | Dagar som en ansökan får vänta på manuell prövning innan den går ut ([Teckning](teckning.md#manuell-prövning)), 1–90 | 30 (förval) |
 
 Inställningarna under `policy` kan utelämnas, och då gäller förvalen. De låses med resten av innehållet när versionen publiceras.
 

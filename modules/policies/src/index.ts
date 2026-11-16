@@ -281,7 +281,36 @@ export interface AcceptanceInput {
   acceptedAt: Timestamp;
 }
 
-export type ApplicationStatus = 'accepted' | 'referred' | 'declined';
+/** accepted, referred or declined by the rules; a referred one becomes accepted, declined, withdrawn or expired by its decision. */
+export type ApplicationStatus = 'accepted' | 'referred' | 'declined' | 'withdrawn' | 'expired';
+
+/** What became of a referred application (ADR 0031): a person's decision, the channel's withdrawal or expiry. It never changes. */
+export interface ApplicationDecision {
+  outcome: 'accepted' | 'declined' | 'withdrawn' | 'expired';
+  /** accepted: the riders the policy got. */
+  riders?: Rider[];
+  /** declined: the reason code the channel explains (FAL 7 kap. 6 §). */
+  reason?: string;
+  /** The person's grounds, or why it was withdrawn or expired. */
+  note?: string;
+  /** accepted: the policy issued. */
+  policyId?: string;
+  decidedBy: string;
+  decidedAt: Timestamp;
+}
+
+/** A person's decision on a referred application. */
+export interface ApplicationDecisionInput {
+  outcome: 'accept' | 'decline';
+  /** The grounds. Required. */
+  note: string;
+  /** decline: a reason code, e.g. 'ongoing-symptoms'. */
+  reason?: string;
+  /** accept: the riders, replacing the ones the rules proposed. Omitted: the rules' proposals. */
+  riders?: { diagnosisCodes: string[]; description: string }[];
+  /** accept: a later start, when the start applied for has passed. */
+  startDate?: ISODate;
+}
 
 /**
  * An application for a policy on a product with underwriting rules (ADR 0031),
@@ -302,13 +331,25 @@ export interface Application {
   acceptance: Acceptance;
   /** The premium for the term the customer applied at. */
   premium: { amount: number; currency: string };
+  /** The current status: the decision's outcome, else what the rules gave. */
   status: ApplicationStatus;
+  /** A referred application: the last day for a decision. After it, the expiry run ends it. */
+  deadline?: ISODate;
+  decision?: ApplicationDecision;
   /** The evidence: the input with the answers, the result with every check, and the engine. */
   underwriting: { input: UnderwritingInput; result: UnderwritingResult; engineVersion: string };
-  /** The policy it led to. */
+  /** The policy it led to, at once or by a person's decision. */
   policyId?: string;
   receivedBy: string;
   receivedAt: Timestamp;
+}
+
+/** What an issue stores besides the policy, in the same transaction (ADR 0031). */
+export interface IssueExtra {
+  /** The application accepted at once. */
+  application?: Application;
+  /** A person's acceptance of a referred application. */
+  decision?: { applicationId: string; decision: ApplicationDecision };
 }
 
 export interface ApplicationFilter {
@@ -364,7 +405,9 @@ export interface PolicyEvent {
     | 'application.received'
     | 'application.referred'
     | 'application.accepted'
-    | 'application.declined';
+    | 'application.declined'
+    | 'application.withdrawn'
+    | 'application.expired';
   /** Omitted for an application that has not led to a policy. */
   policyId?: string;
   applicationId?: string;
@@ -393,7 +436,9 @@ export interface PolicyStore {
    * application it came from, all or nothing. Throws PolicyConflictError if the
    * animal already has a policy whose current versions overlap the new one.
    */
-  issue(policy: Policy, term: Term, version: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[], application?: Application): Promise<void>;
+  issue(policy: Policy, term: Term, version: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[], extra?: IssueExtra): Promise<void>;
+  /** Stores the decision on a referred application with its events. Throws PolicyConflictError if it is already decided. */
+  decideApplication(applicationId: string, decision: ApplicationDecision, events: PolicyEvent[]): Promise<void>;
   /** Stores an application that did not lead to a policy, with its events. */
   addApplication(a: Application, events: PolicyEvent[]): Promise<void>;
   getApplication(id: string): Promise<Application | null>;
@@ -465,6 +510,8 @@ export interface ProductOffer {
   onSale: boolean;
   /** Days a new owner has to accept a transferred policy. */
   transferAcceptanceDays: number;
+  /** Days an application referred to a person may wait before it expires (ADR 0031). Omitted: 30. */
+  applicationExpiryDays?: number;
   /** The tariff series that prices it (ADR 0030). Omitted: no tariff, the premium is given by hand. */
   tariffSeries?: string;
   /** The price terms series (ADR 0030). */
@@ -1703,6 +1750,7 @@ export class PolicyService implements PolicyPort {
       acceptance: plan.acceptance,
       premium: { amount: plan.premium.amount, currency: plan.offer.currency },
       status,
+      ...(status === 'referred' ? { deadline: addDays(plan.today, plan.offer.applicationExpiryDays ?? 30) } : {}),
       underwriting: { input: uwInput, result, engineVersion: this.d.engineVersion ?? 'unknown' },
       receivedBy: by,
       receivedAt: plan.now,
@@ -1728,6 +1776,7 @@ export class PolicyService implements PolicyPort {
     await this.commitIssue(plan, input, by, {
       riders,
       application: accepted,
+      applicationId: id,
       note: riders.length ? `Accepted with ${riders.length} rider(s) by ${ref} (${id})` : `Accepted by ${ref} (${id})`,
       events: [received, this.appEvent('application.accepted', id, plan.policyId, plan.now, { outcome: result.outcome, riders: riders.length })],
     });
@@ -1742,6 +1791,99 @@ export class PolicyService implements PolicyPort {
 
   listApplications(filter: ApplicationFilter = {}): Promise<Application[]> {
     return this.d.store.listApplications(filter);
+  }
+
+  /**
+   * A person's decision on a referred application (ADR 0031), with the
+   * permission policies:underwrite. Accept issues the policy at the premium the
+   * customer applied at, with the rules' riders or the person's own. Decline
+   * needs a reason code. Both need the grounds.
+   */
+  async decideApplication(id: string, input: ApplicationDecisionInput, by: string): Promise<Application> {
+    const a = await this.waitingApplication(id);
+    const now = this.d.clock.now();
+    const note = (input.note ?? '').trim();
+    if (!note) throw new PolicyError('validation', 'The grounds for the decision (note) are required');
+    if (input.outcome === 'decline') {
+      if (!/^[a-z][a-z0-9-]{1,63}$/.test(input.reason ?? '')) throw new PolicyError('validation', 'A decline needs a reason code, e.g. ongoing-symptoms');
+      if (input.riders !== undefined || input.startDate !== undefined) throw new PolicyError('validation', 'riders and startDate are only for accept');
+      const decision: ApplicationDecision = { outcome: 'declined', reason: input.reason!, note, decidedBy: by, decidedAt: now };
+      await this.d.store
+        .decideApplication(id, decision, [this.appEvent('application.declined', id, undefined, now, { reason: input.reason, decidedBy: by })])
+        .catch(this.translate);
+      return this.getApplication(id);
+    }
+    if (input.outcome !== 'accept') throw new PolicyError('validation', `Unknown outcome '${input.outcome}'`);
+    if (input.reason !== undefined) throw new PolicyError('validation', 'reason is only for decline');
+    const today = marketDate(a.market, now);
+    const startDate = input.startDate ?? a.startDate;
+    if (!validDate(startDate)) throw new PolicyError('validation', 'startDate must be YYYY-MM-DD');
+    if (startDate < today) throw new PolicyError('validation', `The start date ${startDate} has passed: give a later startDate`);
+    for (const r of input.riders ?? []) {
+      if (!Array.isArray(r.diagnosisCodes) || !r.diagnosisCodes.length || r.diagnosisCodes.some((c) => typeof c !== 'string' || !c)) {
+        throw new PolicyError('validation', 'A rider needs diagnosis codes');
+      }
+      if (!r.description?.trim()) throw new PolicyError('validation', 'A rider needs a description');
+    }
+    const issueInput: IssueInput = {
+      market: a.market,
+      animalId: a.animalId,
+      policyholderPartyId: a.policyholderPartyId,
+      productVersion: a.productVersion,
+      startDate,
+      ...(a.vetCare ? { vetCare: a.vetCare } : {}),
+      ...(a.groupId ? { groupId: a.groupId } : {}),
+      ...(a.campaignCode ? { campaignCode: a.campaignCode } : {}),
+      // The customer accepted this premium; a different price from the tariff today is kept as a manual one with its reason.
+      premium: a.premium,
+      priceOverride: { reason: `The premium the customer applied at (${a.id})` },
+      acceptance: { channel: a.acceptance.channel, ...(a.acceptance.reference ? { reference: a.acceptance.reference } : {}), acceptedAt: a.acceptance.acceptedAt },
+    };
+    const plan = { ...(await this.planIssue(issueInput, by, { mayOverridePrice: true })), acceptance: a.acceptance };
+    const base = { validFrom: startDate, applicationId: id };
+    const riders: Rider[] = input.riders
+      ? input.riders.map((r) => ({ id: this.d.ids.next('rdr'), description: r.description.trim(), diagnosisCodes: [...r.diagnosisCodes].sort(), ...base, source: 'manual' }))
+      : a.underwriting.result.riders.map((r) => ({ id: this.d.ids.next('rdr'), description: r.description, diagnosisCodes: [...r.diagnosisCodes], ...base, source: 'underwriting', question: r.question }));
+    const decision: ApplicationDecision = { outcome: 'accepted', riders, note, policyId: plan.policyId, decidedBy: by, decidedAt: now };
+    await this.commitIssue(plan, issueInput, by, {
+      riders,
+      applicationId: id,
+      decision: { applicationId: id, decision },
+      note: `Accepted by ${by} after manual underwriting (${id}): ${note}`,
+      events: [this.appEvent('application.accepted', id, plan.policyId, now, { decidedBy: by, riders: riders.length })],
+    });
+    return this.getApplication(id);
+  }
+
+  /** The channel withdraws an application that waits for a person, e.g. when the customer no longer wants it. */
+  async withdrawApplication(id: string, input: { reason?: string }, by: string): Promise<Application> {
+    await this.waitingApplication(id);
+    const now = this.d.clock.now();
+    const note = input.reason?.trim();
+    const decision: ApplicationDecision = { outcome: 'withdrawn', ...(note ? { note } : {}), decidedBy: by, decidedAt: now };
+    await this.d.store.decideApplication(id, decision, [this.appEvent('application.withdrawn', id, undefined, now, { by })]).catch(this.translate);
+    return this.getApplication(id);
+  }
+
+  /** Ends every referred application whose deadline has passed in its market (ADR 0031). */
+  async expireApplications(markets: '*' | ReadonlySet<string>, by: string): Promise<Application[]> {
+    const now = this.d.clock.now();
+    const out: Application[] = [];
+    for (const a of await this.d.store.listApplications({ status: 'referred' })) {
+      if ((markets !== '*' && !markets.has(a.market)) || !a.deadline || a.deadline >= marketDate(a.market, now)) continue;
+      const decision: ApplicationDecision = { outcome: 'expired', note: `Not decided by ${a.deadline}`, decidedBy: by, decidedAt: now };
+      await this.d.store.decideApplication(a.id, decision, [this.appEvent('application.expired', a.id, undefined, now, { deadline: a.deadline })]).catch(this.translate);
+      out.push(await this.getApplication(a.id));
+    }
+    return out;
+  }
+
+  /** A referred application that has not been decided, withdrawn or expired. */
+  private async waitingApplication(id: string): Promise<Application> {
+    const a = await this.getApplication(id);
+    if (a.status !== 'referred') throw new PolicyError('conflict', `Application ${id} is ${a.status}, not waiting for a decision`);
+    if (a.deadline && a.deadline < marketDate(a.market, this.d.clock.now())) throw new PolicyError('conflict', `Application ${id} expired after ${a.deadline}`);
+    return a;
   }
 
   /** Runs the underwriting rules in force on the application date (ADR 0031). */
@@ -1834,7 +1976,7 @@ export class PolicyService implements PolicyPort {
     plan: Awaited<ReturnType<PolicyService['planIssue']>>,
     input: IssueInput,
     by: string,
-    u: { riders: Rider[]; note: string; events: PolicyEvent[]; application?: Application },
+    u: { riders: Rider[]; note: string; events: PolicyEvent[]; application?: Application; applicationId?: string; decision?: IssueExtra['decision'] },
   ): Promise<PolicyRecord> {
     const { now, policyId, offer, endDate, premium } = plan;
     const txId = this.d.ids.next('ptx');
@@ -1876,7 +2018,7 @@ export class PolicyService implements PolicyPort {
       ],
       requestedBy: by,
       requestedAt: now,
-      issue: { acceptance: plan.acceptance, ...(u.application ? { applicationId: u.application.id } : {}) },
+      issue: { acceptance: plan.acceptance, ...(u.applicationId ? { applicationId: u.applicationId } : {}) },
     };
     await this.d.store
       .issue(
@@ -1894,10 +2036,10 @@ export class PolicyService implements PolicyPort {
             startDate: input.startDate,
             endDate,
             premium: { amount: premium.amount, currency: offer.currency },
-            ...(u.application ? { applicationId: u.application.id } : {}),
+            ...(u.applicationId ? { applicationId: u.applicationId } : {}),
           }),
         ],
-        u.application,
+        { ...(u.application ? { application: u.application } : {}), ...(u.decision ? { decision: u.decision } : {}) },
       )
       .catch(this.translate);
     if (input.groupId !== undefined) await this.addMember(input.groupId, { policyId, from: input.startDate }, by);
@@ -1940,7 +2082,7 @@ export class PolicyService implements PolicyPort {
     // An application is a relation too: a referred one is ongoing, the others count from the day they were received.
     for (const a of await this.d.store.listApplications({ policyholderPartyId: partyId })) {
       if (a.status === 'referred') return { ongoing: true };
-      ends.push(marketDate(a.market, a.receivedAt));
+      ends.push(marketDate(a.market, a.decision?.decidedAt ?? a.receivedAt));
     }
     const last = ends.sort().at(-1);
     return last ? { lastDate: last } : null;
@@ -1964,21 +2106,38 @@ export class InMemoryPolicyStore implements PolicyStore {
     this.outbox.push(...structuredClone(events));
   }
 
+  private applicationDecisions = new Map<string, ApplicationDecision>();
+
+  /** The application as read: its decision, if any, sets the status and the policy. */
+  private viewOf(a: Application): Application {
+    const d = this.applicationDecisions.get(a.id);
+    return structuredClone(d ? { ...a, status: d.outcome, decision: d, ...(d.policyId ? { policyId: d.policyId } : {}) } : a);
+  }
+
+  async decideApplication(applicationId: string, decision: ApplicationDecision, events: PolicyEvent[]) {
+    this.checkDecidable(applicationId);
+    this.applicationDecisions.set(applicationId, structuredClone(decision));
+    this.outbox.push(...structuredClone(events));
+  }
+
+  private checkDecidable(applicationId: string) {
+    const a = this.applications.find((x) => x.id === applicationId);
+    if (!a || a.status !== 'referred' || this.applicationDecisions.has(applicationId)) throw new PolicyConflictError(`Application ${applicationId} is not waiting for a decision`);
+  }
+
   async getApplication(id: string) {
     const a = this.applications.find((x) => x.id === id);
-    return a ? structuredClone(a) : null;
+    return a ? this.viewOf(a) : null;
   }
 
   async listApplications(f: ApplicationFilter) {
-    return structuredClone(
-      this.applications.filter(
+    return this.applications.map((a) => this.viewOf(a)).filter(
         (a) =>
           (!f.status || a.status === f.status) &&
           (!f.market || a.market === f.market) &&
           (!f.animalId || a.animalId === f.animalId) &&
           (!f.policyholderPartyId || a.policyholderPartyId === f.policyholderPartyId),
-      ),
-    );
+      );
   }
 
   async createGroup(g: PolicyGroup) {
@@ -2118,9 +2277,10 @@ export class InMemoryPolicyStore implements PolicyStore {
     for (const e of this.outbox) if (ids.includes(e.id)) e.publishedAt = at;
   }
 
-  async issue(policy: Policy, term: Term, version: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[], application?: Application) {
+  async issue(policy: Policy, term: Term, version: PolicyVersion, tx: PolicyTransaction, events: PolicyEvent[], { application, decision }: IssueExtra = {}) {
     if (this.policies.some((p) => p.id === policy.id)) throw new PolicyConflictError(`Policy ${policy.id} exists`);
     if (application && this.applications.some((x) => x.id === application.id)) throw new PolicyConflictError(`Application ${application.id} exists`);
+    if (decision) this.checkDecidable(decision.applicationId);
     const others = new Set(this.policies.filter((p) => p.animalId === policy.animalId).map((p) => p.id));
     const overlap = this.versions.some(
       (v) => others.has(v.policyId) && !v.sysTo && v.status === 'active' && v.validFrom < version.validTo && version.validFrom < v.validTo,
@@ -2132,5 +2292,6 @@ export class InMemoryPolicyStore implements PolicyStore {
     this.txs.push(structuredClone(tx));
     this.outbox.push(...structuredClone(events));
     if (application) this.applications.push(structuredClone(application));
+    if (decision) this.applicationDecisions.set(decision.applicationId, structuredClone(decision.decision));
   }
 }

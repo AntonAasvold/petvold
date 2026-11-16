@@ -40,6 +40,41 @@ export function issued(n = 1, o: { animalId?: string; validFrom?: string; validT
   return { policy, term, version, transaction };
 }
 
+/** An application for the store tests: referred, with a deadline, unless `o` says otherwise. */
+function app(id: string, o: Partial<Application> = {}): Application {
+  const a: Application = {
+    id,
+    market: 'SE',
+    animalId: 'ani_rex',
+    policyholderPartyId: 'pty_anna',
+    productVersion: 'SE-TEST@1',
+    startDate: '2026-12-01',
+    vetCare: { deductible: 'standard' },
+    acceptance: { channel: 'web', reference: 's1', acceptedAt: '2026-11-15T09:58:00.000Z', receivedAt: at },
+    premium: { amount: 480_000, currency: 'SEK' },
+    status: 'referred',
+    underwriting: {
+      input: { market: 'SE', species: 'dog', birthDate: '2024-03-01', startDate: '2026-12-01', answers: [{ question: 'ongoing-symptoms', value: true }] },
+      result: {
+        outcome: 'refer',
+        riders: [],
+        reasons: ['ongoing-symptoms'],
+        checks: [{ code: 'answer', result: 'refer', basis: 'ongoing-symptoms', reason: 'ongoing-symptoms' }],
+        facts: { ageDays: 1005, ageYears: 2 },
+        rules: { series: 'SE-UW', version: 1, checksum: 'u' },
+        inputHash: 'h',
+      },
+      engineVersion: 'test',
+    },
+    receivedBy: 'seller',
+    receivedAt: at,
+    ...o,
+  };
+  if (a.status === 'referred') a.deadline ??= '2026-12-15';
+  else delete a.deadline;
+  return a;
+}
+
 export function policyStoreSuite(name: string, factory: PolicyStoreFactory): void {
   describe(`PolicyStore: ${name}`, () => {
     const it = (title: string, fn: (store: PolicyStore) => Promise<void>) =>
@@ -258,34 +293,6 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
     });
 
     it('an application is stored alone, or with the policy it issued, and found by its filters (ADR 0031)', async (store) => {
-      const app = (id: string, o: Partial<Application> = {}): Application => ({
-        id,
-        market: 'SE',
-        animalId: 'ani_rex',
-        policyholderPartyId: 'pty_anna',
-        productVersion: 'SE-TEST@1',
-        startDate: '2026-12-01',
-        vetCare: { deductible: 'standard' },
-        acceptance: { channel: 'web', reference: 's1', acceptedAt: '2026-11-15T09:58:00.000Z', receivedAt: at },
-        premium: { amount: 480_000, currency: 'SEK' },
-        status: 'referred',
-        underwriting: {
-          input: { market: 'SE', species: 'dog', birthDate: '2024-03-01', startDate: '2026-12-01', answers: [{ question: 'ongoing-symptoms', value: true }] },
-          result: {
-            outcome: 'refer',
-            riders: [],
-            reasons: ['ongoing-symptoms'],
-            checks: [{ code: 'answer', result: 'refer', basis: 'ongoing-symptoms', reason: 'ongoing-symptoms' }],
-            facts: { ageDays: 1005, ageYears: 2 },
-            rules: { series: 'SE-UW', version: 1, checksum: 'u' },
-            inputHash: 'h',
-          },
-          engineVersion: 'test',
-        },
-        receivedBy: 'seller',
-        receivedAt: at,
-        ...o,
-      });
       const referred = app('app_1');
       await store.addApplication(referred, [{ id: 'pev_a1', type: 'application.referred', applicationId: 'app_1', occurredAt: at, data: {} }]);
       assert.deepEqual(await store.getApplication('app_1'), referred);
@@ -295,7 +302,7 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
       t.transaction.issue = { acceptance: referred.acceptance, applicationId: 'app_2' };
       const accepted = app('app_2', { status: 'accepted', policyId: 'pol_t1', animalId: 'ani_bella', groupId: 'pgr_1', campaignCode: 'PUPPY' });
       const { vetCare: _v, ...noChoices } = app('app_3', { status: 'declined', policyholderPartyId: 'pty_bo', receivedAt: '2026-11-15T11:00:00.000Z' });
-      await store.issue(t.policy, t.term, t.version, t.transaction, [{ id: 'pev_a2', type: 'policy.issued', policyId: 'pol_t1', occurredAt: at, data: { applicationId: 'app_2' } }], accepted);
+      await store.issue(t.policy, t.term, t.version, t.transaction, [{ id: 'pev_a2', type: 'policy.issued', policyId: 'pol_t1', occurredAt: at, data: { applicationId: 'app_2' } }], { application: accepted });
       await store.addApplication(noChoices, []);
       assert.deepEqual(await store.getApplication('app_2'), accepted);
       assert.deepEqual(await store.getApplication('app_3'), noChoices);
@@ -315,6 +322,35 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
           ['pev_a2', 'pol_t1', undefined],
         ],
       );
+    });
+
+    it('a referred application gets one decision, which sets its status, and an acceptance issues the policy with it', async (store) => {
+      await store.addApplication(app('app_1'), []);
+      await store.addApplication(app('app_2', { animalId: 'ani_bella' }), []);
+      await store.addApplication(app('app_3', { status: 'declined' }), []);
+      const declined = { outcome: 'declined' as const, reason: 'ongoing-symptoms', note: 'The vet found an ongoing infection', decidedBy: 'uw', decidedAt: at };
+      await store.decideApplication('app_1', declined, [{ id: 'pev_d1', type: 'application.declined', applicationId: 'app_1', occurredAt: at, data: {} }]);
+      assert.deepEqual(await store.getApplication('app_1'), { ...app('app_1'), status: 'declined', decision: declined });
+      await assert.rejects(store.decideApplication('app_1', { ...declined, outcome: 'withdrawn' }, []), PolicyConflictError);
+      await assert.rejects(store.decideApplication('app_3', { outcome: 'withdrawn', decidedBy: 'web', decidedAt: at }, []), PolicyConflictError);
+
+      const t = issued(1, { animalId: 'ani_bella' });
+      const rider = { id: 'rdr_1', description: 'Ear', diagnosisCodes: ['ORA-OTIT'], validFrom: '2026-12-01', source: 'manual' as const, applicationId: 'app_2' };
+      t.term.riders = [rider];
+      const accepted = { outcome: 'accepted' as const, riders: [rider], note: 'Examined, healthy apart from the ear', policyId: 'pol_t1', decidedBy: 'uw', decidedAt: at };
+      await store.issue(t.policy, t.term, t.version, t.transaction, [], { decision: { applicationId: 'app_2', decision: accepted } });
+      const a2 = await store.getApplication('app_2');
+      assert.deepEqual([a2?.status, a2?.policyId, a2?.decision], ['accepted', 'pol_t1', accepted]);
+      assert.deepEqual((await store.get('pol_t1'))?.terms[0]?.riders, [rider]);
+      // A second acceptance stores nothing: no second policy.
+      const u = issued(2, { animalId: 'ani_other' });
+      await assert.rejects(
+        store.issue(u.policy, u.term, u.version, u.transaction, [], { decision: { applicationId: 'app_2', decision: { ...accepted, policyId: 'pol_t2' } } }),
+        PolicyConflictError,
+      );
+      assert.equal(await store.get('pol_t2'), null);
+      assert.deepEqual((await store.listApplications({ status: 'referred' })).map((x) => x.id), []);
+      assert.deepEqual((await store.listApplications({ status: 'declined' })).map((x) => x.id), ['app_1', 'app_3']);
     });
   });
 }

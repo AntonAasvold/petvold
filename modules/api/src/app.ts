@@ -876,7 +876,9 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/applications', async (c) => {
     const status = c.req.query('status');
-    if (status !== undefined && !['accepted', 'referred', 'declined'].includes(status)) return problem(c, 422, 'status is accepted, referred or declined');
+    if (status !== undefined && !['accepted', 'referred', 'declined', 'withdrawn', 'expired'].includes(status)) {
+      return problem(c, 422, 'status is accepted, referred, declined, withdrawn or expired');
+    }
     const q = (k: string) => c.req.query(k);
     const items = await policies.listApplications({
       ...(status ? { status: status as ApplicationStatus } : {}),
@@ -887,11 +889,34 @@ export function createApp(d: AppDeps) {
     return sendPage(c, items.filter((a) => seesApplication(c.get('scope'), a)));
   });
 
-  app.get('/v1/applications/:applicationId', async (c) => {
-    const id = c.req.param('applicationId');
+  const visibleApplication = async (c: Context<Env>) => {
+    const id = c.req.param('applicationId') ?? '';
     const a = await policies.getApplication(id);
     if (!seesApplication(c.get('scope'), a)) throw new PolicyError('not_found', `Application ${id} does not exist`);
-    return send(c, a);
+    return a;
+  };
+
+  app.get('/v1/applications/:applicationId', async (c) => send(c, await visibleApplication(c)));
+
+  // A person's decision on a referred application (ADR 0031).
+  app.post('/v1/applications/:applicationId/decisions', async (c) => {
+    const a = await visibleApplication(c);
+    const r = await readJson(c, 'ApplicationDecisionRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.decideApplication(a.id, r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/applications/:applicationId/withdrawals', async (c) => {
+    const a = await visibleApplication(c);
+    const r = await readJson(c, 'ApplicationWithdrawalRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await policies.withdrawApplication(a.id, r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/application-expiry-runs', async (c) => {
+    const scope = c.get('scope');
+    if (scope.clinicId || scope.policyIds) return problem(c, 403, 'Not permitted', 'A role bound to a clinic or to policies cannot run this');
+    return send(c, { expired: await policies.expireApplications(scope.markets, c.get('principal').subject) });
   });
 
   // The questions a channel asks before an application (ADR 0031), from the rules in force.

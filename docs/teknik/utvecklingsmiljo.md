@@ -42,7 +42,7 @@ Servern skriver ut vilken lagring den använder och loggar varje händelse som r
 | Sara, Max och Ludde i Malmö | `pty_owner003`, `ani_max`, `ani_ludde` | Två policyer i ett hushåll, Ludde med grupprabatt |
 | Saras katt Smilla | `ani_smilla` | Ett djur utan försäkring |
 | Lena och Kajsa i Uppsala | `pty_owner004`, `ani_kajsa` | Ansökan på `SE-HUND-PLUS`, godkänd med förbehåll för öroninflammation (`ORA-OTIT`) |
-| Lenas Rocky | `ani_rocky` | Ansökan som väntar på manuell prövning (`GET /v1/applications?status=referred`) |
+| Lenas Rocky | `ani_rocky` | Ansökan som väntar på manuell prövning (`GET /v1/applications?status=referred`). `dev-underwriter` kan besluta, efter `npm run roles:sync -- --apply` i en befintlig databas. |
 | Lenas Sixten, 12 år | `ani_sixten` | Ansökan som avslagits med skälet `too-old` |
 
 De nya policyerna tecknas med dagens datum första gången servern startar, så deras id skiljer sig mellan databaser. Hitta dem med `GET /v1/policies?policyholderPartyId=pty_owner003`, och ansökningarna med `GET /v1/applications?policyholderPartyId=pty_owner004`. Teckningsreglerna `SE-HUND-UW@1` läses från `modules/api/seed/underwriting-rules.json`, med frågorna på svenska och engelska. Hälsofrågorna för produkten finns på `GET /v1/application-questions?productVersion=SE-HUND-PLUS@2026.1&species=dog`. En befintlig lokal databas får de nya delarna vid nästa start, men Bellas skador och policyer bara om de saknas. Kör `npm run dev:reset` för att börja om.

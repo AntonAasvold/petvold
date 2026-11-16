@@ -89,10 +89,10 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Prisvilkor: grupprabatt och kampanjkoder efter grundpriset, med tak
 - [x] Priset vid tecknande, ändring och förnyelse, med underlaget sparat på termen, och manuellt pris med egen rättighet
 - [ ] Simulering av tariffer och prisvilkor mot sparade priser
-- [ ] Teckningsregler och manuell prövning (F1), ADR 0031
+- [x] Teckningsregler och manuell prövning (F1), ADR 0031
   - [x] Teckningsregler som serie och den rena funktionen `underwriting-core`
   - [x] Ansökan med godkännande (F3), förbehåll på termen och produktens `underwritingSeries`
-  - [ ] Kö och beslut för manuell prövning
+  - [x] Kö och beslut för manuell prövning, återkallelse och utgång
 - [ ] Rabatter som regler
 
 ## Senare

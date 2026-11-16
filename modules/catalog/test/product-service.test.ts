@@ -135,7 +135,7 @@ test('policy settings have defaults and limits (ADR 0029)', async () => {
   const s = setup();
   const withPolicy = (policy: Record<string, unknown>) => draft({ content: { ...content(), policy } as never });
   const v = await s.createDraft('XX-DOG-VC', draft(), author);
-  assert.deepEqual(policySettingsOf(v.content), { midTermCancellation: 'term-end', termMonths: 12, renewalLeadDays: 45, transferAcceptanceDays: 30 });
+  assert.deepEqual(policySettingsOf(v.content), { midTermCancellation: 'term-end', termMonths: 12, renewalLeadDays: 45, transferAcceptanceDays: 30, applicationExpiryDays: 30 });
   const monthly = await s.createDraft('XX-DOG-M', withPolicy({ termMonths: 1, renewalLeadDays: 10, midTermCancellation: 'immediate' }), author);
   assert.deepEqual(policySettingsOf(monthly.content).termMonths, 1);
   await rejects(s.createDraft('XX-DOG-X', withPolicy({ termMonths: 13 }), author), 'validation', /termMonths/);
@@ -143,6 +143,7 @@ test('policy settings have defaults and limits (ADR 0029)', async () => {
   await rejects(s.createDraft('XX-DOG-X', withPolicy({ renewalLeadDays: 0 }), author), 'validation', /renewalLeadDays/);
   await rejects(s.createDraft('XX-DOG-X', withPolicy({ midTermCancellation: 'never' }), author), 'validation', /midTermCancellation/);
   await rejects(s.createDraft('XX-DOG-X', withPolicy({ transferAcceptanceDays: 91 }), author), 'validation', /transferAcceptanceDays/);
+  await rejects(s.createDraft('XX-DOG-X', withPolicy({ applicationExpiryDays: 0 }), author), 'validation', /applicationExpiryDays/);
 });
 
 test('a product with a tariff series needs a tariff in force that covers it (ADR 0030)', async () => {

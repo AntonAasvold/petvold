@@ -623,6 +623,7 @@ test("'today' is the market's date: at 00:30 in Stockholm a policy can start tha
 // Applications and underwriting (ADR 0031).
 function applicationSetup(o: { rulesInForce?: boolean; tariff?: boolean } = {}) {
   let n = 0;
+  let now = '2026-11-15T10:00:00.000Z';
   const store = new InMemoryPolicyStore();
   const ref = { series: 'SE-UW', version: 1, checksum: 'u' };
   const uwOffer = offer({
@@ -643,10 +644,10 @@ function applicationSetup(o: { rulesInForce?: boolean; tariff?: boolean } = {}) 
     underwriting: { underwritingInForce: async () => (o.rulesInForce === false ? null : { content: UNDERWRITING, ref }) },
     ...(o.tariff ? { tariffs: { tariffInForce: async (series: string) => ({ content: TARIFF, ref: { series, version: 1, checksum: 't' } }) } } : {}),
     engineVersion: 'test-1',
-    clock: { now: () => '2026-11-15T10:00:00.000Z' },
+    clock: { now: () => now },
     ids: { next: (p) => `${p}_${++n}` },
   });
-  return { s, store, ref };
+  return { s, store, ref, at: (iso: string) => (now = iso) };
 }
 const no = (question: string) => ({ question, value: false });
 const allNo = [no('previous-illness'), no('ongoing-symptoms'), no('lameness')];
@@ -746,4 +747,64 @@ test('a quote with answers says what an application would lead to; nothing is st
   assert.equal((await s.quote(base)).underwriting, undefined);
   await rejects(s.quote({ ...base, answers: [] }), 'validation', /Unanswered/);
   assert.deepEqual(await s.listApplications(), []);
+});
+
+const symptoms = [no('previous-illness'), { question: 'ongoing-symptoms', value: true }, no('lameness')];
+
+test('a person accepts a referred application: the policy is issued at the premium applied for, with the rules\' riders or the person\'s', async () => {
+  const { s, store } = applicationSetup();
+  const a = await s.apply(application({ answers: [{ question: 'previous-illness', value: true, diagnosisCodes: ['ORA-OTIT'] }, { question: 'ongoing-symptoms', value: true }, no('lameness')] }), by);
+  assert.deepEqual([a.status, a.deadline, a.underwriting.result.riders.length], ['referred', '2026-12-15', 1]);
+  await rejects(s.decideApplication(a.id, { outcome: 'accept', note: ' ' }, 'uw'), 'validation', /grounds/);
+  await rejects(s.decideApplication(a.id, { outcome: 'accept', note: 'ok', reason: 'x-y' }, 'uw'), 'validation', /only for decline/);
+  await rejects(s.decideApplication(a.id, { outcome: 'accept', note: 'ok', startDate: '2026-11-14' }, 'uw'), 'validation', /has passed/);
+  await rejects(s.decideApplication(a.id, { outcome: 'accept', note: 'ok', riders: [{ diagnosisCodes: [], description: 'x' }] }, 'uw'), 'validation', /diagnosis codes/);
+
+  const d = await s.decideApplication(a.id, { outcome: 'accept', note: 'The vet record shows the symptoms were a cold' }, 'uw');
+  assert.deepEqual([d.status, d.decision?.outcome, d.decision?.decidedBy, d.policyId], ['accepted', 'accepted', 'uw', d.decision?.policyId]);
+  const p = await s.get(d.policyId!);
+  assert.deepEqual(p.terms[0]!.riders.map((r) => [r.diagnosisCodes, r.source, r.question, r.applicationId]), [[['ORA-OTIT'], 'underwriting', 'previous-illness', a.id]]);
+  assert.deepEqual([p.terms[0]!.premium, p.terms[0]!.startDate], [480_000, '2026-12-01']);
+  const tx = (await s.transactions(p.id))[0]!;
+  assert.deepEqual([tx.issue?.applicationId, tx.issue?.acceptance], [a.id, a.acceptance]);
+  assert.match(tx.steps[2]!.note!, /Accepted by uw after manual underwriting/);
+  assert.deepEqual((await store.pendingEvents(10)).map((e) => e.type).slice(-2), ['application.accepted', 'policy.issued']);
+  await rejects(s.decideApplication(a.id, { outcome: 'decline', reason: 'x-y', note: 'n' }, 'uw'), 'conflict', /is accepted/);
+
+  // The person's own riders replace the rules' proposals, and a later start replaces one that passed.
+  const { s: s2, at } = applicationSetup();
+  const c = await s2.apply(application({ startDate: '2026-11-20', answers: symptoms }), by);
+  at('2026-11-25T08:00:00.000Z');
+  await rejects(s2.decideApplication(c.id, { outcome: 'accept', note: 'ok' }, 'uw'), 'validation', /2026-11-20 has passed/);
+  const e = await s2.decideApplication(c.id, { outcome: 'accept', note: 'Lame once as a puppy', startDate: '2026-11-26', riders: [{ diagnosisCodes: ['ORT-HALTA-HB-V', 'ORT-HALTA-HB-H'], description: 'Lameness' }] }, 'uw');
+  const t = (await s2.get(e.policyId!)).terms[0]!;
+  assert.deepEqual([t.startDate, t.riders.map((r) => [r.diagnosisCodes, r.source, r.validFrom])], ['2026-11-26', [[['ORT-HALTA-HB-H', 'ORT-HALTA-HB-V'], 'manual', '2026-11-26']]]);
+});
+
+test('a person declines with a reason code; the channel withdraws; an application not decided in time expires', async () => {
+  const { s, store, at } = applicationSetup();
+  const a = await s.apply(application({ answers: symptoms }), by);
+  await rejects(s.decideApplication(a.id, { outcome: 'decline', note: 'Infection' }, 'uw'), 'validation', /reason code/);
+  const d = await s.decideApplication(a.id, { outcome: 'decline', reason: 'ongoing-symptoms', note: 'Ongoing ear infection' }, 'uw');
+  assert.deepEqual([d.status, d.decision?.reason, d.policyId], ['declined', 'ongoing-symptoms', undefined]);
+  await rejects(s.withdrawApplication(a.id, {}, 'web'), 'conflict', /is declined/);
+
+  const w = await s.withdrawApplication((await s.apply(application({ answers: symptoms }), by)).id, { reason: 'The customer changed their mind' }, 'web');
+  assert.deepEqual([w.status, w.decision?.note], ['withdrawn', 'The customer changed their mind']);
+  const declinedAtOnce = await s.apply(application({ animalId: 'ani_old' }), by);
+  await rejects(s.withdrawApplication(declinedAtOnce.id, {}, 'web'), 'conflict', /is declined/);
+
+  const late = await s.apply(application({ answers: symptoms }), by);
+  at('2026-12-15T12:00:00.000Z'); // the last day: still open
+  assert.deepEqual(await s.expireApplications('*', 'job'), []);
+  at('2026-12-16T12:00:00.000Z');
+  await rejects(s.decideApplication(late.id, { outcome: 'decline', reason: 'x-y', note: 'n' }, 'uw'), 'conflict', /expired after 2026-12-15/);
+  assert.deepEqual(await s.expireApplications(new Set(['DE']), 'job'), []);
+  const expired = await s.expireApplications('*', 'job');
+  assert.deepEqual(expired.map((x) => [x.id, x.status, x.decision?.note]), [[late.id, 'expired', 'Not decided by 2026-12-15']]);
+  assert.deepEqual(await s.expireApplications('*', 'job'), []);
+  assert.deepEqual((await s.listApplications({ status: 'referred' })), []);
+  assert.deepEqual((await store.pendingEvents(20)).filter((e) => e.type === 'application.withdrawn' || e.type === 'application.expired').map((e) => e.type), ['application.withdrawn', 'application.expired']);
+  // Nothing waits any more: the party's last relation is the latest decision.
+  assert.deepEqual(await s.activityOf('pty_anna'), { lastDate: '2026-12-16' });
 });
