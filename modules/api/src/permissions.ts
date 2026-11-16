@@ -72,6 +72,10 @@ export const PERMISSIONS = [
   'policies:price-override',
   /** Decide on an application referred to a person: accept, with or without riders, or decline with a reason (ADR 0031). */
   'policies:underwrite',
+  /** Read notices to the customer and their deliveries (ADR 0032). Notices hold party ids, not names or addresses. */
+  'notices:read',
+  /** Report that a notice was sent, with the document's id and checksum, or that it failed: the insurer's document system. */
+  'notices:deliver',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -132,6 +136,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
       'animals:read',
       'parties:read',
       'policies:read',
+      'notices:read',
     ],
     // SEK 25,000 and EUR 2,500 alone; above that, someone with claims:approve approves.
     decisionLimits: { SEK: 2_500_000, EUR: 250_000 },
@@ -148,11 +153,18 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Registers persons and organizations and keeps their details up to date, e.g. customer service. */
   'party-registrar': { permissions: ['parties:read', 'parties:write'] },
   /** Issues policies, e.g. the insurer's sales channel or customer service (ADR 0029). */
-  'policy-registrar': { permissions: ['policies:read', 'policies:write', 'policies:quote', 'animals:read', 'parties:read', 'catalog:read'] },
+  'policy-registrar': { permissions: ['policies:read', 'policies:write', 'policies:quote', 'animals:read', 'parties:read', 'catalog:read', 'notices:read'] },
   /** The scheduled renewal run and expiry of transfers not accepted in time. */
   'renewal-job': { permissions: ['policies:renew'] },
   /** Decides on applications and prices that need a person, e.g. a manual premium (ADR 0030). */
-  underwriter: { permissions: ['policies:read', 'policies:write', 'policies:quote', 'policies:price-override', 'policies:underwrite', 'animals:read', 'parties:read', 'catalog:read'] },
+  underwriter: {
+    permissions: ['policies:read', 'policies:write', 'policies:quote', 'policies:price-override', 'policies:underwrite', 'animals:read', 'parties:read', 'catalog:read', 'notices:read'],
+  },
+  /**
+   * The insurer's document system (ADR 0032): reads the notices due, makes and sends
+   * the documents with the recipient's name and address, and reports each delivery.
+   */
+  'document-service': { permissions: ['notices:read', 'notices:deliver', 'parties:read', 'policies:read', 'catalog:read'] },
   /** Handles erasure and restriction of personal data (ADR 0028). Two people are needed to anonymize. */
   'privacy-officer': { permissions: ['parties:read', 'parties:privacy', 'parties:erase', 'parties:retention'] },
   /** The scheduled retention run. Only asks; a privacy officer approves each request. */
@@ -164,7 +176,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Manages roles and limits. No permissions in claims. */
   admin: { permissions: ['access:read', 'access:manage'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */
-  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote'], bindsTo: 'policies' },
+  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read'], bindsTo: 'policies' },
 };
 
 export function isPermission(value: unknown): value is Permission {

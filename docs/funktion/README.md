@@ -14,8 +14,9 @@ Petvold installeras en gång per försäkringsbolag (ADR 0010). Varje kund har s
 | Produkt | Versionerade produkter med säljperiod, regelserie och valbara försäkringsbelopp och självrisker, publicerade med fyra ögon. | Byggd, se [Produktkonfiguration](produktkonfiguration.md#produkter-och-produktversioner) |
 | Djur | Djur med id-nummer, historik och ägare över tid. | Byggd, se [Djurregister](djurregister.md) |
 | Parter | Personer och organisationer med kontaktuppgifter, personnummer och historik. | Byggd, se [Parter](parter.md) |
-| Policy | Försäkringar med full historik: vad som gällde när, och vad som var känt när. | Tecknande byggt, se [Policyer](policyer.md). Avslut, förnyelse och överlåtelse kommer (M3). Skademotorn läser policyn via ett gränssnitt och kan kopplas till ett befintligt system. |
-| Pris och teckning | Premie och teckningsregler per produktversion. | Pris byggt, se [Pris](pris.md). Teckningsregler och ansökan byggda, se [Teckning](teckning.md). Besluten vid manuell prövning kommer (M4). |
+| Policy | Försäkringar med full historik: vad som gällde när, och vad som var känt när. | Byggt: tecknande, ändring, förnyelse, avslut och överlåtelse, se [Policyer](policyer.md). Skademotorn läser policyn via ett gränssnitt och kan kopplas till ett befintligt system. |
+| Pris och teckning | Premie och teckningsregler per produktversion. | Byggt, se [Pris](pris.md) och [Teckning](teckning.md). |
+| Meddelanden | Besked som lagen kräver, till exempel försäkringsbrev och avslag med skäl. Petvold tar fram underlaget, och bolagets dokumentsystem gör och skickar dokumenten. | Byggt för policyer och ansökningar, se [Meddelanden](meddelanden.md) |
 | Billing och betalningar | Premier in, ersättningar ut, via flera betaltjänster. | *(planerat, M5)* |
 
 ## Grundprinciper

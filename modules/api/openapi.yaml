@@ -43,6 +43,7 @@ tags:
   - name: policies
   - name: previews
   - name: limits
+  - name: notices
 
 paths:
   /v1/claims:
@@ -1517,6 +1518,107 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Application' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/notices:
+    get:
+      tags: [notices]
+      operationId: listNotices
+      x-permission: notices:read
+      summary: Notices to the customer, oldest first
+      description: |
+        Requires the permission `notices:read` (ADR 0032). Petvold makes a notice
+        when the law requires the customer to be told something: a policy issued,
+        renewed or cancelled, or an application declined. The insurer's document
+        system reads `status=pending`, makes and sends the document, and reports
+        each attempt with `POST /v1/notices/{noticeId}/deliveries`.
+
+        - `attention=true`: the queue for a person, failed and overdue notices.
+        - `overdue=true`: not sent and `dueBy` has passed.
+        - `late=true`: first sent after `dueBy`. For `insurer-termination` a person
+          checks whether the effective date still holds; Petvold never moves it.
+
+        Only notices in the caller's markets; a role bound to policies sees only
+        notices on its policies, and one bound to a clinic none.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, sent, failed] } }
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/NoticeType' } }
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - { name: policyId, in: query, schema: { type: string } }
+        - { name: applicationId, in: query, schema: { type: string } }
+        - { name: recipientPartyId, in: query, schema: { type: string } }
+        - { name: attention, in: query, schema: { type: boolean } }
+        - { name: overdue, in: query, schema: { type: boolean } }
+        - { name: late, in: query, schema: { type: boolean } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The notices
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notice' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/notices/{noticeId}:
+    get:
+      tags: [notices]
+      operationId: getNotice
+      x-permission: notices:read
+      summary: A notice with its deliveries
+      description: Requires the permission `notices:read`. A notice outside the caller's scope answers 404.
+      parameters:
+        - { name: noticeId, in: path, required: true, schema: { type: string, pattern: '^ntc_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The notice
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notice' }
+
+  /v1/notices/{noticeId}/deliveries:
+    post:
+      tags: [notices]
+      operationId: reportDelivery
+      x-permission: notices:deliver
+      summary: Report that a notice was sent, or that sending failed
+      description: |
+        Requires the permission `notices:deliver`: the insurer's document system
+        (ADR 0032). `sent` needs the channel, the time it was sent, the
+        document's id in the insurer's archive and its sha256, so it can be shown
+        later which document the customer got. `failed` needs a reason without
+        personal data, and puts the notice in the queue. A delivery never
+        changes; a resend is another report.
+      parameters:
+        - { name: noticeId, in: path, required: true, schema: { type: string, pattern: '^ntc_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeliveryRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '201':
+          description: The notice with the delivery
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notice' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
@@ -3973,6 +4075,80 @@ components:
         priceOverride: { $ref: '#/components/schemas/PriceOverride' }
         groupId: { type: string, pattern: '^pgr_[A-Za-z0-9]+$', description: A group the policy joins from its start; gives the group discount. }
         campaignCode: { type: string, maxLength: 32 }
+
+    NoticeType:
+      type: string
+      enum: [policy-confirmation, renewal-notice, insurer-termination, cancellation-confirmation, application-declined]
+      description: |
+        - policy-confirmation: the written confirmation after issue (SE: FAL 2 kap. 4 §), schema policy-confirmation.v1
+        - renewal-notice: the new term and what changed (FAL 3 kap. 5 §), renewal-notice.v1
+        - insurer-termination: the insurer's cancellation (FAL 3 kap. 3 och 7 §§, 5 kap. 2 §), insurer-termination.v1
+        - cancellation-confirmation: the customer's cancellation confirmed (not required by law), cancellation-confirmation.v1
+        - application-declined: the refusal with reasons (FAL 7 kap. 6 §), application-declined.v1
+
+    Notice:
+      type: object
+      required: [id, type, schema, market, recipientPartyId, language, source, legalBasis, dueBy, content, status, createdAt, deliveries]
+      properties:
+        id: { type: string, pattern: '^ntc_[A-Za-z0-9]+$' }
+        type: { $ref: '#/components/schemas/NoticeType' }
+        schema: { type: string, description: 'The content schema, e.g. renewal-notice.v1. A new legal requirement gives a new version.' }
+        market: { $ref: '#/components/schemas/Market' }
+        recipientPartyId: { type: string, description: The party the notice is for. Read name and address from the party when sending. }
+        language: { type: string, pattern: '^[a-z]{2}$', description: 'The party''s language, else the market''s. Choose the template by it.' }
+        policyId: { type: string }
+        applicationId: { type: string }
+        source:
+          type: object
+          required: [eventId, eventType, occurredAt]
+          description: The event the notice was made from. One notice of a type per event.
+          properties:
+            eventId: { type: string }
+            eventType: { type: string }
+            occurredAt: { $ref: '#/components/schemas/DateTime' }
+        legalBasis: { type: array, items: { type: string }, description: The provisions that require it. Empty for a notice the law does not require. }
+        dueBy: { $ref: '#/components/schemas/Date', description: 'The last day to send it: promptly after the event, the first day of a renewed term, or for the insurer''s cancellation the day it says it sent it.' }
+        content:
+          type: object
+          additionalProperties: true
+          description: |
+            What the law requires, as fields, per schema. No names or addresses.
+            - policy-confirmation.v1 and renewal-notice.v1: policyId, animalId, termNo, productVersion, startDate, endDate, premium, vetCare, deductibleOption, riders. The confirmation adds acceptedDocuments; the renewal adds changes (product-version, premium, vet-care, riders) and previous.
+            - insurer-termination.v1 and cancellation-confirmation.v1: policyId, animalId, reason, receivedOn, effectiveDate, refund; the insurer's grounds, and for unpaid premium voidIfPaidBefore.
+            - application-declined.v1: applicationId, animalId, productVersion, reasons (codes) and decidedBy (rules or person).
+        status: { type: string, enum: [pending, sent, failed], description: 'sent once any delivery was sent; failed if every delivery failed.' }
+        late: { type: boolean, description: First sent after dueBy. }
+        overdue: { type: boolean, description: Not sent and dueBy has passed. }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        deliveries:
+          type: array
+          items: { $ref: '#/components/schemas/Delivery' }
+
+    Delivery:
+      type: object
+      required: [id, outcome, reportedBy, reportedAt]
+      properties:
+        id: { type: string, pattern: '^ndl_[A-Za-z0-9]+$' }
+        outcome: { type: string, enum: [sent, failed] }
+        channel: { type: string, enum: [letter, email, digital-mailbox, customer-portal] }
+        sentAt: { $ref: '#/components/schemas/DateTime' }
+        documentId: { type: string }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        reason: { type: string }
+        reportedBy: { type: string }
+        reportedAt: { $ref: '#/components/schemas/DateTime' }
+
+    DeliveryRequest:
+      type: object
+      additionalProperties: false
+      required: [outcome]
+      properties:
+        outcome: { type: string, enum: [sent, failed] }
+        channel: { type: string, enum: [letter, email, digital-mailbox, customer-portal], description: Required when sent. }
+        sentAt: { $ref: '#/components/schemas/DateTime', description: 'When it was sent. Required when sent; not in the future.' }
+        documentId: { type: string, maxLength: 200, description: The document's id in the insurer's archive. Required when sent. }
+        sha256: { type: string, pattern: '^[0-9a-fA-F]{64}$', description: sha256 of the document's bytes. Required when sent. }
+        reason: { type: string, maxLength: 500, description: 'Why it failed, e.g. a missing address. Required when failed. No personal data.' }
 
     AcceptanceInput:
       type: object

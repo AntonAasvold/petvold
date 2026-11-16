@@ -14,7 +14,8 @@ import {
   type PartyRecord,
 } from '@petvold/parties';
 import { InMemoryPolicyStore, PolicyError, PolicyService, type Application, type ApplicationStatus, type PolicyGroup, type PolicyRecord, type Proposal } from '@petvold/policies';
-import { animalPort, claimsActivity, productPort } from './wiring.ts';
+import { CommunicationsError, CommunicationsService, InMemoryNoticeStore, NOTICE_TYPES, type NoticeType, type NoticeView } from '@petvold/communications';
+import { animalPort, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
 import { tariffCoverage } from '@petvold/pricing-core';
 import { questionsFor, underwritingCoverage } from '@petvold/underwriting-core';
 import { marketDate } from '@petvold/common';
@@ -118,6 +119,11 @@ export interface AppDeps {
    * engine as its PolicyPort.
    */
   policies?: PolicyService;
+  /**
+   * Notices to the customer (ADR 0032). Omitted: kept in memory, reading the
+   * services above. The installation's relay feeds it the policy events.
+   */
+  communications?: CommunicationsService;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
   /**
@@ -919,6 +925,62 @@ export function createApp(d: AppDeps) {
     return send(c, { expired: await policies.expireApplications(scope.markets, c.get('principal').subject) });
   });
 
+  // Notices to the customer (ADR 0032). Scope: the caller's markets; a role bound
+  // to policies sees only notices on its policies, and a clinic none.
+  const communications =
+    d.communications ??
+    new CommunicationsService({
+      store: new InMemoryNoticeStore(),
+      policies: policySource(policies),
+      parties: partySource(parties),
+      clock: d.clock,
+      ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
+    });
+  const seesNotice = (scope: Scope, n: NoticeView) =>
+    !scope.clinicId && (scope.markets === '*' || scope.markets.has(n.market)) && (!scope.policyIds || (n.policyId !== undefined && scope.policyIds.has(n.policyId)));
+  const visibleNotice = async (c: Context<Env>) => {
+    const id = c.req.param('noticeId') ?? '';
+    const n = await communications.get(id).catch((e: unknown) => {
+      if (e instanceof CommunicationsError && e.code === 'not_found') return null;
+      throw e;
+    });
+    if (!n || !seesNotice(c.get('scope'), n)) throw new CommunicationsError('not_found', `Notice ${id} does not exist`);
+    return n;
+  };
+
+  app.get('/v1/notices', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const status = q('status');
+    if (status !== undefined && !['pending', 'sent', 'failed'].includes(status)) return problem(c, 422, 'status is pending, sent or failed');
+    const type = q('type');
+    if (type !== undefined && !(NOTICE_TYPES as readonly string[]).includes(type)) return problem(c, 422, `type is one of ${NOTICE_TYPES.join(', ')}`);
+    const flag = (k: string) => {
+      const v = q(k);
+      return v === undefined ? undefined : v === 'true';
+    };
+    const items = await communications.list({
+      ...(status ? { status: status as NoticeView['status'] } : {}),
+      ...(type ? { type: type as NoticeType } : {}),
+      ...(q('market') ? { market: q('market') } : {}),
+      ...(q('policyId') ? { policyId: q('policyId') } : {}),
+      ...(q('applicationId') ? { applicationId: q('applicationId') } : {}),
+      ...(q('recipientPartyId') ? { recipientPartyId: q('recipientPartyId') } : {}),
+      ...(flag('attention') ? { attention: true } : {}),
+      ...(flag('overdue') ? { overdue: true } : {}),
+      ...(flag('late') ? { late: true } : {}),
+    });
+    return sendPage(c, items.filter((n) => seesNotice(c.get('scope'), n)));
+  });
+
+  app.get('/v1/notices/:noticeId', async (c) => send(c, await visibleNotice(c)));
+
+  app.post('/v1/notices/:noticeId/deliveries', async (c) => {
+    const n = await visibleNotice(c);
+    const r = await readJson(c, 'DeliveryRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await communications.addDelivery(n.id, r.body, c.get('principal').subject) }));
+  });
+
   // The questions a channel asks before an application (ADR 0031), from the rules in force.
   app.get('/v1/application-questions', async (c) => {
     const productVersion = c.req.query('productVersion') ?? '';
@@ -1199,6 +1261,9 @@ export function createApp(d: AppDeps) {
     if (err instanceof PolicyError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
       return problem(c, status, err.message);
+    }
+    if (err instanceof CommunicationsError) {
+      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
     }
     if (err instanceof PartyError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;

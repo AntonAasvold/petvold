@@ -145,4 +145,6 @@ Dev-servern har teckningsreglerna `SE-HUND-UW@1` med frågorna på svenska och e
 - Rocky har symtom som ingen veterinär har undersökt och väntar i kön. Token `dev-underwriter` kan besluta om honom.
 - Sixten är 12 år och avslogs med skälet `too-old`.
 
-*Inte byggt än:* brevet med skälen vid avslag (F2), ansökan från kundkanalen, och en kortare lagringstid för avslagna ansökningar.
+Ett avslag ger ett kundmeddelande med skälen till dokumentsystemet, se [Meddelanden](meddelanden.md).
+
+*Inte byggt än:* bolagets text om hur ett avslag prövas i meddelandet, ansökan från kundkanalen, och en kortare lagringstid för avslagna ansökningar.

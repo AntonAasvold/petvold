@@ -7,7 +7,7 @@
  * `npm run dev:up`), else in memory.
  *
  * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-admin'
- * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals and parties), 'dev-privacy' and 'dev-privacy-2' (erasure), 'dev-retention-job' (retention run), 'dev-seller' (policies), 'dev-underwriter' (manual prices), 'dev-renewal-job' (renewal run), 'dev-clinic'
+ * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals and parties), 'dev-privacy' and 'dev-privacy-2' (erasure), 'dev-retention-job' (retention run), 'dev-seller' (policies), 'dev-underwriter' (manual prices), 'dev-documents' (the document system), 'dev-renewal-job' (renewal run), 'dev-clinic'
  * (clinic), 'dev-job' (reassessment job), 'dev-customer' (customer channel). Roles map to
  * permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
@@ -58,6 +58,7 @@ const DEV_TOKENS: Record<string, Principal> = {
   'dev-privacy-2': { subject: 'privacy-b@example.test', roles: ['privacy-officer'], markets: ['SE'] },
   'dev-seller': { subject: 'seller@example.test', roles: ['policy-registrar'], markets: ['SE'] },
   'dev-underwriter': { subject: 'underwriter@example.test', roles: ['underwriter'], markets: ['SE'] },
+  'dev-documents': { subject: 'document-service', roles: ['document-service'], markets: ['SE'] },
   'dev-renewal-job': { subject: 'renewal-job', roles: ['renewal-job'], markets: '*' },
   'dev-retention-job': { subject: 'retention-job', roles: ['retention-job'], markets: '*' },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
@@ -89,6 +90,7 @@ console.log(`  Catalog:   ${where('catalog')} (GET /v1/products/on-sale?date=202
 console.log(`  Animals:   ${where('animals')} (GET /v1/animals/ani_bella)`);
 console.log(`  Parties:   ${where('parties')} (GET /v1/parties/pty_owner001)`);
 console.log(`  Policies:  ${where('policies')} (GET /v1/policies/pol_bella)`);
+console.log(`  Notices:   ${where('communications')} (GET /v1/notices?status=pending, token dev-documents)`);
 console.log(`  Roles:     ${where('access')}, versioned (GET /v1/access/roles)`);
 console.log(`  API page:  http://localhost:${port}/docs`);
 console.log(`  Contract:  http://localhost:${port}/openapi.yaml`);

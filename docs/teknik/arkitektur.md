@@ -32,8 +32,9 @@ flowchart LR
 | `pricing-core` | Priset som en ren funktion: `price(tariff, input, prisvillkor)`, `validateTariff`, `validatePriceTerms`, `tariffCoverage`, `zoneFor` och `ageInYears` (ADR 0030). Ingen I/O. | inga |
 | `underwriting-core` | Teckningsreglerna som en ren funktion: `underwrite(rules, input)`, `questionsFor`, `validateUnderwriting` och `underwritingCoverage` (ADR 0031). Ingen I/O. | inga |
 | `policies` | Policyer: `PolicyService` (också skademotorns `PolicyPort`), porten `PolicyStore`, lagring i minnet och i Postgres (schemat `policies`), `MARKET_PROFILES` och `toSnapshot` (ADR 0029). Ansökan med teckningsregler (ADR 0031). Läser produkter, djur, parter, tariffer och teckningsregler via portar. | `claims-core` (typer), `pricing-core`, `underwriting-core`, `pg` |
+| `communications` | Kundmeddelanden (ADR 0032): `CommunicationsService` gör meddelanden av policymodulens händelser, med lagrum och sista dag ur `NOTICE_RULES` per marknad, och tar emot dokumentsystemets rapporter om utskick. Porten `NoticeStore`, lagring i minnet och i Postgres (schemat `communications`). Läser policyer, ansökningar och parternas språk via portarna `PolicySource` och `PartySource`. | `common`, `pg` |
 | `access` | Rollinställningen som versioner: tjänsten `AccessService`, porten `RoleConfigStore`, lagring i minnet och i Postgres (schemat `access`, ADR 0020) | `pg` |
-| `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, `catalog`, `animals`, `parties`, `policies`, Hono |
+| `api` | HTTP-lagret för hela Petvold, ett kontrakt (`openapi.yaml`, "Petvold API"): validering mot kontraktet, autentisering, behörighet, idempotens, felöversättning, språk | `claims-core`, `access`, `decisioning`, `catalog`, `animals`, `parties`, `policies`, `communications`, Hono |
 
 ## Portar och adaptrar
 
@@ -244,6 +245,14 @@ Databasen kontrollerar källan (migration 0010). En beslutsjournal pekar alltid 
 ## Händelser
 
 Händelser skrivs till `claims.outbox` i samma transaktion som ändringen (ADR 0008). Ett relä läser outboxen i ordning, publicerar och markerar händelserna som publicerade. Leveransen sker minst en gång, så mottagare måste tåla dubbletter. Bara ett relä per outbox åt gången.
+
+**Kundmeddelanden (migration 0031, ADR 0032):**
+- **Från händelser.** Reläets källa `policies` i `composition.ts` lämnar varje händelse till `CommunicationsService.handlePolicyEvent`, efter loggen och före omprövningen av skador. `policy.issued`, `policy.renewed`, `policy.cancelled` och `application.declined` ger ett meddelande. Typen vid en uppsägning följer skälet: bolagets skäl ger `insurer-termination`, kundens `cancellation-confirmation`.
+- **Läser via portar.** `policySource` och `partySource` i `wiring.ts` översätter policymodulens och partsmodulens tjänster till modulens portar. Mottagaren är försäkringstagaren på versionen som gäller dagen beskedet gäller, vid en uppsägning dagen före upphörandet.
+- **Minst en gång.** `communications.notice` har `unique (source_event_id, type)`, och `PostgresNoticeStore.add` gör `on conflict do nothing`. Ett relä som levererar igen ger inget nytt.
+- **Inget ändras.** Tjänsterollen `communications_service` får bara läsa och lägga till i `notice` och `delivery`. En check-constraint kräver att ett lyckat utskick har kanal, tid, dokument-id och kontrollsumma, och att ett misslyckat har ett skäl.
+- **Status räknas vid läsning** i `viewOf`: `sent` om något utskick lyckades, annars `failed` om något rapporterats, annars `pending`. `late` och `overdue` räknas i marknadens datum mot `dueBy`. Statusfiltret i `list` görs i SQL med `exists`, och flaggorna i tjänsten.
+- **Omfång** i `app.ts` (`seesNotice`): anroparens marknader, och för en roll bunden till policyer bara meddelanden med en av dess policyer. En klinik ser inga.
 
 ## API
 

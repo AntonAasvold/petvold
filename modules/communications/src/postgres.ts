@@ -1,0 +1,124 @@
+/**
+ * NoticeStore against the schema `communications` (migration 0031). Connect
+ * with the service role `communications_service`: it may only insert and read,
+ * so notices and deliveries never change.
+ */
+import type pg from 'pg';
+import { NoticeConflictError, type Delivery, type Notice, type NoticeFilter, type NoticeStore } from './index.ts';
+
+const UNIQUE_VIOLATION = '23505';
+const FOREIGN_KEY_VIOLATION = '23503';
+
+const NOTICE = `n.notice_id, n.type, n.schema, n.market, n.recipient_party_id, n.language, n.policy_id, n.application_id,
+  n.source_event_id, n.source_event_type, n.source_occurred_at, n.legal_basis, n.due_by::text as due_by, n.content, n.created_at,
+  coalesce((select json_agg(json_build_object(
+      'id', d.delivery_id, 'outcome', d.outcome, 'channel', d.channel, 'sentAt', d.sent_at, 'documentId', d.document_id,
+      'sha256', d.sha256, 'reason', d.reason, 'reportedBy', d.reported_by, 'reportedAt', d.reported_at)
+    order by d.reported_at, d.delivery_id)
+    from communications.delivery d where d.notice_id = n.notice_id), '[]'::json) as deliveries`;
+
+const iso = (t: unknown) => (t instanceof Date ? t.toISOString() : new Date(String(t)).toISOString());
+
+export class PostgresNoticeStore implements NoticeStore {
+  constructor(private readonly pool: pg.Pool) {}
+
+  async add(n: Notice): Promise<boolean> {
+    const r = await this.pool.query(
+      `insert into communications.notice (notice_id, type, schema, market, recipient_party_id, language, policy_id, application_id,
+         source_event_id, source_event_type, source_occurred_at, legal_basis, due_by, content, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       on conflict (source_event_id, type) do nothing`,
+      [
+        n.id,
+        n.type,
+        n.schema,
+        n.market,
+        n.recipientPartyId,
+        n.language,
+        n.policyId ?? null,
+        n.applicationId ?? null,
+        n.source.eventId,
+        n.source.eventType,
+        n.source.occurredAt,
+        JSON.stringify(n.legalBasis),
+        n.dueBy,
+        JSON.stringify(n.content),
+        n.createdAt,
+      ],
+    );
+    return r.rowCount === 1;
+  }
+
+  async get(id: string): Promise<Notice | null> {
+    const r = await this.pool.query(`select ${NOTICE} from communications.notice n where n.notice_id = $1`, [id]);
+    return r.rows[0] ? toNotice(r.rows[0]) : null;
+  }
+
+  async list(f: NoticeFilter): Promise<Notice[]> {
+    const where: string[] = [];
+    const args: unknown[] = [];
+    const eq = (column: string, value: string | undefined) => {
+      if (value === undefined) return;
+      args.push(value);
+      where.push(`n.${column} = $${args.length}`);
+    };
+    eq('type', f.type);
+    eq('market', f.market);
+    eq('policy_id', f.policyId);
+    eq('application_id', f.applicationId);
+    eq('recipient_party_id', f.recipientPartyId);
+    const sent = `exists (select 1 from communications.delivery d where d.notice_id = n.notice_id and d.outcome = 'sent')`;
+    const any = `exists (select 1 from communications.delivery d where d.notice_id = n.notice_id)`;
+    if (f.status === 'sent') where.push(sent);
+    if (f.status === 'failed') where.push(`not ${sent} and ${any}`);
+    if (f.status === 'pending') where.push(`not ${any}`);
+    const r = await this.pool.query(
+      `select ${NOTICE} from communications.notice n ${where.length ? `where ${where.join(' and ')}` : ''} order by n.created_at, n.notice_id`,
+      args,
+    );
+    return r.rows.map(toNotice);
+  }
+
+  async addDelivery(noticeId: string, d: Delivery): Promise<void> {
+    await this.pool
+      .query(
+        `insert into communications.delivery (delivery_id, notice_id, outcome, channel, sent_at, document_id, sha256, reason, reported_by, reported_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [d.id, noticeId, d.outcome, d.channel ?? null, d.sentAt ?? null, d.documentId ?? null, d.sha256 ?? null, d.reason ?? null, d.reportedBy, d.reportedAt],
+      )
+      .catch((e: { code?: string; message?: string }) => {
+        if (e.code === FOREIGN_KEY_VIOLATION) throw new NoticeConflictError(`Notice ${noticeId} does not exist`);
+        if (e.code === UNIQUE_VIOLATION) throw new NoticeConflictError(`Delivery ${d.id} exists`);
+        throw e;
+      });
+  }
+}
+
+function toNotice(r: Record<string, any>): Notice {
+  return {
+    id: r.notice_id,
+    type: r.type,
+    schema: r.schema,
+    market: r.market,
+    recipientPartyId: r.recipient_party_id,
+    language: r.language,
+    ...(r.policy_id ? { policyId: r.policy_id } : {}),
+    ...(r.application_id ? { applicationId: r.application_id } : {}),
+    source: { eventId: r.source_event_id, eventType: r.source_event_type, occurredAt: iso(r.source_occurred_at) },
+    legalBasis: r.legal_basis,
+    dueBy: r.due_by,
+    content: r.content,
+    createdAt: iso(r.created_at),
+    deliveries: (r.deliveries as Record<string, any>[]).map((d) => ({
+      id: d.id,
+      outcome: d.outcome,
+      ...(d.channel ? { channel: d.channel } : {}),
+      ...(d.sentAt ? { sentAt: iso(d.sentAt) } : {}),
+      ...(d.documentId ? { documentId: d.documentId } : {}),
+      ...(d.sha256 ? { sha256: d.sha256 } : {}),
+      ...(d.reason ? { reason: d.reason } : {}),
+      reportedBy: d.reportedBy,
+      reportedAt: iso(d.reportedAt),
+    })),
+  };
+}

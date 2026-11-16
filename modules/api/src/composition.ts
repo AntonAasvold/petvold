@@ -30,15 +30,17 @@ import { PostgresAnimalStore } from '@petvold/animals/postgres';
 import { InMemoryPartyStore, InMemoryRetentionStore, PartyService, RetentionService, type PartyStore } from '@petvold/parties';
 import { PostgresPartyStore, PostgresRetentionStore } from '@petvold/parties/postgres';
 import { InMemoryPolicyStore, PolicyService, type PolicyStore } from '@petvold/policies';
+import { CommunicationsService, InMemoryNoticeStore, type NoticeStore } from '@petvold/communications';
+import { PostgresNoticeStore } from '@petvold/communications/postgres';
 import { PostgresPolicyStore } from '@petvold/policies/postgres';
 import { tariffCoverage } from '@petvold/pricing-core';
 import { underwritingCoverage } from '@petvold/underwriting-core';
 import { InMemoryIdempotencyStore, type AppDeps, type IdempotencyStore } from './app.ts';
 import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './permissions.ts';
 import { Relay, relaySource } from './relay.ts';
-import { animalPort, claimsActivity, productPort } from './wiring.ts';
+import { animalPort, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
 
-export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies'] as const;
+export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications'] as const;
 export type DatabaseName = (typeof DATABASES)[number];
 
 export interface InstallationConfig {
@@ -59,6 +61,7 @@ export const DATABASE_ENV: Record<DatabaseName, string> = {
   animals: 'ANIMALS_DATABASE_URL',
   parties: 'PARTIES_DATABASE_URL',
   policies: 'POLICIES_DATABASE_URL',
+  communications: 'COMMUNICATIONS_DATABASE_URL',
 };
 
 /** The database URLs from the environment, skipping empty ones. */
@@ -79,6 +82,7 @@ export interface Installation {
     parties: PartyStore;
     animals: AnimalStore;
     policies: PolicyStore;
+    notices: NoticeStore;
   };
   relay: Relay;
   /** Where each module keeps its data: 'postgres' or 'memory'. */
@@ -159,6 +163,11 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     ids,
   });
 
+  // Notices to the customer (ADR 0032), made from the policy module's events below.
+  const communicationsPool = pool('communications', 2);
+  const noticeStore: NoticeStore = communicationsPool ? new PostgresNoticeStore(communicationsPool) : new InMemoryNoticeStore();
+  const communications = new CommunicationsService({ store: noticeStore, policies: policySource(policies), parties: partySource(parties), clock, ids });
+
   const service = new ClaimsService({
     policies,
     // The product version on the policy points at its rule series (ADR 0023).
@@ -203,7 +212,9 @@ export async function compose(config: InstallationConfig): Promise<Installation>
         name: 'policies',
         pending: (limit) => policyStore.pendingEvents(limit),
         deliver: async (e) => {
-          log(`[event] ${e.type} ${e.policyId}`);
+          log(`[event] ${e.type} ${e.policyId ?? e.applicationId}`);
+          const notice = await communications.handlePolicyEvent(e);
+          if (notice) log(`[notice] ${notice.type} ${notice.id} due ${notice.dueBy}`);
           if (e.type !== 'policy.version_superseded') return;
           const versionId = String(e.data.versionId);
           for (const r of await service.reassessForPolicyChange([versionId], `Policy version ${versionId} was superseded`, 'policy-change')) {
@@ -217,7 +228,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   );
 
   return {
-    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies },
+    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications },
     stores: {
       claims: claimsStore,
       roles: roleStore,
@@ -227,6 +238,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
       parties: partyStore,
       animals: animalStore,
       policies: policyStore,
+      notices: noticeStore,
     },
     relay,
     storage: Object.fromEntries(DATABASES.map((d) => [d, config.databases[d] ? 'postgres' : 'memory'])) as Record<DatabaseName, 'postgres' | 'memory'>,

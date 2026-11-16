@@ -59,6 +59,8 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `policies:write` | Teckna, ändra, förnya, avsluta och återkalla avslut av policyer, och besvara förslag, och hantera grupper | `POST /v1/policies`, `POST /v1/policy-groups`, `.../members`, `.../changes`, `.../renewals`, `.../cancellations`, `.../reinstatements`, `POST /v1/policy-proposals/{id}/acceptances`, `.../rejections` |
 | `policies:renew` | Schemalagda körningar: förnyelse, avslut av överlåtelser som inte godkändes i tid, och utgång av ansökningar | `POST /v1/renewal-runs`, `POST /v1/proposal-expiry-runs`, `POST /v1/application-expiry-runs` |
 | `policies:underwrite` | Besluta om en ansökan i kön för manuell prövning: godkänna, med eller utan förbehåll, eller avslå med skälskod (ADR 0031) | `POST /v1/applications/{id}/decisions` |
+| `notices:read` | Läsa kundmeddelanden och deras utskick (ADR 0032). Meddelandena har partens id, inte namn eller adress. | `GET /v1/notices`, `.../{id}` |
+| `notices:deliver` | Rapportera att ett meddelande skickades, med dokumentets id och kontrollsumma, eller att utskicket misslyckades | `POST /v1/notices/{id}/deliveries` |
 | `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/access/roles`, `.../versions` |
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/access/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
@@ -72,15 +74,16 @@ Petvold levereras med de här rollerna som utgångspunkt:
 
 | Roll | Rättigheter | Bunden till | För |
 | --- | --- | --- | --- |
-| `handler` | Alla `claims:`-rättigheter utom `claims:approve`, samt `limits:read`, `catalog:read` och `animals:read`. Beslutar ensam upp till 25 000 SEK eller 2 500 EUR. | – | Skadehandläggare |
+| `handler` | Alla `claims:`-rättigheter utom `claims:approve`, samt `limits:read`, `catalog:read`, `animals:read`, `parties:read`, `policies:read` och `notices:read`. Beslutar ensam upp till 25 000 SEK eller 2 500 EUR. | – | Skadehandläggare |
 | `approver` | `claims:read`, `claims:approve`, `limits:read`, `catalog:read`, `animals:read`. Ingen gräns för attest. | – | Attestant |
 | `admin` | `access:read`, `access:manage` | – | Administratör för roller och gränser |
 | `rules-author` | `rules:read`, `rules:write`, `rules:simulate`, `catalog:read` | – | Skriver regelutkast |
 | `rules-publisher` | `rules:read`, `rules:publish`, `rules:simulate`, `catalog:read` | – | Granskar och publicerar regler |
 | `animal-registrar` | `animals:read`, `animals:write`, `catalog:read`, `parties:read` | – | Registrerar djur och ägarbyten, till exempel kundservice |
 | `party-registrar` | `parties:read`, `parties:write` | – | Registrerar personer och organisationer, till exempel kundservice |
-| `policy-registrar` | `policies:read`, `policies:write`, `animals:read`, `parties:read`, `catalog:read` | – | Tecknar policyer, till exempel säljkanal eller kundservice |
-| `underwriter` | `policies:read`, `policies:write`, `policies:quote`, `policies:price-override`, `policies:underwrite`, `animals:read`, `parties:read`, `catalog:read` | – | Beslutar om ansökningar och priser som behöver en person, till exempel manuellt pris |
+| `policy-registrar` | `policies:read`, `policies:write`, `policies:quote`, `animals:read`, `parties:read`, `catalog:read`, `notices:read` | – | Tecknar policyer, till exempel säljkanal eller kundservice |
+| `underwriter` | `policies:read`, `policies:write`, `policies:quote`, `policies:price-override`, `policies:underwrite`, `animals:read`, `parties:read`, `catalog:read`, `notices:read` | – | Beslutar om ansökningar och priser som behöver en person, till exempel manuellt pris |
+| `document-service` | `notices:read`, `notices:deliver`, `parties:read`, `policies:read`, `catalog:read` | – | Bolagets dokumentsystem: hämtar meddelanden, gör och skickar dokumenten och rapporterar utskicken (ADR 0032) |
 | `renewal-job` | `policies:renew` | – | Schemalagd förnyelse, avslut av överlåtelser som inte godkändes i tid och utgång av ansökningar |
 | `privacy-officer` | `parties:read`, `parties:privacy`, `parties:erase`, `parties:retention` | – | Dataskyddsansvarig. Två personer behövs för att anonymisera. |
 | `retention-job` | `parties:retention` | – | Schemalagd gallringskörning. Begär bara, och en dataskyddsansvarig godkänner. |
@@ -88,7 +91,7 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `catalog-publisher` | `catalog:read`, `catalog:publish` | – | Granskar och publicerar produktversioner |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview`, `catalog:read`, `animals:lookup` | klinik | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | – | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
-| `customer-channel` | `claims:read`, `claims:request-review`, `catalog:read` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
+| `customer-channel` | `claims:read`, `claims:request-review`, `catalog:read`, `policies:read`, `policies:quote`, `notices:read` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
 
 ## Omfång
 
@@ -195,7 +198,7 @@ Första gången Petvold startar skapas version 1 från standardrollerna. **Stand
 
 ## Lokalt
 
-Dev-servern har elva tokens:
+Dev-servern har de här tokens:
 
 | Token | Roll | Omfång |
 | --- | --- | --- |
@@ -210,6 +213,8 @@ Dev-servern har elva tokens:
 | `dev-privacy`, `dev-privacy-2` | två dataskyddsansvariga | SE |
 | `dev-retention-job` | gallringskörning | alla |
 | `dev-seller` | tecknar, förnyar och avslutar policyer | SE |
+| `dev-underwriter` | beslutar om ansökningar och manuella priser | SE |
+| `dev-documents` | bolagets dokumentsystem | SE |
 | `dev-renewal-job` | förnyelsekörning | alla |
 | `dev-clinic` | klinik | SE, klinik `clinic_001` |
 | `dev-job` | omprövningsjobb | alla marknader |

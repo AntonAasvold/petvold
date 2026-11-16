@@ -1,0 +1,134 @@
+# Meddelanden till kunden
+
+Lagen kräver att kunden får vissa besked, till exempel ett försäkringsbrev när en policy tecknas och skälen när en ansökan avslås. Petvold avgör vilka besked som krävs, när de senast ska skickas och vad de ska innehålla. Bolagets dokumentsystem gör dokumentet med sina egna mallar, skickar det och rapporterar tillbaka. Beslutet bakom finns i ADR 0032.
+
+## Så fungerar det
+
+1. **Något händer i Petvold,** till exempel att en policy tecknas. Policymodulen skriver en händelse.
+2. **Petvold skapar ett kundmeddelande** från händelsen. Meddelandet anger typ, mottagare, språk, innehåll och lagrum, och sista dagen då det ska vara skickat (`dueBy`).
+3. **Dokumentsystemet hämtar meddelandena som väntar** med `GET /v1/notices?status=pending`. Det hämtar namn och adress från parten, väljer mall efter typ och språk, gör dokumentet och skickar det.
+4. **Dokumentsystemet rapporterar** med `POST /v1/notices/{id}/deliveries`: att meddelandet skickades, eller att utskicket misslyckades.
+5. **En person tar hand om det som fastnar.** `GET /v1/notices?attention=true` visar meddelanden som misslyckats eller inte skickats i tid.
+
+Samma händelse ger aldrig två meddelanden av samma typ, även om den levereras flera gånger.
+
+## Typer
+
+| Typ | När | Sista dag | Krävs av (Sverige) |
+| --- | --- | --- | --- |
+| `policy-confirmation` | En policy tecknas | Tre dagar efter tecknandet | FAL 2 kap. 4 §, distansavtalslagen 3 kap. 11 § |
+| `renewal-notice` | En policy förnyas | Den nya termens första dag | FAL 2 kap. 5–6 §§, 3 kap. 5 § |
+| `insurer-termination` | Bolaget säger upp policyn (`insurer-term-end`, `insurer-breach` eller `unpaid-premium`) | Dagen bolaget anger att uppsägningen skickades (`receivedOn`) | FAL 3 kap. 3 och 7 §§, 5 kap. 2 § |
+| `cancellation-confirmation` | Kunden säger upp, ångrar sig eller behovet faller bort | Tre dagar efter uppsägningen | Ingen lag |
+| `application-declined` | En ansökan avslås, av reglerna eller av en person | Tre dagar efter avslaget | FAL 7 kap. 6 § |
+
+- **Tre dagar** är Petvolds tolkning av "snarast", eftersom lagen inte anger något antal dagar. Bolaget ska kunna ändra det i sina inställningar.
+- **Mottagaren** är försäkringstagaren när beskedet gäller, vid en uppsägning den sista dagen policyn gällde. Vid ett avslag är det den sökande.
+- **Språket** är partens språk, annars marknadens, i Sverige svenska.
+
+*Inte byggt än:*
+- erbjudandet om överlåtelse till en ny ägare
+- bolagets egna texter per marknad, som hur ett beslut prövas och avsändaren
+- att stänga av typer som lagen inte kräver
+- skadebesked
+
+## Innehållet
+
+Innehållet är fält, inte text. Varje typ har ett schema med versionsnummer, till exempel `renewal-notice.v1`, och dokumentsystemet bygger texten från fälten. Meddelandet har partens och djurets id, inte namn eller adress.
+
+| Schema | Fält |
+| --- | --- |
+| `policy-confirmation.v1` | `policyId`, `animalId`, `termNo`, `productVersion`, `startDate`, `endDate`, `premium`, `vetCare`, `deductibleOption`, `riders` och `acceptedDocuments` (dokumenten kunden godkände, se [Policyer](policyer.md)) |
+| `renewal-notice.v1` | Samma fält om termen som försäkringsbrevet, och `changes` med det som ändrats mot förra termen (`product-version`, `premium`, `vet-care` eller `riders`) och `previous` med förra termens produkt, premie och villkor |
+| `insurer-termination.v1` | `policyId`, `animalId`, `reason`, `receivedOn`, `effectiveDate`, `refund`, och bolagets motivering (`grounds`) om den finns. Vid obetald premie också `voidIfPaidBefore`: uppsägningen gäller inte om premien betalas före den dagen (FAL 5 kap. 2 §). |
+| `cancellation-confirmation.v1` | `policyId`, `animalId`, `reason`, `receivedOn`, `effectiveDate` och `refund` |
+| `application-declined.v1` | `applicationId`, `animalId`, `productVersion`, `reasons` (skälskoderna) och `decidedBy` (`rules` eller `person`) |
+
+**Exempel:** Kajsas försäkringsbrev.
+
+```json
+{
+  "id": "ntc_7f3a…",
+  "type": "policy-confirmation",
+  "schema": "policy-confirmation.v1",
+  "market": "SE",
+  "recipientPartyId": "pty_owner004",
+  "language": "sv",
+  "policyId": "pol_91c2…",
+  "source": { "eventId": "pev_…", "eventType": "policy.issued", "occurredAt": "2026-11-16T09:12:04Z" },
+  "legalBasis": ["Insurance Contracts Act (2005:104) chapter 2 section 4: written confirmation of the contract, promptly", "…"],
+  "dueBy": "2026-11-19",
+  "content": {
+    "policyId": "pol_91c2…", "animalId": "ani_kajsa", "termNo": 1,
+    "productVersion": "SE-HUND-PLUS@2026.1", "startDate": "2026-11-16", "endDate": "2027-11-16",
+    "premium": { "amount": 412300, "currency": "SEK" },
+    "riders": [{ "description": "…", "diagnosisCodes": ["ORA-OTIT"], "validFrom": "2026-11-16" }],
+    "acceptedDocuments": [{ "type": "pre-contract", "language": "sv", "sha256": "704d4d94…" }, { "type": "terms", "language": "sv", "sha256": "c4aa50fc…" }]
+  },
+  "status": "pending",
+  "deliveries": []
+}
+```
+
+## Utskick
+
+Dokumentsystemet rapporterar varje försök. En rapport ändras aldrig, och den som skickar ett meddelande igen gör en ny rapport.
+
+**Skickat:**
+
+```http
+POST /v1/notices/ntc_7f3a…/deliveries
+{ "outcome": "sent", "channel": "digital-mailbox", "sentAt": "2026-11-16T14:02:00Z", "documentId": "arch-2026-000123", "sha256": "9b1e…" }
+```
+
+- `channel` är `letter`, `email`, `digital-mailbox` eller `customer-portal`.
+- `documentId` är dokumentets id i bolagets arkiv, och `sha256` är dokumentets kontrollsumma. Då går det att visa senare exakt vilket dokument kunden fick.
+- `sentAt` får inte ligga i framtiden eller före meddelandet skapades.
+
+**Misslyckat:**
+
+```http
+POST /v1/notices/ntc_7f3a…/deliveries
+{ "outcome": "failed", "channel": "letter", "reason": "No postal address" }
+```
+
+Skälet får inte innehålla personuppgifter.
+
+**Status och flaggor:**
+
+| Fält | Betyder |
+| --- | --- |
+| `status: pending` | Inget utskick är rapporterat |
+| `status: sent` | Minst ett utskick lyckades |
+| `status: failed` | Alla utskick misslyckades |
+| `overdue: true` | Inte skickat, och `dueBy` har passerat |
+| `late: true` | Det första lyckade utskicket kom efter `dueBy` |
+
+**Ett sent besked om uppsägning flyttar inte upphörandedagen.** Lagens frister räknas från dagen beskedet skickades. Om bolagets uppsägning skickades efter dagen den räknades från, visar `GET /v1/notices?type=insurer-termination&late=true` den. En person avgör då om upphörandedagen håller, och avslutar eller återkallar uppsägningen i så fall.
+
+## Listor
+
+`GET /v1/notices` kan filtreras på:
+- `status` och `type`
+- `market`, `policyId`, `applicationId` och `recipientPartyId`
+- `attention=true`, `overdue=true` och `late=true`
+
+Listan är äldst först och kommer en sida i taget.
+
+## Behörighet
+
+| Roll | Får |
+| --- | --- |
+| `document-service` | Läsa meddelanden och parter, och rapportera utskick |
+| `handler`, `policy-registrar` och `underwriter` | Läsa meddelanden |
+| `customer-channel` | Läsa meddelanden om sina egna policyer |
+
+En klinik ser inga meddelanden. Se [Behörighet](behorighet.md).
+
+## Exempeldata
+
+Dev-servern skapar meddelanden för exempeldatans policyer och för Sixtens avslagna ansökan. Token `dev-documents` är dokumentsystemet:
+
+```bash
+curl -H 'authorization: Bearer dev-documents' 'localhost:8787/v1/notices?status=pending'
+```

@@ -8,7 +8,7 @@ import { createApp } from '../src/index.ts';
 test('the modules are connected, and the relay drives the policy module from the animal register', async () => {
   const clock = { now: () => '2026-11-15T10:00:00.000Z' };
   const inst = await compose({ databases: {}, engineVersion: 'test', clock });
-  assert.deepEqual(Object.values(inst.storage), ['memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory']);
+  assert.deepEqual(Object.values(inst.storage), ['memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory']);
   await seedSampleData(inst, clock);
   await seedSampleData(inst, clock); // twice is harmless
   const app = createApp({ ...inst.deps, auth: { authenticate: async () => ({ subject: 'h', roles: ['handler'], markets: '*' }) } });
@@ -19,6 +19,24 @@ test('the modules are connected, and the relay drives the policy module from the
   await inst.deps.animals!.correct('ani_bella', { basedOnRevision: bella.revision, reason: 'Died', sex: bella.sex, neutered: bella.neutered, name: bella.name, birthDate: bella.birthDate, breed: bella.breed!, allowLookup: bella.allowLookup, deceasedOn: '2026-11-10' }, 'registrar');
   assert.ok((await inst.relay.tick()) >= 1);
   assert.deepEqual((await inst.deps.policies!.listProposals({ pending: true })).map((p) => p.kind), ['cancel-death']);
+  await inst.close();
+});
+
+test('the relay turns the policy module\'s events into notices to the customer (ADR 0032)', async () => {
+  const clock = { now: () => '2026-11-15T10:00:00.000Z' };
+  const inst = await compose({ databases: {}, engineVersion: 'test', clock });
+  await seedSampleData(inst, clock);
+  while ((await inst.relay.tick()) > 0);
+  const notices = await inst.deps.communications!.list({});
+  const byType = (t: string) => notices.filter((n) => n.type === t);
+  const policies = (await inst.deps.policies!.findByPolicyholder('pty_owner004')).length + (await inst.deps.policies!.findByPolicyholder('pty_owner003')).length;
+  assert.ok(byType('policy-confirmation').length >= policies && policies > 0, 'every issued policy is confirmed');
+  const declined = byType('application-declined');
+  assert.deepEqual(declined.map((n) => [n.recipientPartyId, n.content.reasons, n.status]), [['pty_owner004', ['too-old'], 'pending']]);
+  // Delivered again: no new notices.
+  await seedSampleData(inst, clock);
+  while ((await inst.relay.tick()) > 0);
+  assert.equal((await inst.deps.communications!.list({})).length, notices.length);
   await inst.close();
 });
 
