@@ -89,7 +89,12 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Webhooks, steg 1: modulen `webhooks`, prenumerationer, kö och arbetare, med händelser om policyer, ansökningar och förslag (ADR 0033)
 - [x] Webhooks, steg 2: skador, djur, meddelanden och AsyncAPI-kontraktet (ADR 0033)
 - [x] Webhooks, steg 3: död post, skicka igen och avstängning (ADR 0033)
-- [ ] ADR om ett gränssnitt för handläggare och back office, ADR 0035 (föreslagen)
+- [x] ADR om ett gränssnitt för handläggare och back office, ADR 0035
+- [ ] Back office, steg 1: grunden, `<pv-data-grid>` och skadornas köer
+- [ ] Back office, steg 2: beslut, attest och prövning
+- [ ] Back office, steg 3: policyer och ansökningar
+- [ ] Back office, steg 4: meddelanden och webhooks
+- [ ] Back office, steg 5: inställningar
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
 
 **M4 – Pris och teckning**

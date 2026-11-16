@@ -112,15 +112,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 - 442 tester och 123 databastester.
 
 - #77 och #78 mergade. ADR 0033 är byggd.
-- ADR 0035 om ett gränssnitt för handläggare och back office, Föreslagen, PR #79:
+- ADR 0035 om ett gränssnitt för handläggare och back office, beslutad 2026-11-16 (PR #79):
   - **`apps/backoffice`** i samma repo, med Lit 3, Web Awesome 3 (bara kärnan med MIT-licens), Vite och TypeScript.
+  - **En egen datatabell, `<pv-data-grid>`**, i stället för Web Awesome Pro eller Vaadins tabell. Den sidindelar med API:ts markörer och har tangentbord enligt ARIA.
   - **Typerna genereras från `openapi.yaml`**, och CI stoppar om de glider isär.
   - **OIDC med PKCE**, och token bara i minnet. `GET /v1/me` styr menyerna.
   - **Svenska och engelska**, WCAG 2.1 AA och Playwright i CI.
   - **Fem steg:** grunden med skadornas köer, skador, policyer och ansökningar, meddelanden och webhooks, och inställningar.
 
 **Nästa steg**
-1. Ta ställning till ADR 0035 och bygga steg 1: grunden.
+1. Back office, steg 1: grunden, `<pv-data-grid>` och skadornas köer.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
