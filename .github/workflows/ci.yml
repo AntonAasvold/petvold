@@ -21,6 +21,33 @@ jobs:
       - run: npm run lint:lang
       - run: npm run site
 
+  ui:
+    # The back office (ADR 0035): types from the contract, checks, tests, flows in a browser, build.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: The API types match openapi.yaml
+        run: |
+          npm run ui:types
+          git diff --exit-code -- apps/backoffice/src/api/schema.d.ts
+      - run: npm run typecheck -w @petvold/backoffice
+      - run: npm run ui:test
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/backoffice
+      - run: npm run ui:e2e
+      - run: npm run ui:build
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: apps/backoffice/test-results
+          retention-days: 7
+
   database:
     # Same steps as locally: compose, migrations, database tests.
     runs-on: ubuntu-latest

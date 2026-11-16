@@ -1,0 +1,5 @@
+{
+  "comment": "The Font Awesome Free icons the back office uses, copied to public/icons by scripts/copy-icons.mjs. A test checks that every <wa-icon name> in src is here.",
+  "solid": ["arrow-left", "arrow-right-from-bracket", "circle-check", "circle-exclamation", "circle-info", "clock", "file-invoice", "gavel", "language", "list-check", "magnifying-glass", "paw", "rotate-right", "scale-balanced", "user-check"],
+  "regular": []
+}

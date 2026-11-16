@@ -17,6 +17,7 @@ För försäkringsbolag, produktägare och handläggare. Ingen kod krävs för a
 - [Teckning](funktion/teckning.md): hälsofrågor, ansökan och manuell prövning
 - [Meddelanden](funktion/meddelanden.md): besked som lagen kräver, och bolagets dokumentsystem
 - [Webhooks](funktion/webhooks.md): händelser till bolagets system, med signatur och omförsök
+- [Back office](funktion/backoffice.md): gränssnittet för handläggare och back office
 - [Behörighet](funktion/behorighet.md): roller, rättigheter, omfång och hur en installation ställer in dem
 
 ## Teknik: hur Petvold är byggt
@@ -28,6 +29,7 @@ För utvecklare och drift.
 - [Testning](teknik/testning.md): testlager och vad som krävs
 - [Drift](teknik/drift.md): starta en installation, konfiguration, inloggning, händelser och hälsa
 - [API-konventioner](teknik/api-konventioner.md): hur adresser, filter, id och versioner namnges
+- [Back office](teknik/backoffice.md): appen i `apps/backoffice`, datatabellen, språk, ikoner och test
 - [API](../modules/api/openapi.yaml): kontraktet. Klickbar version på `/docs` när dev-servern kör.
 
 ## Styrning

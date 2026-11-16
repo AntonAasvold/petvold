@@ -1,0 +1,4 @@
+public/icons/
+dist/
+test-results/
+playwright-report/

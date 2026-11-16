@@ -6,7 +6,8 @@
     "node": ">=24 <25"
   },
   "workspaces": [
-    "modules/*"
+    "modules/*",
+    "apps/*"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
@@ -24,7 +25,12 @@
     "site": "tsx scripts/build-site.ts",
     "roles:sync": "node --env-file-if-exists=.env --import tsx modules/api/scripts/sync-roles.ts",
     "erasures:reapply": "node --env-file-if-exists=.env --import tsx modules/parties/scripts/reapply-erasures.ts",
-    "scenarios:golden": "tsx scripts/scenarios-golden.ts"
+    "scenarios:golden": "tsx scripts/scenarios-golden.ts",
+    "ui:dev": "npm run dev -w @petvold/backoffice",
+    "ui:build": "npm run build -w @petvold/backoffice",
+    "ui:test": "npm test -w @petvold/backoffice",
+    "ui:e2e": "npm run e2e -w @petvold/backoffice",
+    "ui:types": "npm run types -w @petvold/backoffice"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

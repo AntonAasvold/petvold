@@ -48,7 +48,9 @@ Servern skriver ut vilken lagring den använder och loggar varje händelse som r
 
 De nya policyerna tecknas med dagens datum första gången servern startar, så deras id skiljer sig mellan databaser. Hitta dem med `GET /v1/policies?policyholderPartyId=pty_owner003`, och ansökningarna med `GET /v1/applications?policyholderPartyId=pty_owner004`. Teckningsreglerna `SE-HUND-UW@1` läses från `modules/api/seed/underwriting-rules.json`, med frågorna på svenska och engelska. Hälsofrågorna för produkten finns på `GET /v1/application-questions?productVersion=SE-HUND-PLUS@2026.1&species=dog`. En befintlig lokal databas får de nya delarna vid nästa start, men Bellas skador och policyer bara om de saknas. Kör `npm run dev:reset` för att börja om.
 
-**Gränssnitt i webbläsaren:** dev-servern tillåter anrop från `http://localhost:5173` (Vite) och `http://localhost:3000`. Ange andra adresser med `PETVOLD_CORS_ORIGINS`, kommaseparerat. `GET /v1/me` visar vad varje dev-token får göra.
+**Back office:** `npm run dev` i en terminal och `npm run ui:dev` i en annan. Appen startar på http://localhost:5180, och man loggar in med en dev-token. Flödestesterna körs med `npm run ui:e2e`. Första gången behövs `npx playwright install chromium` i `apps/backoffice`. Se [Back office](backoffice.md).
+
+**Gränssnitt i webbläsaren:** dev-servern tillåter anrop från `http://localhost:5180` (back office), `http://localhost:5173` (Vite) och `http://localhost:3000`. Ange andra adresser med `PETVOLD_CORS_ORIGINS`, kommaseparerat. `GET /v1/me` visar vad varje dev-token får göra.
 
 ## Testa API:et för hand
 
