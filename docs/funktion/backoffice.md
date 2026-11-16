@@ -24,6 +24,19 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 
 *Inte byggt än:* simulering av en regelversion mot sparade beslut, och formulär för innehållet i stället för JSON.
 
+## Toppraden och menyn
+
+- **Toppraden** visar Petvold och Back office, ett sökfält, språkval, vem som är inloggad och Logga ut.
+- **Sökfältet** öppnar en skada (`clm_…`), policy (`pol_…`), ansökan (`app_…`) eller ett meddelande (`ntc_…`) direkt. Allt annat söks bland policyerna: djur- eller part-id, personnummer och chipnummer. Ett personnummer hamnar aldrig i webbadressen.
+- **Menyn** visar de avsnitt användaren har rätt till. Det valda avsnittet är svart med vit text. En räknare visar hur många som väntar i:
+  - skadornas kö för beslut
+  - ansökningar till manuell prövning
+  - förslag
+  - meddelanden som behöver en person
+  - webhooks som inte kom fram
+
+  Räknaren visar högst 100, och "100+" om det finns fler. Den uppdateras när man byter sida.
+
 ## Logga in
 
 - **I drift** loggar man in med bolagets konto, via bolagets identitetstjänst (OIDC). Appen får en token som bara finns i minnet. En omladdning av sidan loggar in igen genom identitetstjänstens session.

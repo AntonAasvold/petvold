@@ -14,15 +14,24 @@ export interface Section {
   /** A Font Awesome icon in icons.json. */
   icon: string;
   anyOf: string[];
+  /** The queue whose waiting items the menu counts, as a list call with its filter. */
+  count?: { path: CountPath; query: Record<string, string | boolean> };
+}
+
+export type CountPath = '/v1/claims' | '/v1/applications' | '/v1/policy-proposals' | '/v1/notices' | '/v1/webhook-deliveries';
+
+/** How many wait, from one page of a list: the number, or "100+" when there are more pages. */
+export function countLabel(page: { items: unknown[]; nextCursor?: string }): string {
+  return page.nextCursor ? `${page.items.length}+` : String(page.items.length);
 }
 
 export const SECTIONS: Section[] = [
-  { path: '/claims', label: 'nav.claims', icon: 'file-invoice', anyOf: ['claims:read'] },
+  { path: '/claims', label: 'nav.claims', icon: 'file-invoice', anyOf: ['claims:read'], count: { path: '/v1/claims', query: { status: 'awaiting-decision' } } },
   { path: '/policies', label: 'nav.policies', icon: 'paw', anyOf: ['policies:read'] },
-  { path: '/applications', label: 'nav.applications', icon: 'list-check', anyOf: ['policies:read'] },
-  { path: '/proposals', label: 'nav.proposals', icon: 'user-check', anyOf: ['policies:read'] },
-  { path: '/notices', label: 'nav.notices', icon: 'envelope', anyOf: ['notices:read'] },
-  { path: '/webhooks', label: 'nav.webhooks', icon: 'plug', anyOf: ['webhooks:read'] },
+  { path: '/applications', label: 'nav.applications', icon: 'list-check', anyOf: ['policies:read'], count: { path: '/v1/applications', query: { status: 'referred' } } },
+  { path: '/proposals', label: 'nav.proposals', icon: 'user-check', anyOf: ['policies:read'], count: { path: '/v1/policy-proposals', query: { status: 'pending' } } },
+  { path: '/notices', label: 'nav.notices', icon: 'envelope', anyOf: ['notices:read'], count: { path: '/v1/notices', query: { attention: true } } },
+  { path: '/webhooks', label: 'nav.webhooks', icon: 'plug', anyOf: ['webhooks:read'], count: { path: '/v1/webhook-deliveries', query: { status: 'dead' } } },
   { path: '/products', label: 'nav.products', icon: 'box', anyOf: ['catalog:read'] },
   { path: '/rule-sets', label: 'nav.ruleSets', icon: 'scale-balanced', anyOf: ['rules:read'] },
   { path: '/settings', label: 'nav.settings', icon: 'gear', anyOf: ['access:read', 'parties:privacy', 'notices:read'] },

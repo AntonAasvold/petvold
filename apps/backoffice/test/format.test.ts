@@ -49,3 +49,10 @@ test('sections follow the permissions from /v1/me', () => {
   assert.deepEqual(sectionsFor(me(['limits:read'])), []);
   assert.deepEqual(sectionsFor(null), []);
 });
+
+test('the menu counts a page of waiting items', async () => {
+  const { countLabel, SECTIONS } = await import('../src/permissions.ts');
+  assert.equal(countLabel({ items: [1, 2, 3] }), '3');
+  assert.equal(countLabel({ items: new Array(100).fill(0), nextCursor: 'c' }), '100+');
+  assert.deepEqual(SECTIONS.filter((s) => s.count).map((s) => s.path), ['/claims', '/applications', '/proposals', '/notices', '/webhooks']);
+});

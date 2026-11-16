@@ -52,7 +52,7 @@ Komponenterna beskrivs med klasserna i `design/components.css`. I back office by
 Lit-komponenter har shadow DOM, så globala klasser når inte in av sig själva. Det finns tre sätt att styla dem, enligt [Lits dokumentation om stilar](https://lit.dev/docs/components/styles/):
 
 - **CSS-variabler ärvs in.** Därför räcker temat för Web Awesome och för våra egna komponenter som använder `--wa-*` eller Petvolds variabler.
-- **Delade stilar i `static styles`.** En egen komponent, till exempel en beräkning eller en logg, tar in de delar av `design/components.css` den behöver som en `css`-modul.
+- **Delade stilar i `static styles`.** En egen komponent tar in `pvComponents` från `apps/backoffice/src/styles/pv-components.ts`. Det är `design/components.css`, inläst som text vid bygget, så att filen är den enda källan. `app-shell.ts` gör det för toppraden och menyn.
 - **`::part()` och `:host`** för att styla en komponents delar utifrån, när komponenten exponerar dem.
 
 | Komponent | Används till | I back office |
@@ -67,8 +67,8 @@ Lit-komponenter har shadow DOM, så globala klasser når inte in av sig själva.
 | Figure | Viktiga belopp, före och efter | Egen CSS med `.pv-text-figure` |
 | Waterfall | Ett belopp uppdelat i avdrag | Egen komponent, se `design/components.css` |
 | StepList | Steg i ett flöde: klara, aktuellt och kommande | Egen komponent |
-| SideNav | Back office-menyn med antal i kön | Menyn i `app-shell.ts` |
-| TopBar | Namn, flikar, sök och konto | Toppraden i `app-shell.ts` |
+| SideNav | Back office-menyn med antal i kön | Menyn i `app-shell.ts`, med `pv-nav`-klasserna |
+| TopBar | Namn, flikar, sök och konto | Toppraden i `app-shell.ts`, med `pv-topbar`-klasserna |
 | EventLog | Anrop och historik, nyast först | Egen komponent på `--panel-inverse` |
 
 Regler för knappar och märken:

@@ -7,13 +7,15 @@ Appen ligger i `apps/backoffice` (ADR 0035). Den är byggd med Lit 3, Web Awesom
 | Fil | Gör |
 | --- | --- |
 | `src/main.ts` | Laddar Web Awesomes stilar och ikoner, väljer språk och session, och startar `<pv-app>` |
-| `src/components/app-shell.ts` | `<pv-app>`: inloggning, `GET /v1/me`, meny efter rättigheter och routing |
+| `src/components/app-shell.ts` | `<pv-app>`: inloggning, `GET /v1/me`, toppraden och menyn enligt designsystemet, routing och menyns räknare |
+| `src/styles/pv-components.ts` | `design/components.css` som en Lit-stilmall (`?inline` och `unsafeCSS`), så att en komponent kan använda `pv-`-klasserna i sin shadow DOM. Filen i `design/` är den enda källan. |
 | `src/components/data-grid.ts` | `<pv-data-grid>`: tabellen under varje lista |
 | `src/views/` | En vy per sida: `login-view`, `claims-queue` och `claim-detail`. `labels.ts` översätter koder. |
 | `src/api/schema.d.ts` | Typerna, genererade från `modules/api/openapi.yaml` med `npm run ui:types`. Den är incheckad, och CI stoppar om den avviker. |
 | `src/api/client.ts` | openapi-fetch med token och `Accept-Language`. `unwrap` ger data eller ett problem (RFC 9457). |
 | `src/auth.ts` | `devSession` med dev-serverns tokens, och `oidcSession` med oidc-client-ts (PKCE, token bara i minnet) |
 | `src/i18n.ts`, `src/locales/sv.ts` | `@lit/localize` i körläge. Engelskan står i koden med ett id per text, och svenskan i `sv.ts`. Web Awesomes egen svenska laddas också. |
+| `src/permissions.ts` | Menyns avsnitt med rättigheter och den kö varje räknare läser (`count`). `countLabel` gör en sida till "3" eller "100+". |
 | `src/format.ts`, `grid-keys.ts`, `pager.ts`, `permissions.ts`, `decide.ts` | Ren logik utan webbläsare: formatering, tangentbord, sidindelning med markör, menyer, och vad ett beslut kräver och vem som får göra vad. Testas med `node:test`. |
 | `src/components/claim-actions.ts` | `<pv-claim-actions>`: besluta, attestera, skicka tillbaka, begära prövning och ompröva. Varje åtgärd skickar `Idempotency-Key` (`IdempotencyKeys`, samma nyckel tills åtgärden gått igenom) och beslutet `expectedInputHash`. `409` blir ett besked med "Ladda om". |
 | `src/components/explanation-dialog.ts` | `<pv-explanation-dialog>`: förklaringen till ett beslut i en `wa-dialog` |

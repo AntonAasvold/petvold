@@ -39,3 +39,12 @@ test('who may decide, withdraw and answer', () => {
   assert.equal(mayAnswerProposal(me(['policies:write']), {}), true);
   assert.equal(mayAnswerProposal(me(['policies:write']), { decision: {} }), false);
 });
+
+test('the top bar search opens a known id, else searches policies without putting the query in the address', async () => {
+  const { searchTarget } = await import('../src/policy-logic.ts');
+  assert.deepEqual(searchTarget('clm_048213'), { path: '/claims/clm_048213' });
+  assert.deepEqual(searchTarget('app_9a'), { path: '/applications/app_9a' });
+  assert.deepEqual(searchTarget('ntc_1'), { path: '/notices/ntc_1' });
+  assert.deepEqual(searchTarget('pol_bella'), { path: '/policies/pol_bella' });
+  assert.deepEqual(searchTarget(' 20990101-1230 '), { path: '/policies', query: '20990101-1230' });
+});
