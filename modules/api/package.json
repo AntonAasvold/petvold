@@ -15,6 +15,7 @@
     "@petvold/claims-store-memory": "^0.1.0",
     "@petvold/claims-store-postgres": "^0.1.0",
     "@petvold/common": "^0.1.0",
+    "@petvold/communications": "^0.1.0",
     "@petvold/decisioning": "^0.1.0",
     "@petvold/parties": "^0.1.0",
     "@petvold/policies": "^0.1.0",

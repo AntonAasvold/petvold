@@ -5,8 +5,9 @@
  *
  * Configuration from the environment (never a .env file):
  * - CLAIMS_DATABASE_URL, ACCESS_DATABASE_URL, DECISIONING_DATABASE_URL,
- *   CATALOG_DATABASE_URL, ANIMALS_DATABASE_URL, PARTIES_DATABASE_URL and
- *   POLICIES_DATABASE_URL: every one is required, each with the module's own role.
+ *   CATALOG_DATABASE_URL, ANIMALS_DATABASE_URL, PARTIES_DATABASE_URL,
+ *   POLICIES_DATABASE_URL and COMMUNICATIONS_DATABASE_URL: every one is
+ *   required, each with the module's own role.
  * - PETVOLD_VERSION: stored with every decision (ADR 0018). Required.
  * - PORT: default 8080.
  * - PETVOLD_CORS_ORIGINS: browser applications allowed to call the API, comma-separated. Default none.

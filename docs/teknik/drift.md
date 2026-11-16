@@ -14,7 +14,7 @@ npm start            # node --import tsx modules/api/src/server.ts
 
 | Variabel | Krävs | Betyder |
 | --- | --- | --- |
-| `CLAIMS_DATABASE_URL`, `ACCESS_DATABASE_URL`, `DECISIONING_DATABASE_URL`, `CATALOG_DATABASE_URL`, `ANIMALS_DATABASE_URL`, `PARTIES_DATABASE_URL`, `POLICIES_DATABASE_URL` | Ja, alla | En databasadress per modul, med modulens egen tjänsteroll (ADR 0001) |
+| `CLAIMS_DATABASE_URL`, `ACCESS_DATABASE_URL`, `DECISIONING_DATABASE_URL`, `CATALOG_DATABASE_URL`, `ANIMALS_DATABASE_URL`, `PARTIES_DATABASE_URL`, `POLICIES_DATABASE_URL`, `COMMUNICATIONS_DATABASE_URL` | Ja, alla | En databasadress per modul, med modulens egen tjänsteroll (ADR 0001) |
 | `PETVOLD_VERSION` | Ja | Versionen som sparas med varje beslut (ADR 0018) |
 | `PETVOLD_AUTH_ISSUER` | Ja | Utfärdaren av tokens, till exempel bolagets identitetstjänst |
 | `PETVOLD_AUTH_AUDIENCE` | Ja | Petvolds `aud` i tokens |
@@ -45,7 +45,7 @@ Ur token läses `sub` (vem), roller, marknader (en lista eller `*`), och för ro
 ## Databasen
 
 - **Migreringar** körs före start med dbmate, som ägarrollen (`npm run db:migrate` eller motsvarande i installationen). Tjänsterollerna kan inte ändra schemat.
-- **Tjänsteroller** skapas av installationen, till exempel med CloudNativePG `spec.managed.roles`. Lokalt skapas de av `db/init/`.
+- **Tjänsteroller** skapas av installationen, till exempel med CloudNativePG `spec.managed.roles`. Lokalt skapas de av `db/init/`. Rollen måste finnas innan migreringen som ger den rättigheter körs. Migration 0031 kräver till exempel `communications_service`.
 - **Efter en återställning** från säkerhetskopia körs `npm run erasures:reapply` innan servern startar (ADR 0028).
 - **Efter en uppgradering** visar `npm run roles:sync` nya standardroller, och `-- --apply` sparar dem (ADR 0020).
 

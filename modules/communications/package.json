@@ -1,0 +1,15 @@
+{
+  "name": "@petvold/communications",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./postgres": "./src/postgres.ts",
+    "./test-suites/notice-store": "./test-suites/notice-store.ts"
+  },
+  "dependencies": {
+    "@petvold/common": "^0.1.0",
+    "pg": "^8.23.1"
+  }
+}

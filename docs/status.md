@@ -46,8 +46,17 @@ Läses i början och uppdateras i slutet av varje arbetspass. Senaste först.
   - Ingen migrering. Exempelprodukten `SE-HUND-PLUS` har påhittade dokument.
 - 405 tester och 114 databastester.
 
+- #69 mergad.
+- Kundmeddelanden (ADR 0032, del 2), PR #70:
+  - **Ny modul `communications`** med eget schema och egen tjänsteroll. Den gör meddelanden av policymodulens händelser via reläet: försäkringsbrev, besked vid förnyelse, bolagets uppsägning, bekräftad uppsägning och avslag på ansökan.
+  - **Innehållet som fält** per schema (`policy-confirmation.v1` med flera), med lagrum och sista dag ur `NOTICE_RULES` per marknad. Partens id, inte namn eller adress.
+  - **Rapport om utskick:** skickat med kanal, tid, dokumentets id och kontrollsumma, eller misslyckat med skäl. Status, `late` och `overdue` räknas vid läsning. `attention=true` är kön för en person.
+  - **API:** `GET /v1/notices`, `GET /v1/notices/{id}` och `POST /v1/notices/{id}/deliveries`, 101 operationer. Rättigheterna `notices:read` och `notices:deliver`, och rollen `document-service`.
+  - **Migration 0031:** `communications.notice` och `communications.delivery`. Provad ner och upp igen. En befintlig databas behöver rollen `communications_service` före migreringen.
+- 417 tester och 117 databastester.
+
 **Nästa steg**
-1. Meddelandemodulen `communications` (ADR 0032, del 2): kundmeddelanden från händelserna, utskick, kö och bolagets texter.
+1. Meddelanden, del 3 (ADR 0032): erbjudande om överlåtelse (kräver en händelse när ett förslag skapas), bolagets texter per marknad och typer som kan stängas av.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**
