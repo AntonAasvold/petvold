@@ -15,17 +15,26 @@ import type { Column } from '../components/data-grid.ts';
 import { formatDate, formatDateTime, formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import { navigate } from '../router.ts';
-import { channelLabel, outcomeLabel, ruleStatusLabel } from './labels.ts';
+import { channelLabel, claimStatusLabel, outcomeLabel, ruleStatusLabel, statusVariant } from './labels.ts';
+import '../components/claim-actions.ts';
+import '../components/explanation-dialog.ts';
+import { claimStatus } from '../decide.ts';
+import type { Me } from '../permissions.ts';
 
 type Claim = components['schemas']['Claim'];
 type Assessment = components['schemas']['Assessment'];
 type Decision = components['schemas']['Decision'];
 type RuleResult = components['schemas']['RuleResult'];
+type Proposal = components['schemas']['DecisionProposal'];
+type ReviewRequest = components['schemas']['ReviewRequest'];
 
 @customElement('pv-claim-detail')
 export class ClaimDetail extends LitElement {
   @property({ attribute: false }) api!: Api;
+  @property({ attribute: false }) me: Me | null = null;
   @property({ attribute: 'claim-id' }) claimId = '';
+  @state() private proposals: Proposal[] = [];
+  @state() private reviews: ReviewRequest[] = [];
   @state() private claim: Claim | null = null;
   @state() private assessment: Assessment | null = null;
   @state() private decisions: Decision[] = [];
@@ -67,6 +76,9 @@ export class ClaimDetail extends LitElement {
     .wide {
       grid-column: 1 / -1;
     }
+    pv-claim-actions {
+      margin-top: var(--wa-space-l);
+    }
   `;
 
   protected updated(changed: Map<string, unknown>): void {
@@ -77,14 +89,18 @@ export class ClaimDetail extends LitElement {
     this.problem = null;
     const path = { params: { path: { claimId: this.claimId } } };
     try {
-      const [claim, assessment, decisions] = await Promise.all([
+      const [claim, assessment, decisions, proposals, reviews] = await Promise.all([
         unwrap(this.api.GET('/v1/claims/{claimId}', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/assessment', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/decisions', path)),
+        unwrap(this.api.GET('/v1/claims/{claimId}/proposals', path)),
+        unwrap(this.api.GET('/v1/claims/{claimId}/review-requests', path)),
       ]);
       this.claim = claim;
       this.assessment = assessment;
       this.decisions = decisions.items;
+      this.proposals = proposals.items;
+      this.reviews = reviews.items;
     } catch (e) {
       this.problem = e as Problem;
     }
@@ -108,12 +124,31 @@ export class ClaimDetail extends LitElement {
     const a = this.assessment;
     const lang = getLocale();
     const money = (m: number) => formatMoney(m, c.currency, lang);
+    const status = claimStatus({
+      openProposals: this.proposals.filter((p) => p.status === 'open').length,
+      openReviews: this.reviews.filter((r) => !r.closedAt).length,
+      decisions: this.decisions.length,
+    });
     return html`
       ${back}
       <div class="head">
         <h2>${msg('Claim', { id: 'claim.title' })} ${c.claimNo}</h2>
         <wa-badge variant="neutral">${c.id}</wa-badge>
+        <wa-badge variant=${statusVariant(status)}>${claimStatusLabel(status)}</wa-badge>
       </div>
+      <pv-claim-actions
+        .api=${this.api}
+        .me=${this.me}
+        claim-id=${c.id}
+        currency=${c.currency}
+        status=${status}
+        .assessment=${a}
+        .decisions=${this.decisions}
+        .proposals=${this.proposals}
+        .reviews=${this.reviews}
+        @pv-changed=${() => this.load()}
+      ></pv-claim-actions>
+      <pv-explanation-dialog .api=${this.api}></pv-explanation-dialog>
       <div class="cards">
         <wa-card>
           <h3 slot="header">${msg('Details', { id: 'claim.facts' })}</h3>
@@ -188,7 +223,17 @@ export class ClaimDetail extends LitElement {
       { key: 'outcome', header: msg('Result', { id: 'claim.result' }), value: (d) => outcomeLabel(d.outcome) },
       { key: 'payout', header: msg('Payout', { id: 'calc.payout' }), align: 'end', value: (d) => formatMoney(d.payout, this.claim!.currency, lang) },
       { key: 'decidedBy', header: msg('Decided by', { id: 'claim.decidedBy' }), value: (d) => (d.automated ? msg('Automatic', { id: 'claim.automated' }) : d.decidedBy) },
-      { key: 'decidedAt', header: msg('Received', { id: 'claims.col.received' }), value: (d) => formatDateTime(d.decidedAt, lang) },
+      { key: 'decidedAt', header: msg('Decided', { id: 'claim.decidedAt' }), value: (d) => formatDateTime(d.decidedAt, lang) },
+      {
+        key: 'why',
+        header: msg('Explanation', { id: 'claim.explanation' }),
+        value: (d) =>
+          html`<wa-button size="small" appearance="plain" @click=${(e: Event) => (e.stopPropagation(), this.explain(d.seq))}>${msg('Why?', { id: 'claim.why' })}</wa-button>`,
+      },
     ];
+  }
+
+  private explain(seq: number) {
+    void this.renderRoot.querySelector('pv-explanation-dialog')?.show(this.claimId, seq);
   }
 }

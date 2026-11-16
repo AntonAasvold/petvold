@@ -128,8 +128,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Svenska och engelska.** Ikonerna kopieras lokalt från Font Awesome Free, så inget hämtas från ett CDN.
   - **Typerna genereras från `openapi.yaml`.** Det nya CI-jobbet `ui` jämför typerna, typkontrollerar, kör enhetstester och fyra flödestester i Chromium, och bygger.
 
+- #80 mergad.
+- Back office, steg 2 (ADR 0035), PR #81:
+  - **Besluta** med förslaget förvalt. Mot förslaget krävs skälkod och motivering, och `claims:override`. Över gränsen blir det ett förslag.
+  - **Attestera eller skicka tillbaka** med fyra ögon. **Begära prövning** av ett automatiskt beslut, **ompröva**, och **förklaringen** till varje beslut.
+  - **Idempotensnyckel och `expectedInputHash`** på varje åtgärd. `409` blir ett besked med "Ladda om".
+  - **Tester:** varje text-id har en svensk översättning, och fem nya flöden i Chromium, nio totalt.
+
 **Nästa steg**
-1. Back office, steg 2: beslut, attest och prövning.
+1. Back office, steg 3: policyer och ansökningar.
 2. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 
 **Öppet**

@@ -51,3 +51,34 @@ export function ruleStatusLabel(s: string): string {
 export function channelLabel(c: string): string {
   return c === 'clinic_direct' ? msg('Clinic', { id: 'claims.channel.clinic_direct' }) : msg('Customer', { id: 'claims.channel.customer' });
 }
+
+export function deviationLabel(c: string): string {
+  switch (c) {
+    case 'pre_existing_condition':
+      return msg('Condition before the policy', { id: 'deviation.pre_existing_condition' });
+    case 'not_covered':
+      return msg('Not covered', { id: 'deviation.not_covered' });
+    case 'insufficient_documentation':
+      return msg('Insufficient documentation', { id: 'deviation.insufficient_documentation' });
+    case 'incorrect_invoice':
+      return msg('Incorrect invoice', { id: 'deviation.incorrect_invoice' });
+    case 'other':
+      return msg('Other', { id: 'deviation.other' });
+    default:
+      return c;
+  }
+}
+
+/** The texts for what stops a decision (decide.ts). */
+export function problemLabel(id: string): string {
+  switch (id) {
+    case 'decide.noOverride':
+      return msg('You may not decide against the proposal (claims:override).', { id: 'decide.noOverride' });
+    case 'decide.needCode':
+      return msg('Choose a reason code.', { id: 'decide.needCode' });
+    case 'decide.needReason':
+      return msg('Write a reason.', { id: 'decide.needReason' });
+    default:
+      return id;
+  }
+}
