@@ -104,13 +104,13 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 
 **Skadeprocessen hela vägen** (före M5)
 - [x] Registrera skada i back office, med förhandsbedömning innan den sparas
-- [ ] ADR 0036 om skadeprocessen: fler statusar (väntar på underlag, återkallad, avvisad), komplettering, rättelse och bilagor
-- [ ] Begära komplettering från kund eller klinik, med påminnelse och utgång
-- [ ] Rätta ett ärende (fakturarader, diagnos) med ny bedömning och historik
-- [ ] Återkalla eller avvisa ett ärende, till exempel en dubblett
-- [ ] Bilagor till ärendet (faktura, journal) med lagring och kontrollsumma
-- [ ] Skadebesked till kunden (`claim-decision`, ADR 0032)
-- [ ] Skadenummer i en serie som servern håller, i stället för att klienten väljer
+- [x] [ADR 0036](adr/0036-skadeprocessen.md) om skadeprocessen (föreslagen)
+- [ ] Skadenummer och id från servern
+- [ ] Lägen, återkallelse och avvisning
+- [ ] Komplettering från kund eller klinik, med påminnelse, utgång och `basisCompleteAt` (FAL 7 kap. 1 §)
+- [ ] Rättelse med revisioner
+- [ ] Bilagor som referenser till bolagets arkiv
+- [ ] Skadebesked och meddelanden om komplettering (ADR 0032)
 - Utbetalningen kommer med betalningsmodulen i M5.
 
 **M4 – Pris och teckning**
