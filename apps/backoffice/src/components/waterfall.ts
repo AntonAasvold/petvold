@@ -28,6 +28,7 @@ export class Waterfall extends LitElement {
     css`
       :host {
         display: block;
+        container: waterfall / inline-size;
       }
       ol {
         margin: 0;
@@ -45,9 +46,11 @@ export class Waterfall extends LitElement {
       .pv-wf__row--result .pv-wf__amount {
         font: 700 20px/1.3 var(--font-display);
       }
-      @media (max-width: 560px) {
+      /* Follows its own width, not the screen's: it also sits in a narrow side column. */
+      @container waterfall (max-width: 520px) {
         .pv-wf__row {
           grid-template-columns: minmax(0, 1fr) auto;
+          row-gap: var(--space-2);
         }
         .pv-wf__track {
           grid-column: 1 / -1;

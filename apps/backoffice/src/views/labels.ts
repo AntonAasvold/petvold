@@ -78,6 +78,22 @@ export function problemLabel(id: string): string {
       return msg('Choose a reason code.', { id: 'decide.needCode' });
     case 'decide.needReason':
       return msg('Write a reason.', { id: 'decide.needReason' });
+    case 'register.needPolicy':
+      return msg('Fetch the policy first.', { id: 'register.needPolicy' });
+    case 'register.needClaimNo':
+      return msg('Give a claim number.', { id: 'register.needClaimNo' });
+    case 'register.needDates':
+      return msg('Give the first and last day of treatment.', { id: 'register.needDates' });
+    case 'register.datesOrder':
+      return msg('The last day of treatment is before the first.', { id: 'register.datesOrder' });
+    case 'register.future':
+      return msg('The treatment cannot start in the future.', { id: 'register.future' });
+    case 'register.needDiagnosis':
+      return msg('Give a diagnosis code.', { id: 'register.needDiagnosis' });
+    case 'register.needLine':
+      return msg('Add at least one invoice line.', { id: 'register.needLine' });
+    case 'register.badLine':
+      return msg('Each line needs a description and an amount; VAT cannot be more than the amount.', { id: 'register.badLine' });
     case 'application.needNote':
       return msg('Write the grounds for the decision.', { id: 'application.needNote' });
     case 'application.needReason':
@@ -186,5 +202,26 @@ export function noticeFlagLabel(f: string): string {
       return msg('Sent late', { id: 'notices.tab.late' });
     default:
       return f;
+  }
+}
+
+export function lineCategoryLabel(c: string): string {
+  switch (c) {
+    case 'examination':
+      return msg('Examination', { id: 'line.examination' });
+    case 'diagnostics':
+      return msg('Diagnostics', { id: 'line.diagnostics' });
+    case 'medication':
+      return msg('Medication', { id: 'line.medication' });
+    case 'surgery':
+      return msg('Surgery', { id: 'line.surgery' });
+    case 'anaesthesia':
+      return msg('Anaesthesia', { id: 'line.anaesthesia' });
+    case 'hospitalisation':
+      return msg('Hospitalisation', { id: 'line.hospitalisation' });
+    case 'food':
+      return msg('Food', { id: 'line.food' });
+    default:
+      return c;
   }
 }

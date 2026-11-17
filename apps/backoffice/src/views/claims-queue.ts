@@ -1,10 +1,12 @@
 /** <pv-claims-queue>: the work queues for claims, a page at a time (GET /v1/claims). */
-import { LitElement, css, html } from 'lit';
+import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { msg, updateWhenLocaleChanges } from '@lit/localize';
 import '@awesome.me/webawesome/dist/components/tab-group/tab-group.js';
 import '@awesome.me/webawesome/dist/components/tab/tab.js';
 import '@awesome.me/webawesome/dist/components/badge/badge.js';
+import '@awesome.me/webawesome/dist/components/button/button.js';
+import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import { unwrap, type Api } from '../api/client.ts';
 import type { components } from '../api/schema';
 import '../components/data-grid.ts';
@@ -14,6 +16,7 @@ import { getLocale } from '../i18n.ts';
 import { append, emptyPager, hasMore, type Pager } from '../pager.ts';
 import { navigate } from '../router.ts';
 import { claimStatusLabel, statusVariant } from './labels.ts';
+import type { Me } from '../permissions.ts';
 
 type ClaimSummary = components['schemas']['ClaimSummary'];
 type Status = ClaimSummary['status'];
@@ -22,6 +25,7 @@ const QUEUES: (Status | 'all')[] = ['awaiting-decision', 'awaiting-approval', 'r
 @customElement('pv-claims-queue')
 export class ClaimsQueue extends LitElement {
   @property({ attribute: false }) api!: Api;
+  @property({ attribute: false }) me: Me | null = null;
   @state() private queue: Status | 'all' = 'awaiting-decision';
   @state() private pager: Pager<ClaimSummary> = emptyPager();
   @state() private loading = false;
@@ -35,6 +39,13 @@ export class ClaimsQueue extends LitElement {
   }
 
   static styles = css`
+    .head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--wa-space-m);
+    }
     h2 {
       margin-top: 0;
     }
@@ -89,7 +100,12 @@ export class ClaimsQueue extends LitElement {
 
   render() {
     return html`
-      <h2>${msg('Claims', { id: 'claims.title' })}</h2>
+      <div class="head">
+        <h2>${msg('Claims', { id: 'claims.title' })}</h2>
+        ${this.me?.permissions.includes('claims:register')
+          ? html`<wa-button appearance="outlined" @click=${() => navigate('/claims/new')}><wa-icon slot="start" name="plus"></wa-icon>${msg('Register a claim', { id: 'register.title' })}</wa-button>`
+          : nothing}
+      </div>
       <wa-tab-group @wa-tab-show=${(e: CustomEvent<{ name: string }>) => this.show(e.detail.name as Status | 'all')}>
         ${QUEUES.map((q) => html`<wa-tab panel=${q} ?active=${q === this.queue}>${q === 'all' ? msg('All', { id: 'claims.all' }) : claimStatusLabel(q)}</wa-tab>`)}
       </wa-tab-group>

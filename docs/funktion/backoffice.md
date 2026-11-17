@@ -55,6 +55,18 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
   - Page Up och Page Down flyttar tio rader
   - Enter öppnar ärendet
 
+## Registrera en skada
+
+Den som har rätten `claims:register` kan registrera en skada, till exempel en som kunden skickat in på papper. Knappen "Registrera skada" finns i skadornas kö och på en policy. Från policyn är policyn redan ifylld.
+
+1. **Policyn.** Ange policyns id och hämta den. Marknad, valuta och djur kommer från policyn och går inte att ändra i formuläret.
+2. **Behandlingen.** Skadenumret föreslås som `S-<år>-<sex siffror>` och går att ändra. Ange också kanal (kund eller klinik), första och sista behandlingsdag och diagnoskod.
+3. **Fakturan.** En rad per post med beskrivning, kategori, belopp inklusive moms och, om fakturan anger det, momsen. Summan visas under raderna.
+4. **Förhandsbedöm.** Skadan bedöms utan att sparas. Svaret visar förslaget, regler som kräver granskning eller inte är uppfyllda, och beräkningen steg för steg.
+5. **Registrera skadan.** Knappen visar det fakturerade beloppet. Skadan bedöms igen och kan beslutas automatiskt direkt. Sedan öppnas ärendet.
+
+Appen säger vad som saknas innan något skickas. Ett skadenummer som redan används ger ett besked från API:t.
+
 ## Skadeärendet
 
 - **Huvudet** har en brödsmula tillbaka till kön, skadenumret som rubrik och ärendets id. Klickar man på id:t kopieras det. Status är ett helfyllt märke när ärendet är beslutat och ett streckat när det väntar på någon.

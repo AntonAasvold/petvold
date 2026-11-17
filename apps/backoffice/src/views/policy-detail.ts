@@ -126,6 +126,11 @@ export class PolicyDetail extends LitElement {
       <div class="head">
         <h2>${msg('Policy', { id: 'claims.col.policy' })} ${p.id}</h2>
         ${current ? html`<wa-badge variant=${current.status === 'active' ? 'success' : 'neutral'}>${policyStatusLabel(current.status)}</wa-badge>` : nothing}
+        ${this.me?.permissions.includes('claims:register')
+          ? html`<wa-button size="small" appearance="outlined" @click=${() => navigate(`/claims/new?policy=${encodeURIComponent(p.id)}`)}
+              ><wa-icon slot="start" name="plus"></wa-icon>${msg('Register a claim', { id: 'register.title' })}</wa-button
+            >`
+          : nothing}
       </div>
       ${this.notice
         ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'danger' ? 'alert' : 'status'}
