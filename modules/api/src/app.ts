@@ -355,7 +355,7 @@ export function createApp(d: AppDeps) {
   app.get('/v1/claims/:claimId/assessment', async (c) => {
     const knownAt = c.req.query('knownAt');
     if (knownAt !== undefined && Number.isNaN(Date.parse(knownAt))) return problem(c, 422, 'knownAt is not a valid point in time');
-    return send(c, await d.service.assessClaim(c.req.param('claimId'), knownAt));
+    return send(c, await d.service.assessWithRouting(c.req.param('claimId'), knownAt));
   });
 
   app.get('/v1/claims/:claimId/decisions', async (c) => sendPage(c, await d.service.getDecisions(c.req.param('claimId'))));

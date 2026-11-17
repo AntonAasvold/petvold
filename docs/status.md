@@ -174,8 +174,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **`pvComponents`** läser in `design/components.css` i komponenternas `static styles`.
   - **Tester:** 27 enhetstester och 21 flöden i Chromium.
 
+- Back office enligt designsystemet, PR 2 av 3, PR #88 (bygger på #87):
+  - **Kontraktet:** bedömningen har `routing`, alltså varför ärendet behöver en handläggare. Den räknas fram vid läsning och sparas inte.
+  - **Skadeärendet:** huvud med brödsmula, id som kopieras, helfyllt eller streckat märke för status, och en rad med djur, kund, policy och mottagning. Därunder två spalter: underlaget till vänster, beslutet och historiken till höger.
+  - **Beslutskortet:** skälen till att ärendet gick till en handläggare, valkort med en rad om följden, och en knapp som säger vad som händer med beloppet. Ett avslag kräver alltid en motivering.
+  - **Belopp på svenska** visas utan ören när beloppet är jämnt, till exempel "12 165 kr".
+  - **Tester:** 445 tester i kärnan och API:t, 29 enhetstester i back office och 21 flöden.
+
 **Nästa steg**
-1. Back office enligt designsystemet, PR 2 och 3: skadeärendet, och komponenterna `<pv-waterfall>` och `<pv-event-log>`.
+1. Back office enligt designsystemet, PR 3: komponenterna `<pv-waterfall>` och `<pv-event-log>`.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.

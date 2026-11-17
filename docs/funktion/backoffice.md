@@ -55,11 +55,21 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
   - Page Up och Page Down flyttar tio rader
   - Enter öppnar ärendet
 
+## Skadeärendet
+
+- **Huvudet** har en brödsmula tillbaka till kön, skadenumret som rubrik och ärendets id. Klickar man på id:t kopieras det. Status är ett helfyllt märke när ärendet är beslutat och ett streckat när det väntar på någon.
+- **En rad under rubriken** visar djuret, kunden, policyn (en länk) och hur och när skadan kom in. Djurets och kundens namn visas bara för den som får läsa djur och parter.
+- **Två spalter.** Till vänster ligger underlaget: beräkningen, bedömningen regel för regel och detaljerna. Till höger ligger beslutet och historiken, nyast först. Högerspalten följer med när man rullar. På smala skärmar hamnar den under underlaget.
+
 ## Besluta och attestera
 
 Ärendet visar de åtgärder som användaren har rätt till just nu.
 
-1. **Besluta.** Formuläret börjar på förslaget från bedömningen. Om man väljer det andra utfallet visar appen att beslutet går emot förslaget och kräver skälkod och motivering. De sparas med beslutet (ADR 0018).
+1. **Besluta.** Beslutskortet har en kraftigare ram än resten.
+   - **Därför behövs en handläggare.** Kortet börjar med skälen till att ärendet inte reglerades automatiskt: vilken regel som kräver granskning eller inte är uppfylld, med regelns egen text, och om ersättningen är över produktens gräns för automatisk reglering.
+   - **Två valkort,** Godkänn utbetalning och Avslå, med en rad om vad som händer. Förslaget från bedömningen är förvalt och märkt.
+   - **Knappen säger vad som händer:** "Godkänn utbetalning · 12 165 kr" eller "Avslå ersättningen".
+   - **Ett avslag kräver alltid en motivering.** Om man väljer det andra utfallet än förslaget kräver appen också en skälkod. Båda sparas med beslutet (ADR 0018).
 2. **Över gränsen.** Om ersättningen är högre än användarens gräns blir beslutet ett förslag som väntar på attest (ADR 0019). Appen säger det direkt.
 3. **Attestera.** Den som har rätt att attestera ser förslaget, vem som gjorde det och deras gräns, och kan attestera eller skicka tillbaka med en motivering. Den som gjorde förslaget ser att någon annan måste attestera det.
 4. **Underlaget ändrades.** Varje beslut skickar bedömningens `inputHash`. Om ärendet har ändrats sedan det öppnades, till exempel för att en annan skada förbrukat försäkringsbeloppet, svarar API:t `409`. Appen säger det och erbjuder att ladda om.

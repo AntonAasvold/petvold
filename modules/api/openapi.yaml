@@ -167,6 +167,12 @@ paths:
 
         `knownAt` assesses against the policy as it was known at a given
         point in time (system time). Omitted = now.
+
+        `routing` says why the claim needs a claims handler, or that it may be
+        settled automatically: rules to review or that fail, a proposal to
+        reject, or a payout above the product's limit for automatic settlement.
+        It is worked out on reading and not stored with a decision, so stored
+        assessments recompute as before (ADR 0018).
       parameters:
         - $ref: '#/components/parameters/ClaimId'
         - name: knownAt
@@ -177,10 +183,10 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '200':
-          description: Assessment
+          description: Assessment, with why it needs a claims handler
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Assessment' }
+              schema: { $ref: '#/components/schemas/AssessmentWithRouting' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /v1/claims/{claimId}/decisions:
@@ -3681,6 +3687,29 @@ components:
         payout: { $ref: '#/components/schemas/Money' }
         customerShare: { $ref: '#/components/schemas/Money' }
         cappedByLimit: { type: boolean }
+
+    AssessmentWithRouting:
+      allOf:
+        - $ref: '#/components/schemas/Assessment'
+        - type: object
+          required: [routing]
+          properties:
+            routing: { $ref: '#/components/schemas/ClaimRouting' }
+
+    ClaimRouting:
+      type: object
+      required: [mode, reasons]
+      description: Why the claim needs a claims handler. Empty reasons when it may be settled automatically.
+      properties:
+        mode: { type: string, enum: [auto, manual] }
+        reasons:
+          type: array
+          items: { $ref: '#/components/schemas/Reason' }
+          description: |
+            - routing.rule_review: a rule asks for a person, params.code and params.rule
+            - routing.rule_fail: a rule is not met, params.code and params.rule
+            - routing.proposal_rejected: the proposal is to reject, which a person decides
+            - routing.above_auto_limit: params.payout above params.limit, in params.currency
 
     Assessment:
       type: object

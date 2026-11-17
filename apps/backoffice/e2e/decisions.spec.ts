@@ -25,11 +25,14 @@ test('a decision against the proposal needs a reason code and a reason', async (
   await signIn(page, 'dev-handler');
   await openClaim(page, 'S-2026-048213', 'Awaiting decision');
   const form = page.locator('pv-claim-actions');
-  const proposed = (await form.getByText('Proposal:').textContent()) ?? '';
+  const proposed = (await page.getByText('Proposal:').textContent()) ?? '';
+  // Why the claim needs a person: the rule that sent it here, said by name.
+  await expect(form.getByText('Why a claims handler')).toBeVisible();
+  await expect(form.getByRole('listitem').first()).toContainText('The rule RIDER asks for a claims handler to review');
   // Choose the action the proposal does not suggest.
-  await form.getByRole('radio', { name: proposed.includes('Rejected') ? 'Accept: pay as calculated' : 'Reject' }).click();
+  await form.getByRole('radio', { name: proposed.includes('Rejected') ? /^Approve payout/ : /^Reject/ }).click();
   await expect(form.getByText('This goes against the proposal.')).toBeVisible();
-  await form.getByRole('button', { name: 'Decide' }).click();
+  await form.getByRole('button', { name: /^(Approve payout|Reject the claim)/ }).click();
   await expect(form.getByRole('alert')).toContainText('Choose a reason code.');
   await expect(form.getByRole('alert')).toContainText('Write a reason.');
 });
@@ -51,7 +54,8 @@ test('a proposal above the limit: the handler cannot approve it, another person 
 test('a handler decides within the limit, and the claim is decided', async ({ page }) => {
   await signIn(page, 'dev-handler');
   await openClaim(page, 'S-2026-048213', 'Awaiting decision');
-  await page.locator('pv-claim-actions').getByRole('button', { name: 'Decide' }).click();
+  // The button says what happens, with the amount.
+  await page.locator('pv-claim-actions').getByRole('button', { name: /^Approve payout · SEK [\d,]+\.\d\d$/ }).click();
   await expect(page.locator('pv-claim-actions').getByRole('status')).toContainText('The claim is decided.');
   await expect(page.getByRole('grid', { name: 'Decisions' }).getByRole('row')).toHaveCount(2);
 });
@@ -59,8 +63,17 @@ test('a handler decides within the limit, and the claim is decided', async ({ pa
 test("a requested review is answered by a person's decision", async ({ page }) => {
   await signIn(page, 'dev-handler');
   await openClaim(page, 'S-2026-033410', 'Review requested');
-  await expect(page.locator('pv-claim-actions').getByRole('heading', { name: 'Review the decision' })).toBeVisible();
-  await page.locator('pv-claim-actions').getByRole('button', { name: 'Decide' }).click();
+  const form = page.locator('pv-claim-actions');
+  await expect(form.getByRole('heading', { name: 'Review the decision' })).toBeVisible();
+  if (await form.getByRole('button', { name: 'Reject the claim' }).isVisible()) {
+    // A rejection always needs a reason, also when it follows the proposal.
+    await form.getByRole('button', { name: 'Reject the claim' }).click();
+    await expect(form.getByRole('alert')).toContainText('Write a reason.');
+    await form.getByRole('textbox', { name: 'Reason' }).fill('Within the waiting period.');
+    await form.getByRole('button', { name: 'Reject the claim' }).click();
+  } else {
+    await form.getByRole('button', { name: /^Approve payout/ }).click();
+  }
   await expect(page.locator('pv-claim-actions').getByRole('status')).toContainText('The claim is decided.');
   await expect(page.locator('pv-claim-actions').getByRole('heading', { name: 'Review requested' })).toHaveCount(0);
 });

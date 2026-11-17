@@ -48,3 +48,10 @@ test('the top bar search opens a known id, else searches policies without puttin
   assert.deepEqual(searchTarget('pol_bella'), { path: '/policies/pol_bella' });
   assert.deepEqual(searchTarget(' 20990101-1230 '), { path: '/policies', query: '20990101-1230' });
 });
+
+test('a party is named by given and family name, or the organisation name', async () => {
+  const { partyName } = await import('../src/policy-logic.ts');
+  assert.equal(partyName({ givenName: 'Eva', familyName: 'Lind' }), 'Eva Lind');
+  assert.equal(partyName({ name: 'Stall Norr AB' }), 'Stall Norr AB');
+  assert.equal(partyName(null), '');
+});

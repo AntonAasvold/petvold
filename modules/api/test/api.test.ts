@@ -150,9 +150,14 @@ test('handler flow: assessment, decision with inputHash, list of decisions', asy
 
   const aRes = await call('GET', '/v1/claims/clm_048213/assessment', { lang: 'sv-SE,sv;q=0.9' });
   const assessment = (await aRes.json()) as any;
-  assertSchema('Assessment', assessment);
+  assertSchema('AssessmentWithRouting', assessment);
   assert.equal(aRes.headers.get('content-language'), 'sv');
   assert.equal(assessment.mode, 'manual');
+  // Why a claims handler: the rider rule asks for a review, said in Swedish.
+  assert.equal(assessment.routing.mode, 'manual');
+  assert.deepEqual(assessment.routing.reasons.map((r: any) => [r.reason, r.params.code]).slice(0, 1), [['routing.rule_review', 'RIDER']]);
+  assert.match(assessment.routing.reasons[0].message, /RIDER/);
+  assert.doesNotMatch(assessment.routing.reasons[0].message, /asks for a claims handler/);
   const rider = assessment.rules.find((r: any) => r.code === 'RIDER');
   assert.equal(rider.reason, 'rider.possible');
   // Swedish text from the sv catalogue, with the rider's description filled in.
