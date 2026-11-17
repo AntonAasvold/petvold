@@ -194,6 +194,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **`<pv-waterfall>`** följer sin egen bredd med en container query och fungerar också i den smala spalten.
   - **Roadmapen** har ett nytt avsnitt: skadeprocessen hela vägen, före M5.
   - **Tester:** 38 enhetstester och 24 flöden.
+  - **Rättat i PR #92:** fälten i formuläret ligger i linje, och "Hämta policyn" sitter inuti policyfältet.
 
 **Nästa steg**
 1. ADR 0036 om skadeprocessen: statusar, komplettering, rättelse, återkallelse och bilagor.

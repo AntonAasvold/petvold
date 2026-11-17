@@ -102,11 +102,15 @@ export class ClaimRegister extends LitElement {
         flex-direction: column;
         gap: var(--space-6);
       }
+      /* Fields line up at the top, so a hint under one field does not push the others down. */
       .row {
         display: flex;
         flex-wrap: wrap;
-        align-items: flex-end;
+        align-items: flex-start;
         gap: var(--space-4);
+      }
+      .policy wa-button::part(base) {
+        height: auto;
       }
       .row > * {
         flex: 1 1 180px;
@@ -262,16 +266,16 @@ export class ClaimRegister extends LitElement {
           <section class="pv-card" aria-labelledby="policy">
             <div class="pv-card__head"><h2 class="pv-card__title" id="policy">${msg('Policy', { id: 'claims.col.policy' })}</h2></div>
             <div class="pv-card__body">
-              <div class="row">
-                <wa-input
-                  label=${msg('Policy id', { id: 'register.policyId' })}
-                  hint=${msg('For example pol_bella. Search in Policies if you do not know it.', { id: 'register.policyHint' })}
-                  .value=${this.policyId}
-                  @input=${(e: Event) => (this.policyId = (e.target as HTMLInputElement).value)}
-                  @keydown=${(e: KeyboardEvent) => e.key === 'Enter' && (e.preventDefault(), void this.loadPolicy())}
-                ></wa-input>
-                <wa-button appearance="outlined" @click=${() => this.loadPolicy()}>${msg('Fetch the policy', { id: 'register.fetchPolicy' })}</wa-button>
-              </div>
+              <wa-input
+                class="policy"
+                label=${msg('Policy id', { id: 'register.policyId' })}
+                hint=${msg('For example pol_bella. Search in Policies if you do not know it.', { id: 'register.policyHint' })}
+                .value=${this.policyId}
+                @input=${(e: Event) => (this.policyId = (e.target as HTMLInputElement).value)}
+                @keydown=${(e: KeyboardEvent) => e.key === 'Enter' && (e.preventDefault(), void this.loadPolicy())}
+              >
+                <wa-button slot="end" size="small" appearance="plain" @click=${() => this.loadPolicy()}>${msg('Fetch the policy', { id: 'register.fetchPolicy' })}</wa-button>
+              </wa-input>
               ${this.policyError ? html`<wa-callout variant="neutral" role="alert">${this.policyError}</wa-callout>` : nothing}
               ${this.policy
                 ? html`<dl class="pv-dl">
