@@ -20,6 +20,7 @@ import { match, navigate, type Route } from '../router.ts';
 import '../views/login-view.ts';
 import '../views/claims-queue.ts';
 import '../views/claim-detail.ts';
+import '../views/claim-register.ts';
 import '../views/policies-search.ts';
 import '../views/policy-detail.ts';
 import '../views/applications-queue.ts';
@@ -236,7 +237,8 @@ export class AppShell extends LitElement {
 
   private routes(): Route[] {
     return [
-      { pattern: /^\/claims$/, render: () => html`<pv-claims-queue .api=${this.api}></pv-claims-queue>` },
+      { pattern: /^\/claims$/, render: () => html`<pv-claims-queue .api=${this.api} .me=${this.me}></pv-claims-queue>` },
+      { pattern: /^\/claims\/new$/, render: () => html`<pv-claim-register .api=${this.api}></pv-claim-register>` },
       { pattern: /^\/claims\/(?<id>[^/]+)$/, render: (p) => html`<pv-claim-detail .api=${this.api} .me=${this.me} claim-id=${p.id!}></pv-claim-detail>` },
       { pattern: /^\/policies$/, render: () => html`<pv-policies-search .api=${this.api}></pv-policies-search>` },
       { pattern: /^\/policies\/(?<id>[^/]+)$/, render: (p) => html`<pv-policy-detail .api=${this.api} .me=${this.me} policy-id=${p.id!}></pv-policy-detail>` },

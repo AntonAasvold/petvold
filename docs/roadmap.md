@@ -102,6 +102,17 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Back office enligt designsystemet, PR 3: `<pv-waterfall>` och `<pv-event-log>`
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
 
+**Skadeprocessen hela vägen** (före M5)
+- [x] Registrera skada i back office, med förhandsbedömning innan den sparas
+- [ ] ADR 0036 om skadeprocessen: fler statusar (väntar på underlag, återkallad, avvisad), komplettering, rättelse och bilagor
+- [ ] Begära komplettering från kund eller klinik, med påminnelse och utgång
+- [ ] Rätta ett ärende (fakturarader, diagnos) med ny bedömning och historik
+- [ ] Återkalla eller avvisa ett ärende, till exempel en dubblett
+- [ ] Bilagor till ärendet (faktura, journal) med lagring och kontrollsumma
+- [ ] Skadebesked till kunden (`claim-decision`, ADR 0032)
+- [ ] Skadenummer i en serie som servern håller, i stället för att klienten väljer
+- Utbetalningen kommer med betalningsmodulen i M5.
+
 **M4 – Pris och teckning**
 - [x] ADR om tariffen (ADR 0030)
 - [x] Prisfunktionen (`pricing-core`) och tariffserier i `decisioning`

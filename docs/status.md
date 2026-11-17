@@ -187,8 +187,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Korten för attest, prövning och omprövning** är `pv-card`.
   - **Tester:** 34 enhetstester och 22 flöden.
 
+- Registrera skada i back office, PR #90:
+  - **Formuläret** nås från skadornas kö och från en policy. Policyn ger marknad, valuta och djur, så att de inte kan bli fel.
+  - **Fakturarader** har beskrivning, kategori, belopp och moms.
+  - **Förhandsbedömningen** (`POST /v1/claim-previews`) visar förslaget, reglerna att titta på och beräkningen innan något sparas. Registreringen skickar en idempotensnyckel och öppnar sedan ärendet.
+  - **`<pv-waterfall>`** följer sin egen bredd med en container query och fungerar också i den smala spalten.
+  - **Roadmapen** har ett nytt avsnitt: skadeprocessen hela vägen, före M5.
+  - **Tester:** 38 enhetstester och 24 flöden.
+
 **Nästa steg**
-1. Granska och slå ihop #86–#89 i ordning.
+1. ADR 0036 om skadeprocessen: statusar, komplettering, rättelse, återkallelse och bilagor.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.
