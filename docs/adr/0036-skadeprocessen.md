@@ -1,6 +1,6 @@
 # 0036. Skadeprocessen: komplettering, rättelse, avslut utan beslut, bilagor och skadenummer
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-17
 
 ## Sammanhang
@@ -37,6 +37,7 @@ Utbetalningen kommer med betalningsmodulen (M5, ADR 0017) och ingår inte här. 
    - **Svar:** `POST …/information-requests/{requestId}/answers` registrerar att underlaget har kommit, med bilagor (punkt 5). Begäran stängs, och ärendet går tillbaka till kön.
    - **Påminnelse och utgång:** en körning skickar en påminnelse efter ett antal dagar och låter begäran gå ut på svarsdatumet. Antalet dagar finns i produktens skaderegler (`informationRequest.reminderAfterDays`, standard 14, och `expiresAfterDays`, standard 30). Reglerna är versionerade och kan styrkas.
    - **En utgången begäran avslår inte ärendet.** Det går tillbaka till en handläggare med markeringen "underlaget kom inte in". Bara en person får avslå på den grunden (ADR 0018), och FAL 7 kap. 2 § ger bara rätt att sätta ned ersättningen om försummelsen har skadat bolaget.
+   - **Kunden får ett meddelande när begäran går ut,** om den gick till kunden: underlaget har inte kommit, ärendet ligger kvar, och en handläggare beslutar på det underlag som finns. Lagen kräver inte meddelandet, så bolaget kan stänga av typen i sina inställningar för meddelanden (ADR 0032).
    - **Klockan för FAL 7 kap. 1 §:** ärendet får `basisCompleteAt`, alltså när det registrerades eller när den senaste begäran besvarades. Kön kan sorteras på den, och `daysSinceBasisComplete` visas. Ett beslut som fattas senare än 30 dagar efter `basisCompleteAt` märks i ärendet.
 
 3. **Rättelse.**
@@ -60,7 +61,7 @@ Utbetalningen kommer med betalningsmodulen (M5, ADR 0017) och ingår inte här. 
    - `POST /v1/claims/{claimId}/attachments` och `GET …/attachments`. Kräver `claims:register` för att lägga till och `claims:read` för att läsa.
    - **En bilaga ändras aldrig.** Den kan bara ersättas av en ny.
    - **Bilagorna blir en del av beviset.** Varje beslut sparar vilka bilagor (id och kontrollsumma) som fanns när det fattades. De ingår inte i `inputHash`, eftersom de inte är indata till reglerna, och gamla beslut räknas om som förut.
-   - **Uppladdning från back office kommer senare.** Den kräver en port för lagring (`AttachmentStore`) med en adapter mot bolagets arkiv. Tills dess anger man bilagans adress.
+   - **Uppladdning från back office kommer senare,** med ett enkelt dokumentarkiv i Petvold som får ett eget beslut. Tills dess anger man bilagans adress. Bilagans adress kan då peka på Petvolds arkiv eller på bolagets, utan att skademotorn ändras.
 
 6. **Skadenummer från servern.**
    - `claimNo` och `id` blir valfria i `ClaimInput`. Utan dem ger servern `id` (`clm_…`) och ett skadenummer ur en serie per installation och år, till exempel `S-2026-000123`. Prefixet är en inställning per marknad.
@@ -74,7 +75,7 @@ Utbetalningen kommer med betalningsmodulen (M5, ADR 0017) och ingår inte här. 
      - beräkningen steg för steg
      - om beslutet var automatiskt
      - hur kunden begär prövning och klagar
-   - Begäran om komplettering till kunden ger `claim-information-request`, och påminnelsen `claim-information-reminder`.
+   - Begäran om komplettering till kunden ger `claim-information-request`, påminnelsen `claim-information-reminder` och utgången `claim-information-expired`. Den sista kan bolaget stänga av, eftersom lagen inte kräver den.
    - Meddelandemodulen läser inte skademotorns tabeller (ADR 0001). Den får det den behöver från händelsen och från en port för förklaringen som kompositionsroten kopplar till skademotorn.
 
 8. **Händelser.**
