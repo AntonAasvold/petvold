@@ -33,6 +33,26 @@ export class PoliciesSearch extends LitElement {
     updateWhenLocaleChanges(this);
   }
 
+  connectedCallback(): void {
+    super.connectedCallback();
+    window.addEventListener('pv-navigate', this.fromHistory);
+    this.fromHistory();
+  }
+
+  disconnectedCallback(): void {
+    window.removeEventListener('pv-navigate', this.fromHistory);
+    super.disconnectedCallback();
+  }
+
+  /** A search from the top bar arrives in the history state, never in the address. */
+  private fromHistory = () => {
+    const query = (history.state as { query?: unknown } | null)?.query;
+    if (typeof query !== 'string' || !query) return;
+    this.query = query;
+    history.replaceState(null, '');
+    void this.search(new Event('submit'));
+  };
+
   static styles = css`
     h2 {
       margin-top: 0;

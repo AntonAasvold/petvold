@@ -13,9 +13,13 @@ export function match(routes: Route[], path: string): { route: Route; params: Re
   return null;
 }
 
-/** Navigates without a reload; views listen for 'pv-navigate'. */
-export function navigate(path: string): void {
-  if (path === location.pathname + location.search) return;
-  history.pushState(null, '', path);
+/**
+ * Navigates without a reload; views listen for 'pv-navigate'. `state` travels
+ * in the history entry, not the address: for what must never be in a URL,
+ * such as a personal number to search for.
+ */
+export function navigate(path: string, state: unknown = null): void {
+  if (path === location.pathname + location.search && state === null) return;
+  history.pushState(state, '', path);
   window.dispatchEvent(new Event('pv-navigate'));
 }

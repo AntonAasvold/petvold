@@ -7,6 +7,9 @@ import type { Me } from './permissions.ts';
  */
 export type Search =
   | { kind: 'policy'; id: string }
+  | { kind: 'claim'; id: string }
+  | { kind: 'application'; id: string }
+  | { kind: 'notice'; id: string }
   | { kind: 'animal'; id: string }
   | { kind: 'party'; id: string }
   | { kind: 'personal-number'; value: string }
@@ -16,6 +19,9 @@ export type Search =
 export function parseSearch(input: string): Search {
   const s = input.trim();
   if (/^pol_[A-Za-z0-9]+$/.test(s)) return { kind: 'policy', id: s };
+  if (/^clm_[A-Za-z0-9_]+$/.test(s)) return { kind: 'claim', id: s };
+  if (/^app_[A-Za-z0-9]+$/.test(s)) return { kind: 'application', id: s };
+  if (/^ntc_[A-Za-z0-9]+$/.test(s)) return { kind: 'notice', id: s };
   if (/^ani_[A-Za-z0-9]+$/.test(s)) return { kind: 'animal', id: s };
   if (/^pty_[A-Za-z0-9]{1,64}$/.test(s)) return { kind: 'party', id: s };
   const digits = s.replace(/[\s-]/g, '');
@@ -49,3 +55,24 @@ export function applicationDecisionProblems(f: ApplicationDecisionForm, today: s
 export const mayUnderwrite = (me: Me | null, a: { status: string }): boolean => !!me?.permissions.includes('policies:underwrite') && a.status === 'referred';
 export const mayWithdraw = (me: Me | null, a: { status: string }): boolean => !!me?.permissions.includes('policies:write') && a.status === 'referred';
 export const mayAnswerProposal = (me: Me | null, p: { decision?: unknown }): boolean => !!me?.permissions.includes('policies:write') && !p.decision;
+
+/**
+ * Where a search from the top bar goes: a known id opens its page; anything
+ * else is looked for among the policies. The query travels in the history
+ * state, never in the address, because it may be a personal number.
+ */
+export function searchTarget(input: string): { path: string; query?: string } {
+  const s = parseSearch(input);
+  switch (s.kind) {
+    case 'policy':
+      return { path: `/policies/${encodeURIComponent(s.id)}` };
+    case 'claim':
+      return { path: `/claims/${encodeURIComponent(s.id)}` };
+    case 'application':
+      return { path: `/applications/${encodeURIComponent(s.id)}` };
+    case 'notice':
+      return { path: `/notices/${encodeURIComponent(s.id)}` };
+    default:
+      return { path: '/policies', query: input.trim() };
+  }
+}

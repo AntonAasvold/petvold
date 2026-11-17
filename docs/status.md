@@ -167,8 +167,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - Typsnitten Inter, Space Grotesk och IBM Plex Mono från `@fontsource`, inbyggda i appen.
   - `design/components.css` med komponenterna som `pv-`-klasser, och riktlinjer i `docs/teknik/designsystem.md`. `CLAUDE.md` och `AGENTS.md` hänvisar dit.
 
+- Back office enligt designsystemet, PR 1 av 3, PR #87 (bygger på #86):
+  - **Toppraden** på `--panel-inverse` med Petvold, Back office, sökfält, språkval och Logga ut.
+  - **Menyn** med val som är 44 px höga, det valda valet i `--ink`, och räknare för köerna som väntar.
+  - **Sökfältet** öppnar ett känt id direkt och söker annars bland policyerna. Frågan skickas i historikens tillstånd, aldrig i adressen.
+  - **`pvComponents`** läser in `design/components.css` i komponenternas `static styles`.
+  - **Tester:** 27 enhetstester och 21 flöden i Chromium.
+
 **Nästa steg**
-1. Back office enligt designsystemet, i tre PR:er: toppraden och menyn, skadeärendet, och komponenterna `<pv-waterfall>` och `<pv-event-log>`.
+1. Back office enligt designsystemet, PR 2 och 3: skadeärendet, och komponenterna `<pv-waterfall>` och `<pv-event-log>`.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.

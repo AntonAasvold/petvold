@@ -97,7 +97,9 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Back office, steg 5a: inställningar för roller och gränser, gallring och meddelanden
 - [x] Back office, steg 5b: produkter och regler med fyra ögon
 - [x] Designsystemet Petvold: tokens, tema för Web Awesome, typsnitt och riktlinjer
-- [ ] Back office enligt designsystemet: toppraden och menyn, skadeärendet, och komponenterna för beräkning och historik
+- [x] Back office enligt designsystemet, PR 1: toppraden och menyn med räknare
+- [ ] Back office enligt designsystemet, PR 2: skadeärendet med beslut i en egen spalt
+- [ ] Back office enligt designsystemet, PR 3: `<pv-waterfall>` och `<pv-event-log>`
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
 
 **M4 – Pris och teckning**

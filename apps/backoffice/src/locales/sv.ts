@@ -3,11 +3,13 @@
  * text in the code is the source. Allowed to contain Swedish (scripts/check-language.ts).
  */
 export const templates: Record<string, string> = {
-  'app.title': 'Petvold back office',
   'nav.claims': 'Skador',
   'nav.signOut': 'Logga ut',
   'nav.language': 'Språk',
   'nav.sections': 'Avsnitt',
+  'nav.search': 'Sök efter skada, policy, djur eller kund',
+  'nav.searchPlaceholder': 'Skada, policy, djur eller kund',
+  'nav.waiting': 'väntar',
   'login.title': 'Logga in',
   'login.dev': 'Utvecklingsläge: välj en av dev-serverns tokens.',
   'login.signIn': 'Logga in',

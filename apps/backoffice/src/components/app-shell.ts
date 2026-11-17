@@ -5,7 +5,6 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { msg, updateWhenLocaleChanges } from '@lit/localize';
-import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/select/select.js';
 import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/spinner/spinner.js';
@@ -14,7 +13,9 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import { apiClient, unwrap, type Api } from '../api/client.ts';
 import type { Session } from '../auth.ts';
 import { getLocale, useLocale, type Locale } from '../i18n.ts';
-import { sectionsFor, type Me } from '../permissions.ts';
+import { countLabel, sectionsFor, type Me } from '../permissions.ts';
+import { searchTarget } from '../policy-logic.ts';
+import { pvComponents } from '../styles/pv-components.ts';
 import { match, navigate, type Route } from '../router.ts';
 import '../views/login-view.ts';
 import '../views/claims-queue.ts';
@@ -38,6 +39,9 @@ export class AppShell extends LitElement {
   @state() private me: Me | null = null;
   @state() private path = location.pathname;
   @state() private failed = '';
+  /** Waiting items per section path, e.g. { '/claims': '3' }. */
+  @state() private counts: Record<string, string> = {};
+  @state() private query = '';
   private api!: Api;
 
   constructor() {
@@ -45,58 +49,112 @@ export class AppShell extends LitElement {
     updateWhenLocaleChanges(this);
   }
 
-  static styles = css`
-    :host {
-      display: grid;
-      grid-template-columns: 14rem 1fr;
-      grid-template-rows: auto 1fr;
-      min-height: 100vh;
-    }
-    header {
-      grid-column: 1 / -1;
-      display: flex;
-      align-items: center;
-      gap: var(--wa-space-m);
-      padding: var(--wa-space-s) var(--wa-space-l);
-      border-bottom: var(--wa-border-width-s) var(--wa-border-style) var(--wa-color-surface-border);
-      background: var(--wa-color-surface-raised);
-    }
-    header h1 {
-      font-size: var(--wa-font-size-l);
-      margin: 0;
-      flex: 1;
-    }
-    nav {
-      padding: var(--wa-space-m);
-      border-right: var(--wa-border-width-s) var(--wa-border-style) var(--wa-color-surface-border);
-    }
-    nav a {
-      display: flex;
-      gap: var(--wa-space-xs);
-      align-items: center;
-      padding: var(--wa-space-xs) var(--wa-space-s);
-      border-radius: var(--wa-border-radius-m);
-      color: inherit;
-      text-decoration: none;
-    }
-    nav a[aria-current='page'] {
-      background: var(--wa-color-brand-fill-quiet);
-      color: var(--wa-color-brand-on-quiet);
-    }
-    main {
-      padding: var(--wa-space-l);
-      min-width: 0;
-    }
-    .who {
-      color: var(--wa-color-text-quiet);
-      font-size: var(--wa-font-size-s);
-    }
-    .center {
-      grid-column: 1 / -1;
-      display: grid;
-      place-items: center;
-    }
-  `;
+  static styles = [
+    pvComponents,
+    css`
+      :host {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        font-family: var(--font-sans);
+        color: var(--ink);
+        background: var(--paper);
+      }
+      .body {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+      }
+      .side {
+        flex: 0 0 clamp(220px, 18vw, 300px);
+        padding: var(--space-5);
+        border-right: var(--border-hairline) solid var(--line);
+      }
+      main {
+        flex: 999 1 560px;
+        min-width: 0;
+        padding: var(--space-8);
+      }
+      .pv-topbar wa-select {
+        width: 9rem;
+        --wa-form-control-background-color: var(--panel-inverse);
+        --wa-form-control-value-color: var(--on-inverse);
+        --wa-form-control-border-color: var(--panel-inverse-line);
+        --wa-form-control-height: var(--size-control);
+      }
+      /* The label is for screen readers; on the top bar the value says enough. */
+      .pv-topbar wa-select::part(form-control-label) {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+      .pv-topbar__search {
+        margin: 0;
+      }
+      .pv-topbar__search wa-icon {
+        color: var(--on-inverse-muted);
+      }
+      .pv-topbar__search:focus-within {
+        outline: var(--border-strong) solid var(--on-inverse);
+        outline-offset: 2px;
+      }
+      .who {
+        font-size: 13px;
+        color: var(--on-inverse-muted);
+      }
+      .signout {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        height: var(--size-control);
+        padding: 0 var(--space-4);
+        border: var(--border-hairline) solid var(--on-inverse-muted);
+        border-radius: var(--radius-md);
+        background: var(--panel-inverse);
+        color: var(--on-inverse);
+        font: 600 14px/1 var(--font-sans);
+        cursor: pointer;
+      }
+      .signout:hover {
+        border-color: var(--on-inverse);
+      }
+      .signout:focus-visible {
+        outline: var(--border-strong) solid var(--on-inverse);
+        outline-offset: 2px;
+      }
+      .pv-nav__item {
+        font-size: 15px;
+      }
+      .pv-nav__item:focus-visible {
+        outline: var(--border-strong) solid var(--focus);
+        outline-offset: 2px;
+      }
+      .pv-nav__item wa-icon {
+        font-size: 18px;
+      }
+      .center {
+        flex: 1;
+        display: grid;
+        place-items: center;
+      }
+      @media (max-width: 900px) {
+        .body {
+          flex-direction: column;
+        }
+        .side {
+          flex: none;
+          border-right: 0;
+          border-bottom: var(--border-hairline) solid var(--line);
+        }
+        main {
+          padding: var(--space-5);
+        }
+      }
+    `,
+  ];
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -114,7 +172,35 @@ export class AppShell extends LitElement {
 
   private onNavigate = () => {
     this.path = location.pathname;
+    // A queue may have changed: count again, but not more than once a second.
+    clearTimeout(this.countTimer);
+    this.countTimer = setTimeout(() => void this.loadCounts(), 1000);
   };
+
+  private countTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** One page of each waiting queue the caller may see, for the menu's counts. */
+  private async loadCounts() {
+    if (!this.me) return;
+    const sections = sectionsFor(this.me).filter((s) => s.count);
+    const pages = await Promise.all(
+      sections.map(async (s) => {
+        const { data } = await (this.api.GET as (p: string, o: unknown) => Promise<{ data?: { items: unknown[]; nextCursor?: string } }>)(s.count!.path, {
+          params: { query: { ...s.count!.query, limit: 100 } },
+        }).catch(() => ({ data: undefined }));
+        return [s.path, data ? countLabel(data) : ''] as const;
+      }),
+    );
+    this.counts = Object.fromEntries(pages.filter(([, c]) => c && c !== '0'));
+  }
+
+  private search(e: Event) {
+    e.preventDefault();
+    if (!this.query.trim()) return;
+    const target = searchTarget(this.query);
+    navigate(target.path, target.query ? { query: target.query } : null);
+    this.query = '';
+  }
 
   private async start() {
     if (this.path === '/callback' && this.session.completeSignIn) {
@@ -129,6 +215,7 @@ export class AppShell extends LitElement {
       this.failed = '';
       this.me = (await unwrap(this.api.GET('/v1/me'))) as Me;
       if (this.path === '/' || this.path === '/login' || this.path === '/callback') navigate(sectionsFor(this.me)[0]?.path ?? '/');
+      void this.loadCounts();
     } catch (e) {
       this.me = null;
       this.failed = (e as { title?: string }).title ?? msg('Something went wrong.', { id: 'common.error' });
@@ -143,6 +230,7 @@ export class AppShell extends LitElement {
   private async signOut() {
     await this.session.signOut();
     this.me = null;
+    this.counts = {};
     navigate('/login');
   }
 
@@ -176,30 +264,50 @@ export class AppShell extends LitElement {
     const sections = sectionsFor(this.me);
     const found = match(this.routes(), this.path);
     return html`
-      <header>
-        <h1>${msg('Petvold back office', { id: 'app.title' })}</h1>
-        <span class="who">${this.me.subject}</span>
-        <wa-select size="small" label=${msg('Language', { id: 'nav.language' })} value=${getLocale()} @change=${(e: Event) => useLocale((e.target as HTMLSelectElement).value as Locale)}>
+      <header class="pv-topbar">
+        <div class="pv-topbar__brand">
+          <span class="pv-topbar__name">Petvold</span>
+          <span class="pv-topbar__divider" aria-hidden="true"></span>
+          <span class="pv-topbar__context">Back office</span>
+        </div>
+        <span class="pv-topbar__spacer"></span>
+        <form class="pv-topbar__search" role="search" @submit=${this.search}>
+          <wa-icon name="magnifying-glass" aria-hidden="true"></wa-icon>
+          <input
+            type="search"
+            aria-label=${msg('Search for a claim, policy, animal or customer', { id: 'nav.search' })}
+            placeholder=${msg('Claim, policy, animal or customer', { id: 'nav.searchPlaceholder' })}
+            .value=${this.query}
+            @input=${(e: Event) => (this.query = (e.target as HTMLInputElement).value)}
+          />
+        </form>
+        <wa-select label=${msg('Language', { id: 'nav.language' })} value=${getLocale()} @change=${(e: Event) => useLocale((e.target as HTMLSelectElement).value as Locale)}>
           <wa-option value="sv">Svenska</wa-option>
           <wa-option value="en">English</wa-option>
         </wa-select>
-        <wa-button size="small" appearance="outlined" @click=${() => this.signOut()}>
-          <wa-icon slot="start" name="arrow-right-from-bracket"></wa-icon>${msg('Sign out', { id: 'nav.signOut' })}
-        </wa-button>
+        <span class="who">${this.me.subject}</span>
+        <button class="signout" type="button" @click=${() => this.signOut()}>
+          <wa-icon name="arrow-right-from-bracket" aria-hidden="true"></wa-icon>${msg('Sign out', { id: 'nav.signOut' })}
+        </button>
       </header>
-      <nav aria-label=${msg('Sections', { id: 'nav.sections' })}>
-        ${sections.map(
-          (s) =>
-            html`<a href=${s.path} aria-current=${this.path.startsWith(s.path) ? 'page' : nothing} @click=${(e: Event) => (e.preventDefault(), navigate(s.path))}>
-              <wa-icon name=${s.icon}></wa-icon>${this.label(s.label)}</a
-            >`,
-        )}
-      </nav>
-      <main>
-        ${found
-          ? found.route.render(found.params)
-          : html`<wa-callout variant="neutral">${msg('Does not exist, or lies outside what you may see.', { id: 'common.notFound' })}</wa-callout>`}
-      </main>
+      <div class="body">
+        <nav class="side" aria-label=${msg('Sections', { id: 'nav.sections' })}>
+          <div class="pv-nav">
+            ${sections.map(
+              (s) =>
+                html`<a class="pv-nav__item" href=${s.path} aria-current=${this.path.startsWith(s.path) ? 'page' : nothing} @click=${(e: Event) => (e.preventDefault(), navigate(s.path))}>
+                  <wa-icon name=${s.icon} aria-hidden="true"></wa-icon><span>${this.label(s.label)}</span>
+                  ${this.counts[s.path] ? html`<span class="pv-nav__count" aria-label=${`${this.counts[s.path]} ${msg('waiting', { id: 'nav.waiting' })}`}>${this.counts[s.path]}</span>` : nothing}
+                </a>`,
+            )}
+          </div>
+        </nav>
+        <main>
+          ${found
+            ? found.route.render(found.params)
+            : html`<wa-callout variant="neutral">${msg('Does not exist, or lies outside what you may see.', { id: 'common.notFound' })}</wa-callout>`}
+        </main>
+      </div>
     `;
   }
 
