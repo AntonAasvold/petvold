@@ -21,3 +21,10 @@ export function formatDate(date: string, locale: string): string {
 export function formatDateTime(at: string, locale: string, timeZone?: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', ...(timeZone ? { timeZone } : {}) }).format(new Date(at));
 }
+
+/** A time as logs show it, "2026-11-13 14:32" in local time: ISO order, the same in every language. */
+export function formatLogTime(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}

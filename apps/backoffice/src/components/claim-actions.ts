@@ -7,7 +7,6 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { msg, updateWhenLocaleChanges } from '@lit/localize';
-import '@awesome.me/webawesome/dist/components/card/card.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/callout/callout.js';
 import '@awesome.me/webawesome/dist/components/select/select.js';
@@ -107,6 +106,9 @@ export class ClaimActions extends LitElement {
     .pv-note ul {
       margin: var(--space-1) 0 0;
       padding-left: var(--space-5);
+    }
+    .pv-card__body p {
+      margin: 0;
     }
     .submit {
       width: 100%;
@@ -232,8 +234,9 @@ export class ClaimActions extends LitElement {
   private proposalCard(p: Proposal) {
     const lang = getLocale();
     const may = mayApprove(this.me, p);
-    return html`<wa-card>
-      <h3 slot="header">${msg('Awaiting approval', { id: 'claims.status.awaiting-approval' })}</h3>
+    return html`<section class="pv-card">
+      <div class="pv-card__head"><h2 class="pv-card__title">${msg('Awaiting approval', { id: 'claims.status.awaiting-approval' })}</h2></div>
+      <div class="pv-card__body">
       <dl>
         <dt>${msg('Decision', { id: 'decide.action' })}</dt>
         <dd>${outcomeLabel(p.outcome)} · ${formatMoney(p.payout, p.currency, lang)}</dd>
@@ -256,12 +259,14 @@ export class ClaimActions extends LitElement {
         : p.proposedBy === this.me?.subject
           ? html`<p>${msg('Someone else must approve your proposal.', { id: 'approve.fourEyes' })}</p>`
           : nothing}
-    </wa-card>`;
+    </div>
+    </section>`;
   }
 
   private reviewCard(r: ReviewRequest) {
-    return html`<wa-card>
-      <h3 slot="header">${msg('Review requested', { id: 'claims.status.review-requested' })}</h3>
+    return html`<section class="pv-card">
+      <div class="pv-card__head"><h2 class="pv-card__title">${msg('Review requested', { id: 'claims.status.review-requested' })}</h2></div>
+      <div class="pv-card__body">
       <dl>
         <dt>${msg('Decision', { id: 'decide.action' })}</dt>
         <dd>#${r.decisionSeq}</dd>
@@ -270,29 +275,34 @@ export class ClaimActions extends LitElement {
         ${r.statement ? html`<dt>${msg("The customer's view", { id: 'review.statement' })}</dt><dd>${r.statement}</dd>` : nothing}
       </dl>
       <p>${msg('A new decision by a person answers the request.', { id: 'review.answer' })}</p>
-    </wa-card>`;
+    </div>
+    </section>`;
   }
 
   private requestReviewForm() {
-    return html`<wa-card>
-      <h3 slot="header">${msg('Ask for a review', { id: 'review.title' })}</h3>
+    return html`<section class="pv-card">
+      <div class="pv-card__head"><h2 class="pv-card__title">${msg('Ask for a review', { id: 'review.title' })}</h2></div>
+      <div class="pv-card__body">
       <form @submit=${this.requestReview}>
         <p>${msg('The latest decision was automated. The customer may ask for a person to review it.', { id: 'review.why' })}</p>
         <wa-textarea label=${msg("The customer's view (optional)", { id: 'review.statementInput' })} rows="3" .value=${this.statement} @input=${(e: Event) => (this.statement = (e.target as HTMLTextAreaElement).value)}></wa-textarea>
         <div class="row"><wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'review'}>${msg('Ask for a review', { id: 'review.submit' })}</wa-button></div>
       </form>
-    </wa-card>`;
+    </div>
+    </section>`;
   }
 
   private reassessForm() {
-    return html`<wa-card>
-      <h3 slot="header">${msg('Reassess', { id: 'reassess.title' })}</h3>
+    return html`<section class="pv-card">
+      <div class="pv-card__head"><h2 class="pv-card__title">${msg('Reassess', { id: 'reassess.title' })}</h2></div>
+      <div class="pv-card__body">
       <form @submit=${this.reassess}>
         <p>${msg('Assess the claim again on what is known now, e.g. after a correction of the policy. A new decision is made only if the outcome changes.', { id: 'reassess.why' })}</p>
         <wa-textarea label=${msg('Reason', { id: 'claim.reason' })} rows="2" required .value=${this.reassessReason} @input=${(e: Event) => (this.reassessReason = (e.target as HTMLTextAreaElement).value)}></wa-textarea>
         <div class="row"><wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'reassess'}>${msg('Reassess', { id: 'reassess.submit' })}</wa-button></div>
       </form>
-    </wa-card>`;
+    </div>
+    </section>`;
   }
 
   private path() {

@@ -181,8 +181,14 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Belopp på svenska** visas utan ören när beloppet är jämnt, till exempel "12 165 kr".
   - **Tester:** 445 tester i kärnan och API:t, 29 enhetstester i back office och 21 flöden.
 
+- Back office enligt designsystemet, PR 3 av 3, PR #89 (bygger på #88):
+  - **`<pv-waterfall>`** visar beräkningen med en rad per steg, staplar i procent av det fakturerade beloppet, skrafferade avdrag och regeln för varje steg.
+  - **`<pv-event-log>`** visar historiken nyast först på `--panel-inverse`, med händelsernas namn och "Varför?" på besluten.
+  - **Korten för attest, prövning och omprövning** är `pv-card`.
+  - **Tester:** 34 enhetstester och 22 flöden.
+
 **Nästa steg**
-1. Back office enligt designsystemet, PR 3: komponenterna `<pv-waterfall>` och `<pv-event-log>`.
+1. Granska och slå ihop #86–#89 i ordning.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.
