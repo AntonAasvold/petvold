@@ -28,6 +28,10 @@ const catalogs: Record<Locale, Record<string, string>> = {
     'rider.possible': 'Möjlig koppling till förbehåll: {description} (samma diagnosgrupp)',
     'rider.none': 'Inga förbehåll berör diagnosen',
     'limit.capped': 'Ersättningen begränsas av återstående försäkringsbelopp ({remaining:money})',
+    'routing.rule_review': 'Regeln {code} kräver att en handläggare granskar',
+    'routing.rule_fail': 'Regeln {code} är inte uppfylld',
+    'routing.proposal_rejected': 'Förslaget är avslag, och avslag beslutas av en handläggare',
+    'routing.above_auto_limit': 'Ersättningen {payout:money} är över gränsen för automatisk reglering, {limit:money}',
     'decision.approved': 'Ersättning beviljas med hela beloppet efter självrisk, {payout:money}',
     'decision.partial': 'Ersättning beviljas delvis med {payout:money}',
     'decision.nothing_payable': 'Inget att ersätta: hela beloppet ryms inom självrisken eller ersätts inte',
@@ -65,6 +69,10 @@ const catalogs: Record<Locale, Record<string, string>> = {
     'rider.possible': 'Possibly related to exclusion: {description} (same diagnosis group)',
     'rider.none': 'No exclusions apply to the diagnosis',
     'limit.capped': 'Payout limited by the remaining annual limit ({remaining:money})',
+    'routing.rule_review': 'The rule {code} asks for a claims handler to review',
+    'routing.rule_fail': 'The rule {code} is not met',
+    'routing.proposal_rejected': 'The proposal is to reject, and a claims handler decides a rejection',
+    'routing.above_auto_limit': 'The payout {payout:money} is above the limit for automatic settlement, {limit:money}',
     'decision.approved': 'Approved in full after the deductible, {payout:money}',
     'decision.partial': 'Approved in part, {payout:money}',
     'decision.nothing_payable': 'Nothing to pay: the whole amount falls within the deductible or is not reimbursed',
@@ -111,7 +119,12 @@ export function renderRule(r: Reason, locale: Locale): string {
 }
 
 export function localizeAssessment<T extends Assessment>(a: T, locale: Locale): T {
-  return { ...a, rules: a.rules.map((r) => ({ ...r, message: renderRule(r, locale) })) };
+  const routing = (a as { routing?: { mode: string; reasons: Reason[] } }).routing;
+  return {
+    ...a,
+    rules: a.rules.map((r) => ({ ...r, message: renderRule(r, locale) })),
+    ...(routing ? { routing: { ...routing, reasons: routing.reasons.map((r) => ({ ...r, message: renderRule(r, locale) })) } } : {}),
+  };
 }
 
 /** Adds text to every part of a decision explanation. */

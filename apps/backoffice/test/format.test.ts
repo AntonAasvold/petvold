@@ -8,7 +8,9 @@ import { sectionsFor } from '../src/permissions.ts';
 const nbsp = (s: string) => s.replace(/ | /g, ' ');
 
 test('amounts in minor units follow the locale and the currency', () => {
-  assert.equal(nbsp(formatMoney(150_000, 'SEK', 'sv')), '1 500,00 kr');
+  assert.equal(nbsp(formatMoney(150_000, 'SEK', 'sv')), '1 500 kr', 'whole kronor without the minor unit in Swedish');
+  assert.equal(nbsp(formatMoney(150_050, 'SEK', 'sv')), '1 500,50 kr');
+  assert.equal(nbsp(formatMoney(150_000, 'SEK', 'en')), 'SEK 1,500.00');
   assert.equal(nbsp(formatMoney(150_000, 'EUR', 'en')), '€1,500.00');
   assert.equal(nbsp(formatMoney(1500, 'JPY', 'en')), '¥1,500', 'a currency without minor units');
 });

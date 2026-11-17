@@ -69,6 +69,12 @@ export interface paths {
          *
          *     `knownAt` assesses against the policy as it was known at a given
          *     point in time (system time). Omitted = now.
+         *
+         *     `routing` says why the claim needs a claims handler, or that it may be
+         *     settled automatically: rules to review or that fail, a proposal to
+         *     reject, or a payout above the product's limit for automatic settlement.
+         *     It is worked out on reading and not stored with a decision, so stored
+         *     assessments recompute as before (ADR 0018).
          */
         get: operations["assessClaim"];
         put?: never;
@@ -2357,6 +2363,21 @@ export interface components {
             customerShare: components["schemas"]["Money"];
             cappedByLimit: boolean;
         };
+        AssessmentWithRouting: components["schemas"]["Assessment"] & {
+            routing: components["schemas"]["ClaimRouting"];
+        };
+        /** @description Why the claim needs a claims handler. Empty reasons when it may be settled automatically. */
+        ClaimRouting: {
+            /** @enum {string} */
+            mode: "auto" | "manual";
+            /**
+             * @description - routing.rule_review: a rule asks for a person, params.code and params.rule
+             *     - routing.rule_fail: a rule is not met, params.code and params.rule
+             *     - routing.proposal_rejected: the proposal is to reject, which a person decides
+             *     - routing.above_auto_limit: params.payout above params.limit, in params.currency
+             */
+            reasons: components["schemas"]["Reason"][];
+        };
         Assessment: {
             claimId: string;
             market: components["schemas"]["Market"];
@@ -4328,13 +4349,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Assessment */
+            /** @description Assessment, with why it needs a claims handler */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Assessment"];
+                    "application/json": components["schemas"]["AssessmentWithRouting"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

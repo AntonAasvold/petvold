@@ -50,6 +50,17 @@ Varje bedömning prövar reglerna i denna ordning och visar resultatet för var 
 
 **Automatiskt beslut** kräver att alla regler är godkända eller information, att förslaget inte är avslag, och att ersättningen är högst produktens gräns för automatisk reglering (`autoSettleMax`).
 
+**Varför en handläggare.** `GET /v1/claims/{claimId}/assessment` svarar med `routing`: `mode` och en lista med skäl, var och ett med `reason`, `params` och text på anroparens språk.
+
+| Skäl | Betyder | `params` |
+| --- | --- | --- |
+| `routing.rule_review` | En regel kräver att en handläggare granskar | `code`, `rule` |
+| `routing.rule_fail` | En regel är inte uppfylld | `code`, `rule` |
+| `routing.proposal_rejected` | Förslaget är avslag utan att någon regel säger varför | – |
+| `routing.above_auto_limit` | Ersättningen är över gränsen för automatisk reglering | `payout`, `limit`, `currency` |
+
+Listan är tom när ärendet kan regleras automatiskt. Den räknas fram när bedömningen läses och sparas inte med beslutet, så sparade bedömningar räknas om exakt som förut.
+
 ## Beräkningen
 
 Steg för steg, i den ordning motorn räknar:

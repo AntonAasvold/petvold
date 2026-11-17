@@ -1,9 +1,14 @@
 /** Formatting for people, by locale. Pure; tested with node:test. */
 
-/** An amount in minor units, e.g. 150000 SEK -> "1 500,00 kr" in Swedish. */
+/**
+ * An amount in minor units, as the design system writes it: "1 500 kr" in
+ * Swedish (minor units only when there are any), "SEK 1,500.00" in English.
+ */
 export function formatMoney(minor: number, currency: string, locale: string): string {
   const digits = new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2;
-  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(minor / 10 ** digits);
+  const whole = minor % 10 ** digits === 0;
+  const sv = locale.startsWith('sv');
+  return new Intl.NumberFormat(locale, { style: 'currency', currency, ...(sv && whole ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}) }).format(minor / 10 ** digits);
 }
 
 /** A calendar date (YYYY-MM-DD), shown as the date it is everywhere. */

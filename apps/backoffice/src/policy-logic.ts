@@ -76,3 +76,9 @@ export function searchTarget(input: string): { path: string; query?: string } {
       return { path: '/policies', query: input.trim() };
   }
 }
+
+/** A party's name as a person reads it: given and family name, or the organisation's name. */
+export function partyName(p: { givenName?: string; familyName?: string; name?: string } | null | undefined): string {
+  if (!p) return '';
+  return [p.givenName, p.familyName].filter(Boolean).join(' ') || p.name || '';
+}

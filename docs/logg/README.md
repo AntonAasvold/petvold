@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-16 | [Skadeärendet enligt designsystemet](2026-11-16-backoffice-skadearende.md) | #88 |
 | 2026-11-16 | [Toppraden och menyn enligt designsystemet](2026-11-16-backoffice-skal.md) | #87 |
 | 2026-11-16 | [Designsystemet Petvold](2026-11-16-designsystem.md) | #86 |
 | 2026-11-16 | [Back office, steg 5b: produkter och regler](2026-11-16-backoffice-produkter.md) | #85 |

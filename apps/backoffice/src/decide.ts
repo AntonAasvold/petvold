@@ -22,13 +22,17 @@ export interface DecisionForm {
   reason?: string;
 }
 
+/** A reason is needed to reject, and to go against the proposal. */
+export const needsReason = (action: Action, proposed: Outcome): boolean => action === 'reject' || deviates(action, proposed);
+
 /** What is missing or not allowed in a decision, as message ids. Empty: it may be sent. */
 export function decisionProblems(f: DecisionForm, proposed: Outcome, me: Me | null): string[] {
-  if (!deviates(f.action, proposed)) return [];
   const out: string[] = [];
-  if (!me?.permissions.includes('claims:override')) out.push('decide.noOverride');
-  if (!f.reasonCode) out.push('decide.needCode');
-  if (!f.reason?.trim()) out.push('decide.needReason');
+  if (deviates(f.action, proposed)) {
+    if (!me?.permissions.includes('claims:override')) out.push('decide.noOverride');
+    if (!f.reasonCode) out.push('decide.needCode');
+  }
+  if (needsReason(f.action, proposed) && !f.reason?.trim()) out.push('decide.needReason');
   return out;
 }
 
@@ -66,4 +70,16 @@ export function claimStatus(o: { openProposals: number; openReviews: number; dec
   if (o.openProposals) return 'awaiting-approval';
   if (o.openReviews) return 'review-requested';
   return o.decisions ? 'decided' : 'awaiting-decision';
+}
+
+/** A reason the claim went to a claims handler, with the rule's own text when a rule sent it there. */
+export function routingLines(
+  reasons: { reason: string; params: Record<string, unknown>; message?: string }[],
+  rules: { code: string; message?: string }[],
+): string[] {
+  return reasons.map((r) => {
+    const rule = typeof r.params.code === 'string' ? rules.find((x) => x.code === r.params.code) : undefined;
+    const text = r.message ?? r.reason;
+    return rule?.message ? `${text}: ${rule.message}` : text;
+  });
 }

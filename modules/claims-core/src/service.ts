@@ -1,3 +1,4 @@
+import { routingOf, type Routing } from './routing.ts';
 import { CALCULATION_MODEL, assess, deductibleScope, validateClaim } from './assess.ts';
 import { StoreConflictError, type ClaimsEvent, type ClaimsStore, type Clock, type IdGenerator, type PolicyPort, type RulesPort } from './ports.ts';
 import type {
@@ -203,6 +204,13 @@ export class ClaimsService {
   async assessClaim(claimId: string, knownAt?: Timestamp): Promise<Assessment> {
     const claim = await this.requireClaim(claimId);
     return (await this.assessInternal(claim, knownAt, claim.id)).assessment;
+  }
+
+  /** The assessment and why the claim needs a claims handler, from the rules in force. Not stored. */
+  async assessWithRouting(claimId: string, knownAt?: Timestamp): Promise<Assessment & { routing: Routing }> {
+    const claim = await this.requireClaim(claimId);
+    const { assessment, input } = await this.assessInternal(claim, knownAt, claim.id);
+    return { ...assessment, routing: routingOf(assessment, input.rules.autoSettleMax) };
   }
 
   /**

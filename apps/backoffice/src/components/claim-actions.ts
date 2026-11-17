@@ -10,20 +10,32 @@ import { msg, updateWhenLocaleChanges } from '@lit/localize';
 import '@awesome.me/webawesome/dist/components/card/card.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/callout/callout.js';
-import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js';
-import '@awesome.me/webawesome/dist/components/radio/radio.js';
 import '@awesome.me/webawesome/dist/components/select/select.js';
 import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/textarea/textarea.js';
 import type { Api } from '../api/client.ts';
 import type { components } from '../api/schema';
-import { DEVIATION_CODES, IdempotencyKeys, decisionProblems, deviates, mayApprove, mayDecide, mayRequestReview, proposedAction, type Action, type DeviationCode } from '../decide.ts';
+import {
+  DEVIATION_CODES,
+  IdempotencyKeys,
+  decisionProblems,
+  deviates,
+  mayApprove,
+  mayDecide,
+  mayRequestReview,
+  needsReason,
+  proposedAction,
+  routingLines,
+  type Action,
+  type DeviationCode,
+} from '../decide.ts';
+import { pvComponents } from '../styles/pv-components.ts';
 import { formatDateTime, formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import type { Me } from '../permissions.ts';
 import { deviationLabel, outcomeLabel, problemLabel } from '../views/labels.ts';
 
-type Assessment = components['schemas']['Assessment'];
+type Assessment = components['schemas']['AssessmentWithRouting'];
 type Decision = components['schemas']['Decision'];
 type Proposal = components['schemas']['DecisionProposal'];
 type ReviewRequest = components['schemas']['ReviewRequest'];
@@ -63,10 +75,47 @@ export class ClaimActions extends LitElement {
     updateWhenLocaleChanges(this);
   }
 
-  static styles = css`
+  static styles = [
+    pvComponents,
+    css`
     :host {
       display: grid;
       gap: var(--wa-space-l);
+    }
+    fieldset {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+    legend {
+      padding: 0 0 var(--space-2);
+      font: 500 13px/1.4 var(--font-sans);
+      color: var(--text-secondary);
+    }
+    .pv-choice:focus-within {
+      outline: var(--border-strong) solid var(--focus);
+      outline-offset: 2px;
+    }
+    .pv-choice__title .pv-badge {
+      margin-left: var(--space-2);
+      height: 20px;
+      vertical-align: middle;
+    }
+    .pv-note ul {
+      margin: var(--space-1) 0 0;
+      padding-left: var(--space-5);
+    }
+    .submit {
+      width: 100%;
+    }
+    .submit::part(base) {
+      padding-inline: var(--space-4);
+    }
+    .submit::part(label) {
+      white-space: normal;
     }
     form {
       display: grid;
@@ -89,7 +138,8 @@ export class ClaimActions extends LitElement {
     dd {
       margin: 0;
     }
-  `;
+  `,
+  ];
 
   protected willUpdate(changed: Map<string, unknown>): void {
     if (changed.has('assessment') && this.assessment) {
@@ -122,30 +172,61 @@ export class ClaimActions extends LitElement {
   private decideForm() {
     const a = this.assessment;
     const lang = getLocale();
+    const money = (m: number) => formatMoney(m, this.currency, lang);
     const against = deviates(this.action, a.proposedOutcome);
+    const reasonNeeded = needsReason(this.action, a.proposedOutcome);
     const problems = this.shown;
-    return html`<wa-card>
-      <h3 slot="header">${this.status === 'review-requested' ? msg('Review the decision', { id: 'decide.reviewTitle' }) : msg('Decide', { id: 'decide.title' })}</h3>
-      <form @submit=${this.decide}>
-        <p>
-          ${msg('Proposal', { id: 'claim.proposed' })}: <strong>${outcomeLabel(a.proposedOutcome)}</strong>
-          ${a.calculation ? html` · ${formatMoney(a.calculation.payout, this.currency, lang)}` : nothing}
-        </p>
-        <wa-radio-group label=${msg('Decision', { id: 'decide.action' })} name="action" value=${this.action} @change=${(e: Event) => (this.action = (e.target as HTMLInputElement).value as Action)}>
-          <wa-radio value="accept">${msg('Accept: pay as calculated', { id: 'decide.accept' })}</wa-radio>
-          <wa-radio value="reject">${msg('Reject', { id: 'decide.reject' })}</wa-radio>
-        </wa-radio-group>
+    const payout = a.calculation?.payout ?? 0;
+    const why = routingLines(a.routing.reasons, a.rules);
+    const proposed = proposedAction(a.proposedOutcome);
+    const choice = (value: Action, title: string, desc: string) => html`<label class="pv-choice">
+      <input type="radio" name="action" value=${value} .checked=${this.action === value} @change=${() => (this.action = value)} />
+      <span>
+        <span class="pv-choice__title">${title}${value === proposed ? html`<span class="pv-badge pv-badge--pending">${msg('Proposal', { id: 'claim.proposed' })}</span>` : nothing}</span>
+        <span class="pv-choice__desc">${desc}</span>
+      </span>
+    </label>`;
+    const submit =
+      this.action === 'accept'
+        ? `${msg('Approve payout', { id: 'decide.submitAccept' })} · ${money(payout)}`
+        : msg('Reject the claim', { id: 'decide.submitReject' });
+    return html`<section class="pv-card pv-card--strong" aria-labelledby="decide">
+      <div class="pv-card__head">
+        <h2 class="pv-card__title" id="decide">${this.status === 'review-requested' ? msg('Review the decision', { id: 'decide.reviewTitle' }) : msg('Decision', { id: 'decide.action' })}</h2>
+      </div>
+      <form class="pv-card__body" @submit=${this.decide}>
+        ${why.length
+          ? html`<div class="pv-note">
+              <strong>${msg('Why a claims handler', { id: 'decide.why' })}</strong>
+              <ul>
+                ${why.map((w) => html`<li>${w}</li>`)}
+              </ul>
+            </div>`
+          : nothing}
+        <fieldset>
+          <legend>${msg('Decision', { id: 'decide.action' })}</legend>
+          ${choice(
+            'accept',
+            msg('Approve payout', { id: 'decide.accept' }),
+            payout > 0
+              ? `${money(payout)} ${msg('is paid out. The customer pays', { id: 'decide.acceptPays' })} ${money(a.calculation?.customerShare ?? 0)}.`
+              : msg('Nothing is paid out: the amount falls within the deductible.', { id: 'decide.acceptNothing' }),
+          )}
+          ${choice('reject', msg('Reject', { id: 'decide.reject' }), msg('Nothing is paid out. The customer gets the decision with the reason.', { id: 'decide.rejectDesc' }))}
+        </fieldset>
         ${against
           ? html`<wa-callout variant="warning">${msg('This goes against the proposal. Give a reason code and a reason; they are kept with the decision.', { id: 'decide.against' })}</wa-callout>
               <wa-select label=${msg('Reason code', { id: 'decide.code' })} value=${this.reasonCode} @change=${(e: Event) => (this.reasonCode = (e.target as HTMLSelectElement).value as DeviationCode)}>
                 ${DEVIATION_CODES.map((c) => html`<wa-option value=${c}>${deviationLabel(c)}</wa-option>`)}
-              </wa-select>
-              <wa-textarea label=${msg('Reason', { id: 'claim.reason' })} rows="3" .value=${this.reason} @input=${(e: Event) => (this.reason = (e.target as HTMLTextAreaElement).value)}></wa-textarea>`
+              </wa-select>`
+          : nothing}
+        ${reasonNeeded
+          ? html`<wa-textarea label=${msg('Reason', { id: 'claim.reason' })} rows="3" .value=${this.reason} @input=${(e: Event) => (this.reason = (e.target as HTMLTextAreaElement).value)}></wa-textarea>`
           : nothing}
         ${problems.length ? html`<wa-callout variant="danger" role="alert">${problems.map((p) => html`<div>${problemLabel(p)}</div>`)}</wa-callout>` : nothing}
-        <div class="row"><wa-button type="submit" variant="brand" ?loading=${this.busy === 'decide'}>${msg('Decide', { id: 'decide.submit' })}</wa-button></div>
+        <wa-button class="submit" type="submit" variant="brand" ?loading=${this.busy === 'decide'}>${submit}</wa-button>
       </form>
-    </wa-card>`;
+    </section>`;
   }
 
   private proposalCard(p: Proposal) {
@@ -252,6 +333,7 @@ export class ClaimActions extends LitElement {
     this.shown = problems;
     if (problems.length) return;
     const against = deviates(this.action, this.assessment.proposedOutcome);
+    const withReason = needsReason(this.action, this.assessment.proposedOutcome);
     await this.run(
       'decide',
       () =>
@@ -260,7 +342,8 @@ export class ClaimActions extends LitElement {
           body: {
             action: this.action,
             expectedInputHash: this.assessment.inputHash,
-            ...(against ? { reasonCode: this.reasonCode as DeviationCode, reason: this.reason.trim() } : {}),
+            ...(against ? { reasonCode: this.reasonCode as DeviationCode } : {}),
+            ...(withReason ? { reason: this.reason.trim() } : {}),
           },
         }),
       (status) =>

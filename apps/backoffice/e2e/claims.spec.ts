@@ -12,7 +12,12 @@ test('a handler sees the claims queue and opens a claim with its assessment', as
   await expect(grid.getByRole('row').nth(1)).toContainText('Awaiting decision');
   await grid.getByRole('gridcell').first().click();
   await expect(page).toHaveURL(/\/claims\/clm_/);
-  await expect(page.getByRole('heading', { name: /^Claim / })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /^Claim / })).toBeVisible();
+  // The head: breadcrumb, the id that copies, and who and what the claim concerns.
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Claims' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Copy the id clm_/ })).toBeVisible();
+  await expect(page.getByText('Animal:')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Decision', exact: true })).toBeVisible();
   await expect(page.getByRole('grid', { name: 'Assessment' }).getByRole('gridcell', { name: 'POLICY_FOUND' })).toBeVisible();
 });
 

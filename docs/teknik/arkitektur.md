@@ -103,6 +103,8 @@ Varje beslut sparas med sitt underlag i `claims.decision_evidence` (ADR 0018), i
 
 **Omräkning:** `replay()` i `claims-core/src/replay.ts` väljer beräkningsmodell ur `CALCULATION_MODELS`, kör det sparade underlaget och jämför med den sparade bedömningen fält för fält (JSON-pekare). Den används både av API:et (`POST /v1/claims/{id}/decisions/{seq}/replays`) och av scenariotesterna i CI ([Testning](testning.md#scenarier)). En ändring i `assess` eller `calculate` som ändrar resultatet för sparade beslut ska bli en ny beräkningsmodell, och den gamla behålls.
 
+**Varför en handläggare:** `routingOf()` i `claims-core/src/routing.ts` är en ren funktion av bedömningen och produktens `autoSettleMax`. `ClaimsService.assessWithRouting()` lägger den på bedömningen i `GET /v1/claims/{claimId}/assessment`, och `localizeAssessment()` ger skälen text. Den sparas inte, så `inputHash` och omräkningen av sparade beslut är oförändrade (ADR 0018).
+
 **Förklaring:** `explainDecision()` i `claims-core/src/explain.ts` är en ren funktion av beslutet, underlaget och ärendets begäranden om prövning. Den ger nycklar och värden, ingen text. API:et lägger till text med `localizeExplanation()` i `messages.ts`.
 
 **Mänsklig prövning:**
