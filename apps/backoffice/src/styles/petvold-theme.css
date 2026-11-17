@@ -1,0 +1,118 @@
+/*
+ * Petvold theme for Web Awesome 3 (black and white, borders not shadows).
+ * Maps Web Awesome's design tokens to the Petvold tokens in petvold-tokens.css.
+ *
+ * Use: import webawesome.css, then petvold-tokens.css, then this file, and put
+ * class="wa-theme-petvold" on <html> (add wa-dark for the dark theme).
+ * Source of truth: design/tokens.json. Guide: docs/teknik/designsystem.md.
+ *
+ * Status colours (success, warning, danger) are greys on purpose: state is shown
+ * with text, icons and solid versus dashed lines, never with colour alone.
+ */
+@layer wa-theme {
+  .wa-theme-petvold,
+  .wa-theme-petvold .wa-light,
+  .wa-theme-petvold .wa-dark {
+    color: var(--wa-color-text-normal);
+    font-family: var(--wa-font-family-body);
+    font-variant-numeric: tabular-nums;
+
+    /* Surfaces and text */
+    --wa-color-surface-raised: var(--paper);
+    --wa-color-surface-default: var(--paper);
+    --wa-color-surface-lowered: var(--surface-muted);
+    --wa-color-surface-border: var(--line);
+    --wa-color-text-normal: var(--ink);
+    --wa-color-text-quiet: var(--text-muted);
+    --wa-color-text-link: var(--ink);
+    --wa-color-focus: var(--focus);
+    --wa-color-shadow: transparent;
+
+    /* Brand: ink */
+    --wa-color-brand-fill-quiet: var(--surface-muted);
+    --wa-color-brand-fill-normal: var(--line);
+    --wa-color-brand-fill-loud: var(--ink);
+    --wa-color-brand-border-quiet: var(--line);
+    --wa-color-brand-border-normal: var(--line-control);
+    --wa-color-brand-border-loud: var(--ink);
+    --wa-color-brand-on-quiet: var(--ink);
+    --wa-color-brand-on-normal: var(--ink);
+    --wa-color-brand-on-loud: var(--paper);
+
+    /* Neutral: greys */
+    --wa-color-neutral-fill-quiet: var(--surface-muted);
+    --wa-color-neutral-fill-normal: var(--line);
+    --wa-color-neutral-fill-loud: var(--text-secondary);
+    --wa-color-neutral-border-quiet: var(--line);
+    --wa-color-neutral-border-normal: var(--line-control);
+    --wa-color-neutral-border-loud: var(--text-muted);
+    --wa-color-neutral-on-quiet: var(--text-secondary);
+    --wa-color-neutral-on-normal: var(--ink);
+    --wa-color-neutral-on-loud: var(--paper);
+
+    /* Success: solid ink, like a decided state */
+    --wa-color-success-fill-quiet: var(--surface-muted);
+    --wa-color-success-fill-normal: var(--line);
+    --wa-color-success-fill-loud: var(--ink);
+    --wa-color-success-border-quiet: var(--line);
+    --wa-color-success-border-normal: var(--line-control);
+    --wa-color-success-border-loud: var(--ink);
+    --wa-color-success-on-quiet: var(--ink);
+    --wa-color-success-on-normal: var(--ink);
+    --wa-color-success-on-loud: var(--paper);
+
+    /* Warning: quiet grey with ink text */
+    --wa-color-warning-fill-quiet: var(--surface-muted);
+    --wa-color-warning-fill-normal: var(--line);
+    --wa-color-warning-fill-loud: var(--text-secondary);
+    --wa-color-warning-border-quiet: var(--line-control);
+    --wa-color-warning-border-normal: var(--line-control);
+    --wa-color-warning-border-loud: var(--ink);
+    --wa-color-warning-on-quiet: var(--ink);
+    --wa-color-warning-on-normal: var(--ink);
+    --wa-color-warning-on-loud: var(--paper);
+
+    /* Danger: strong ink border so errors stand out without colour */
+    --wa-color-danger-fill-quiet: var(--paper);
+    --wa-color-danger-fill-normal: var(--surface-muted);
+    --wa-color-danger-fill-loud: var(--ink);
+    --wa-color-danger-border-quiet: var(--ink);
+    --wa-color-danger-border-normal: var(--ink);
+    --wa-color-danger-border-loud: var(--ink);
+    --wa-color-danger-on-quiet: var(--ink);
+    --wa-color-danger-on-normal: var(--ink);
+    --wa-color-danger-on-loud: var(--paper);
+
+    /* Type */
+    --wa-font-family-body: var(--font-sans);
+    --wa-font-family-heading: var(--font-display);
+    --wa-font-family-code: var(--font-mono);
+    --wa-font-size-m: 0.9375rem; /* 15px body */
+    --wa-font-weight-heading: 700;
+    --wa-font-weight-action: 600;
+    --wa-line-height-normal: 1.5;
+    --wa-link-decoration-default: underline;
+
+    /* Space follows Web Awesome's 4px-based scale, which matches space-1 to space-16 */
+
+    /* Lines and corners */
+    --wa-border-width-s: var(--border-hairline);
+    --wa-border-width-m: var(--border-strong);
+    --wa-border-radius-s: var(--radius-sm);
+    --wa-border-radius-m: var(--radius-md);
+    --wa-border-radius-l: var(--radius-lg);
+
+    /* Focus: 2px ink, 2px offset */
+    --wa-focus-ring-width: var(--border-strong);
+    --wa-focus-ring-offset: 2px;
+
+    /* No shadows */
+    --wa-shadow-s: none;
+    --wa-shadow-m: none;
+    --wa-shadow-l: none;
+  }
+
+  .wa-theme-petvold { color-scheme: light; }
+  .wa-theme-petvold.wa-dark,
+  .wa-theme-petvold .wa-dark { color-scheme: dark; }
+}

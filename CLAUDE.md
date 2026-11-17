@@ -19,6 +19,7 @@ Petvold är en headless kärna för djurförsäkring (hund, katt, häst) för eu
 - Domänkod i `*-core` är ren: ingen I/O, inget ramverk, ingen text för användare.
 - **All kod på engelska**: identifierare, kommentarer, felmeddelanden, loggar, testnamn, SQL, konfiguration, kontrakt (OpenAPI/AsyncAPI) och exempeldata. Undantag: den svenska språkkatalogen i `messages.ts` och migreringar som redan körts. `npm run lint:lang` kontrollerar det i CI.
 - Dokumentation (`docs/`, README, ADR), PR-beskrivningar och commit-meddelanden på svenska.
+- Gränssnitt följer designsystemet Petvold (`docs/teknik/designsystem.md`, källan är `design/tokens.json`): svartvitt, ramar i stället för skuggor, tillstånd med helfylld eller streckad linje och aldrig med färg. Använd tokens och Web Awesome-temat, inga fasta färger eller storlekar.
 
 ## Kommandon
 

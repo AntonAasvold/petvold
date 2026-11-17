@@ -11,6 +11,7 @@ Petvold är en headless kärna för djurförsäkring (hund, katt, häst) för eu
 - **Pengar** är heltal i minsta enhet, med valutan en gång per objekt (ADR 0014). Marknaden anges alltid.
 - **Moduler läser aldrig varandras tabeller** (ADR 0001). Domänkod i `*-core` har ingen I/O.
 - **Kontrakt före kod.** Ändra `openapi.yaml` först. `npm run lint:openapi` kontrollerar att kontrakt och kod stämmer.
+- **Designsystemet Petvold** gäller alla gränssnitt: se `docs/teknik/designsystem.md`, med källan i `design/tokens.json`. Använd tokens och Web Awesome-temat, inga fasta färger eller storlekar.
 - **Varje PR** uppdaterar `docs/funktion/`, `docs/teknik/`, `docs/status.md` och skriver en post i `docs/logg/`. Se `docs/arbetssatt.md`.
 
 ## Bygga ett gränssnitt mot Petvold
