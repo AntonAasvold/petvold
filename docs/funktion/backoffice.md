@@ -59,7 +59,15 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 
 - **Huvudet** har en brödsmula tillbaka till kön, skadenumret som rubrik och ärendets id. Klickar man på id:t kopieras det. Status är ett helfyllt märke när ärendet är beslutat och ett streckat när det väntar på någon.
 - **En rad under rubriken** visar djuret, kunden, policyn (en länk) och hur och när skadan kom in. Djurets och kundens namn visas bara för den som får läsa djur och parter.
-- **Två spalter.** Till vänster ligger underlaget: beräkningen, bedömningen regel för regel och detaljerna. Till höger ligger beslutet och historiken, nyast först. Högerspalten följer med när man rullar. På smala skärmar hamnar den under underlaget.
+- **Två spalter.** Till vänster ligger underlaget: beräkningen, bedömningen regel för regel och detaljerna. Till höger ligger beslutet och historiken. Högerspalten följer med när man rullar. På smala skärmar hamnar den under underlaget.
+- **Beräkningen** visas steg för steg, en rad per steg: det fakturerade beloppet, varje avdrag och ersättningen. Varje rad har en stapel som visar hur stor del av det fakturerade beloppet steget är. Avdragen är skrafferade och har en rad om regeln, till exempel "25 % av det som är kvar efter den fasta självrisken". Avdrag som är noll visas inte. Under stegen står hur mycket som är kvar av försäkringsbeloppet och vad kunden betalar.
+- **Historiken** är svart och visar nyast först:
+  - när skadan kom in
+  - varje beslut, med "Varför?" som öppnar förklaringen
+  - förslag som väntar på attest eller har skickats tillbaka
+  - begäranden om prövning
+
+  Det som väntar på någon har ett streckat märke. Varje rad visar också händelsens namn, till exempel `claim.decided`, så att handläggare och utvecklare ser samma sak.
 
 ## Besluta och attestera
 

@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-17 | [Beräkningen och historiken som komponenter](2026-11-17-waterfall-och-logg.md) | #89 |
 | 2026-11-16 | [Skadeärendet enligt designsystemet](2026-11-16-backoffice-skadearende.md) | #88 |
 | 2026-11-16 | [Toppraden och menyn enligt designsystemet](2026-11-16-backoffice-skal.md) | #87 |
 | 2026-11-16 | [Designsystemet Petvold](2026-11-16-designsystem.md) | #86 |

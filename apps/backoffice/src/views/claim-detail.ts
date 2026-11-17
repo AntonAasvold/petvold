@@ -23,6 +23,10 @@ import { partyName, versionOn } from '../policy-logic.ts';
 import { pvComponents } from '../styles/pv-components.ts';
 import { channelLabel, claimStatusLabel, outcomeLabel, ruleStatusLabel, statusVariant } from './labels.ts';
 import '../components/claim-actions.ts';
+import '../components/waterfall.ts';
+import '../components/event-log.ts';
+import type { LogEntry } from '../components/event-log.ts';
+import { claimHistory, type HistoryEvent } from '../history.ts';
 import '../components/explanation-dialog.ts';
 import { claimStatus } from '../decide.ts';
 import type { Me } from '../permissions.ts';
@@ -254,15 +258,11 @@ export class ClaimDetail extends LitElement {
             </div>
             <div class="pv-card__body">
               ${a.calculation
-                ? html`<dl class="pv-dl">
-                    <div class="pv-dl__row"><dt>${msg('Billed', { id: 'calc.billed' })}</dt><dd>${money(a.calculation.billed)}</dd></div>
-                    <div class="pv-dl__row"><dt>${msg('Not reimbursed', { id: 'calc.nonReimbursable' })}</dt><dd>${money(a.calculation.nonReimbursable)}</dd></div>
-                    <div class="pv-dl__row"><dt>${msg('Fixed deductible', { id: 'calc.deductibleFixed' })}</dt><dd>${money(a.calculation.deductibleFixed)}</dd></div>
-                    <div class="pv-dl__row"><dt>${msg('Variable deductible', { id: 'calc.deductibleVariable' })}</dt><dd>${money(a.calculation.deductibleVariable)}</dd></div>
-                    <div class="pv-dl__row"><dt>${msg('Left of the annual limit', { id: 'calc.remainingBefore' })}</dt><dd>${money(a.calculation.remainingBefore)}</dd></div>
-                    <div class="pv-dl__row pv-dl__row--total"><dt>${msg('Payout', { id: 'calc.payout' })}</dt><dd>${money(a.calculation.payout)}</dd></div>
-                    <div class="pv-dl__row"><dt>${msg('The customer pays', { id: 'calc.customerShare' })}</dt><dd>${money(a.calculation.customerShare)}</dd></div>
-                  </dl>`
+                ? html`<pv-waterfall .calculation=${a.calculation} currency=${c.currency} label=${msg('Calculation', { id: 'claim.calculation' })}></pv-waterfall>
+                    <dl class="pv-dl">
+                      <div class="pv-dl__row"><dt>${msg('Left of the annual limit', { id: 'calc.remainingBefore' })}</dt><dd>${money(a.calculation.remainingBefore)}</dd></div>
+                      <div class="pv-dl__row"><dt>${msg('The customer pays', { id: 'calc.customerShare' })}</dt><dd>${money(a.calculation.customerShare)}</dd></div>
+                    </dl>`
                 : html`<p class="pv-note">${msg('No calculation: a rule stopped the assessment.', { id: 'claim.noCalculation' })}</p>`}
               <p class="proposal">
                 ${msg('Proposal', { id: 'claim.proposed' })}: <strong>${outcomeLabel(a.proposedOutcome)}</strong> ·
@@ -300,15 +300,11 @@ export class ClaimDetail extends LitElement {
             .reviews=${this.reviews}
             @pv-changed=${() => this.load()}
           ></pv-claim-actions>
-          <section class="pv-card" aria-labelledby="history">
-            <div class="pv-card__head"><h2 class="pv-card__title" id="history">${msg('History', { id: 'claim.history' })}</h2></div>
-            <pv-data-grid
-              .columns=${this.decisionColumns()}
-              .rows=${[...this.decisions].reverse()}
-              label=${msg('Decisions', { id: 'claim.decisions' })}
-              empty-text=${msg('No decisions yet.', { id: 'claim.noDecisions' })}
-            ></pv-data-grid>
-          </section>
+          <pv-event-log
+            heading=${msg('History', { id: 'claim.history' })}
+            empty=${msg('No decisions yet.', { id: 'claim.noDecisions' })}
+            .entries=${claimHistory({ claim: c, decisions: this.decisions, proposals: this.proposals, reviews: this.reviews }).map((e) => this.logEntry(e))}
+          ></pv-event-log>
         </div>
       </div>
       <pv-explanation-dialog .api=${this.api}></pv-explanation-dialog>
@@ -324,27 +320,44 @@ export class ClaimDetail extends LitElement {
     ];
   }
 
-  private decisionColumns(): Column<Decision>[] {
-    const lang = getLocale();
-    return [
-      { key: 'seq', header: '#', value: (d) => d.seq },
-      {
-        key: 'outcome',
-        header: msg('Result', { id: 'claim.result' }),
-        value: (d) => html`${outcomeLabel(d.outcome)}<br /><span style="font-family: var(--font-mono)">${formatMoney(d.payout, this.claim!.currency, lang)}</span>`,
-      },
-      {
-        key: 'decidedBy',
-        header: msg('Decided', { id: 'claim.decidedAt' }),
-        value: (d) => html`${d.automated ? msg('Automatic', { id: 'claim.automated' }) : d.decidedBy}<br /><span style="font-family: var(--font-mono)">${formatDateTime(d.decidedAt, lang)}</span>`,
-      },
-      {
-        key: 'why',
-        header: msg('Explanation', { id: 'claim.explanation' }),
-        value: (d) =>
-          html`<wa-button size="small" appearance="plain" @click=${(e: Event) => (e.stopPropagation(), this.explain(d.seq))}>${msg('Why?', { id: 'claim.why' })}</wa-button>`,
-      },
-    ];
+  /** A history event as a log entry: what happened in words, and the event's name and who in monospace. */
+  private logEntry(e: HistoryEvent): LogEntry {
+    const money = (m: number) => formatMoney(m, this.claim!.currency, getLocale());
+    const key = `${e.type}:${'seq' in e ? e.seq : 'id' in e ? e.id : ''}`;
+    switch (e.type) {
+      case 'claim.received':
+        return { key, at: e.at, state: 'solid', badge: msg('Received', { id: 'claims.col.received' }), line: channelLabel(e.channel), status: e.type };
+      case 'claim.decided':
+        return {
+          key,
+          at: e.at,
+          state: 'solid',
+          badge: `${msg('Decision', { id: 'decide.action' })} #${e.seq}`,
+          line: `${outcomeLabel(e.outcome)} · ${money(e.payout)}${e.reason ? ` · ${e.reason}` : ''}`,
+          status: `${e.type} · ${e.automated ? msg('Automatic', { id: 'claim.automated' }) : e.by}`,
+          action: html`<button type="button" aria-label=${`${msg('Why?', { id: 'claim.why' })} #${e.seq}`} @click=${() => this.explain(e.seq)}>${msg('Why?', { id: 'claim.why' })}</button>`,
+        };
+      case 'proposal.created':
+        return {
+          key,
+          at: e.at,
+          state: e.open ? 'pending' : 'solid',
+          badge: e.open ? msg('Awaiting approval', { id: 'claims.status.awaiting-approval' }) : msg('Proposal', { id: 'claim.proposed' }),
+          line: `${outcomeLabel(e.outcome)} · ${money(e.payout)}`,
+          status: `${e.type} · ${e.by}`,
+        };
+      case 'proposal.returned':
+        return { key, at: e.at, state: 'solid', badge: msg('Returned', { id: 'history.returned' }), line: e.reason ?? '', status: `${e.type} · ${e.by}` };
+      case 'review.requested':
+        return {
+          key,
+          at: e.at,
+          state: e.open ? 'pending' : 'solid',
+          badge: msg('Review requested', { id: 'claims.status.review-requested' }),
+          line: `${msg('Decision', { id: 'decide.action' })} #${e.seq}`,
+          status: e.type,
+        };
+    }
   }
 
   private explain(seq: number) {

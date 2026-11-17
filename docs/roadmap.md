@@ -99,7 +99,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Designsystemet Petvold: tokens, tema för Web Awesome, typsnitt och riktlinjer
 - [x] Back office enligt designsystemet, PR 1: toppraden och menyn med räknare
 - [x] Back office enligt designsystemet, PR 2: skadeärendet med beslut i en egen spalt, och `routing` i bedömningen
-- [ ] Back office enligt designsystemet, PR 3: `<pv-waterfall>` och `<pv-event-log>`
+- [x] Back office enligt designsystemet, PR 3: `<pv-waterfall>` och `<pv-event-log>`
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
 
 **M4 – Pris och teckning**

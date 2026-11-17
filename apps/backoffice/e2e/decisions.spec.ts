@@ -15,6 +15,9 @@ async function signIn(page: Page, token: string) {
   await expect(page.getByRole('heading', { name: 'Claims' })).toBeVisible();
 }
 
+/** The claim's history: the event log, newest first. */
+const history = (page: Page) => page.getByRole('region', { name: 'History' });
+
 async function openClaim(page: Page, claimNo: string, queue = 'All') {
   await page.getByRole('tab', { name: queue }).click();
   await page.getByRole('grid', { name: 'Claims' }).getByRole('gridcell', { name: claimNo }).click();
@@ -48,7 +51,7 @@ test('a proposal above the limit: the handler cannot approve it, another person 
   await openClaim(page, 'S-2026-050977', 'Awaiting approval');
   await page.locator('pv-claim-actions').getByRole('button', { name: 'Approve' }).click();
   await expect(page.locator('pv-claim-actions').getByRole('status')).toContainText('Approved.');
-  await expect(page.getByRole('grid', { name: 'Decisions' }).getByRole('row')).toHaveCount(2);
+  await expect(history(page).getByText('Decision #1', { exact: true })).toBeVisible();
 });
 
 test('a handler decides within the limit, and the claim is decided', async ({ page }) => {
@@ -57,7 +60,7 @@ test('a handler decides within the limit, and the claim is decided', async ({ pa
   // The button says what happens, with the amount.
   await page.locator('pv-claim-actions').getByRole('button', { name: /^Approve payout · SEK [\d,]+\.\d\d$/ }).click();
   await expect(page.locator('pv-claim-actions').getByRole('status')).toContainText('The claim is decided.');
-  await expect(page.getByRole('grid', { name: 'Decisions' }).getByRole('row')).toHaveCount(2);
+  await expect(history(page).getByText('Decision #1', { exact: true })).toBeVisible();
 });
 
 test("a requested review is answered by a person's decision", async ({ page }) => {
@@ -81,9 +84,22 @@ test("a requested review is answered by a person's decision", async ({ page }) =
 test('the explanation shows why a decision came out as it did', async ({ page }) => {
   await signIn(page, 'dev-handler');
   await openClaim(page, 'S-2026-021877', 'Decided');
-  await page.getByRole('grid', { name: 'Decisions' }).getByRole('button', { name: 'Why?' }).first().click();
+  // The history is newest first, on the inverted panel, with the event names the API uses.
+  const items = history(page).getByRole('listitem');
+  await expect(items.last()).toContainText('claim.received');
+  await expect(items.first()).toContainText('claim.decided');
+  await history(page).getByRole('button', { name: /^Why\? #/ }).first().click();
   await expect(page.getByRole('dialog', { name: 'Why this decision' })).toBeVisible();
   // The content is slotted into Web Awesome's dialog, so it is looked for on the page.
   await expect(page.getByRole('heading', { name: 'The calculation' })).toBeVisible();
-  await expect(page.getByRole('listitem').filter({ hasText: 'Fixed deductible' })).toBeVisible();
+  await expect(page.locator('pv-explanation-dialog').getByRole('listitem').filter({ hasText: 'Fixed deductible' })).toBeVisible();
+});
+
+test('the calculation is a waterfall: billed, each deduction with its rule, and the payout', async ({ page }) => {
+  await signIn(page, 'dev-handler');
+  await openClaim(page, 'S-2026-021877', 'Decided');
+  const wf = page.getByRole('list', { name: 'Calculation' });
+  await expect(wf.getByRole('listitem').first()).toContainText('Billed');
+  await expect(wf.getByRole('listitem').last()).toContainText('Payout');
+  await expect(wf.getByRole('listitem').filter({ has: page.getByText('Fixed deductible', { exact: true }) })).toContainText('− SEK');
 });

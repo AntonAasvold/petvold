@@ -65,11 +65,11 @@ Lit-komponenter har shadow DOM, så globala klasser når inte in av sig själva.
 | Note | Sammanhang före en åtgärd | `wa-callout variant="neutral"` |
 | DataList | Etikett och värde | `<dl>` i komponentens CSS |
 | Figure | Viktiga belopp, före och efter | Egen CSS med `.pv-text-figure` |
-| Waterfall | Ett belopp uppdelat i avdrag | Egen komponent, se `design/components.css` |
+| Waterfall | Ett belopp uppdelat i avdrag | `<pv-waterfall>` i `apps/backoffice/src/components/waterfall.ts` |
 | StepList | Steg i ett flöde: klara, aktuellt och kommande | Egen komponent |
 | SideNav | Back office-menyn med antal i kön | Menyn i `app-shell.ts`, med `pv-nav`-klasserna |
 | TopBar | Namn, flikar, sök och konto | Toppraden i `app-shell.ts`, med `pv-topbar`-klasserna |
-| EventLog | Anrop och historik, nyast först | Egen komponent på `--panel-inverse` |
+| EventLog | Anrop och historik, nyast först | `<pv-event-log>` i `apps/backoffice/src/components/event-log.ts` |
 
 Regler för knappar och märken:
 
@@ -102,4 +102,4 @@ Font Awesome Free via `wa-icon`, som i resten av back office. 18 px i menyer och
 *Inte byggt än:*
 
 - Inget skript genererar `petvold-tokens.css` från `tokens.json` än.
-- Waterfall, StepList, Figure och EventLog finns inte som Lit-komponenter.
+- StepList och Figure finns inte som Lit-komponenter.
