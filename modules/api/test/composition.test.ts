@@ -90,3 +90,10 @@ test('the sample data fills every work queue and prices the households with the 
   assert.deepEqual(kajsa!.terms[0]!.riders.map((r) => [r.diagnosisCodes, r.source]), [[['ORA-OTIT'], 'underwriting']]);
   await inst.close();
 });
+
+test('the claim number prefix per market is read from the environment, and a bad one stops the start', async () => {
+  const { claimNumberPrefixFromEnv } = await import('../src/composition.ts');
+  assert.deepEqual(claimNumberPrefixFromEnv({ PETVOLD_CLAIM_NUMBER_PREFIX: 'SE=S, NO=N' }), { SE: 'S', NO: 'N' });
+  assert.deepEqual(claimNumberPrefixFromEnv({}), {});
+  assert.throws(() => claimNumberPrefixFromEnv({ PETVOLD_CLAIM_NUMBER_PREFIX: 'se=s' }), /MARKET=PREFIX/);
+});

@@ -2309,9 +2309,15 @@ export interface components {
             vat?: components["schemas"]["NonNegativeMoney"];
         };
         ClaimFields: {
-            /** @description Chosen by the client, e.g. clm_021877. Unique. */
-            id: string;
-            claimNo: string;
+            /** @description Unique, e.g. clm_021877. Given by the server when the client leaves it out (ADR 0036). */
+            id?: string;
+            /**
+             * @description Unique. Given by the server when the client leaves it out: the
+             *     market's prefix, the year the claim was received and a number from
+             *     the year's series, e.g. S-2026-000123 (ADR 0036). A client that
+             *     keeps its own numbers may send them.
+             */
+            claimNo?: string;
             policyId: string;
             animalId: string;
             market: components["schemas"]["Market"];
@@ -2326,6 +2332,10 @@ export interface components {
         /** @description What the client sends. receivedAt is set by the server. */
         ClaimInput: components["schemas"]["ClaimFields"];
         Claim: components["schemas"]["ClaimFields"] & {
+            /** @description Always set on a stored claim. */
+            id: string;
+            /** @description Always set on a stored claim. */
+            claimNo: string;
             receivedAt: components["schemas"]["DateTime"];
             /** @description The clinic that submitted the claim, taken from the caller's token. Never set by the client. */
             clinicId?: string;

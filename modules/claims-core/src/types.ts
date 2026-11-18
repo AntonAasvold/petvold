@@ -46,6 +46,9 @@ export interface Claim {
   receivedAt: Timestamp;
 }
 
+/** A claim as registered: the server gives the id and the claim number when the client leaves them out (ADR 0036). */
+export type NewClaim = Omit<Claim, 'id' | 'claimNo'> & { id?: string; claimNo?: string };
+
 /** Where a claim is in its handling, for work queues. */
 export type ClaimState = 'awaiting-decision' | 'awaiting-approval' | 'review-requested' | 'decided';
 

@@ -80,8 +80,6 @@ export function problemLabel(id: string): string {
       return msg('Write a reason.', { id: 'decide.needReason' });
     case 'register.needPolicy':
       return msg('Fetch the policy first.', { id: 'register.needPolicy' });
-    case 'register.needClaimNo':
-      return msg('Give a claim number.', { id: 'register.needClaimNo' });
     case 'register.needDates':
       return msg('Give the first and last day of treatment.', { id: 'register.needDates' });
     case 'register.datesOrder':

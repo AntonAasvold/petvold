@@ -270,6 +270,18 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       assert.equal(Object.hasOwn((await store.getClaim('clm_b'))!, 'clinicId'), false);
     });
 
+    it('the claim number series counts per year, and a number in use is known (ADR 0036)', async (store) => {
+      assert.deepEqual([await store.nextClaimNumber(2026), await store.nextClaimNumber(2026), await store.nextClaimNumber(2027)], [1, 2, 1]);
+      assert.equal(await store.claimNoTaken('S-2026-000001'), false);
+      await save(store, claim('clm_a', { claimNo: 'S-2026-000001' }));
+      assert.equal(await store.claimNoTaken('S-2026-000001'), true);
+    });
+
+    it('two callers at once never get the same number', async (store) => {
+      const numbers = await Promise.all(Array.from({ length: 10 }, () => store.nextClaimNumber(2026)));
+      assert.deepEqual([...numbers].sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    });
+
     it('a claim can be stored with its reserve journal; balances are read per account', async (store) => {
       const c = claim('clm_a');
       await store.saveClaim(c, registered(c), [reserve('clm_a', 500_000)]);

@@ -17,7 +17,7 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import type { Api } from '../api/client.ts';
 import type { components } from '../api/schema';
 import { act, type Notice } from '../actions.ts';
-import { LINE_CATEGORIES, claimFormProblems, emptyLine, linesTotal, newClaimId, suggestClaimNo, toClaimInput, type ClaimForm, type LineForm, type PolicyFacts } from '../claim-form.ts';
+import { LINE_CATEGORIES, claimFormProblems, emptyLine, linesTotal, toClaimInput, type ClaimForm, type LineForm, type PolicyFacts } from '../claim-form.ts';
 import { IdempotencyKeys } from '../decide.ts';
 import { formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
@@ -39,7 +39,6 @@ export class ClaimRegister extends LitElement {
   @state() private policy: (PolicyFacts & { status?: string; animalName?: string; product?: string }) | null = null;
   @state() private policyError = '';
   @state() private form: ClaimForm = {
-    claimNo: suggestClaimNo(today()),
     channel: 'customer',
     treatmentFrom: '',
     treatmentTo: '',
@@ -50,8 +49,6 @@ export class ClaimRegister extends LitElement {
   @state() private shown: string[] = [];
   @state() private notice: Notice | null = null;
   @state() private busy = '';
-  /** One id per claim being registered: a retry after a network error is the same claim. */
-  private claimId = newClaimId();
   private keys = new IdempotencyKeys();
 
   constructor() {
@@ -140,9 +137,6 @@ export class ClaimRegister extends LitElement {
         padding-left: var(--space-5);
         font-size: 14px;
       }
-      wa-input.mono::part(input) {
-        font-family: var(--font-mono);
-      }
       wa-button.wide {
         width: 100%;
       }
@@ -199,7 +193,7 @@ export class ClaimRegister extends LitElement {
     this.form = { ...this.form, [key]: value };
     this.preview = null;
     // A changed claim is a new request: a retry with the same key must send the same body.
-    this.keys.done(`register:${this.claimId}`);
+    this.keys.done('register');
   }
 
   private setLine(i: number, patch: Partial<LineForm>) {
@@ -218,7 +212,7 @@ export class ClaimRegister extends LitElement {
     if (!this.check()) return;
     this.busy = 'preview';
     this.notice = null;
-    const { data, error, response } = await this.api.POST('/v1/claim-previews', { body: toClaimInput(this.form, this.policy!, this.claimId) as never }).catch(() => ({ data: undefined, error: undefined, response: undefined }));
+    const { data, error, response } = await this.api.POST('/v1/claim-previews', { body: toClaimInput(this.form, this.policy!) as never }).catch(() => ({ data: undefined, error: undefined, response: undefined }));
     this.busy = '';
     if (data) this.preview = data;
     else {
@@ -231,19 +225,23 @@ export class ClaimRegister extends LitElement {
     e.preventDefault();
     if (!this.check()) return;
     this.busy = 'register';
-    const id = this.claimId;
+    let created: { id: string } | undefined;
     const { ok, notice } = await act(
-      () =>
-        this.api.POST('/v1/claims', {
-          params: { header: { 'Idempotency-Key': this.keys.for(`register:${id}`) } },
-          body: toClaimInput(this.form, this.policy!, id) as never,
-        }),
+      async () => {
+        // The same key until it goes through: a retry after a network error is the same claim.
+        const r = await this.api.POST('/v1/claims', {
+          params: { header: { 'Idempotency-Key': this.keys.for('register') } },
+          body: toClaimInput(this.form, this.policy!) as never,
+        });
+        created = r.data?.claim;
+        return r;
+      },
       () => ({ variant: 'success', text: msg('The claim is registered.', { id: 'register.done' }) }),
     );
     this.busy = '';
-    if (ok) {
-      this.keys.done(`register:${id}`);
-      navigate(`/claims/${encodeURIComponent(id)}`);
+    if (ok && created) {
+      this.keys.done('register');
+      navigate(`/claims/${encodeURIComponent(created.id)}`);
       return;
     }
     this.notice = { ...notice, reload: false };
@@ -292,13 +290,10 @@ export class ClaimRegister extends LitElement {
             <div class="pv-card__head"><h2 class="pv-card__title" id="treatment">${msg('Treatment', { id: 'register.treatment' })}</h2></div>
             <div class="pv-card__body">
               <div class="row">
-                <wa-input label=${msg('Claim number', { id: 'claims.col.claimNo' })} class="mono" .value=${this.form.claimNo} @input=${(e: Event) => this.set('claimNo', (e.target as HTMLInputElement).value)}></wa-input>
                 <wa-select label=${msg('Channel', { id: 'claims.col.channel' })} value=${this.form.channel} @change=${(e: Event) => this.set('channel', (e.target as HTMLSelectElement).value as ClaimForm['channel'])}>
                   <wa-option value="customer">${channelLabel('customer')}</wa-option>
                   <wa-option value="clinic_direct">${channelLabel('clinic_direct')}</wa-option>
                 </wa-select>
-              </div>
-              <div class="row">
                 <wa-input type="date" label=${msg('First day of treatment', { id: 'register.from' })} .value=${this.form.treatmentFrom} @input=${(e: Event) => this.set('treatmentFrom', (e.target as HTMLInputElement).value)}></wa-input>
                 <wa-input type="date" label=${msg('Last day of treatment', { id: 'register.to' })} .value=${this.form.treatmentTo} @input=${(e: Event) => this.set('treatmentTo', (e.target as HTMLInputElement).value)}></wa-input>
                 <wa-input
@@ -348,7 +343,7 @@ export class ClaimRegister extends LitElement {
           <section class="pv-card pv-card--strong" aria-labelledby="register">
             <div class="pv-card__head"><h2 class="pv-card__title" id="register">${msg('Preview and register', { id: 'register.side' })}</h2></div>
             <div class="pv-card__body">
-              <p class="pv-note">${msg('The preview assesses the claim without storing it. On registering, it is assessed again and may be decided at once.', { id: 'register.how' })}</p>
+              <p class="pv-note">${msg('The preview assesses the claim without storing it. On registering, the claim gets its claim number, is assessed again and may be decided at once.', { id: 'register.how' })}</p>
               <wa-button class="wide" appearance="outlined" ?loading=${this.busy === 'preview'} @click=${() => this.runPreview()}>${msg('Preview the assessment', { id: 'register.preview' })}</wa-button>
               ${this.preview ? this.previewView(this.preview, money) : nothing}
               ${this.shown.length ? html`<wa-callout variant="danger" role="alert">${this.shown.map((p) => html`<div>${problemLabel(p)}</div>`)}</wa-callout>` : nothing}
