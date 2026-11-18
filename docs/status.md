@@ -221,8 +221,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Back office:** kortet "Stäng utan beslut", ett kort för det stängda ärendet, händelsen i historiken och två nya flikar i kön.
   - **Tester:** 460 i kärnan och API:t, 129 mot databasen, 38 enhetstester och 25 flöden i back office.
 
+- Inventering av back office (PR #95): back office använder 68 av API:ets 115 operationer. Det som saknas står i roadmapen under "Back office: det som saknas", och körningar har ett eget avsnitt.
+
 **Nästa steg**
-1. Lås för schemalagda körningar (förnyelse, utgång och påminnelser) och för reläet vid flera instanser.
+1. ADR om körningar: schema, lås vid flera instanser, historik, och visning och styrning i back office. Se roadmapen under Körningar.
 2. Skadeprocessen, steg 3: komplettering.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
