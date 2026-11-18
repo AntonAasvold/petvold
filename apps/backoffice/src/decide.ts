@@ -65,8 +65,14 @@ export class IdempotencyKeys {
   }
 }
 
-/** The claim's status as the queue shows it, from what the claim view has loaded (the API's order: approval, review, decided). */
-export function claimStatus(o: { openProposals: number; openReviews: number; decisions: number }): 'awaiting-approval' | 'review-requested' | 'decided' | 'awaiting-decision' {
+/** The claim's status as the queue shows it, from what the claim view has loaded (the API's order: closed, approval, review, decided). */
+export function claimStatus(o: {
+  closed?: 'withdrawn' | 'dismissed';
+  openProposals: number;
+  openReviews: number;
+  decisions: number;
+}): 'withdrawn' | 'dismissed' | 'awaiting-approval' | 'review-requested' | 'decided' | 'awaiting-decision' {
+  if (o.closed) return o.closed;
   if (o.openProposals) return 'awaiting-approval';
   if (o.openReviews) return 'review-requested';
   return o.decisions ? 'decided' : 'awaiting-decision';
@@ -82,4 +88,39 @@ export function routingLines(
     const text = r.message ?? r.reason;
     return rule?.message ? `${text}: ${rule.message}` : text;
   });
+}
+
+export const DISMISSAL_REASONS = ['duplicate', 'registered-in-error', 'not-a-claim'] as const;
+export type DismissalReason = (typeof DISMISSAL_REASONS)[number];
+
+/**
+ * Who may close a claim without a decision (ADR 0036): only before any
+ * decision and while it is open. Withdrawal needs claims:register, dismissal
+ * claims:decide.
+ */
+export function mayClose(me: Me | null, status: string, decisions: number): { withdraw: boolean; dismiss: boolean } {
+  const open = !decisions && status !== 'withdrawn' && status !== 'dismissed';
+  return { withdraw: open && !!me?.permissions.includes('claims:register'), dismiss: open && !!me?.permissions.includes('claims:decide') };
+}
+
+export interface ClosureForm {
+  kind: 'withdrawn' | 'dismissed';
+  reasonCode?: DismissalReason | '';
+  reason: string;
+  duplicateOf?: string;
+}
+
+/** What is missing in a closure, as message ids. Empty: it may be sent. */
+export function closureProblems(f: ClosureForm, claimId: string): string[] {
+  const out: string[] = [];
+  if (f.kind === 'dismissed') {
+    if (!f.reasonCode) out.push('close.needCode');
+    if (f.reasonCode === 'duplicate') {
+      const d = f.duplicateOf?.trim() ?? '';
+      if (!/^clm_[A-Za-z0-9_]+$/.test(d)) out.push('close.needDuplicate');
+      else if (d === claimId) out.push('close.notItself');
+    }
+  }
+  if (!f.reason.trim()) out.push('decide.needReason');
+  return out;
 }

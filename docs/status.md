@@ -213,8 +213,17 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Roadmapen:** Gotenberg är förstavalet för dokumentskapande.
   - **Tester:** 453 i kärnan och API:t, 125 mot databasen, 36 enhetstester och 24 flöden i back office.
 
+- Skadeprocessen, steg 2, PR #94: återkallelse och avvisning (ADR 0036).
+  - **Två nya lägen,** `withdrawn` och `dismissed`, som står först i ordningen.
+  - **Anropen:** `POST /v1/claims/{id}/withdrawals` (`claims:register`) och `.../dismissals` (`claims:decide`), bara före ett beslut.
+  - **Vid avslutet** skickas öppna förslag tillbaka och reserven löses upp. Databasen hindrar beslut på stängda ärenden och avslut efter beslut (migration 0037).
+  - **Webhooks:** `claim.withdrawn` och `claim.dismissed`, utan motiveringen.
+  - **Back office:** kortet "Stäng utan beslut", ett kort för det stängda ärendet, händelsen i historiken och två nya flikar i kön.
+  - **Tester:** 460 i kärnan och API:t, 129 mot databasen, 38 enhetstester och 25 flöden i back office.
+
 **Nästa steg**
-1. Skadeprocessen, steg 2: lägen, återkallelse och avvisning.
+1. Lås för schemalagda körningar (förnyelse, utgång och påminnelser) och för reläet vid flera instanser.
+2. Skadeprocessen, steg 3: komplettering.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.

@@ -22,8 +22,10 @@ Hur skademotorn bedömer, räknar ut och beslutar ett ärende. Exemplen bygger p
 | `awaiting-approval` | Ett förslag över gränsen väntar på attest | Attestant |
 | `review-requested` | Kunden har begärt mänsklig prövning | Handläggare |
 | `decided` | Beslutat och inget öppet | – |
+| `withdrawn` | Kunden har återkallat anmälan, utan beslut | – |
+| `dismissed` | Avvisat utan beslut, till exempel som dubblett | – |
 
-Om flera stämmer gäller den som står först av `awaiting-approval`, `review-requested`, `decided` och `awaiting-decision`. Listan filtreras med `status`, `market`, `policyId` och `animalId`. En klinik ser bara sina egna ärenden och kundkanalen bara ärenden på sina försäkringar.
+Om flera stämmer gäller den som står först av `withdrawn` eller `dismissed`, `awaiting-approval`, `review-requested`, `decided` och `awaiting-decision`. Fler lägen kan tillkomma (ADR 0036), så en klient ska visa ett okänt läge i stället för att fallera. Listan filtreras med `status`, `market`, `policyId` och `animalId`. En klinik ser bara sina egna ärenden och kundkanalen bara ärenden på sina försäkringar.
 
 **Exempel:** `GET /v1/claims?status=awaiting-decision&market=SE&limit=20` ger handläggarens kö i Sverige, 20 åt gången.
 
@@ -60,6 +62,21 @@ Varje bedömning prövar reglerna i denna ordning och visar resultatet för var 
 | `routing.above_auto_limit` | Ersättningen är över gränsen för automatisk reglering | `payout`, `limit`, `currency` |
 
 Listan är tom när ärendet kan regleras automatiskt. Den räknas fram när bedömningen läses och sparas inte med beslutet, så sparade bedömningar räknas om exakt som förut.
+
+## Stänga utan beslut
+
+Ett ärende som inte ska prövas kan stängas innan det beslutas (ADR 0036). Det går inte att ångra.
+
+| Anrop | Rättighet | När |
+| --- | --- | --- |
+| `POST /v1/claims/{id}/withdrawals` med `reason` | `claims:register` | Kunden drar tillbaka anmälan |
+| `POST /v1/claims/{id}/dismissals` med `reasonCode`, `reason` och vid dubblett `duplicateOf` | `claims:decide` | `duplicate`, `registered-in-error` eller `not-a-claim` |
+
+- **Bara före ett beslut.** Ett beslutat ärende rättas eller omprövas i stället, och beslut tas aldrig bort. Ett stängt ärende kan inte beslutas. Båda reglerna finns också i databasen.
+- **Vid avslutet** skickas ett öppet förslag tillbaka med skälet, och reserven löses upp. Inget av försäkringsbeloppet förbrukas, och ingen självriskperiod öppnas.
+- **En avvisning är inte ett avslag.** Kunden får inget beslut, ingen förklaring och ingen rätt till prövning. En dubblett ska inte ge kunden ett avslag.
+- **Ärendet visar avslutet** i `closure`: typ, skälkod, motivering, dubblettens ärende, vem och när.
+- **Händelserna** `claim.withdrawn` och `claim.dismissed` går till webhooks utan motiveringen, som kan innehålla personuppgifter.
 
 ## Skadenummer
 

@@ -49,8 +49,30 @@ export interface Claim {
 /** A claim as registered: the server gives the id and the claim number when the client leaves them out (ADR 0036). */
 export type NewClaim = Omit<Claim, 'id' | 'claimNo'> & { id?: string; claimNo?: string };
 
-/** Where a claim is in its handling, for work queues. */
-export type ClaimState = 'awaiting-decision' | 'awaiting-approval' | 'review-requested' | 'decided';
+/** Where a claim is in its handling, for work queues. withdrawn and dismissed are closed without a decision (ADR 0036). */
+export const CLAIM_STATES = ['awaiting-decision', 'awaiting-approval', 'review-requested', 'decided', 'withdrawn', 'dismissed'] as const;
+export type ClaimState = (typeof CLAIM_STATES)[number];
+
+export const DISMISSAL_REASONS = ['duplicate', 'registered-in-error', 'not-a-claim'] as const;
+export type DismissalReason = (typeof DISMISSAL_REASONS)[number];
+
+/**
+ * A claim closed without a decision (ADR 0036): withdrawn by the customer, or
+ * dismissed, e.g. as a duplicate. Only before any decision; it cannot be undone.
+ * Dismissal is not rejection: no decision, no explanation, no review.
+ */
+export interface ClaimClosure {
+  id: string;
+  claimId: string;
+  kind: 'withdrawn' | 'dismissed';
+  /** For a dismissal. */
+  reasonCode?: DismissalReason;
+  reason: string;
+  /** The claim this one duplicates, for reasonCode duplicate. */
+  duplicateOf?: string;
+  closedBy: string;
+  closedAt: Timestamp;
+}
 
 /** A claim in a list: the claim without its lines, its state and its latest decision. */
 export interface ClaimSummary {
@@ -65,7 +87,7 @@ export interface ClaimSummary {
   treatmentFrom: ISODate;
   diagnosisCode: string;
   receivedAt: Timestamp;
-  /** awaiting-approval (an open proposal) wins over review-requested, which wins over awaiting-decision. */
+  /** Closed (withdrawn, dismissed) wins over awaiting-approval (an open proposal), which wins over review-requested, then decided, then awaiting-decision. */
   state: ClaimState;
   latestDecision?: { seq: number; outcome: Outcome; payout: MinorUnits; decidedAt: Timestamp };
 }

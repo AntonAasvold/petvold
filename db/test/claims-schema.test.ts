@@ -62,7 +62,7 @@ test('the migrations have been applied', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
   assert.deepEqual(
     rows.map((r) => r.version),
-    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0022', '0023', '0024', '0025', '0026', '0027', '0028', '0029', '0030', '0031', '0032', '0033', '0034', '0035', '0036'],
+    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0022', '0023', '0024', '0025', '0026', '0027', '0028', '0029', '0030', '0031', '0032', '0033', '0034', '0035', '0036', '0037'],
   );
 });
 
@@ -269,5 +269,41 @@ test('a reserve journal refers to its claim or to a decision on it; a decision j
     await rejects(insert, ['jnl_other', 'claim_reserve', 'dec_unknown'], RAISE_EXCEPTION);
     await rejects(insert, ['jnl_claim', 'claim_decision', 'clm_t1'], RAISE_EXCEPTION);
     await rejects(insert, ['jnl_kind', 'claim_guess', 'clm_t1'], CHECK_VIOLATION);
+  });
+});
+
+test('a closure is never changed or removed, a decided claim cannot be closed, and a closed one cannot be decided (ADR 0036)', async () => {
+  await inTx(async () => {
+    await db.query('set local role claims_service');
+    await seedDecision();
+    // clm_t1 has a decision: closing it is refused.
+    await rejects(
+      `insert into claims.claim_closure (claim_id, id, kind, reason, closed_by, closed_at) values ('clm_t1', 'cls_t1', 'withdrawn', 'x', 'h', now())`,
+      [],
+      'PVC02',
+    );
+    await db.query(
+      `insert into claims.claim (id, claim_no, policy_id, animal_id, market, currency, channel, treatment_from, treatment_to, diagnosis_code)
+       values ('clm_t2', 'T-2', 'pol_t', 'ani_t', 'SE', 'SEK', 'customer', '2026-10-01', '2026-10-01', 'ORA-OTIT')`,
+    );
+    // A dismissal needs its code, and a duplicate names the claim.
+    await rejects(`insert into claims.claim_closure (claim_id, id, kind, reason, closed_by, closed_at) values ('clm_t2', 'cls_t2', 'dismissed', 'x', 'h', now())`, [], CHECK_VIOLATION);
+    await rejects(
+      `insert into claims.claim_closure (claim_id, id, kind, reason_code, reason, closed_by, closed_at) values ('clm_t2', 'cls_t2', 'dismissed', 'duplicate', 'x', 'h', now())`,
+      [],
+      CHECK_VIOLATION,
+    );
+    await db.query(
+      `insert into claims.claim_closure (claim_id, id, kind, reason_code, reason, duplicate_of, closed_by, closed_at)
+       values ('clm_t2', 'cls_t2', 'dismissed', 'duplicate', 'Same invoice as T-1', 'clm_t1', 'h', now())`,
+    );
+    await rejects(
+      `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash, rules_version, decided_by, automated)
+       values ('dec_t2', 'clm_t2', 1, 'approved', 0, 'SEK', '{}', 'h', 'r', 'auto', true)`,
+      [],
+      'PVC01',
+    );
+    await rejects(`update claims.claim_closure set reason = 'changed' where id = 'cls_t2'`, [], PERMISSION_DENIED);
+    await rejects(`delete from claims.claim_closure where id = 'cls_t2'`, [], PERMISSION_DENIED);
   });
 });

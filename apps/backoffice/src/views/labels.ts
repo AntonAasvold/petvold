@@ -11,13 +11,30 @@ export function claimStatusLabel(s: string): string {
       return msg('Review requested', { id: 'claims.status.review-requested' });
     case 'decided':
       return msg('Decided', { id: 'claims.status.decided' });
+    case 'withdrawn':
+      return msg('Withdrawn', { id: 'claims.status.withdrawn' });
+    case 'dismissed':
+      return msg('Dismissed', { id: 'claims.status.dismissed' });
     default:
       return s;
   }
 }
 
+export function dismissalLabel(c: string): string {
+  switch (c) {
+    case 'duplicate':
+      return msg('Duplicate of another claim', { id: 'close.duplicate' });
+    case 'registered-in-error':
+      return msg('Registered in error', { id: 'close.inError' });
+    case 'not-a-claim':
+      return msg('Not a claim', { id: 'close.notAClaim' });
+    default:
+      return c;
+  }
+}
+
 export function statusVariant(s: string): 'brand' | 'success' | 'warning' | 'danger' | 'neutral' {
-  return s === 'decided' ? 'success' : s === 'awaiting-approval' ? 'warning' : s === 'review-requested' ? 'danger' : 'brand';
+  return s === 'decided' ? 'success' : s === 'awaiting-approval' ? 'warning' : s === 'review-requested' ? 'danger' : s === 'withdrawn' || s === 'dismissed' ? 'neutral' : 'brand';
 }
 
 export function outcomeLabel(o: string): string {
@@ -76,6 +93,12 @@ export function problemLabel(id: string): string {
       return msg('You may not decide against the proposal (claims:override).', { id: 'decide.noOverride' });
     case 'decide.needCode':
       return msg('Choose a reason code.', { id: 'decide.needCode' });
+    case 'close.needCode':
+      return msg('Choose why the claim is dismissed.', { id: 'close.needCode' });
+    case 'close.needDuplicate':
+      return msg('Give the id of the claim it duplicates, e.g. clm_048213.', { id: 'close.needDuplicate' });
+    case 'close.notItself':
+      return msg('A claim cannot duplicate itself.', { id: 'close.notItself' });
     case 'decide.needReason':
       return msg('Write a reason.', { id: 'decide.needReason' });
     case 'register.needPolicy':

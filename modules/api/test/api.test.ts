@@ -820,3 +820,33 @@ test('a claim without an id or a claim number gets both from the server (ADR 003
   const again = (await (await call('POST', '/v1/claims', { key: 'key-claimno-1', body, token: 'clinic' })).json()) as any;
   assert.equal(again.claim.claimNo, r.claim.claimNo);
 });
+
+test('a claim is withdrawn or dismissed before a decision, and the queue shows it closed (ADR 0036)', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { key: 'key-close-1', body: input(cruciateClaim()), token: 'clinic' });
+  const { id: _i, claimNo: _n, ...rest } = input(cruciateClaim());
+  const dup = (await (await call('POST', '/v1/claims', { key: 'key-close-2', body: rest, token: 'clinic' })).json()) as any;
+
+  const res = await call('POST', `/v1/claims/${dup.claim.id}/dismissals`, {
+    key: 'key-close-3',
+    body: { reasonCode: 'duplicate', reason: 'Same invoice as S-2026-048213', duplicateOf: 'clm_048213' },
+  });
+  assert.equal(res.status, 201);
+  const closure = (await res.json()) as any;
+  assertSchema('ClaimClosure', closure);
+  assert.equal(closure.closedBy, 'handlaggare@example.test');
+
+  const claim = (await (await call('GET', `/v1/claims/${dup.claim.id}`)).json()) as any;
+  assertSchema('Claim', claim);
+  assert.equal(claim.closure.reasonCode, 'duplicate');
+  const dismissed = (await (await call('GET', '/v1/claims?status=dismissed')).json()) as any;
+  assert.deepEqual(dismissed.items.map((c: any) => [c.id, c.status]), [[dup.claim.id, 'dismissed']]);
+
+  // A closed claim is not decided, and a duplicate must name its claim.
+  assert.equal((await call('POST', `/v1/claims/${dup.claim.id}/decisions`, { key: 'key-close-4', body: { action: 'accept' } })).status, 409);
+  assert.equal((await call('POST', '/v1/claims/clm_048213/dismissals', { key: 'key-close-5', body: { reasonCode: 'duplicate', reason: 'x' } })).status, 422);
+
+  const w = await call('POST', '/v1/claims/clm_048213/withdrawals', { key: 'key-close-6', body: { reason: 'The customer called' } });
+  assert.equal(w.status, 201);
+  assert.equal(((await w.json()) as any).kind, 'withdrawn');
+});

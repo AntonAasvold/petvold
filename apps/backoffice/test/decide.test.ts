@@ -65,3 +65,21 @@ test('why a claims handler: the routing reason, with the text of the rule that s
     ['The rule RIDER asks for a claims handler to review: Possibly related to a rider: lameness', 'The payout is above the limit'],
   );
 });
+
+test('closing without a decision: who may, and what it needs (ADR 0036)', async () => {
+  const { mayClose, closureProblems, claimStatus } = await import('../src/decide.ts');
+  const handler = { subject: 'h', roles: ['handler'], permissions: ['claims:register', 'claims:decide'] } as never;
+  const clinic = { subject: 'c', roles: ['clinic'], permissions: ['claims:register'] } as never;
+  assert.deepEqual(mayClose(handler, 'awaiting-decision', 0), { withdraw: true, dismiss: true });
+  assert.deepEqual(mayClose(clinic, 'awaiting-decision', 0), { withdraw: true, dismiss: false });
+  assert.deepEqual(mayClose(handler, 'decided', 1), { withdraw: false, dismiss: false }, 'never after a decision');
+  assert.deepEqual(mayClose(handler, 'withdrawn', 0), { withdraw: false, dismiss: false }, 'never twice');
+
+  assert.deepEqual(closureProblems({ kind: 'withdrawn', reason: ' ' }, 'clm_a'), ['decide.needReason']);
+  assert.deepEqual(closureProblems({ kind: 'dismissed', reasonCode: '', reason: 'x' }, 'clm_a'), ['close.needCode']);
+  assert.deepEqual(closureProblems({ kind: 'dismissed', reasonCode: 'duplicate', reason: 'x', duplicateOf: 'S-2026-1' }, 'clm_a'), ['close.needDuplicate']);
+  assert.deepEqual(closureProblems({ kind: 'dismissed', reasonCode: 'duplicate', reason: 'x', duplicateOf: 'clm_a' }, 'clm_a'), ['close.notItself']);
+  assert.deepEqual(closureProblems({ kind: 'dismissed', reasonCode: 'duplicate', reason: 'x', duplicateOf: ' clm_b ' }, 'clm_a'), []);
+
+  assert.equal(claimStatus({ closed: 'dismissed', openProposals: 1, openReviews: 0, decisions: 0 }), 'dismissed', 'closed wins');
+});

@@ -15,6 +15,7 @@ import {
   type ClaimFilter,
   type ClaimSummary,
   type Claim,
+  type ClaimClosure,
   type ClaimDecision,
   type ClaimsEvent,
   type ClaimsOutbox,
@@ -112,6 +113,9 @@ function toDecision(d: Record<string, any>): ClaimDecision {
 
 // Postgres error codes (SQLSTATE).
 const UNIQUE_VIOLATION = '23505';
+/** Raised by the triggers in migration 0037 (ADR 0036). */
+const CLAIM_CLOSED = 'PVC01';
+const CLAIM_DECIDED = 'PVC02';
 const EXCLUSION_VIOLATION = '23P01';
 
 type PgError = { code?: string; constraint?: string };
@@ -285,6 +289,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
                 c.treatment_from::text as treatment_from, c.diagnosis_code, c.received_at,
                 d.seq, d.outcome, d.payout_minor, d.decided_at,
                 case
+                  when k.kind is not null then k.kind
                   when exists (select 1 from claims.decision_proposal p where p.claim_id = c.id and p.status = 'open') then 'awaiting-approval'
                   when exists (select 1 from claims.review_request r where r.claim_id = c.id and r.closed_at is null) then 'review-requested'
                   when d.seq is not null then 'decided'
@@ -292,6 +297,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
                 end as state
          from claims.claim c
          left join lateral (select seq, outcome, payout_minor, decided_at from claims.decision x where x.claim_id = c.id order by seq desc limit 1) d on true
+         left join claims.claim_closure k on k.claim_id = c.id
          where ($1::text is null or c.market = $1)
            and ($2::text is null or c.policy_id = $2)
            and ($3::text is null or c.animal_id = $3)
@@ -322,12 +328,14 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
     const { rows } = await this.pool.query(
       `select
          coalesce(bool_or(
-           not exists (select 1 from claims.decision d where d.claim_id = c.id)
-           or exists (select 1 from claims.review_request r where r.claim_id = c.id and r.closed_at is null)
-           or exists (select 1 from claims.decision_proposal p where p.claim_id = c.id and p.status = 'open')
+           k.claim_id is null and (
+             not exists (select 1 from claims.decision d where d.claim_id = c.id)
+             or exists (select 1 from claims.review_request r where r.claim_id = c.id and r.closed_at is null)
+             or exists (select 1 from claims.decision_proposal p where p.claim_id = c.id and p.status = 'open'))
          ), false) as open,
-         max(greatest(c.received_at, (select max(decided_at) from claims.decision d where d.claim_id = c.id))) as last_at
+         max(greatest(c.received_at, (select max(decided_at) from claims.decision d where d.claim_id = c.id), k.closed_at)) as last_at
        from claims.claim c
+       left join claims.claim_closure k on k.claim_id = c.id
        where c.policy_id = $1 and c.treatment_from >= $2 and c.treatment_from < $3`,
       [policyId, from, to],
     );
@@ -426,6 +434,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       if (e.code === EXCLUSION_VIOLATION) {
         throw new StoreConflictError('period_overlaps', `The deductible period for ${d.claimId} clashes with another period`);
       }
+      if (e.code === CLAIM_CLOSED) throw new StoreConflictError('claim_closed', `Claim ${d.claimId} is closed`);
       throw e;
     });
   }
@@ -504,6 +513,46 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       ...(r.decision_id !== null ? { decisionId: r.decision_id } : {}),
       ...(r.return_reason !== null ? { returnReason: r.return_reason } : {}),
     }));
+  }
+
+  async closeClaim(closure: ClaimClosure, events: ClaimsEvent[], journals: LedgerJournal[]): Promise<void> {
+    await this.tx(async (db) => {
+      await db.query(
+        `insert into claims.claim_closure (claim_id, id, kind, reason_code, reason, duplicate_of, closed_by, closed_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [closure.claimId, closure.id, closure.kind, closure.reasonCode ?? null, closure.reason, closure.duplicateOf ?? null, closure.closedBy, closure.closedAt],
+      );
+      await db.query(
+        `update claims.decision_proposal set status = 'returned', closed_by = $2, closed_at = $3, return_reason = $4
+         where claim_id = $1 and status = 'open'`,
+        [closure.claimId, closure.closedBy, closure.closedAt, closure.reason],
+      );
+      await insertJournals(db, journals);
+      await insertEvents(db, events);
+    }).catch((e: PgError) => {
+      if (e.code === UNIQUE_VIOLATION && e.constraint === 'claim_closure_pkey') throw new StoreConflictError('claim_closed', `Claim ${closure.claimId} is closed already`);
+      if (e.code === CLAIM_DECIDED) throw new StoreConflictError('claim_decided', `Claim ${closure.claimId} has a decision`);
+      throw e;
+    });
+  }
+
+  async getClosure(claimId: string): Promise<ClaimClosure | null> {
+    const { rows } = await this.pool.query(
+      `select id, claim_id, kind, reason_code, reason, duplicate_of, closed_by, closed_at from claims.claim_closure where claim_id = $1`,
+      [claimId],
+    );
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      id: r.id,
+      claimId: r.claim_id,
+      kind: r.kind,
+      ...(r.reason_code === null ? {} : { reasonCode: r.reason_code }),
+      reason: r.reason,
+      ...(r.duplicate_of === null ? {} : { duplicateOf: r.duplicate_of }),
+      closedBy: r.closed_by,
+      closedAt: new Date(r.closed_at).toISOString(),
+    };
   }
 
   async returnProposal(proposalId: string, closedBy: string, closedAt: Timestamp, reason: string, events: ClaimsEvent[]): Promise<void> {

@@ -106,7 +106,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Registrera skada i back office, med förhandsbedömning innan den sparas
 - [x] [ADR 0036](adr/0036-skadeprocessen.md) om skadeprocessen
 - [x] Skadenummer och id från servern
-- [ ] Lägen, återkallelse och avvisning
+- [x] Lägen, återkallelse och avvisning
 - [ ] Komplettering från kund eller klinik, med påminnelse, utgång och `basisCompleteAt` (FAL 7 kap. 1 §)
 - [ ] Rättelse med revisioner
 - [ ] Bilagor som referenser till bolagets arkiv

@@ -84,6 +84,7 @@ En ny lagring är klar när den klarar modulens gemensamma testsvit i `test-suit
   - självriskperioder för samma djur och grupp överlappar inte (exclusion constraint)
   - beslut, bokföring, policyversioner, ansökningar och meddelanden kan inte ändras eller raderas
   - två aktiva policyer för samma djur samma dag går inte (exclusion constraint)
+- **Avslut utan beslut** (ADR 0036) finns i `claims.claim_closure` (migration 0037), en rad per ärende som aldrig ändras. Två triggrar håller reglerna: ett ärende med beslut kan inte stängas (felkod `PVC02`) och ett stängt ärende kan inte beslutas (`PVC01`). Lagringen gör koderna till `StoreConflictError`. En reservjournal får peka på avslutet, eftersom avslutet löser upp reserven. Läget räknas fortfarande fram ur det som är sparat, och avslutet står först.
 - **Skadenumrets serie** (ADR 0036) finns i `claims.claim_number_series`, en rad per år. `nextClaimNumber` räknar upp med en enda `insert … on conflict do update … returning`, så att två instanser aldrig får samma nummer. Id och nummer ges i `ClaimsService.registerClaim` innan ärendet bedöms, eftersom ärendet ingår i underlaget och dess `inputHash`.
 - **Migreringar** med dbmate i `db/migrations/`. En körd migration ändras aldrig. CI provar att den senaste kan rullas tillbaka med data i tabellerna.
 - **Belopp** är `bigint` i minsta enhet med suffixet `_minor`, och valutan står en gång per rad (ADR 0014).

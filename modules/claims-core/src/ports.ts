@@ -14,6 +14,7 @@ import type {
   PayoutOrder,
   Timestamp,
   Claim,
+  ClaimClosure,
 } from './types.ts';
 import type { LimitKey } from './ledger.ts';
 
@@ -121,6 +122,16 @@ export interface ClaimsStore {
    * has an open proposal; then nothing is stored.
    */
   saveProposal(proposal: DecisionProposal, events: ClaimsEvent[]): Promise<void>;
+  /**
+   * Closes a claim without a decision (ADR 0036), in one transaction: stores
+   * the closure, returns the claim's open proposals with the closure's reason,
+   * books `journals` (the released reserve) and writes `events`. Throws
+   * StoreConflictError('claim_closed') if the claim is closed already, and
+   * ('claim_decided') if it has a decision.
+   */
+  closeClaim(closure: ClaimClosure, events: ClaimsEvent[], journals: LedgerJournal[]): Promise<void>;
+  /** The claim's closure, or null while it is open. */
+  getClosure(claimId: string): Promise<ClaimClosure | null>;
   /** The claim's proposals, oldest first. */
   getProposals(claimId: string): Promise<DecisionProposal[]>;
   /**
@@ -137,7 +148,7 @@ export interface ClaimsStore {
  */
 export class StoreConflictError extends Error {
   constructor(
-    public readonly reason: 'claim_exists' | 'decision_exists' | 'period_overlaps' | 'review_open' | 'proposal_open' | 'proposal_closed',
+    public readonly reason: 'claim_exists' | 'decision_exists' | 'period_overlaps' | 'review_open' | 'proposal_open' | 'proposal_closed' | 'claim_closed' | 'claim_decided',
     message: string,
   ) {
     super(message);
@@ -182,7 +193,8 @@ export type ClaimsEvent =
   | { type: 'claim.review_requested'; occurredAt: Timestamp; request: ReviewRequest }
   | { type: 'claim.decision_proposed'; occurredAt: Timestamp; proposal: DecisionProposal }
   | { type: 'claim.proposal_returned'; occurredAt: Timestamp; proposal: DecisionProposal }
-  | { type: 'claim.payout_ordered'; occurredAt: Timestamp; order: PayoutOrder };
+  | { type: 'claim.payout_ordered'; occurredAt: Timestamp; order: PayoutOrder }
+  | { type: 'claim.withdrawn' | 'claim.dismissed'; occurredAt: Timestamp; closure: ClaimClosure };
 
 /** The claim an event concerns: the aggregate it belongs to in the outbox. */
 export function eventClaimId(e: ClaimsEvent): string {
@@ -198,6 +210,9 @@ export function eventClaimId(e: ClaimsEvent): string {
       return e.proposal.claimId;
     case 'claim.payout_ordered':
       return e.order.claimId;
+    case 'claim.withdrawn':
+    case 'claim.dismissed':
+      return e.closure.claimId;
   }
 }
 

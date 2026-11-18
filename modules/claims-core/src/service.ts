@@ -8,6 +8,8 @@ import type {
   AssessmentInput,
   Claim,
   NewClaim,
+  ClaimClosure,
+  DismissalReason,
   ClaimDecision,
   ClaimsRules,
   DeductiblePeriod,
@@ -261,6 +263,7 @@ export class ClaimsService {
    */
   async decide(claimId: string, cmd: DecideCommand): Promise<DecideResult> {
     const claim = await this.requireClaim(claimId);
+    if (await this.d.store.getClosure(claimId)) throw new DomainError('conflict', `Claim ${claimId} is closed and cannot be decided`);
     const assessed = await this.assessInternal(claim, undefined, claim.id);
     const { assessment } = assessed;
     if (cmd.expectedInputHash && cmd.expectedInputHash !== assessment.inputHash) {
@@ -407,8 +410,67 @@ export class ClaimsService {
     return this.d.store.listClaims(filter);
   }
 
-  async getClaim(claimId: string): Promise<Claim> {
-    return this.requireClaim(claimId);
+  /** The claim, with its closure when it was withdrawn or dismissed (ADR 0036). */
+  async getClaim(claimId: string): Promise<Claim & { closure?: ClaimClosure }> {
+    const claim = await this.requireClaim(claimId);
+    const closure = await this.d.store.getClosure(claimId);
+    return closure ? { ...claim, closure } : claim;
+  }
+
+  /** The customer withdraws the claim before it is decided (ADR 0036). */
+  async withdraw(claimId: string, cmd: { reason: string }, by: string): Promise<ClaimClosure> {
+    return this.close(claimId, { kind: 'withdrawn', reason: cmd.reason }, by);
+  }
+
+  /**
+   * The claim is dismissed before it is decided, e.g. as a duplicate (ADR 0036).
+   * Not a rejection: no decision, explanation or review.
+   */
+  async dismiss(claimId: string, cmd: { reasonCode: DismissalReason; reason: string; duplicateOf?: string }, by: string): Promise<ClaimClosure> {
+    if (cmd.reasonCode === 'duplicate') {
+      if (!cmd.duplicateOf) throw new DomainError('validation', 'A duplicate names the claim it duplicates (duplicateOf)');
+      if (cmd.duplicateOf === claimId) throw new DomainError('validation', 'A claim cannot duplicate itself');
+      if (!(await this.d.store.getClaim(cmd.duplicateOf))) throw new DomainError('validation', `Claim ${cmd.duplicateOf} does not exist`);
+    } else if (cmd.duplicateOf) {
+      throw new DomainError('validation', 'duplicateOf is only for reasonCode duplicate');
+    }
+    return this.close(claimId, { kind: 'dismissed', reasonCode: cmd.reasonCode, reason: cmd.reason, ...(cmd.duplicateOf ? { duplicateOf: cmd.duplicateOf } : {}) }, by);
+  }
+
+  /**
+   * Closes a claim without a decision: open proposals go back with the reason,
+   * and the reserve is released, in one transaction. Nothing of the limit is
+   * consumed and no deductible period opens.
+   */
+  private async close(claimId: string, what: Pick<ClaimClosure, 'kind' | 'reasonCode' | 'reason' | 'duplicateOf'>, by: string): Promise<ClaimClosure> {
+    const claim = await this.requireClaim(claimId);
+    const reason = what.reason.trim();
+    if (!reason) throw new DomainError('validation', 'A reason is required');
+    if (await this.d.store.getClosure(claimId)) throw new DomainError('conflict', `Claim ${claimId} is closed already`);
+    if ((await this.d.store.getDecisions(claimId)).length) throw new DomainError('conflict', `Claim ${claimId} has a decision: correct or reassess it instead`);
+    const now = this.d.clock.now();
+    const closure: ClaimClosure = { id: this.d.ids.next('cls'), claimId, ...what, reason, closedBy: by, closedAt: now };
+    const journals: LedgerJournal[] = [];
+    const reserved = -(await this.d.store.getBalance(accounts.claimReserve(claim.currency, claim.id)));
+    if (reserved !== 0) {
+      journals.push({
+        id: this.d.ids.next('jrn'),
+        sourceType: 'claim_reserve',
+        sourceId: closure.id,
+        claimId,
+        currency: claim.currency,
+        bookedAt: now,
+        lines: [
+          { account: accounts.claimReserve(claim.currency, claim.id), amount: reserved },
+          { account: accounts.reserveExpense(claim.currency, claim.id), amount: -reserved },
+        ],
+      });
+    }
+    const returned = (await this.d.store.getProposals(claimId))
+      .filter((p) => p.status === 'open')
+      .map((p): ClaimsEvent => ({ type: 'claim.proposal_returned', occurredAt: now, proposal: { ...p, status: 'returned', closedBy: by, closedAt: now, returnReason: reason } }));
+    await asConflict(this.d.store.closeClaim(closure, [...returned, { type: closure.kind === 'withdrawn' ? 'claim.withdrawn' : 'claim.dismissed', occurredAt: now, closure }], journals));
+    return closure;
   }
 
   async getDecisions(claimId: string): Promise<ClaimDecision[]> {

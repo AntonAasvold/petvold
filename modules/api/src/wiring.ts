@@ -225,5 +225,11 @@ export async function claimsEventForWebhooks(
     }
     case 'claim.review_requested':
       return { ...base, data: { reviewRequestId: e.request.id, decisionId: e.request.decisionId, decisionSeq: e.request.decisionSeq } };
+    case 'claim.withdrawn':
+    case 'claim.dismissed': {
+      // The reason is free text and may name a person, so it stays inside Petvold.
+      const k = e.closure;
+      return { ...base, data: { closureId: k.id, ...(k.reasonCode ? { reasonCode: k.reasonCode } : {}), ...(k.duplicateOf ? { duplicateOf: k.duplicateOf } : {}) } };
+    }
   }
 }
