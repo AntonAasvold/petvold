@@ -293,6 +293,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/claims/{claimId}/withdrawals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The customer withdraws the claim
+         * @description Requires the permission `claims:register`.
+         *
+         *     Closes the claim without a decision (ADR 0036). Only before any
+         *     decision; after one, correct or reassess the claim instead. Open
+         *     decision proposals are returned with the reason, and the reserve is
+         *     released. Nothing of the limit is consumed. Cannot be undone.
+         */
+        post: operations["withdrawClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/claims/{claimId}/dismissals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss the claim, e.g. as a duplicate
+         * @description Requires the permission `claims:decide`.
+         *
+         *     Closes the claim without a decision (ADR 0036): a duplicate, a claim
+         *     registered in error, or one that is not a claim. Not a rejection: no
+         *     decision, explanation or review. Only before any decision. Open
+         *     decision proposals are returned with the reason, and the reserve is
+         *     released. Cannot be undone.
+         */
+        post: operations["dismissClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/claims/{claimId}/proposals/{proposalId}/returns": {
         parameters: {
             query?: never;
@@ -2337,6 +2388,8 @@ export interface components {
             /** @description Always set on a stored claim. */
             claimNo: string;
             receivedAt: components["schemas"]["DateTime"];
+            /** @description Set when the claim was withdrawn or dismissed. */
+            closure?: components["schemas"]["ClaimClosure"];
             /** @description The clinic that submitted the claim, taken from the caller's token. Never set by the client. */
             clinicId?: string;
         };
@@ -2462,6 +2515,36 @@ export interface components {
         };
         /** @description Empty for now. An object, so fields can be added later. */
         ApproveRequest: Record<string, never>;
+        WithdrawClaimRequest: {
+            reason: string;
+        };
+        DismissClaimRequest: {
+            reasonCode: components["schemas"]["DismissalReason"];
+            reason: string;
+            /** @description The claim this one duplicates. Required for, and only for, reasonCode duplicate. */
+            duplicateOf?: string;
+        };
+        /** @enum {string} */
+        DismissalReason: "duplicate" | "registered-in-error" | "not-a-claim";
+        /** @description A claim closed without a decision (ADR 0036). */
+        ClaimClosure: {
+            id: string;
+            claimId: string;
+            /** @enum {string} */
+            kind: "withdrawn" | "dismissed";
+            reasonCode?: components["schemas"]["DismissalReason"];
+            reason: string;
+            duplicateOf?: string;
+            closedBy: string;
+            closedAt: components["schemas"]["DateTime"];
+        };
+        /**
+         * @description Where the claim is in its handling. withdrawn and dismissed are closed
+         *     without a decision (ADR 0036). New states may be added: a client shows
+         *     an unknown state as it is, rather than failing.
+         * @enum {string}
+         */
+        ClaimStatus: "awaiting-decision" | "awaiting-approval" | "review-requested" | "decided" | "withdrawn" | "dismissed";
         ReturnProposalRequest: {
             reason: string;
         };
@@ -3627,8 +3710,7 @@ export interface components {
             treatmentFrom: components["schemas"]["Date"];
             diagnosisCode: string;
             receivedAt: components["schemas"]["DateTime"];
-            /** @enum {string} */
-            status: "awaiting-decision" | "awaiting-approval" | "review-requested" | "decided";
+            status: components["schemas"]["ClaimStatus"];
             latestDecision?: {
                 seq: number;
                 /** @enum {string} */
@@ -4258,7 +4340,7 @@ export interface operations {
     listClaims: {
         parameters: {
             query?: {
-                status?: "awaiting-decision" | "awaiting-approval" | "review-requested" | "decided";
+                status?: components["schemas"]["ClaimStatus"];
                 market?: components["schemas"]["Market"];
                 policyId?: string;
                 animalId?: string;
@@ -4671,6 +4753,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Decision"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    withdrawClaim: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                claimId: components["parameters"]["ClaimId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WithdrawClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Withdrawn */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimClosure"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    dismissClaim: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                claimId: components["parameters"]["ClaimId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DismissClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Dismissed */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimClosure"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

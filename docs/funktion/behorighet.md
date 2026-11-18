@@ -35,9 +35,9 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 
 | Rättighet | Ger rätt att | Anrop |
 | --- | --- | --- |
-| `claims:register` | Anmäla en skada | `POST /v1/claims` |
+| `claims:register` | Anmäla en skada, och återkalla den före ett beslut (ADR 0036) | `POST /v1/claims`, `POST /v1/claims/{id}/withdrawals` |
 | `claims:read` | Läsa ett ärende, dess bedömning, beslut, förklaringar och begäranden om prövning, och räkna om ett beslut | `GET /v1/claims/{id}`, `.../assessment`, `.../decisions`, `.../decisions/{seq}/explanation`, `.../review-requests`, `POST .../decisions/{seq}/replays` |
-| `claims:decide` | Fatta beslut i ett ärende | `POST /v1/claims/{id}/decisions` |
+| `claims:decide` | Fatta beslut i ett ärende, och avvisa det före ett beslut (ADR 0036) | `POST /v1/claims/{id}/decisions`, `POST /v1/claims/{id}/dismissals` |
 | `claims:override` | Besluta mot bedömningens förslag, med skälkod och motivering (ADR 0018) | Kontrolleras inom `POST /v1/claims/{id}/decisions` |
 | `claims:reassess` | Ompröva ett beslutat ärende | `POST /v1/claims/{id}/reassessments` |
 | `rules:read` | Läsa regeluppsättningar (ADR 0021) | `GET /v1/rule-sets/{serie}/versions`, `.../{v}` |

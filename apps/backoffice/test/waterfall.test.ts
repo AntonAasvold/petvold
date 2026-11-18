@@ -68,3 +68,14 @@ test('the history is newest first, and a decision comes after its proposal at th
 test('a log time is in ISO order', () => {
   assert.match(formatLogTime('2026-11-13T14:32:00Z'), /^2026-11-1\d \d\d:\d\d$/);
 });
+
+test('a closure is the latest event in the history', () => {
+  const events = claimHistory({
+    claim: { receivedAt: '2026-11-13T14:32:00Z', channel: 'customer' },
+    decisions: [],
+    proposals: [],
+    reviews: [],
+    closure: { id: 'cls_1', kind: 'dismissed', reasonCode: 'duplicate', reason: 'Same invoice', duplicateOf: 'clm_a', closedBy: 'h', closedAt: '2026-11-14T09:00:00Z' },
+  });
+  assert.deepEqual(events.map((e) => e.type), ['claim.dismissed', 'claim.received']);
+});

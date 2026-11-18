@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-18 | [Återkallelse och avvisning av skador](2026-11-18-aterkallelse-och-avvisning.md) | #94 |
 | 2026-11-18 | [Skadenummer och id från servern](2026-11-18-skadenummer.md) | #93 |
 | 2026-11-17 | [ADR 0036: skadeprocessen](2026-11-17-adr-0036-skadeprocessen.md) | #91 |
 | 2026-11-17 | [Registrera skada i back office](2026-11-17-registrera-skada.md) | #90 |

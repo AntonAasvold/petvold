@@ -20,7 +20,7 @@ import type { Me } from '../permissions.ts';
 
 type ClaimSummary = components['schemas']['ClaimSummary'];
 type Status = ClaimSummary['status'];
-const QUEUES: (Status | 'all')[] = ['awaiting-decision', 'awaiting-approval', 'review-requested', 'decided', 'all'];
+const QUEUES: (Status | 'all')[] = ['awaiting-decision', 'awaiting-approval', 'review-requested', 'decided', 'withdrawn', 'dismissed', 'all'];
 
 @customElement('pv-claims-queue')
 export class ClaimsQueue extends LitElement {

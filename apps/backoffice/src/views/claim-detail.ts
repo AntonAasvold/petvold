@@ -21,7 +21,7 @@ import { getLocale } from '../i18n.ts';
 import { navigate } from '../router.ts';
 import { partyName, versionOn } from '../policy-logic.ts';
 import { pvComponents } from '../styles/pv-components.ts';
-import { channelLabel, claimStatusLabel, outcomeLabel, ruleStatusLabel, statusVariant } from './labels.ts';
+import { channelLabel, claimStatusLabel, dismissalLabel, outcomeLabel, ruleStatusLabel, statusVariant } from './labels.ts';
 import '../components/claim-actions.ts';
 import '../components/waterfall.ts';
 import '../components/event-log.ts';
@@ -225,6 +225,7 @@ export class ClaimDetail extends LitElement {
     const lang = getLocale();
     const money = (m: number) => formatMoney(m, c.currency, lang);
     const status = claimStatus({
+      ...(c.closure ? { closed: c.closure.kind } : {}),
       openProposals: this.proposals.filter((p) => p.status === 'open').length,
       openReviews: this.reviews.filter((r) => !r.closedAt).length,
       decisions: this.decisions.length,
@@ -238,7 +239,7 @@ export class ClaimDetail extends LitElement {
           ${c.id}<wa-icon name=${this.copied ? 'check' : 'copy'} aria-hidden="true"></wa-icon>
         </button>
         <span class="sr" role="status">${this.copied ? msg('Copied', { id: 'common.copied' }) : ''}</span>
-        <span class="pv-badge ${status === 'decided' ? 'pv-badge--solid' : 'pv-badge--pending'}">${claimStatusLabel(status)}</span>
+        <span class="pv-badge ${status === 'decided' || c.closure ? 'pv-badge--solid' : 'pv-badge--pending'}">${claimStatusLabel(status)}</span>
       </div>
       <ul class="facts">
         <li>${msg('Animal', { id: 'claim.animal' })}: <strong>${this.animal ? `${this.animal.name}` : c.animalId}</strong></li>
@@ -298,12 +299,13 @@ export class ClaimDetail extends LitElement {
             .decisions=${this.decisions}
             .proposals=${this.proposals}
             .reviews=${this.reviews}
+            .closure=${c.closure ?? null}
             @pv-changed=${() => this.load()}
           ></pv-claim-actions>
           <pv-event-log
             heading=${msg('History', { id: 'claim.history' })}
             empty=${msg('No decisions yet.', { id: 'claim.noDecisions' })}
-            .entries=${claimHistory({ claim: c, decisions: this.decisions, proposals: this.proposals, reviews: this.reviews }).map((e) => this.logEntry(e))}
+            .entries=${claimHistory({ claim: c, decisions: this.decisions, proposals: this.proposals, reviews: this.reviews, ...(c.closure ? { closure: c.closure } : {}) }).map((e) => this.logEntry(e))}
           ></pv-event-log>
         </div>
       </div>
@@ -348,6 +350,16 @@ export class ClaimDetail extends LitElement {
         };
       case 'proposal.returned':
         return { key, at: e.at, state: 'solid', badge: msg('Returned', { id: 'history.returned' }), line: e.reason ?? '', status: `${e.type} · ${e.by}` };
+      case 'claim.withdrawn':
+      case 'claim.dismissed':
+        return {
+          key,
+          at: e.at,
+          state: 'solid',
+          badge: claimStatusLabel(e.type === 'claim.withdrawn' ? 'withdrawn' : 'dismissed'),
+          line: `${e.reasonCode ? `${dismissalLabel(e.reasonCode)}${e.duplicateOf ? ` (${e.duplicateOf})` : ''} · ` : ''}${e.reason}`,
+          status: `${e.type} · ${e.by}`,
+        };
       case 'review.requested':
         return {
           key,

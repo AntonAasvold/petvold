@@ -16,7 +16,7 @@ Bolagets system kan få veta när något händer i Petvold, utan att fråga. En 
 | Policyer | `policy.issued`, `policy.changed`, `policy.renewed`, `policy.transferred`, `policy.cancelled`, `policy.reinstated` | policyns id |
 | Ansökningar | `application.received`, `application.accepted`, `application.referred`, `application.declined`, `application.withdrawn`, `application.expired` | ansökans id |
 | Förslag | `proposal.created`: överlåtelse till en ny ägare, eller avslut när djuret dött | policyns id |
-| Skador | `claim.registered`, `claim.decision_proposed`, `claim.proposal_returned`, `claim.decided`, `claim.payout_ordered`, `claim.review_requested` | skadans id |
+| Skador | `claim.registered`, `claim.decision_proposed`, `claim.proposal_returned`, `claim.decided`, `claim.payout_ordered`, `claim.review_requested`, `claim.withdrawn`, `claim.dismissed` | skadans id |
 | Djur | `animal.ownership_changed`, `animal.died` | djurets id |
 | Kundmeddelanden | `notice.created`, `notice.delivered`, `notice.failed` | meddelandets id |
 

@@ -33,7 +33,7 @@ import {
   type ReferenceItem,
 } from '@petvold/catalog';
 import { CALCULATION_MODELS, simulate } from '@petvold/claims-core';
-import type { Claim, ClaimState, ClaimsService, Clock } from '@petvold/claims-core';
+import { CLAIM_STATES, type Claim, type ClaimState, type ClaimsService, type Clock } from '@petvold/claims-core';
 import { DomainError } from '@petvold/claims-core';
 import { formatErrors, openapiText, operationPermissions, validatorFor, type FieldError } from './contract.ts';
 import { routePath } from 'hono/route';
@@ -322,8 +322,8 @@ export function createApp(d: AppDeps) {
   // clinic's own claims or the bound policies' claims.
   app.get('/v1/claims', async (c) => {
     const status = c.req.query('status');
-    if (status !== undefined && !['awaiting-decision', 'awaiting-approval', 'review-requested', 'decided'].includes(status)) {
-      return problem(c, 422, 'status is awaiting-decision, awaiting-approval, review-requested or decided');
+    if (status !== undefined && !CLAIM_STATES.includes(status as ClaimState)) {
+      return problem(c, 422, `status is one of ${CLAIM_STATES.join(', ')}`);
     }
     const scope = c.get('scope');
     const q = (k: string) => c.req.query(k);
@@ -384,6 +384,20 @@ export function createApp(d: AppDeps) {
       const decision = await d.service.approveProposal(c.req.param('claimId'), c.req.param('proposalId'), { approvedBy: p.subject, approvalLimits });
       return { status: 201, body: decision };
     });
+  });
+
+  app.post('/v1/claims/:claimId/withdrawals', async (c) => {
+    const p = c.get('principal');
+    const r = await readJson(c, 'WithdrawClaimRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await d.service.withdraw(c.req.param('claimId'), r.body, p.subject) }));
+  });
+
+  app.post('/v1/claims/:claimId/dismissals', async (c) => {
+    const p = c.get('principal');
+    const r = await readJson(c, 'DismissClaimRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await d.service.dismiss(c.req.param('claimId'), r.body, p.subject) }));
   });
 
   app.post('/v1/claims/:claimId/proposals/:proposalId/returns', async (c) => {

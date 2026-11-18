@@ -12,6 +12,7 @@ import '@awesome.me/webawesome/dist/components/callout/callout.js';
 import '@awesome.me/webawesome/dist/components/select/select.js';
 import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/textarea/textarea.js';
+import '@awesome.me/webawesome/dist/components/input/input.js';
 import type { Api } from '../api/client.ts';
 import type { components } from '../api/schema';
 import {
@@ -24,6 +25,11 @@ import {
   mayRequestReview,
   needsReason,
   proposedAction,
+  DISMISSAL_REASONS,
+  closureProblems,
+  mayClose,
+  type ClosureForm,
+  type DismissalReason,
   routingLines,
   type Action,
   type DeviationCode,
@@ -31,13 +37,15 @@ import {
 import { pvComponents } from '../styles/pv-components.ts';
 import { formatDateTime, formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
+import { navigate } from '../router.ts';
 import type { Me } from '../permissions.ts';
-import { deviationLabel, outcomeLabel, problemLabel } from '../views/labels.ts';
+import { claimStatusLabel, deviationLabel, dismissalLabel, outcomeLabel, problemLabel } from '../views/labels.ts';
 
 type Assessment = components['schemas']['AssessmentWithRouting'];
 type Decision = components['schemas']['Decision'];
 type Proposal = components['schemas']['DecisionProposal'];
 type ReviewRequest = components['schemas']['ReviewRequest'];
+type ClaimClosure = components['schemas']['ClaimClosure'];
 
 /** An outcome to show after an action, polite for success and assertive for errors. */
 interface Notice {
@@ -57,6 +65,8 @@ export class ClaimActions extends LitElement {
   @property({ attribute: false }) decisions: Decision[] = [];
   @property({ attribute: false }) proposals: Proposal[] = [];
   @property({ attribute: false }) reviews: ReviewRequest[] = [];
+  /** Set when the claim was withdrawn or dismissed (ADR 0036). */
+  @property({ attribute: false }) closure: ClaimClosure | null = null;
 
   @state() private action: Action = 'accept';
   @state() private reasonCode: DeviationCode | '' = '';
@@ -67,6 +77,8 @@ export class ClaimActions extends LitElement {
   @state() private busy = '';
   @state() private notice: Notice | null = null;
   @state() private shown: string[] = [];
+  @state() private closing: ClosureForm = { kind: 'withdrawn', reasonCode: '', reason: '', duplicateOf: '' };
+  @state() private closeShown: string[] = [];
   private keys = new IdempotencyKeys();
 
   constructor() {
@@ -128,16 +140,16 @@ export class ClaimActions extends LitElement {
       gap: var(--wa-space-s);
       flex-wrap: wrap;
     }
-    dl {
+    dl:not(.pv-dl) {
       display: grid;
       grid-template-columns: max-content 1fr;
       gap: var(--wa-space-2xs) var(--wa-space-m);
       margin: 0 0 var(--wa-space-m);
     }
-    dt {
+    dl:not(.pv-dl) dt {
       color: var(--wa-color-text-quiet);
     }
-    dd {
+    dl:not(.pv-dl) dd {
       margin: 0;
     }
   `,
@@ -163,11 +175,13 @@ export class ClaimActions extends LitElement {
             ${this.notice.reload ? html`<wa-button size="small" appearance="outlined" @click=${() => this.changed()}>${msg('Reload', { id: 'common.reload' })}</wa-button>` : nothing}
           </wa-callout>`
         : nothing}
+      ${this.closure ? this.closedCard(this.closure) : nothing}
       ${mayDecide(this.me, this.status) ? this.decideForm() : nothing}
       ${open.map((p) => this.proposalCard(p))}
       ${openReview ? this.reviewCard(openReview) : nothing}
       ${mayRequestReview(this.me, latest, !!openReview) ? this.requestReviewForm() : nothing}
       ${this.me?.permissions.includes('claims:reassess') && this.decisions.length ? this.reassessForm() : nothing}
+      ${this.closeForm()}
     `;
   }
 
@@ -227,6 +241,72 @@ export class ClaimActions extends LitElement {
           : nothing}
         ${problems.length ? html`<wa-callout variant="danger" role="alert">${problems.map((p) => html`<div>${problemLabel(p)}</div>`)}</wa-callout>` : nothing}
         <wa-button class="submit" type="submit" variant="brand" ?loading=${this.busy === 'decide'}>${submit}</wa-button>
+      </form>
+    </section>`;
+  }
+
+  /** A claim closed without a decision: what, why, by whom and when. */
+  private closedCard(k: ClaimClosure) {
+    return html`<section class="pv-card pv-card--strong" aria-labelledby="closed">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="closed">${claimStatusLabel(k.kind)}</h2></div>
+      <div class="pv-card__body">
+        <p>${msg('The claim is closed without a decision. Nothing is paid out, and nothing of the limit is used.', { id: 'close.closedNote' })}</p>
+        <dl class="pv-dl">
+          ${k.reasonCode ? html`<div class="pv-dl__row"><dt>${msg('Why', { id: 'close.why' })}</dt><dd>${dismissalLabel(k.reasonCode)}</dd></div>` : nothing}
+          ${k.duplicateOf
+            ? html`<div class="pv-dl__row">
+                <dt>${msg('Duplicate of', { id: 'close.duplicateOf' })}</dt>
+                <dd><a href=${`/claims/${k.duplicateOf}`} @click=${(e: Event) => (e.preventDefault(), navigate(`/claims/${encodeURIComponent(k.duplicateOf!)}`))} class="pv-mono">${k.duplicateOf}</a></dd>
+              </div>`
+            : nothing}
+          <div class="pv-dl__row"><dt>${msg('Reason', { id: 'claim.reason' })}</dt><dd>${k.reason}</dd></div>
+          <div class="pv-dl__row"><dt>${msg('Closed by', { id: 'close.by' })}</dt><dd>${k.closedBy}</dd></div>
+          <div class="pv-dl__row"><dt>${msg('Closed', { id: 'close.at' })}</dt><dd>${formatDateTime(k.closedAt, getLocale())}</dd></div>
+        </dl>
+      </div>
+    </section>`;
+  }
+
+  /**
+   * Close the claim without a decision (ADR 0036): withdrawn by the customer,
+   * or dismissed, e.g. as a duplicate. Only before any decision.
+   */
+  private closeForm() {
+    const may = mayClose(this.me, this.status, this.decisions.length);
+    if (!may.withdraw && !may.dismiss) return nothing;
+    const f = this.closing;
+    const kind = !may.withdraw ? 'dismissed' : !may.dismiss ? 'withdrawn' : f.kind;
+    const set = (patch: Partial<ClosureForm>) => (this.closing = { ...this.closing, ...patch });
+    const choice = (value: ClosureForm['kind'], title: string, desc: string) => html`<label class="pv-choice">
+      <input type="radio" name="close-kind" value=${value} .checked=${kind === value} @change=${() => set({ kind: value })} />
+      <span><span class="pv-choice__title">${title}</span><span class="pv-choice__desc">${desc}</span></span>
+    </label>`;
+    return html`<section class="pv-card" aria-labelledby="close">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="close">${msg('Close without a decision', { id: 'close.title' })}</h2></div>
+      <form class="pv-card__body" @submit=${(e: Event) => this.close(e, kind)}>
+        <fieldset>
+          <legend>${msg('How', { id: 'close.how' })}</legend>
+          ${may.withdraw ? choice('withdrawn', msg('Withdrawn by the customer', { id: 'close.withdraw' }), msg('The customer no longer wants the claim tried.', { id: 'close.withdrawDesc' })) : nothing}
+          ${may.dismiss ? choice('dismissed', msg('Dismiss', { id: 'close.dismiss' }), msg('A duplicate, registered in error or not a claim. Not a rejection: the customer gets no decision.', { id: 'close.dismissDesc' })) : nothing}
+        </fieldset>
+        ${kind === 'dismissed'
+          ? html`<wa-select label=${msg('Why', { id: 'close.why' })} value=${f.reasonCode ?? ''} @change=${(e: Event) => set({ reasonCode: (e.target as HTMLSelectElement).value as DismissalReason })}>
+              ${DISMISSAL_REASONS.map((c) => html`<wa-option value=${c}>${dismissalLabel(c)}</wa-option>`)}
+            </wa-select>
+            ${f.reasonCode === 'duplicate'
+              ? html`<wa-input
+                  label=${msg('Duplicate of', { id: 'close.duplicateOf' })}
+                  hint=${msg('The id of the other claim, e.g. clm_048213', { id: 'close.duplicateHint' })}
+                  .value=${f.duplicateOf ?? ''}
+                  @input=${(e: Event) => set({ duplicateOf: (e.target as HTMLInputElement).value })}
+                ></wa-input>`
+              : nothing}`
+          : nothing}
+        <wa-textarea label=${msg('Reason', { id: 'claim.reason' })} rows="2" .value=${f.reason} @input=${(e: Event) => set({ reason: (e.target as HTMLTextAreaElement).value })}></wa-textarea>
+        ${this.closeShown.length ? html`<wa-callout variant="danger" role="alert">${this.closeShown.map((p) => html`<div>${problemLabel(p)}</div>`)}</wa-callout>` : nothing}
+        <wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'close'}
+          >${kind === 'withdrawn' ? msg('Withdraw the claim', { id: 'close.submitWithdraw' }) : msg('Dismiss the claim', { id: 'close.submitDismiss' })}</wa-button
+        >
       </form>
     </section>`;
   }
@@ -414,6 +494,28 @@ export class ClaimActions extends LitElement {
         status === 204
           ? { variant: 'success', text: msg('Reassessed: the outcome is the same, so no new decision.', { id: 'reassess.same' }) }
           : { variant: 'success', text: msg('Reassessed: a new decision is made.', { id: 'reassess.new' }) },
+    );
+  }
+
+  private async close(e: Event, kind: ClosureForm['kind']) {
+    e.preventDefault();
+    const f = { ...this.closing, kind };
+    this.closeShown = closureProblems(f, this.claimId);
+    if (this.closeShown.length) return;
+    await this.run(
+      'close',
+      () =>
+        kind === 'withdrawn'
+          ? this.api.POST('/v1/claims/{claimId}/withdrawals', { params: { path: this.path(), header: this.headers('close') }, body: { reason: f.reason.trim() } })
+          : this.api.POST('/v1/claims/{claimId}/dismissals', {
+              params: { path: this.path(), header: this.headers('close') },
+              body: {
+                reasonCode: f.reasonCode as DismissalReason,
+                reason: f.reason.trim(),
+                ...(f.reasonCode === 'duplicate' ? { duplicateOf: f.duplicateOf!.trim() } : {}),
+              },
+            }),
+      () => ({ variant: 'success', text: kind === 'withdrawn' ? msg('The claim is withdrawn.', { id: 'close.withdrawn' }) : msg('The claim is dismissed.', { id: 'close.dismissed' }) }),
     );
   }
 

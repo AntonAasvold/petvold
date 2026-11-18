@@ -82,7 +82,7 @@ paths:
         - `review-requested`: the customer asked for a person to review an automated decision (ADR 0018)
         - `decided`
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [awaiting-decision, awaiting-approval, review-requested, decided] } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/ClaimStatus' } }
         - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
         - { name: policyId, in: query, schema: { type: string } }
         - { name: animalId, in: query, schema: { type: string } }
@@ -487,6 +487,73 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Decision' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}/withdrawals:
+    post:
+      tags: [claims]
+      operationId: withdrawClaim
+      x-permission: claims:register
+      summary: The customer withdraws the claim
+      description: |
+        Requires the permission `claims:register`.
+
+        Closes the claim without a decision (ADR 0036). Only before any
+        decision; after one, correct or reassess the claim instead. Open
+        decision proposals are returned with the reason, and the reserve is
+        released. Nothing of the limit is consumed. Cannot be undone.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WithdrawClaimRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Withdrawn
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClaimClosure' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}/dismissals:
+    post:
+      tags: [claims]
+      operationId: dismissClaim
+      x-permission: claims:decide
+      summary: Dismiss the claim, e.g. as a duplicate
+      description: |
+        Requires the permission `claims:decide`.
+
+        Closes the claim without a decision (ADR 0036): a duplicate, a claim
+        registered in error, or one that is not a claim. Not a rejection: no
+        decision, explanation or review. Only before any decision. Open
+        decision proposals are returned with the reason, and the reserve is
+        released. Cannot be undone.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DismissClaimRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Dismissed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClaimClosure' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
@@ -3635,6 +3702,7 @@ components:
             id: { type: string, description: Always set on a stored claim. }
             claimNo: { type: string, description: Always set on a stored claim. }
             receivedAt: { $ref: '#/components/schemas/DateTime' }
+            closure: { $ref: '#/components/schemas/ClaimClosure', description: Set when the claim was withdrawn or dismissed. }
             clinicId:
               type: string
               description: The clinic that submitted the claim, taken from the caller's token. Never set by the client.
@@ -3816,6 +3884,52 @@ components:
       type: object
       additionalProperties: false
       description: Empty for now. An object, so fields can be added later.
+
+    WithdrawClaimRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    DismissClaimRequest:
+      type: object
+      additionalProperties: false
+      required: [reasonCode, reason]
+      properties:
+        reasonCode: { $ref: '#/components/schemas/DismissalReason' }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        duplicateOf:
+          type: string
+          pattern: '^clm_[A-Za-z0-9_]+$'
+          description: The claim this one duplicates. Required for, and only for, reasonCode duplicate.
+
+    DismissalReason:
+      type: string
+      enum: [duplicate, registered-in-error, not-a-claim]
+
+    ClaimClosure:
+      type: object
+      additionalProperties: false
+      description: A claim closed without a decision (ADR 0036).
+      required: [id, claimId, kind, reason, closedBy, closedAt]
+      properties:
+        id: { type: string }
+        claimId: { type: string }
+        kind: { type: string, enum: [withdrawn, dismissed] }
+        reasonCode: { $ref: '#/components/schemas/DismissalReason' }
+        reason: { type: string }
+        duplicateOf: { type: string }
+        closedBy: { type: string }
+        closedAt: { $ref: '#/components/schemas/DateTime' }
+
+    ClaimStatus:
+      type: string
+      enum: [awaiting-decision, awaiting-approval, review-requested, decided, withdrawn, dismissed]
+      description: |
+        Where the claim is in its handling. withdrawn and dismissed are closed
+        without a decision (ADR 0036). New states may be added: a client shows
+        an unknown state as it is, rather than failing.
 
     ReturnProposalRequest:
       type: object
@@ -5205,7 +5319,7 @@ components:
         treatmentFrom: { $ref: '#/components/schemas/Date' }
         diagnosisCode: { type: string }
         receivedAt: { $ref: '#/components/schemas/DateTime' }
-        status: { type: string, enum: [awaiting-decision, awaiting-approval, review-requested, decided] }
+        status: { $ref: '#/components/schemas/ClaimStatus' }
         latestDecision:
           type: object
           required: [seq, outcome, payout, decidedAt]

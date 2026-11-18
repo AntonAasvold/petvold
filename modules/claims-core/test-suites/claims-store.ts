@@ -12,7 +12,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreConflictError, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore, type DecisionCommit } from '../src/ports.ts';
-import type { Assessment, Claim, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot, ReviewRequest, DecisionProposal } from '../src/types.ts';
+import type { Assessment, Claim, ClaimClosure, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot, ReviewRequest, DecisionProposal } from '../src/types.ts';
 import { accounts, type LimitKey } from '../src/ledger.ts';
 
 /** A store that also exposes its outbox, as every implementation must. */
@@ -637,6 +637,60 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       await assert.rejects(store.commitDecision({ ...commit(unknown), closesReviewRequestId: 'rvw_unknown' }));
       assert.deepEqual(await store.getDecisions('clm_a'), [auto]);
       assert.deepEqual(await store.getReviewRequests('clm_a'), [req]);
+    });
+
+    // Closing without a decision (ADR 0036) -----------------------------------------
+
+    const closure = (claimId: string, overrides: Partial<ClaimClosure> = {}): ClaimClosure => ({
+      id: `cls_${claimId}`,
+      claimId,
+      kind: 'withdrawn',
+      reason: 'The customer withdrew the claim',
+      closedBy: 'handlaggare@example.test',
+      closedAt: '2026-10-04T10:00:00.000Z',
+      ...overrides,
+    });
+    const closed = (k: ClaimClosure): ClaimsEvent[] => [{ type: k.kind === 'withdrawn' ? 'claim.withdrawn' : 'claim.dismissed', occurredAt: k.closedAt, closure: k }];
+
+    it('a closure is read back, returns the open proposal, releases the reserve and makes the claim withdrawn', async (store) => {
+      const c = claim('clm_a');
+      await store.saveClaim(c, registered(c), [reserve('clm_a', 500_000)]);
+      const p = proposal('clm_a');
+      await store.saveProposal(p, proposed(p));
+      const k = closure('clm_a');
+      await store.closeClaim(k, closed(k), [{ ...reserve('clm_a', -500_000), id: 'jrn_release_clm_a', sourceId: k.id }]);
+      assert.deepEqual(await store.getClosure('clm_a'), k);
+      assert.equal(await store.getClosure('clm_unknown'), null);
+      const [returned] = await store.getProposals('clm_a');
+      assert.deepEqual([returned!.status, returned!.closedBy, returned!.returnReason], ['returned', k.closedBy, k.reason]);
+      assert.equal(await store.getBalance(accounts.claimReserve('SEK', 'clm_a')), 0);
+      assert.deepEqual((await store.listClaims({})).map((x) => x.state), ['withdrawn']);
+      assert.deepEqual((await store.listClaims({ state: 'withdrawn' })).length, 1);
+      assert.deepEqual(await pendingTypes(store), ['claim.registered', 'claim.decision_proposed', 'claim.withdrawn']);
+    });
+
+    it('a dismissal as a duplicate names the claim, and a closed claim is no longer open for retention', async (store) => {
+      await save(store, claim('clm_a'));
+      await save(store, claim('clm_b', { claimNo: 'S-b' }));
+      const k = closure('clm_b', { kind: 'dismissed', reasonCode: 'duplicate', duplicateOf: 'clm_a' });
+      await store.closeClaim(k, closed(k), []);
+      assert.deepEqual(await store.getClosure('clm_b'), k);
+      assert.deepEqual((await store.listClaims({ state: 'dismissed' })).map((x) => x.id), ['clm_b']);
+      await store.closeClaim(closure('clm_a'), [], []);
+      assert.deepEqual(await store.claimActivity('pol_suite', '2026-01-01', '2027-01-01'), { open: false, lastAt: k.closedAt });
+    });
+
+    it('a claim is closed once, never after a decision, and a closed claim cannot be decided', async (store) => {
+      await save(store, claim('clm_a'));
+      await store.closeClaim(closure('clm_a'), [], []);
+      await assert.rejects(store.closeClaim(closure('clm_a', { id: 'cls_again' }), [], []), isConflict('claim_closed'));
+      const d = decision('clm_a', 1, 0);
+      await assert.rejects(store.commitDecision(commit(d)), isConflict('claim_closed'));
+
+      await save(store, claim('clm_b', { claimNo: 'S-b' }));
+      await store.commitDecision(commit(decision('clm_b', 1, 0)));
+      await assert.rejects(store.closeClaim(closure('clm_b'), [], []), isConflict('claim_decided'));
+      assert.equal(await store.getClosure('clm_b'), null);
     });
 
     // Decision proposals (ADR 0019) ----------------------------------------------

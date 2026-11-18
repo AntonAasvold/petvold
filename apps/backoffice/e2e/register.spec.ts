@@ -46,3 +46,42 @@ test('the policy page opens the form with the policy filled in', async ({ page }
   await expect(page).toHaveURL(/\/claims\/new\?policy=pol_bella$/);
   await expect(page.locator('pv-claim-register').getByText('SE, SEK')).toBeVisible();
 });
+
+test('a registered claim is dismissed as a duplicate, and the queue shows it closed (ADR 0036)', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Register a claim' }).click();
+  const form = page.locator('pv-claim-register');
+  await form.getByRole('textbox', { name: 'Policy id' }).fill('pol_bella');
+  await form.getByRole('button', { name: 'Fetch the policy' }).click();
+  await expect(form.getByText('SE, SEK')).toBeVisible();
+  await form.getByLabel('First day of treatment').fill('2026-11-11');
+  await form.getByLabel('Last day of treatment').fill('2026-11-13');
+  await form.getByRole('textbox', { name: 'Diagnosis' }).fill('ORT-KORSBAND-V');
+  const line = form.getByRole('group', { name: 'Line 1' });
+  await line.getByRole('textbox', { name: 'Description' }).fill('Same invoice again');
+  await line.getByRole('textbox', { name: 'Amount', exact: true }).fill('700');
+  await form.getByRole('button', { name: /^Register the claim/ }).click();
+  const heading = page.getByRole('heading', { level: 1, name: /^Claim S-/ });
+  await expect(heading).toBeVisible();
+  const claimNo = (await heading.textContent())!.replace('Claim ', '').trim();
+
+  const actions = page.locator('pv-claim-actions');
+  await actions.getByRole('radio', { name: /^Dismiss/ }).check();
+  await actions.getByRole('combobox', { name: 'Why' }).click();
+  await page.getByRole('option', { name: 'Duplicate of another claim' }).click();
+  // The form says what is missing before anything is sent.
+  await actions.getByRole('button', { name: 'Dismiss the claim' }).click();
+  await expect(actions.getByRole('alert')).toContainText('Give the id of the claim it duplicates');
+  await actions.getByRole('textbox', { name: 'Duplicate of' }).fill('clm_048213');
+  await actions.getByRole('textbox', { name: 'Reason' }).fill('The customer sent the same invoice twice.');
+  await actions.getByRole('button', { name: 'Dismiss the claim' }).click();
+
+  await expect(actions.getByRole('heading', { name: 'Dismissed' })).toBeVisible();
+  await expect(actions.getByRole('heading', { name: 'Decision', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').first()).toContainText('claim.dismissed');
+
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Claims' }).click();
+  await page.getByRole('tab', { name: 'Dismissed' }).click();
+  await expect(page.getByRole('grid', { name: 'Claims' }).getByRole('gridcell', { name: claimNo })).toBeVisible();
+});

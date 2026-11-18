@@ -26,6 +26,8 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'claim.decided': { source: 'claims', subject: 'claimId', fields: ['decisionId', 'seq', 'outcome', 'payout', 'currency', 'automated', 'deviatesFromProposal', 'reasonCode', 'reviewRequestId'] },
   'claim.payout_ordered': { source: 'claims', subject: 'claimId', fields: ['payoutOrderId', 'decisionId', 'policyId', 'amount', 'currency', 'channel', 'clinicId'] },
   'claim.review_requested': { source: 'claims', subject: 'claimId', fields: ['reviewRequestId', 'decisionId', 'decisionSeq'] },
+  'claim.withdrawn': { source: 'claims', subject: 'claimId', fields: ['closureId'] },
+  'claim.dismissed': { source: 'claims', subject: 'claimId', fields: ['closureId', 'reasonCode', 'duplicateOf'] },
   'animal.ownership_changed': { source: 'animals', subject: 'animalId', fields: ['fromPartyId', 'toPartyId', 'from'] },
   'animal.died': { source: 'animals', subject: 'animalId', fields: ['deceasedOn'] },
   'notice.created': { source: 'communications', subject: 'noticeId', fields: ['noticeType', 'schema', 'recipientPartyId', 'language', 'policyId', 'applicationId', 'dueBy'] },

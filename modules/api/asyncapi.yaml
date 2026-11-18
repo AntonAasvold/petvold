@@ -32,6 +32,8 @@ channels:
       claimDecided: { $ref: '#/components/messages/claimDecided' }
       claimPayoutOrdered: { $ref: '#/components/messages/claimPayoutOrdered' }
       claimReviewRequested: { $ref: '#/components/messages/claimReviewRequested' }
+      claimWithdrawn: { $ref: '#/components/messages/claimWithdrawn' }
+      claimDismissed: { $ref: '#/components/messages/claimDismissed' }
       animalOwnershipChanged: { $ref: '#/components/messages/animalOwnershipChanged' }
       animalDied: { $ref: '#/components/messages/animalDied' }
       policyIssued: { $ref: '#/components/messages/policyIssued' }
@@ -63,6 +65,8 @@ operations:
       - { $ref: '#/channels/subscription/messages/claimDecided' }
       - { $ref: '#/channels/subscription/messages/claimPayoutOrdered' }
       - { $ref: '#/channels/subscription/messages/claimReviewRequested' }
+      - { $ref: '#/channels/subscription/messages/claimWithdrawn' }
+      - { $ref: '#/channels/subscription/messages/claimDismissed' }
       - { $ref: '#/channels/subscription/messages/animalOwnershipChanged' }
       - { $ref: '#/channels/subscription/messages/animalDied' }
       - { $ref: '#/channels/subscription/messages/policyIssued' }
@@ -166,6 +170,30 @@ components:
             properties:
               type: { const: petvold.claim.review_requested.v1 }
               data: { $ref: '#/components/schemas/ClaimReviewRequestedData' }
+    claimWithdrawn:
+      name: petvold.claim.withdrawn.v1
+      title: claim.withdrawn
+      summary: 'The customer withdrew the claim before it was decided (ADR 0036).'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.withdrawn.v1 }
+              data: { $ref: '#/components/schemas/ClaimWithdrawnData' }
+    claimDismissed:
+      name: petvold.claim.dismissed.v1
+      title: claim.dismissed
+      summary: 'The claim was dismissed before it was decided, e.g. as a duplicate. Not a rejection (ADR 0036).'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.dismissed.v1 }
+              data: { $ref: '#/components/schemas/ClaimDismissedData' }
     animalOwnershipChanged:
       name: petvold.animal.ownership_changed.v1
       title: animal.ownership_changed
@@ -478,6 +506,22 @@ components:
         reviewRequestId: { type: string }
         decisionId: { type: string }
         decisionSeq: { type: integer, minimum: 1 }
+    ClaimWithdrawnData:
+      type: object
+      additionalProperties: false
+      required: [claimId, closureId]
+      properties:
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        closureId: { type: string }
+    ClaimDismissedData:
+      type: object
+      additionalProperties: false
+      required: [claimId, closureId, reasonCode]
+      properties:
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        closureId: { type: string }
+        reasonCode: { type: string, enum: [duplicate, registered-in-error, not-a-claim] }
+        duplicateOf: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
     AnimalOwnershipChangedData:
       type: object
       additionalProperties: false

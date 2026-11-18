@@ -67,6 +67,15 @@ Den som har rätten `claims:register` kan registrera en skada, till exempel en s
 
 Appen säger vad som saknas innan något skickas. Ett skadenummer som redan används ger ett besked från API:t.
 
+## Stänga en skada utan beslut
+
+En skada som inte har beslutats kan stängas i kortet "Stäng utan beslut" (ADR 0036):
+
+- **Återkallad av kunden** (rätten `claims:register`). Kunden vill inte längre få skadan prövad.
+- **Avvisa** (rätten `claims:decide`), med skälet dubblett, registrerad av misstag eller inte en skada. Vid dubblett anges den andra skadans id.
+
+Båda kräver en motivering. Ett stängt ärende visar avslutet i stället för beslutskortet, och märket i huvudet är helfyllt. Skadornas kö har flikarna Återkallade och Avvisade.
+
 ## Skadeärendet
 
 - **Huvudet** har en brödsmula tillbaka till kön, skadenumret som rubrik och ärendets id. Klickar man på id:t kopieras det. Status är ett helfyllt märke när ärendet är beslutat och ett streckat när det väntar på någon.
