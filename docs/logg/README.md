@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-18 | [ADR 0037: körningar](2026-11-18-adr-0037-korningar.md) | #96 |
 | 2026-11-18 | [Körningar och det som saknas i back office](2026-11-18-inventering-backoffice.md) | #95 |
 | 2026-11-18 | [Återkallelse och avvisning av skador](2026-11-18-aterkallelse-och-avvisning.md) | #94 |
 | 2026-11-18 | [Skadenummer och id från servern](2026-11-18-skadenummer.md) | #93 |

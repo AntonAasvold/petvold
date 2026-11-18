@@ -116,7 +116,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 **Körningar** (före steg 3 i skadeprocessen)
 
 I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara som anrop som något utanför Petvold måste starta. Ingen historik sparas. Reläet och webhook-arbetaren går med ett fast intervall som inte går att se eller ändra.
-- [ ] ADR om körningar: schema per körning, lås vid flera instanser, historik med resultat och fel, start för hand, paus och vem som ändrade vad
+- [x] [ADR 0037](adr/0037-korningar.md) om körningar (föreslagen)
 - [ ] Schemaläggare i servern med lås (`pg_try_advisory_lock` eller en tabell för lås), som också gäller reläet
 - [ ] Historik över körningar: start, slut, vad som gjordes (antal), fel och vem eller vad som startade den
 - [ ] Back office: lista över körningar med nästa och senaste körning, historik, "Kör nu", paus och schema som går att ändra med fyra ögon
