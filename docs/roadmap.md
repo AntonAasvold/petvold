@@ -113,6 +113,28 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [ ] Skadebesked och meddelanden om komplettering (ADR 0032)
 - Utbetalningen kommer med betalningsmodulen i M5.
 
+**Körningar** (före steg 3 i skadeprocessen)
+
+I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara som anrop som något utanför Petvold måste starta. Ingen historik sparas. Reläet och webhook-arbetaren går med ett fast intervall som inte går att se eller ändra.
+- [ ] ADR om körningar: schema per körning, lås vid flera instanser, historik med resultat och fel, start för hand, paus och vem som ändrade vad
+- [ ] Schemaläggare i servern med lås (`pg_try_advisory_lock` eller en tabell för lås), som också gäller reläet
+- [ ] Historik över körningar: start, slut, vad som gjordes (antal), fel och vem eller vad som startade den
+- [ ] Back office: lista över körningar med nästa och senaste körning, historik, "Kör nu", paus och schema som går att ändra med fyra ögon
+- [ ] Back office: reläet och webhook-arbetaren med kö, eftersläpning och döda poster
+- [ ] Påminnelser och utgång för komplettering (skadeprocessen, steg 3) som en körning bland de andra
+
+**Back office: det som saknas** (inventering 2026-11-18: back office använder 68 av API:ets 115 operationer)
+- [ ] **Policy:** teckna, ändra, säga upp, återuppta och förnya en policy, med prisindikation (`POST /v1/quotes`) och ögonblicksbild. I dag går det bara att läsa policyn och besluta om ansökningar och förslag.
+- [ ] **Ansökan:** registrera en ansökan med teckningsfrågorna (`GET /v1/application-questions`)
+- [ ] **Djur:** sök, registrera och ändra djur, id-nummer, ägarbyte, historik och kullar
+- [ ] **Parter:** registrera och ändra personer och organisationer, id-nummer och historik
+- [ ] **Radering (ADR 0028):** begära radering av en part och kön för radering med fyra ögon
+- [ ] **Grupper (ADR 0007):** kull och hushåll, med medlemmar och utträde
+- [ ] **Referensdata (ADR 0022):** arter, raser och kön med översättningar och historik
+- [ ] **Produkter och regler:** villkoren för veterinärvård som läsbar vy, formulär utan JSON och simulering av regelutkast mot sparade underlag
+- [ ] **Skador:** omräkning av ett sparat beslut (ADR 0018) och försäkringsbeloppet som återstår på policyn
+- [ ] **Översikt:** en startsida med köerna, körningarna och det som fastnat
+
 **Dokument**
 - [ ] ADR om dokument: skapande och ett enkelt arkiv
 - [ ] Dokumentskapande med [Gotenberg](https://gotenberg.dev) (MIT) i en egen container, bakom en port. Mallarna är HTML/CSS med designsystemets tokens, versionerade per marknad och språk med kontrollsumma, och ger PDF/A och PDF/UA. Gotenberg har LibreOffice inbyggt, så Word-mallar (till exempel med docxtemplater) kan läggas till senare utan att containern byts. Carbone valdes bort på grund av licensen (Carbone Community License).
