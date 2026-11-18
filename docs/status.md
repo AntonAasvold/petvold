@@ -206,8 +206,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Utförande:** sex PR:er med kontraktet först.
   - **Roadmapen** har ett nytt avsnitt om dokument: skapande med Carbone i en egen container och ett enkelt dokumentarkiv.
 
+- Skadeprocessen, steg 1, PR #93: skadenummer och id från servern (ADR 0036).
+  - **Kontraktet:** `id` och `claimNo` är valfria i `ClaimInput`, och ett sparat ärende har alltid båda.
+  - **Serien** finns per installation och år (migration 0036) och är atomisk i Postgres. Prefixet sätts per marknad med `PETVOLD_CLAIM_NUMBER_PREFIX`, och året räknas i marknadens tidszon.
+  - **Back office** väljer inte längre id eller skadenummer.
+  - **Roadmapen:** Gotenberg är förstavalet för dokumentskapande.
+  - **Tester:** 453 i kärnan och API:t, 125 mot databasen, 36 enhetstester och 24 flöden i back office.
+
 **Nästa steg**
-1. Skadeprocessen, steg 1: skadenummer och id från servern.
+1. Skadeprocessen, steg 2: lägen, återkallelse och avvisning.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.

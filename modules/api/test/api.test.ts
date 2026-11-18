@@ -806,3 +806,17 @@ test('underwriting rules are drafted like a tariff, and cannot be simulated agai
   const sim = await call('POST', '/v1/rule-sets/SE-HUND-UW/versions/1/simulations', { token: 'author', body: { from: '2026-01-01T00:00:00Z', to: '2026-12-31T00:00:00Z' } });
   assert.equal(sim.status, 422);
 });
+
+test('a claim without an id or a claim number gets both from the server (ADR 0036)', async () => {
+  const { call } = setup();
+  const { id: _id, claimNo: _no, ...body } = input(cruciateClaim());
+  const res = await call('POST', '/v1/claims', { key: 'key-claimno-1', body, token: 'clinic' });
+  assert.equal(res.status, 201);
+  const r = (await res.json()) as any;
+  assertSchema('RegisterClaimResult', r);
+  assert.match(r.claim.id, /^clm_[A-Za-z0-9_]+$/);
+  assert.match(r.claim.claimNo, /^S-2026-\d{6}$/);
+  // The same request again is the same claim, not a new number.
+  const again = (await (await call('POST', '/v1/claims', { key: 'key-claimno-1', body, token: 'clinic' })).json()) as any;
+  assert.equal(again.claim.claimNo, r.claim.claimNo);
+});

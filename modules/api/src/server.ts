@@ -11,6 +11,7 @@
  * - PETVOLD_WEBHOOK_KEY: 32 bytes in base64 that seal the webhook secrets (ADR 0033). Required.
  * - PETVOLD_WEBHOOK_ALLOW_HOSTS: hosts a webhook may name although local or http, comma-separated. Default none.
  * - PETVOLD_VERSION: stored with every decision (ADR 0018). Required.
+ * - PETVOLD_CLAIM_NUMBER_PREFIX: the claim number's prefix per market, e.g. SE=S,NO=N (ADR 0036). Default S.
  * - PORT: default 8080.
  * - PETVOLD_CORS_ORIGINS: browser applications allowed to call the API, comma-separated. Default none.
  * - Authentication: see auth.ts. Without it the server does not start.
@@ -19,7 +20,7 @@
  * server's roles cannot change the schema.
  */
 import { serve } from '@hono/node-server';
-import { compose, DATABASE_ENV, DATABASES, databasesFromEnv, webhooksFromEnv } from './composition.ts';
+import { claimNumberPrefixFromEnv, compose, DATABASE_ENV, DATABASES, databasesFromEnv, webhooksFromEnv } from './composition.ts';
 import { authenticatorFromEnv } from './auth.ts';
 import { corsOriginsFromEnv, createApp } from './index.ts';
 
@@ -38,7 +39,14 @@ const auth = await authenticatorFromEnv(process.env).catch((err: Error) => {
   process.exit(1);
 });
 
-const inst = await compose({ databases: databasesFromEnv(process.env), engineVersion: process.env.PETVOLD_VERSION!, log, webhooks: webhooksFromEnv(process.env) });
+let claimNumberPrefix: Record<string, string>;
+try {
+  claimNumberPrefix = claimNumberPrefixFromEnv(process.env);
+} catch (err) {
+  console.error((err as Error).message);
+  process.exit(1);
+}
+const inst = await compose({ databases: databasesFromEnv(process.env), engineVersion: process.env.PETVOLD_VERSION!, log, webhooks: webhooksFromEnv(process.env), claimNumberPrefix });
 await inst.ping().catch((err: Error) => {
   console.error(`A database does not answer: ${err.message}`);
   process.exit(1);

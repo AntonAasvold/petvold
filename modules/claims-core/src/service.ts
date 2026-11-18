@@ -7,6 +7,7 @@ import type {
   Assessment,
   AssessmentInput,
   Claim,
+  NewClaim,
   ClaimDecision,
   ClaimsRules,
   DeductiblePeriod,
@@ -24,7 +25,7 @@ import type {
   PayoutOrder,
   Timestamp,
 } from './types.ts';
-import { assertDate } from '@petvold/common';
+import { assertDate, marketDate } from '@petvold/common';
 import { accounts, type LimitKey } from './ledger.ts';
 import { replay, type ReplayResult } from './replay.ts';
 import { explainDecision, type DecisionExplanation } from './explain.ts';
@@ -113,6 +114,8 @@ export interface ClaimsServiceDeps {
   ids: IdGenerator;
   /** Petvold's version and commit, stored with every decision (ADR 0018). */
   engineVersion?: string;
+  /** The claim number's prefix per market, e.g. { SE: 'S' } (ADR 0036). 'S' when a market has none. */
+  claimNumberPrefix?: Readonly<Record<string, string>>;
 }
 
 /** An assessment together with exactly the input it was made from. */
@@ -173,8 +176,13 @@ async function asConflict<T>(op: Promise<T>): Promise<T> {
 export class ClaimsService {
   constructor(private readonly d: ClaimsServiceDeps) {}
 
-  /** Registers a claim, assesses it and settles it automatically if the rules allow. */
-  async registerClaim(claim: Claim): Promise<{ claim: Claim; assessment: Assessment; decision: ClaimDecision | null }> {
+  /**
+   * Registers a claim, assesses it and settles it automatically if the rules
+   * allow. Without an id or a claim number, the server gives them (ADR 0036);
+   * they are given before the assessment, since the claim is part of its input.
+   */
+  async registerClaim(input: NewClaim): Promise<{ claim: Claim; assessment: Assessment; decision: ClaimDecision | null }> {
+    const claim: Claim = { ...input, id: input.id ?? this.d.ids.next('clm'), claimNo: input.claimNo ?? '' };
     try {
       validateClaim(claim);
     } catch (e) {
@@ -182,6 +190,8 @@ export class ClaimsService {
     }
     const existing = await this.d.store.getClaim(claim.id);
     if (existing) throw new DomainError('conflict', `Claim ${claim.id} already exists`);
+    if (input.claimNo === undefined) claim.claimNo = await this.nextClaimNo(claim);
+    else if (await this.d.store.claimNoTaken(claim.claimNo)) throw new DomainError('conflict', `Claim number ${claim.claimNo} is already in use`);
 
     // The claim is assessed before it is stored: the assessment never counts the
     // claim itself, so the result is the same, and a reserve can be booked with it.
@@ -198,6 +208,21 @@ export class ClaimsService {
           })
         : null;
     return { claim, assessment, decision };
+  }
+
+  /**
+   * The next free claim number, e.g. S-2026-000123: the prefix for the market,
+   * the year the claim was received in the market's time zone, and the series.
+   * A number a client already chose is skipped.
+   */
+  private async nextClaimNo(claim: Claim): Promise<string> {
+    const year = Number(marketDate(claim.market, claim.receivedAt).slice(0, 4));
+    const prefix = this.d.claimNumberPrefix?.[claim.market] ?? 'S';
+    for (;;) {
+      const n = await this.d.store.nextClaimNumber(year);
+      const claimNo = `${prefix}-${year}-${String(n).padStart(6, '0')}`;
+      if (!(await this.d.store.claimNoTaken(claimNo))) return claimNo;
+    }
   }
 
   /** Assesses an existing claim without storing anything. */
@@ -217,7 +242,9 @@ export class ClaimsService {
    * Pre-approval, e.g. at the clinic's checkout. The claim is not stored and
    * no deductible periods or amounts are reserved.
    */
-  async preview(draft: Claim): Promise<Assessment> {
+  async preview(input: NewClaim): Promise<Assessment> {
+    // Nothing is stored, so a preview gets no id or claim number of its own.
+    const draft: Claim = { ...input, id: input.id ?? 'clm_preview', claimNo: input.claimNo ?? 'preview' };
     try {
       validateClaim(draft);
     } catch (e) {

@@ -34,6 +34,7 @@ import type {
  */
 export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   private claims = new Map<string, Claim>();
+  private numberSeries = new Map<number, number>();
   private decisions: ClaimDecision[] = [];
   private evidence = new Map<string, DecisionEvidence>();
   private journals: LedgerJournal[] = [];
@@ -61,6 +62,16 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
       .flatMap((j) => j.lines)
       .filter((l) => l.account === account)
       .reduce((s, l) => s + l.amount, 0);
+  }
+
+  async claimNoTaken(claimNo: string): Promise<boolean> {
+    return [...this.claims.values()].some((c) => c.claimNo === claimNo);
+  }
+
+  async nextClaimNumber(year: number): Promise<number> {
+    const next = (this.numberSeries.get(year) ?? 0) + 1;
+    this.numberSeries.set(year, next);
+    return next;
   }
 
   async getClaim(id: string) {

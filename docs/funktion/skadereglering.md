@@ -5,7 +5,7 @@ Hur skademotorn bedömer, räknar ut och beslutar ett ärende. Exemplen bygger p
 ## Flödet
 
 1. **Förhandsbesked** *(valfritt)*. Kliniken eller kunden skickar en tänkt skada och får bedömningen tillbaka. Inget sparas, och inget försäkringsbelopp reserveras.
-2. **Anmälan.** Skadan registreras med fakturarader, diagnos och behandlingsdatum. Motorn bedömer den direkt.
+2. **Anmälan.** Skadan registreras med fakturarader, diagnos och behandlingsdatum. Motorn bedömer den direkt. Skickar klienten inget id eller skadenummer ger Petvold dem (ADR 0036), se [Skadenummer](#skadenummer).
 3. **Automatiskt beslut eller handläggare.** Om alla regler går igenom och ersättningen är under produktens gräns beslutas skadan automatiskt. Annars hamnar den hos en handläggare.
 4. **Beslut.** Handläggaren godkänner det som bedömningen föreslår eller avslår. Beslutet bokförs.
 5. **Omprövning.** Om policyn ändras i efterhand bedöms ärendet om, till exempel om en ny självrisk gäller retroaktivt eller om policyn avslutas från ett tidigare datum. Det sker automatiskt när policymodulen ersätter den version som beslutet fattades på (`policy.version_superseded`). Om ersättningen ändras blir det ett nytt beslut som bokför skillnaden.
@@ -60,6 +60,22 @@ Varje bedömning prövar reglerna i denna ordning och visar resultatet för var 
 | `routing.above_auto_limit` | Ersättningen är över gränsen för automatisk reglering | `payout`, `limit`, `currency` |
 
 Listan är tom när ärendet kan regleras automatiskt. Den räknas fram när bedömningen läses och sparas inte med beslutet, så sparade bedömningar räknas om exakt som förut.
+
+## Skadenummer
+
+Ett ärende har ett id (`clm_…`) och ett skadenummer som människor använder, till exempel `S-2026-000123`. Båda är unika.
+
+- **Utan id eller skadenummer** i anmälan ger Petvold dem. Skadenumret består av marknadens prefix, året då skadan kom in räknat i marknadens tidszon, och nästa nummer i årets serie med sex siffror.
+- **Serien gäller hela installationen** och börjar om varje år. Två marknader får aldrig samma nummer, inte heller med olika prefix.
+- **Prefixet** är en inställning per marknad (`PETVOLD_CLAIM_NUMBER_PREFIX`, till exempel `SE=S,NO=N`). Utan inställning är prefixet `S`.
+- **En klient med egna nummer**, till exempel ett äldre skadesystem, kan fortsätta skicka dem. Ett nummer som redan används ger `409`. Serien hoppar över nummer som en klient redan har tagit.
+- **En förhandsbedömning** tar inget nummer ur serien.
+
+| Anmälan | Marknad | Kom in | Skadenummer |
+| --- | --- | --- | --- |
+| Utan nummer, första i året | SE, prefix `S` | 2026-11-13 14:00 UTC | `S-2026-000001` |
+| Utan nummer | SE, prefix `SKD` | 2026-12-31 23:30 UTC (2027 i Stockholm) | `SKD-2027-000001` |
+| Med eget nummer `S-2026-000001` | SE | | `S-2026-000001`, och serien hoppar sedan över det |
 
 ## Beräkningen
 

@@ -18,8 +18,6 @@ test('a handler registers a claim from the policy, after a preview', async ({ pa
   await form.getByRole('button', { name: 'Fetch the policy' }).click();
   await expect(form.getByText('SE, SEK')).toBeVisible();
 
-  const claimNo = `S-2026-${String(Date.now()).slice(-6)}`;
-  await form.getByRole('textbox', { name: 'Claim number' }).fill(claimNo);
   await form.getByLabel('First day of treatment').fill('2026-11-10');
   await form.getByLabel('Last day of treatment').fill('2026-11-10');
   await form.getByRole('textbox', { name: 'Diagnosis' }).fill('ORT-KORSBAND-V');
@@ -33,8 +31,9 @@ test('a handler registers a claim from the policy, after a preview', async ({ pa
   await expect(preview.getByRole('list', { name: 'Calculation' })).toBeVisible();
 
   await form.getByRole('button', { name: /^Register the claim · SEK 900\.00$/ }).click();
-  await expect(page).toHaveURL(/\/claims\/clm_[a-z0-9]{12}$/);
-  await expect(page.getByRole('heading', { level: 1, name: `Claim ${claimNo}` })).toBeVisible();
+  // The server gives the id and the claim number from its series (ADR 0036).
+  await expect(page).toHaveURL(/\/claims\/clm_[A-Za-z0-9_]+$/);
+  await expect(page.getByRole('heading', { level: 1, name: /^Claim S-\d{4}-\d{6}$/ })).toBeVisible();
 });
 
 test('the policy page opens the form with the policy filled in', async ({ page }) => {

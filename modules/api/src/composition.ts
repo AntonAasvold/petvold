@@ -63,6 +63,8 @@ export interface InstallationConfig {
     /** How deliveries are sent. Defaults to HTTP with fetch. */
     transport?: Transport;
   };
+  /** The claim number's prefix per market, e.g. { SE: 'S', NO: 'N' } (PETVOLD_CLAIM_NUMBER_PREFIX). 'S' when a market has none. */
+  claimNumberPrefix?: Record<string, string>;
 }
 
 /** The environment variables a module's database URL is read from. */
@@ -89,6 +91,21 @@ export function webhooksFromEnv(env: Record<string, string | undefined>): { key?
     ...(env.PETVOLD_WEBHOOK_KEY ? { key: env.PETVOLD_WEBHOOK_KEY } : {}),
     allowHosts: (env.PETVOLD_WEBHOOK_ALLOW_HOSTS ?? '').split(',').map((h) => h.trim()).filter(Boolean),
   };
+}
+
+/**
+ * The claim number's prefix per market from PETVOLD_CLAIM_NUMBER_PREFIX, e.g.
+ * "SE=S,NO=N" (ADR 0036). A prefix is letters and digits, so a number stays
+ * readable and safe in a URL; anything else stops the start.
+ */
+export function claimNumberPrefixFromEnv(env: Record<string, string | undefined>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of (env.PETVOLD_CLAIM_NUMBER_PREFIX ?? '').split(',').map((p) => p.trim()).filter(Boolean)) {
+    const m = /^([A-Z]{2})=([A-Z0-9]{1,8})$/.exec(part);
+    if (!m) throw new Error(`PETVOLD_CLAIM_NUMBER_PREFIX: '${part}' is not MARKET=PREFIX, e.g. SE=S`);
+    out[m[1]!] = m[2]!;
+  }
+  return out;
 }
 
 /** Everything a running Petvold needs, connected. */
@@ -236,6 +253,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     clock,
     ids,
     engineVersion: config.engineVersion,
+    ...(config.claimNumberPrefix ? { claimNumberPrefix: config.claimNumberPrefix } : {}),
   });
 
   const retention = new RetentionService({

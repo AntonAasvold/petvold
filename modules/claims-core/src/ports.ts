@@ -47,6 +47,13 @@ export interface ClaimsStore {
   /** The balance of a ledger account: debits positive, credits negative. 0 for an unknown account. */
   getBalance(account: string): Promise<MinorUnits>;
   getClaim(claimId: string): Promise<Claim | null>;
+  /** Whether a claim already has this claim number. */
+  claimNoTaken(claimNo: string): Promise<boolean>;
+  /**
+   * The next number in the year's series, 1, 2, 3 … (ADR 0036). Atomic: two
+   * callers never get the same number, also on separate instances.
+   */
+  nextClaimNumber(year: number): Promise<number>;
 
   /**
    * Deductible period for the animal and diagnosis group that covers `onDate`.

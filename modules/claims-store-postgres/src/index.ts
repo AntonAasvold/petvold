@@ -157,6 +157,22 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
     });
   }
 
+  async claimNoTaken(claimNo: string): Promise<boolean> {
+    const { rows } = await this.pool.query('select 1 from claims.claim where claim_no = $1', [claimNo]);
+    return rows.length > 0;
+  }
+
+  async nextClaimNumber(year: number): Promise<number> {
+    // One statement, so two callers never get the same number.
+    const { rows } = await this.pool.query<{ last_no: number }>(
+      `insert into claims.claim_number_series (year, last_no) values ($1, 1)
+       on conflict (year) do update set last_no = claims.claim_number_series.last_no + 1
+       returning last_no`,
+      [year],
+    );
+    return rows[0]!.last_no;
+  }
+
   async getClaim(claimId: string): Promise<Claim | null> {
     const { rows } = await this.pool.query(
       `select id, claim_no, policy_id, animal_id, market, currency, channel, treatment_from, treatment_to, diagnosis_code, received_at,

@@ -105,7 +105,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 **Skadeprocessen hela vägen** (före M5)
 - [x] Registrera skada i back office, med förhandsbedömning innan den sparas
 - [x] [ADR 0036](adr/0036-skadeprocessen.md) om skadeprocessen
-- [ ] Skadenummer och id från servern
+- [x] Skadenummer och id från servern
 - [ ] Lägen, återkallelse och avvisning
 - [ ] Komplettering från kund eller klinik, med påminnelse, utgång och `basisCompleteAt` (FAL 7 kap. 1 §)
 - [ ] Rättelse med revisioner
@@ -115,7 +115,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 
 **Dokument**
 - [ ] ADR om dokument: skapande och ett enkelt arkiv
-- [ ] Dokumentskapande med Carbone i en egen container, bakom en port. Meddelandenas data och mallar per marknad och språk blir PDF. Carbone Community Edition har en egen licens (Carbone Community License) som inte tillåter Carbone som tjänst för dokumentskapande, och ADR:en ska pröva den mot hur bolagen kör Petvold.
+- [ ] Dokumentskapande med [Gotenberg](https://gotenberg.dev) (MIT) i en egen container, bakom en port. Mallarna är HTML/CSS med designsystemets tokens, versionerade per marknad och språk med kontrollsumma, och ger PDF/A och PDF/UA. Gotenberg har LibreOffice inbyggt, så Word-mallar (till exempel med docxtemplater) kan läggas till senare utan att containern byts. Carbone valdes bort på grund av licensen (Carbone Community License).
 - [ ] Ett enkelt dokumentarkiv: lagring med kontrollsumma, visning via adresser som inte går att gissa och som slutar gälla, åtkomst efter rättighet och gallring enligt ADR 0028
 - [ ] Bilagor till skador laddas upp från back office till arkivet (ADR 0036)
 
