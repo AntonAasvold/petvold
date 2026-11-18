@@ -18,6 +18,10 @@ En handläggare kan registrera en skada i back office, till exempel en som kunde
 - **Kategorierna** är de som exempelreglerna använder. Produktens regler avgör vad som ersätts. En okänd kategori ersätts som vanligt, så listan begränsar inte motorn.
 - **Policyn anges med id,** eller fylls i från policyns sida. Sökning på personnummer finns under Policyer, och ett personnummer hör inte hemma i ett formulär för skador.
 
+## Rättat efteråt (PR #92)
+- **Fälten låg inte i linje.** Raderna justerades mot nederkanten, så att knappen "Hämta policyn" skulle hamna i höjd med fältet. Tipset under diagnosfältet tryckte då ned de andra fälten. Nu justeras fälten mot överkanten.
+- **Knappen ligger inuti policyfältet** (Web Awesomes `end`-plats). En knapp bredvid fältet hamnar annars i höjd med tipset, och ett tips utanför fältet når inte skärmläsare genom `wa-input`s shadow DOM.
+
 ## Att känna till
 - Flödestestet registrerar en skada på Bella med 900 kr. Det är under självrisken, så ersättningen blir 0 och försäkringsbeloppet påverkas inte för de andra testerna.
 - Ikonen `trash` är ny i `icons.json`.
