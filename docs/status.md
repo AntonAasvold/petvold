@@ -195,8 +195,18 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Roadmapen** har ett nytt avsnitt: skadeprocessen hela vägen, före M5.
   - **Tester:** 38 enhetstester och 24 flöden.
 
+- ADR 0036, skadeprocessen (beslutad), PR #91:
+  - **Lägen:** två nya, väntar på underlag och stängt (återkallat eller avvisat).
+  - **Komplettering** med påminnelse och utgång, och `basisCompleteAt` för fristen i FAL 7 kap. 1 §.
+  - **Rättelse** med revisioner av ärendet.
+  - **Bilagor** som referenser till bolagets arkiv.
+  - **Skadenummer** från servern, och **skadebesked** till kunden.
+  - **Kunden får ett meddelande** när en komplettering går ut. Bolaget kan stänga av det.
+  - **Utförande:** sex PR:er med kontraktet först.
+  - **Roadmapen** har ett nytt avsnitt om dokument: skapande med Carbone i en egen container och ett enkelt dokumentarkiv.
+
 **Nästa steg**
-1. ADR 0036 om skadeprocessen: statusar, komplettering, rättelse, återkallelse och bilagor.
+1. Skadeprocessen, steg 1: skadenummer och id från servern.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.
