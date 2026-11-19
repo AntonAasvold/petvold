@@ -24,6 +24,7 @@ import '../views/claim-register.ts';
 import '../views/jobs-view.ts';
 import '../views/parties-view.ts';
 import '../views/policy-issue.ts';
+import '../views/group-detail.ts';
 import '../views/animals-view.ts';
 import '../views/animal-register.ts';
 import '../views/animal-detail.ts';
@@ -269,6 +270,7 @@ export class AppShell extends LitElement {
       { pattern: /^\/animals\/(?<id>[^/]+)$/, render: (p) => html`<pv-animal-detail .api=${this.api} .me=${this.me} animal-id=${p.id!}></pv-animal-detail>` },
       { pattern: /^\/litters\/new$/, render: () => html`<pv-litter-register .api=${this.api}></pv-litter-register>` },
       { pattern: /^\/litters\/(?<id>[^/]+)$/, render: (p) => html`<pv-litter-detail .api=${this.api} litter-id=${p.id!}></pv-litter-detail>` },
+      { pattern: /^\/groups\/(?<id>[^/]+)$/, render: (p) => html`<pv-group-detail .api=${this.api} .me=${this.me} group-id=${p.id!}></pv-group-detail>` },
       { pattern: /^\/parties$/, render: () => html`<pv-parties .api=${this.api} .me=${this.me}></pv-parties>` },
       { pattern: /^\/parties\/new$/, render: () => html`<pv-party-register .api=${this.api}></pv-party-register>` },
       { pattern: /^\/parties\/(?<id>[^/]+)$/, render: (p) => html`<pv-party-detail .api=${this.api} .me=${this.me} party-id=${p.id!}></pv-party-detail>` },

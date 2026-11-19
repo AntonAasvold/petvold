@@ -79,7 +79,6 @@ export function issueProblems(f: IssueForm, p: ProductLike | null, today: string
   if (!p) out.push('policy.needProduct');
   if (!f.startDate) out.push('policy.needStart');
   else if (f.startDate < today) out.push('application.startInPast');
-  if (p && needsApplication(p)) out.push('policy.needsApplication');
   if (p && !p.content.tariffSeries && toMinorUnits(f.premium, p.content.currency) === null) out.push('policy.needPremium');
   if (!f.channel.trim()) out.push('policy.needChannel');
   if (!f.acceptedAt || f.acceptedAt > now) out.push('policy.badAcceptedAt');
@@ -186,4 +185,38 @@ export function changeBody(f: ChangeForm, priced: boolean, currency: string) {
 export function reversibleCancellation<T extends { id: string; type: string; requestedAt: string }>(transactions: T[]): T | undefined {
   const latest = [...transactions].sort((a, b) => (a.requestedAt < b.requestedAt ? -1 : a.requestedAt > b.requestedAt ? 1 : 0)).at(-1);
   return latest?.type === 'cancel' ? latest : undefined;
+}
+
+/** An answer to one underwriting question (ADR 0031): yes or no, and for a diagnoses question answered yes the codes. */
+export interface AnswerForm {
+  question: string;
+  type: 'boolean' | 'diagnoses';
+  value: boolean | null;
+  /** Comma or space separated diagnosis codes, for a diagnoses question answered yes. */
+  diagnoses: string;
+}
+
+export const answersFor = (questions: { id: string; type: 'boolean' | 'diagnoses' }[]): AnswerForm[] =>
+  questions.map((q) => ({ question: q.id, type: q.type, value: null, diagnoses: '' }));
+
+const codes = (s: string) => s.split(/[\s,]+/).map((c) => c.trim().toUpperCase()).filter(Boolean);
+
+/** What the answers are missing: every question answered, and diagnoses named when declared. */
+export function answerProblems(answers: AnswerForm[]): string[] {
+  const out: string[] = [];
+  if (answers.some((a) => a.value === null)) out.push('policy.needAnswers');
+  if (answers.some((a) => a.type === 'diagnoses' && a.value === true && !codes(a.diagnoses).length)) out.push('policy.needDiagnoses');
+  return out;
+}
+
+/** The answers as the API takes them. */
+export function answersBody(answers: AnswerForm[]) {
+  return answers
+    .filter((a) => a.value !== null)
+    .map((a) => ({ question: a.question, value: a.value as boolean, ...(a.type === 'diagnoses' && a.value && codes(a.diagnoses).length ? { diagnosisCodes: codes(a.diagnoses) } : {}) }));
+}
+
+/** The body for POST /v1/applications: the same as issuing, with the answers. */
+export function applicationBody(f: IssueForm, p: ProductLike, answers: AnswerForm[]) {
+  return { ...issueBody(f, p), answers: answersBody(answers) };
 }

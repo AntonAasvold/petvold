@@ -109,8 +109,6 @@ export function problemLabel(id: string): string {
       return msg('Choose a product version.', { id: 'policy.needProduct' });
     case 'policy.needStart':
       return msg('Give the start date.', { id: 'policy.needStart' });
-    case 'policy.needsApplication':
-      return msg('The product takes an application.', { id: 'policy.needsApplication' });
     case 'policy.needPremium':
       return msg('Give the premium as an amount, e.g. 3600.', { id: 'policy.needPremium' });
     case 'policy.needChannel':
@@ -119,6 +117,14 @@ export function problemLabel(id: string): string {
       return msg('Give when the customer accepted. It cannot be in the future.', { id: 'policy.badAcceptedAt' });
     case 'policy.needDocuments':
       return msg('Tick that the customer was shown the terms and the pre-contract information.', { id: 'policy.needDocuments' });
+    case 'group.needLitter':
+      return msg('Give the litter as a litter id, e.g. lit_1.', { id: 'group.needLitter' });
+    case 'group.needPolicy':
+      return msg('Give the policy as a policy id, e.g. pol_bella.', { id: 'group.needPolicy' });
+    case 'policy.needAnswers':
+      return msg('Answer every health question.', { id: 'policy.needAnswers' });
+    case 'policy.needDiagnoses':
+      return msg('Give the diagnoses the customer declared.', { id: 'policy.needDiagnoses' });
     case 'policy.needCancelReason':
       return msg('Choose the reason for the cancellation.', { id: 'policy.needCancelReason' });
     case 'policy.futureReceived':
@@ -432,4 +438,23 @@ export function cancellationLabel(r: string): string {
     default:
       return r;
   }
+}
+
+export function underwritingLabel(o: string): string {
+  switch (o) {
+    case 'accept':
+      return msg('Accepted', { id: 'uw.accept' });
+    case 'accept-with-riders':
+      return msg('Accepted with riders', { id: 'uw.accept-with-riders' });
+    case 'refer':
+      return msg('Referred to an underwriter', { id: 'uw.refer' });
+    case 'decline':
+      return msg('Declined', { id: 'uw.decline' });
+    default:
+      return o;
+  }
+}
+
+export function groupKindLabel(k: string): string {
+  return k === 'litter' ? msg('Litter group', { id: 'group.litter' }) : k === 'household' ? msg('Household', { id: 'group.household' }) : k;
 }

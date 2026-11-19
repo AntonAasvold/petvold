@@ -20,13 +20,14 @@ import { IdempotencyKeys } from '../decide.ts';
 import { formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import { displayName } from '../party-logic.ts';
-import { CHANNELS, emptyIssue, issueBody, issueProblems, needsApplication, quoteBody, withProductDefaults, type IssueForm, type ProductLike } from '../policy-form.ts';
+import { CHANNELS, answerProblems, answersBody, answersFor, applicationBody, emptyIssue, issueBody, issueProblems, needsApplication, quoteBody, withProductDefaults, type AnswerForm, type IssueForm, type ProductLike } from '../policy-form.ts';
 import { navigate } from '../router.ts';
 import { pvComponents } from '../styles/pv-components.ts';
-import { channelLabelFor, documentLabel, problemLabel } from './labels.ts';
+import { channelLabelFor, documentLabel, problemLabel, underwritingLabel } from './labels.ts';
 
 type Product = components['schemas']['ProductVersion'];
 type Quote = components['schemas']['Quote'];
+type Question = components['schemas']['ApplicationQuestions']['questions'][number];
 
 const today = () => new Date().toISOString().slice(0, 10);
 /** Now as datetime-local wants it, in the browser's time zone. */
@@ -47,6 +48,9 @@ export class PolicyIssue extends LitElement {
   @state() private animal: { name: string; species: string; market: string } | null = null;
   @state() private holderName = '';
   @state() private quote: Quote | null = null;
+  /** The underwriting questions, for a product with health questions (ADR 0031). */
+  @state() private questions: Question[] = [];
+  @state() private answers: AnswerForm[] = [];
   @state() private shown: string[] = [];
   @state() private notice: Notice | null = null;
   @state() private busy = '';
@@ -107,6 +111,16 @@ export class PolicyIssue extends LitElement {
         display: flex;
         flex-direction: column;
         gap: var(--space-2);
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+      legend {
+        padding: 0 0 var(--space-2);
+        font-weight: 600;
+      }
+      .row > .pv-choice {
+        flex: 0 1 140px;
       }
       .pv-card__body p {
         margin: 0;
@@ -156,6 +170,24 @@ export class PolicyIssue extends LitElement {
     });
     this.products = data?.items ?? [];
     if (!this.product() && this.products[0]) this.form = withProductDefaults(this.form, this.products[0] as unknown as ProductLike);
+    await this.loadQuestions();
+  }
+
+  /** The health questions for the product and the animal's species, when the product has them. */
+  private async loadQuestions() {
+    const p = this.product();
+    this.questions = [];
+    this.answers = [];
+    if (!p || !needsApplication(p) || !this.animal) return;
+    const { data } = await this.api.GET('/v1/application-questions', { params: { query: { productVersion: p.id, species: this.animal.species, date: this.form.startDate } } });
+    this.questions = data?.questions ?? [];
+    this.answers = answersFor(this.questions);
+  }
+
+  private answer(i: number, patch: Partial<AnswerForm>) {
+    this.answers = this.answers.map((a, j) => (j === i ? { ...a, ...patch } : a));
+    this.quote = null;
+    this.keys.done('issue');
   }
 
   private set(patch: Partial<IssueForm>) {
@@ -206,7 +238,10 @@ export class PolicyIssue extends LitElement {
                   value=${f.productVersion}
                   @change=${(e: Event) => {
                     const chosen = this.products.find((x) => x.id === value(e));
-                    if (chosen) this.set(withProductDefaults(this.form, chosen as unknown as ProductLike));
+                    if (chosen) {
+                      this.set(withProductDefaults(this.form, chosen as unknown as ProductLike));
+                      void this.loadQuestions();
+                    }
                   }}
                 >
                   ${this.products.map((x) => html`<wa-option value=${x.id}>${x.name} (${x.id})</wa-option>`)}
@@ -214,7 +249,7 @@ export class PolicyIssue extends LitElement {
                 <wa-input type="date" label=${msg('Start date', { id: 'policy.start' })} .value=${f.startDate} @change=${(e: Event) => (this.set({ startDate: value(e) }), void this.loadProducts())}></wa-input>
               </div>
               ${p && needsApplication(p)
-                ? html`<p class="pv-note">${msg('This product has health questions: register an application instead, which may be referred to an underwriter.', { id: 'policy.needsApplicationNote' })}</p>`
+                ? html`<p class="pv-note">${msg('This product has health questions: the answers go with an application, which may be referred to an underwriter.', { id: 'policy.needsApplicationNote' })}</p>`
                 : nothing}
               ${p
                 ? html`<div class="row">
@@ -229,6 +264,31 @@ export class PolicyIssue extends LitElement {
                 : html`<p>${msg('No product version is on sale for this animal on the start date.', { id: 'policy.noProduct' })}</p>`}
             </div>
           </section>
+
+          ${this.questions.length
+            ? html`<section class="pv-card" aria-labelledby="health">
+                <div class="pv-card__head"><h2 class="pv-card__title" id="health">${msg('Health questions', { id: 'policy.health' })}</h2></div>
+                <div class="pv-card__body">
+                  ${this.questions.map(
+                    (q, i) => html`<fieldset class="docs">
+                      <legend>${q.label ?? q.id}</legend>
+                      <div class="row">
+                        <label class="pv-choice"><input type="radio" name=${`q-${i}`} .checked=${this.answers[i]?.value === true} @change=${() => this.answer(i, { value: true })} /><span class="pv-choice__title">${msg('Yes', { id: 'common.yes' })}</span></label>
+                        <label class="pv-choice"><input type="radio" name=${`q-${i}`} .checked=${this.answers[i]?.value === false} @change=${() => this.answer(i, { value: false })} /><span class="pv-choice__title">${msg('No', { id: 'common.no' })}</span></label>
+                      </div>
+                      ${q.type === 'diagnoses' && this.answers[i]?.value === true
+                        ? html`<wa-input
+                            label=${msg('Diagnosis codes', { id: 'policy.diagnosisCodes' })}
+                            hint=${msg('Separated by commas, e.g. ORA-OTIT', { id: 'policy.diagnosisHint' })}
+                            .value=${this.answers[i]!.diagnoses}
+                            @input=${(e: Event) => this.answer(i, { diagnoses: value(e) })}
+                          ></wa-input>`
+                        : nothing}
+                    </fieldset>`,
+                  )}
+                </div>
+              </section>`
+            : nothing}
 
           <section class="pv-card" aria-labelledby="acceptance">
             <div class="pv-card__head"><h2 class="pv-card__title" id="acceptance">${msg("The customer's acceptance", { id: 'policy.acceptance' })}</h2></div>
@@ -270,12 +330,17 @@ export class PolicyIssue extends LitElement {
                           <div class="pv-dl__row"><dt>${msg('Base price per year', { id: 'policy.basePremium' })}</dt><dd>${money(this.quote.price.basePremium)}</dd></div>
                           <div class="pv-dl__row pv-dl__row--total"><dt>${msg('Premium per year', { id: 'policy.annualPremium' })}</dt><dd>${money(this.quote.price.annualPremium)}</dd></div>
                           <div class="pv-dl__row"><dt>${msg('For this term', { id: 'policy.termPremium' })} (${this.quote.startDate} – ${this.quote.endDate})</dt><dd>${money(this.quote.price.termPremium)}</dd></div>
+                          ${this.quote.underwriting
+                            ? html`<div class="pv-dl__row"><dt>${msg('The answers would give', { id: 'policy.wouldGive' })}</dt><dd>${underwritingLabel(this.quote.underwriting.outcome)}</dd></div>`
+                            : nothing}
                         </dl>`
                       : nothing}`}
               ${this.shown.length ? html`<wa-callout variant="danger" role="alert">${this.shown.map((x) => html`<div>${problemLabel(x)}</div>`)}</wa-callout>` : nothing}
               ${this.notice ? html`<wa-callout variant=${this.notice.variant} role="alert">${this.notice.text}</wa-callout>` : nothing}
-              <wa-button class="wide" type="submit" variant="brand" ?loading=${this.busy === 'issue'} ?disabled=${!!p && needsApplication(p)}
-                >${msg('Issue the policy', { id: 'policy.submitIssue' })}${this.quote ? ` · ${money(this.quote.price.annualPremium)} ${msg('per year', { id: 'policy.perYear' })}` : ''}</wa-button
+              <wa-button class="wide" type="submit" variant="brand" ?loading=${this.busy === 'issue'}
+                >${p && needsApplication(p) ? msg('Send the application', { id: 'policy.submitApplication' }) : msg('Issue the policy', { id: 'policy.submitIssue' })}${this.quote
+                  ? ` · ${money(this.quote.price.annualPremium)} ${msg('per year', { id: 'policy.perYear' })}`
+                  : ''}</wa-button
               >
             </div>
           </section>
@@ -288,7 +353,8 @@ export class PolicyIssue extends LitElement {
     const p = this.product();
     if (!p) return;
     this.busy = 'quote';
-    const { data, error } = await this.api.POST('/v1/quotes', { body: quoteBody(this.form, p) as never });
+    const answered = answersBody(this.answers);
+    const { data, error } = await this.api.POST('/v1/quotes', { body: { ...quoteBody(this.form, p), ...(answered.length ? { answers: answered } : {}) } as never });
     this.busy = '';
     if (data) {
       this.quote = data;
@@ -302,13 +368,17 @@ export class PolicyIssue extends LitElement {
   private async submit(e: Event) {
     e.preventDefault();
     const p = this.product();
-    this.shown = issueProblems(this.form, p, today(), nowLocal());
+    const application = !!p && needsApplication(p);
+    this.shown = [...issueProblems(this.form, p, today(), nowLocal()), ...(application ? answerProblems(this.answers) : [])];
     if (this.shown.length || !p) return;
     this.busy = 'issue';
     let created: { id: string } | undefined;
     const { ok, notice } = await act(
       async () => {
-        const r = await this.api.POST('/v1/policies', { params: { header: { 'Idempotency-Key': this.keys.for('issue') } }, body: issueBody(this.form, p) as never });
+        const params = { params: { header: { 'Idempotency-Key': this.keys.for('issue') } } };
+        const r = application
+          ? await this.api.POST('/v1/applications', { ...params, body: applicationBody(this.form, p, this.answers) as never })
+          : await this.api.POST('/v1/policies', { ...params, body: issueBody(this.form, p) as never });
         created = r.data;
         return r;
       },
@@ -317,7 +387,8 @@ export class PolicyIssue extends LitElement {
     this.busy = '';
     if (ok && created) {
       this.keys.done('issue');
-      navigate(`/policies/${encodeURIComponent(created.id)}`);
+      // An application opens its page: accepted, referred to an underwriter, or declined.
+      navigate(application ? `/applications/${encodeURIComponent(created.id)}` : `/policies/${encodeURIComponent(created.id)}`);
       return;
     }
     this.notice = notice;
