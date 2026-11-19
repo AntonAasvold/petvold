@@ -77,6 +77,36 @@ export interface JobControl {
   reason: string;
 }
 
+/** An installation's own schedule for a daily job, approved by a second person (ADR 0037). Overrides the default. */
+export interface JobSetting {
+  job: string;
+  /** HH:MM in each market's time zone. */
+  at: string;
+  /** false: the scheduler never runs it; "Run now" still works. */
+  enabled: boolean;
+  version: number;
+  reason: string;
+  proposedBy: string;
+  approvedBy: string;
+  changedAt: Timestamp;
+}
+
+/** A proposed change of a job's schedule, waiting for a second person (four eyes). */
+export interface ScheduleChange {
+  id: string;
+  job: string;
+  at: string;
+  enabled: boolean;
+  reason: string;
+  proposedBy: string;
+  proposedAt: Timestamp;
+  status: 'pending' | 'approved' | 'rejected';
+  decidedBy?: string;
+  decidedAt?: Timestamp;
+  /** Why it was rejected. */
+  decisionReason?: string;
+}
+
 /** An event the relay set aside after too many attempts (ADR 0037). Kept until someone sends it again. */
 export interface DeadLetterRecord {
   /** The outbox, e.g. 'claims' or 'policies'. */
@@ -112,6 +142,21 @@ export interface SchedulingStore {
   pauses(): Promise<JobPause[]>;
   /** What was done to a job, newest first. */
   controls(job: string, limit: number): Promise<JobControl[]>;
+  /** Stores a proposed schedule change. Throws JobConflictError if the job already has a pending one. */
+  proposeChange(c: ScheduleChange): Promise<void>;
+  getChange(id: string): Promise<ScheduleChange | null>;
+  /** The job's schedule changes, newest first. */
+  changes(job: string, limit: number): Promise<ScheduleChange[]>;
+  /**
+   * Approves a pending change and makes it the job's setting, in one step.
+   * Throws JobConflictError if it is not pending. Four eyes are the caller's
+   * check; the Postgres store refuses an approver who proposed it too.
+   */
+  approveChange(id: string, by: string, at: Timestamp): Promise<JobSetting>;
+  /** Rejects a pending change with a reason. Throws JobConflictError if it is not pending. */
+  rejectChange(id: string, by: string, at: Timestamp, reason: string): Promise<ScheduleChange>;
+  /** Every job's own setting. */
+  settings(): Promise<JobSetting[]>;
   /** Keeps a dead letter; the same event again replaces it. */
   saveDeadLetter(d: DeadLetterRecord): Promise<void>;
   /** Every dead letter, oldest first. */
@@ -123,7 +168,7 @@ export interface SchedulingStore {
 /** An error about a job, with a code the API turns into a status. */
 export class JobError extends Error {
   constructor(
-    public readonly code: 'not_found' | 'conflict' | 'validation',
+    public readonly code: 'not_found' | 'conflict' | 'validation' | 'forbidden',
     message: string,
   ) {
     super(message);
@@ -196,6 +241,16 @@ export function nextDailyRun(at: string, market: string, now: Timestamp, last: {
   return zonedTime(tomorrow, at, zone);
 }
 
+/** A schedule as it runs: with whether it is enabled and which setting version gave it (0: the default). */
+export type EffectiveSchedule = Schedule & { enabled: boolean; version: number };
+
+/** The installation's approved setting for a daily job, or the job's default. Pure. */
+export function effectiveSchedule(job: JobDefinition, settings: JobSetting[]): EffectiveSchedule {
+  const s = settings.find((x) => x.job === job.name);
+  if (s && job.schedule.kind === 'daily') return { kind: 'daily', at: s.at, enabled: s.enabled, version: s.version };
+  return { ...job.schedule, enabled: true, version: 0 };
+}
+
 /** A schedule's time of day must be HH:MM. */
 export function validSchedule(s: Schedule): boolean {
   return s.kind === 'daily' ? /^([01]\d|2[0-3]):[0-5]\d$/.test(s.at) : Number.isInteger(s.seconds) && s.seconds >= 1;
@@ -213,7 +268,19 @@ export interface SchedulerDeps {
   log?: (line: string) => void;
   /** How long a lease lasts before it must be renewed. Default 10 minutes. */
   leaseMs?: number;
+  /** Told of every failed run, e.g. to send job.failed to webhooks (ADR 0037). Its own failure is only logged. */
+  onFailed?: (run: JobRun) => Promise<void>;
 }
+
+/** What /healthz reports about the runs (ADR 0037): failed, late or paused, per job and market. */
+export interface JobHealth {
+  failed: { job: string; market: string; runId: string }[];
+  late: { job: string; market: string; dueAt: Timestamp }[];
+  paused: string[];
+}
+
+/** A run is late for the health check an hour after its time: a minute's check, or a slow run before it, is not late. */
+export const LATE_AFTER_MS = 60 * 60_000;
 
 /**
  * Runs the daily jobs when they are due, one server at a time per job and
@@ -243,10 +310,12 @@ export class Scheduler {
     const out: JobRun[] = [];
     const markets = await this.d.markets();
     const paused = new Set((await this.d.store.pauses()).map((p) => p.job));
+    const settings = await this.d.store.settings();
     for (const job of this.d.jobs) {
-      if (job.schedule.kind !== 'daily' || paused.has(job.name)) continue;
+      const schedule = effectiveSchedule(job, settings);
+      if (schedule.kind !== 'daily' || !schedule.enabled || paused.has(job.name)) continue;
       for (const market of markets) {
-        const day = dailyDue(job.schedule.at, market, now, await this.d.store.lastScheduledRun(job.name, market));
+        const day = dailyDue(schedule.at, market, now, await this.d.store.lastScheduledRun(job.name, market));
         if (!day) continue;
         const run = await this.run(job, market, { trigger: 'schedule', by: 'scheduler', dryRun: false, scheduledFor: day });
         if (run) out.push(run);
@@ -301,12 +370,43 @@ export class Scheduler {
         const failed = { status: 'failed' as const, finishedAt: this.d.clock.now(), error };
         await this.d.store.finishRun(run.id, failed);
         this.d.log?.(`job ${job.name} in ${market} failed: ${error}`);
-        return { ...run, ...failed };
+        const out = { ...run, ...failed };
+        await this.d.onFailed?.(out).catch((err: Error) => this.d.log?.(`job ${job.name}: telling of the failure failed: ${err.message}`));
+        return out;
       }
     } finally {
       clearInterval(renew);
       await this.d.store.releaseLease(key, this.d.holder);
     }
+  }
+
+  /** A job's schedule as it runs now: the installation's approved setting, or the default. */
+  async schedule(name: string): Promise<EffectiveSchedule> {
+    return effectiveSchedule(this.job(name)!, await this.d.store.settings());
+  }
+
+  /**
+   * For /healthz: per job and market, whether the latest run failed, whether
+   * today's run is more than an hour late, and which jobs are paused. A
+   * disabled job is neither late nor paused: someone decided it, with four eyes.
+   */
+  async health(): Promise<JobHealth> {
+    const now = this.d.clock.now();
+    const markets = await this.d.markets();
+    const pauses = await this.d.store.pauses();
+    const settings = await this.d.store.settings();
+    const out: JobHealth = { failed: [], late: [], paused: pauses.map((p) => p.job) };
+    for (const job of this.d.jobs) {
+      const schedule = effectiveSchedule(job, settings);
+      for (const market of markets) {
+        const [latest] = await this.d.store.listRuns({ job: job.name, market, limit: 1 });
+        if (latest?.status === 'failed') out.failed.push({ job: job.name, market, runId: latest.id });
+        if (schedule.kind !== 'daily' || !schedule.enabled || out.paused.includes(job.name)) continue;
+        const due = nextDailyRun(schedule.at, market, now, await this.d.store.lastScheduledRun(job.name, market));
+        if (Date.parse(now) - Date.parse(due) > LATE_AFTER_MS) out.late.push({ job: job.name, market, dueAt: due });
+      }
+    }
+    return out;
   }
 
   /** The job by name, or undefined. */
@@ -361,6 +461,8 @@ export class InMemorySchedulingStore implements SchedulingStore {
   private dead = new Map<string, DeadLetterRecord>();
   private paused = new Map<string, JobPause>();
   private log: JobControl[] = [];
+  private changeList: ScheduleChange[] = [];
+  private settingMap = new Map<string, JobSetting>();
 
   async tryLease(key: string, holder: string, until: Timestamp, now: Timestamp): Promise<boolean> {
     const l = this.leases.get(key);
@@ -423,6 +525,45 @@ export class InMemorySchedulingStore implements SchedulingStore {
       .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : a.id < b.id ? 1 : -1))
       .slice(0, limit)
       .map((c) => structuredClone(c));
+  }
+
+  async proposeChange(c: ScheduleChange): Promise<void> {
+    if (this.changeList.some((x) => x.job === c.job && x.status === 'pending')) throw new JobConflictError(`${c.job} already has a change waiting for approval`);
+    this.changeList.push(structuredClone(c));
+  }
+
+  async getChange(id: string): Promise<ScheduleChange | null> {
+    const c = this.changeList.find((x) => x.id === id);
+    return c ? structuredClone(c) : null;
+  }
+
+  async changes(job: string, limit: number): Promise<ScheduleChange[]> {
+    return this.changeList
+      .filter((c) => c.job === job)
+      .sort((a, b) => (a.proposedAt < b.proposedAt ? 1 : a.proposedAt > b.proposedAt ? -1 : a.id < b.id ? 1 : -1))
+      .slice(0, limit)
+      .map((c) => structuredClone(c));
+  }
+
+  async approveChange(id: string, by: string, at: Timestamp): Promise<JobSetting> {
+    const c = this.changeList.find((x) => x.id === id);
+    if (!c || c.status !== 'pending') throw new JobConflictError(`Change ${id} is not waiting for approval`);
+    if (c.proposedBy === by) throw new JobError('forbidden', 'Someone else must approve the change');
+    Object.assign(c, { status: 'approved', decidedBy: by, decidedAt: at });
+    const setting: JobSetting = { job: c.job, at: c.at, enabled: c.enabled, version: (this.settingMap.get(c.job)?.version ?? 0) + 1, reason: c.reason, proposedBy: c.proposedBy, approvedBy: by, changedAt: at };
+    this.settingMap.set(c.job, setting);
+    return structuredClone(setting);
+  }
+
+  async rejectChange(id: string, by: string, at: Timestamp, reason: string): Promise<ScheduleChange> {
+    const c = this.changeList.find((x) => x.id === id);
+    if (!c || c.status !== 'pending') throw new JobConflictError(`Change ${id} is not waiting for approval`);
+    Object.assign(c, { status: 'rejected', decidedBy: by, decidedAt: at, decisionReason: reason });
+    return structuredClone(c);
+  }
+
+  async settings(): Promise<JobSetting[]> {
+    return [...this.settingMap.values()].map((x) => structuredClone(x));
   }
 
   async saveDeadLetter(d: DeadLetterRecord): Promise<void> {

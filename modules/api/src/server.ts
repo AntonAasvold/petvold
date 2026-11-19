@@ -63,8 +63,14 @@ async function health(): Promise<Response> {
   const dead = inst.relay.deadLetters();
   try {
     await inst.ping();
-    // relay: 'leading' on the one server that delivers events, 'standby' on the others (ADR 0037).
-    return Response.json({ status: dead.length ? 'degraded' : 'ok', deadLetters: dead.length, relay: inst.relay.isLeading() ? 'leading' : 'standby' }, { status: 200 });
+    // Runs that failed, are more than an hour late, or are paused make it degraded (ADR 0037).
+    const jobs = await inst.scheduler.health();
+    const degraded = dead.length || jobs.failed.length || jobs.late.length || jobs.paused.length;
+    // relay: 'leading' on the one server that delivers events, 'standby' on the others.
+    return Response.json(
+      { status: degraded ? 'degraded' : 'ok', deadLetters: dead.length, relay: inst.relay.isLeading() ? 'leading' : 'standby', jobs },
+      { status: 200 },
+    );
   } catch (err) {
     return Response.json({ status: 'down', error: (err as Error).message }, { status: 503 });
   }

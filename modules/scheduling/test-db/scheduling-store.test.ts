@@ -17,7 +17,7 @@ after(async () => {
 });
 
 schedulingStoreSuite('PostgresSchedulingStore', async () => {
-  await admin.query('truncate scheduling.lease, scheduling.run, scheduling.relay_dead_letter, scheduling.job_pause, scheduling.job_control');
+  await admin.query('truncate scheduling.lease, scheduling.run, scheduling.relay_dead_letter, scheduling.job_pause, scheduling.job_control, scheduling.job_setting, scheduling.job_schedule_change');
   return { store: new PostgresSchedulingStore(pool) };
 });
 

@@ -7,7 +7,7 @@ import type { Me } from './permissions.ts';
 
 export interface JobLike {
   id: string;
-  schedule: { kind: 'daily' | 'interval'; at?: string; seconds?: number };
+  schedule: { kind: 'daily' | 'interval'; at?: string; seconds?: number; enabled?: boolean };
   paused?: { pausedBy: string; pausedAt: string; reason: string };
   markets: { market: string; nextRunAt?: string; lastRun?: { status: string; startedAt: string; finishedAt?: string } }[];
 }
@@ -37,4 +37,19 @@ export function controlProblems(reason: string): string[] {
 /** A scheduled run is late when its time passed more than a few minutes ago: the scheduler checks once a minute. */
 export function isLate(nextRunAt: string, now: string): boolean {
   return Date.parse(now) - Date.parse(nextRunAt) > 5 * 60_000;
+}
+
+/** Whether the caller may propose and approve schedule changes (four eyes are the API's check). */
+export const mayConfigureJobs = (me: Me | null): boolean => !!me?.permissions.includes('jobs:configure');
+
+/** Whether the caller may approve a change: with jobs:configure, and not their own (four eyes). */
+export const mayApproveChange = (me: Me | null, change: { proposedBy: string; status: string }): boolean =>
+  mayConfigureJobs(me) && change.status === 'pending' && change.proposedBy !== me!.subject;
+
+/** What a schedule change needs, as message ids. */
+export function scheduleChangeProblems(f: { at: string; reason: string }): string[] {
+  const out: string[] = [];
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(f.at)) out.push('jobs.badTime');
+  if (!f.reason.trim()) out.push('settings.needReason');
+  return out;
 }

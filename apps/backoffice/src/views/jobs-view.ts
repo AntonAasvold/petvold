@@ -132,7 +132,9 @@ export class JobsView extends LitElement {
         key: 'next',
         header: msg('Next run', { id: 'jobs.col.next' }),
         value: (r) =>
-          r.job.paused
+          r.job.schedule.enabled === false
+            ? html`<wa-badge variant="neutral">${msg('Turned off', { id: 'jobs.off' })}</wa-badge>`
+            : r.job.paused
             ? html`<wa-badge variant="warning">${msg('Paused', { id: 'job.paused' })}</wa-badge>`
             : r.nextRunAt
               ? html`${isLate(r.nextRunAt, new Date().toISOString()) ? html`<wa-badge variant="danger">${msg('Late', { id: 'jobs.late' })}</wa-badge> ` : nothing}${formatDateTime(r.nextRunAt, lang)}`

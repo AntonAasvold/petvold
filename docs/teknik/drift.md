@@ -68,6 +68,7 @@ Varje modul skriver sina händelser i en egen outbox i samma transaktion som än
   - `200` med `{"status":"ok"}` när alla databaser svarar
   - `{"status":"degraded"}` när det finns döda bokstäver
   - `relay` är `leading` på den server som är reläet och `standby` på de andra
+  - `jobs` listar körningar som misslyckats, är mer än en timme sena eller är pausade, och de gör också `status` till `degraded` (ADR 0037)
   - `503` när en databas inte svarar
 - **SIGTERM och SIGINT:** servern slutar ta emot anrop, stoppar reläet efter pågående runda och stänger databasanslutningarna.
 

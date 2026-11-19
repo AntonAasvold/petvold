@@ -1373,7 +1373,7 @@ export function createApp(d: AppDeps) {
       return problem(c, err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);
     }
     if (err instanceof JobError) {
-      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
+      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);
     }
     if (err instanceof DomainError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
@@ -1406,17 +1406,20 @@ export function createApp(d: AppDeps) {
   };
   const jobView = async (job: string, markets: string[]) => {
     const def = scheduler.job(job)!;
+    const schedule = await scheduler.schedule(job);
     const paused = (await scheduler.store.pauses()).find((p) => p.job === job);
+    const pendingChange = (await scheduler.store.changes(job, 20)).find((x) => x.status === 'pending');
     const now = d.clock.now();
     return {
       id: def.name,
-      schedule: def.schedule,
+      schedule,
       ...(paused ? { paused } : {}),
+      ...(pendingChange ? { pendingChange } : {}),
       markets: await Promise.all(
         markets.map(async (market) => {
           const [lastRun] = await scheduler.store.listRuns({ job, market, limit: 1 });
           const next =
-            !paused && def.schedule.kind === 'daily' ? nextDailyRun(def.schedule.at, market, now, await scheduler.store.lastScheduledRun(job, market)) : undefined;
+            !paused && schedule.enabled && schedule.kind === 'daily' ? nextDailyRun(schedule.at, market, now, await scheduler.store.lastScheduledRun(job, market)) : undefined;
           return { market, ...(next ? { nextRunAt: next } : {}), ...(lastRun ? { lastRun } : {}) };
         }),
       ),
@@ -1481,6 +1484,53 @@ export function createApp(d: AppDeps) {
       await (scheduler.store.resume(job, control));
       return { status: 201, body: control };
     });
+  });
+
+  // Schedule changes with four eyes (ADR 0037): one person proposes, another approves.
+  app.get('/v1/jobs/:job/schedule-changes', async (c) => sendPage(c, await scheduler.store.changes(requireJob(c), 1000)));
+
+  app.post('/v1/jobs/:job/schedule-changes', async (c) => {
+    const job = requireJob(c);
+    if (scheduler.job(job)!.schedule.kind !== 'daily') return problem(c, 422, `${job} has no time of day`);
+    const r = await readJson(c, 'ProposeScheduleChangeRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => {
+      const change = {
+        id: `jsc_${crypto.randomUUID().replaceAll('-', '')}`,
+        job,
+        at: r.body.at,
+        enabled: r.body.enabled,
+        reason: r.body.reason.trim(),
+        proposedBy: c.get('principal').subject,
+        proposedAt: d.clock.now(),
+        status: 'pending' as const,
+      };
+      await scheduler.store.proposeChange(change);
+      return { status: 201, body: change };
+    });
+  });
+
+  const requireChange = async (c: Context<Env>, job: string) => {
+    const change = await scheduler.store.getChange(c.req.param('changeId')!);
+    if (!change || change.job !== job) throw new JobError('not_found', `Change ${c.req.param('changeId')} does not exist`);
+    return change;
+  };
+
+  app.post('/v1/jobs/:job/schedule-changes/:changeId/approvals', async (c) => {
+    const job = requireJob(c);
+    const change = await requireChange(c, job);
+    return idempotent(c, {}, async () => {
+      await scheduler.store.approveChange(change.id, c.get('principal').subject, d.clock.now());
+      return { status: 201, body: await scheduler.store.getChange(change.id) };
+    });
+  });
+
+  app.post('/v1/jobs/:job/schedule-changes/:changeId/rejections', async (c) => {
+    const job = requireJob(c);
+    const change = await requireChange(c, job);
+    const r = await readJson(c, 'JobControlRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await scheduler.store.rejectChange(change.id, c.get('principal').subject, d.clock.now(), r.body.reason.trim()) }));
   });
 
   app.get('/v1/relay-dead-letters', async (c) =>

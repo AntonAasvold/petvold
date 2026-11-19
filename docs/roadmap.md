@@ -120,7 +120,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [x] Schemaläggare i servern med lån i en tabell, och historik över körningar: start, slut, resultat med antal, fel och vem eller vad som startade den (ADR 0037, steg 1)
 - [x] Reläet bakom ett lån, med döda poster som sparas (steg 2)
 - [x] API och back office: lista över körningar med nästa och senaste körning, historik, "Kör nu", paus med spår, och reläets döda poster med "Skicka igen" (steg 3)
-- [ ] Schema som går att ändra med fyra ögon, `job.failed` och larm i `/healthz` (steg 4)
+- [x] Schema som går att ändra med fyra ögon, `job.failed` och larm i `/healthz` (steg 4)
 - [ ] Back office: reläets och webhook-arbetarens kö och eftersläpning
 - [ ] Påminnelser och utgång för komplettering (skadeprocessen, steg 3) som en körning bland de andra
 

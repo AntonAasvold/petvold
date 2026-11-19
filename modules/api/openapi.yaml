@@ -3577,6 +3577,117 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/jobs/{job}/schedule-changes:
+    get:
+      tags: [jobs]
+      operationId: listScheduleChanges
+      x-permission: jobs:read
+      summary: Proposed, approved and rejected changes of the job's schedule, newest first
+      description: Requires the permission `jobs:read`.
+      parameters:
+        - $ref: '#/components/parameters/Job'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The changes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScheduleChange' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    post:
+      tags: [jobs]
+      operationId: proposeScheduleChange
+      x-permission: jobs:configure
+      summary: Propose a new time for the job, or that it is turned off
+      description: |
+        Requires the permission `jobs:configure`. Nothing changes until another
+        person with `jobs:configure` approves it (four eyes, ADR 0037): turning
+        off renewal or retention affects customers and the law. A job has at
+        most one change waiting (`409`). Only daily jobs have a time.
+      parameters:
+        - $ref: '#/components/parameters/Job'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProposeScheduleChangeRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Waiting for approval
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduleChange' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/jobs/{job}/schedule-changes/{changeId}/approvals:
+    post:
+      tags: [jobs]
+      operationId: approveScheduleChange
+      x-permission: jobs:configure
+      summary: Approve a schedule change, by someone other than the proposer
+      description: |
+        Requires the permission `jobs:configure`, and that the caller did not
+        propose it (`403`). The change becomes the job's schedule at once, and
+        the scheduler uses it from its next round. `409` if it is not waiting.
+      parameters:
+        - $ref: '#/components/parameters/Job'
+        - $ref: '#/components/parameters/ScheduleChangeId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Approved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduleChange' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/jobs/{job}/schedule-changes/{changeId}/rejections:
+    post:
+      tags: [jobs]
+      operationId: rejectScheduleChange
+      x-permission: jobs:configure
+      summary: Reject a schedule change with a reason
+      description: Requires the permission `jobs:configure`. The proposer may withdraw their own change this way. `409` if it is not waiting.
+      parameters:
+        - $ref: '#/components/parameters/Job'
+        - $ref: '#/components/parameters/ScheduleChangeId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobControlRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Rejected
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduleChange' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/relay-dead-letters:
     get:
       tags: [jobs]
@@ -3635,6 +3746,11 @@ components:
       bearerFormat: JWT
 
   parameters:
+    ScheduleChangeId:
+      name: changeId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^jsc_[A-Za-z0-9]+$' }
     Job:
       name: job
       in: path
@@ -3858,6 +3974,7 @@ components:
         id: { type: string, description: 'The job''s name, e.g. policies.renewal.' }
         schedule: { $ref: '#/components/schemas/JobSchedule' }
         paused: { $ref: '#/components/schemas/JobPause' }
+        pendingChange: { $ref: '#/components/schemas/ScheduleChange' }
         markets:
           type: array
           items:
@@ -3887,6 +4004,8 @@ components:
         kind: { type: string, enum: [daily, interval] }
         at: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' }
         seconds: { type: integer, minimum: 1 }
+        enabled: { type: boolean, description: false when turned off with four eyes. "Run now" still works. }
+        version: { type: integer, minimum: 0, description: The installation's approved setting it comes from; 0 for the default. }
 
     JobRun:
       type: object
@@ -3924,6 +4043,31 @@ components:
         by: { type: string }
         at: { $ref: '#/components/schemas/DateTime' }
         reason: { type: string }
+
+    ScheduleChange:
+      type: object
+      required: [id, job, at, enabled, reason, proposedBy, proposedAt, status]
+      properties:
+        id: { type: string }
+        job: { type: string }
+        at: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' }
+        enabled: { type: boolean }
+        reason: { type: string }
+        proposedBy: { type: string }
+        proposedAt: { $ref: '#/components/schemas/DateTime' }
+        status: { type: string, enum: [pending, approved, rejected] }
+        decidedBy: { type: string }
+        decidedAt: { $ref: '#/components/schemas/DateTime' }
+        decisionReason: { type: string, description: Why it was rejected. }
+
+    ProposeScheduleChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [at, enabled, reason]
+      properties:
+        at: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', description: The time of day in each market's time zone. }
+        enabled: { type: boolean, description: false turns the job off. }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
 
     RunJobRequest:
       type: object
