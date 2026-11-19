@@ -18,7 +18,7 @@ export interface Section {
   count?: { path: CountPath; query: Record<string, string | boolean> };
 }
 
-export type CountPath = '/v1/claims' | '/v1/applications' | '/v1/policy-proposals' | '/v1/notices' | '/v1/webhook-deliveries' | '/v1/relay-dead-letters';
+export type CountPath = '/v1/claims' | '/v1/applications' | '/v1/policy-proposals' | '/v1/notices' | '/v1/webhook-deliveries' | '/v1/relay-dead-letters' | '/v1/erasure-requests';
 
 /** How many wait, from one page of a list: the number, or "100+" when there are more pages. */
 export function countLabel(page: { items: unknown[]; nextCursor?: string }): string {
@@ -30,6 +30,7 @@ export const SECTIONS: Section[] = [
   { path: '/policies', label: 'nav.policies', icon: 'paw', anyOf: ['policies:read'] },
   { path: '/parties', label: 'nav.parties', icon: 'address-book', anyOf: ['parties:read'] },
   { path: '/animals', label: 'nav.animals', icon: 'dog', anyOf: ['animals:read'] },
+  { path: '/erasures', label: 'nav.erasures', icon: 'user-slash', anyOf: ['parties:privacy'], count: { path: '/v1/erasure-requests', query: { status: 'pending' } } },
   { path: '/applications', label: 'nav.applications', icon: 'list-check', anyOf: ['policies:read'], count: { path: '/v1/applications', query: { status: 'referred' } } },
   { path: '/proposals', label: 'nav.proposals', icon: 'user-check', anyOf: ['policies:read'], count: { path: '/v1/policy-proposals', query: { status: 'pending' } } },
   { path: '/notices', label: 'nav.notices', icon: 'envelope', anyOf: ['notices:read'], count: { path: '/v1/notices', query: { attention: true } } },

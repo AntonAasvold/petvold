@@ -278,8 +278,14 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Grupper:** partens sida listar och skapar kull- och hushållsgrupper, och gruppens sida har medlemmar som kan läggas till och avslutas.
   - **Tester:** 56 enhetstester och 32 flöden.
 
+- Back office, radering, PR #105:
+  - **Avsnittet Radering:** kön för begäranden med räknare.
+  - **Godkännande** av en annan dataskyddsansvarig, och **avslag** med begränsning till ett datum när personen själv bad om det.
+  - **Inloggningen** erbjuder nu `dev-privacy-2`.
+  - **Tester:** 58 enhetstester och 33 flöden.
+
 **Nästa steg**
-1. Kön för radering med fyra ögon.
+1. Skadeprocessen, steg 3: komplettering, med påminnelse och utgång som en körning.
 3. Skadeprocessen, steg 3: komplettering.
 2. Skadeprocessen, steg 3: komplettering, som en körning bland de andra.
 2. Skadeprocessen, steg 3: komplettering.

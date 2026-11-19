@@ -117,6 +117,8 @@ export function problemLabel(id: string): string {
       return msg('Give when the customer accepted. It cannot be in the future.', { id: 'policy.badAcceptedAt' });
     case 'policy.needDocuments':
       return msg('Tick that the customer was shown the terms and the pre-contract information.', { id: 'policy.needDocuments' });
+    case 'erasure.needRestriction':
+      return msg('Give the day the restriction lasts until, after today.', { id: 'erasure.needRestriction' });
     case 'group.needLitter':
       return msg('Give the litter as a litter id, e.g. lit_1.', { id: 'group.needLitter' });
     case 'group.needPolicy':
@@ -457,4 +459,12 @@ export function underwritingLabel(o: string): string {
 
 export function groupKindLabel(k: string): string {
   return k === 'litter' ? msg('Litter group', { id: 'group.litter' }) : k === 'household' ? msg('Household', { id: 'group.household' }) : k;
+}
+
+export function erasureBasisLabel(b: string): string {
+  return b === 'subject-request' ? msg('The person asked', { id: 'erasure.subject' }) : b === 'retention-expired' ? msg('Retention ended', { id: 'erasure.retention' }) : b;
+}
+
+export function erasureOutcomeLabel(o: string): string {
+  return o === 'approved' ? msg('Anonymized', { id: 'party.anonymized' }) : o === 'rejected' ? msg('Rejected', { id: 'jobs.rejectedBadge' }) : o;
 }

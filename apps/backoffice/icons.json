@@ -27,7 +27,8 @@
     "rotate-right",
     "scale-balanced",
     "trash",
-    "user-check"
+    "user-check",
+    "user-slash"
   ],
   "regular": []
 }

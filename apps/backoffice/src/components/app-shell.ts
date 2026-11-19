@@ -25,6 +25,8 @@ import '../views/jobs-view.ts';
 import '../views/parties-view.ts';
 import '../views/policy-issue.ts';
 import '../views/group-detail.ts';
+import '../views/erasures-view.ts';
+import '../views/erasure-detail.ts';
 import '../views/animals-view.ts';
 import '../views/animal-register.ts';
 import '../views/animal-detail.ts';
@@ -270,6 +272,8 @@ export class AppShell extends LitElement {
       { pattern: /^\/animals\/(?<id>[^/]+)$/, render: (p) => html`<pv-animal-detail .api=${this.api} .me=${this.me} animal-id=${p.id!}></pv-animal-detail>` },
       { pattern: /^\/litters\/new$/, render: () => html`<pv-litter-register .api=${this.api}></pv-litter-register>` },
       { pattern: /^\/litters\/(?<id>[^/]+)$/, render: (p) => html`<pv-litter-detail .api=${this.api} litter-id=${p.id!}></pv-litter-detail>` },
+      { pattern: /^\/erasures$/, render: () => html`<pv-erasures .api=${this.api}></pv-erasures>` },
+      { pattern: /^\/erasures\/(?<id>[^/]+)$/, render: (p) => html`<pv-erasure-detail .api=${this.api} .me=${this.me} request-id=${p.id!}></pv-erasure-detail>` },
       { pattern: /^\/groups\/(?<id>[^/]+)$/, render: (p) => html`<pv-group-detail .api=${this.api} .me=${this.me} group-id=${p.id!}></pv-group-detail>` },
       { pattern: /^\/parties$/, render: () => html`<pv-parties .api=${this.api} .me=${this.me}></pv-parties>` },
       { pattern: /^\/parties\/new$/, render: () => html`<pv-party-register .api=${this.api}></pv-party-register>` },
@@ -353,6 +357,8 @@ export class AppShell extends LitElement {
         return msg('Webhooks', { id: 'nav.webhooks' });
       case 'nav.animals':
         return msg('Animals', { id: 'nav.animals' });
+      case 'nav.erasures':
+        return msg('Erasure', { id: 'nav.erasures' });
       case 'nav.parties':
         return msg('Parties', { id: 'nav.parties' });
       case 'nav.jobs':

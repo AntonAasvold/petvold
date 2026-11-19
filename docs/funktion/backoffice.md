@@ -66,6 +66,14 @@ En anonymiserad part kan inte ändras.
   - **Ångra uppsägningen,** bara när den är policyns senaste transaktion
   - **Förnya för hand,** för en policy som förnyelsekörningen listat för beslut
 
+## Radering
+
+Avsnittet Radering (rätten `parties:privacy`) är kön för att anonymisera parter (ADR 0028). Menyn räknar begäranden som väntar.
+
+- **Begäran** görs från partens sida, med ett skäl utan personuppgifter, eller av körningen för gallring.
+- **Godkänna** (rätten `parties:erase`) anonymiserar parten för alltid. Den som begärde kan aldrig godkänna, utan ser "Någon annan måste godkänna din begäran".
+- **Avslå** (rätten `parties:privacy`) när uppgifterna måste sparas, till exempel för en pågående skada (GDPR artikel 17.3). En begäran från personen själv kräver då ett datum som uppgifterna är begränsade till (artikel 18).
+
 ## Grupper
 
 Partens sida visar kull- och hushållsgrupper där parten är försäkringstagare, och den som har rätten `policies:write` kan skapa en ny (ADR 0007). En kullgrupp pekar på kullen i djurregistret. Gruppens sida visar medlemmarna över tid och har två åtgärder:
