@@ -36,11 +36,16 @@ Resultatet har bara antal och id:n, aldrig personuppgifter. En ansökans svar om
 | `policies.renewal` | `checked`, `renewed`, `cancelled`, `notYet`, `needsDecision` (policy och skäl), `renewedPolicyIds` |
 | `parties.retention` | `settingsVersion`, `checked`, `due`, `ongoing`, `withinRetention`, `pendingRequest`, `requestIds` |
 
+## Reläet
+
+Reläet levererar varje moduls händelser i ordning (ADR 0008). Med flera servrar är en av dem reläet: den håller lånet `relay` och förnyar det varje sekund. De andra väntar och tar över om den stannar.
+
+En händelse som inte går att leverera efter tio försök blir en död post. Den sparas och finns kvar efter en omstart, tills någon skickar den igen. `/healthz` visar antalet och om servern är reläet.
+
 ## Det som kommer
 
-Steg 1 i ADR 0037 är byggt: schemaläggaren, lånen och historiken. Det som återstår:
+Steg 1 och 2 i ADR 0037 är byggda: schemaläggaren, lånen, historiken och reläet bakom ett lån. Det som återstår:
 
-- **Steg 2:** reläet bakom ett lån, med döda poster som sparas.
 - **Steg 3:** anrop under `/v1/jobs` och sidan Körningar i back office, med historik, "Kör nu" och paus. Anropen som finns i dag (`POST /v1/renewal-runs` och de andra) börjar då också spara historik.
 - **Steg 4:** schemaändringar med fyra ögon, händelsen `job.failed` och larm i `/healthz`.
 - **Steg 5:** påminnelser och utgång för komplettering av skador.

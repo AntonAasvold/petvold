@@ -237,8 +237,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Driften** behöver `SCHEDULING_DATABASE_URL` och rollen `scheduling_service`.
   - **Tester:** 473 i kärnan och API:t, 135 mot databasen och 25 flöden.
 
+- Körningar, steg 2, PR #98 (ADR 0037):
+  - **Reläet** går bakom lånet `relay`: en server i taget levererar, och de andra tar över när lånet går ut eller servern stängs.
+  - **Döda poster** sparas i `scheduling.relay_dead_letter` (migration 0039) och finns kvar efter en omstart. `retryDeadLetter` skickar en igen.
+  - **`/healthz`** visar om servern är reläet.
+  - **`drift.md`** säger nu att Petvold kör körningarna själv.
+  - **Tester:** 476 i kärnan och API:t och 136 mot databasen.
+
 **Nästa steg**
-1. Körningar, steg 2: reläet bakom ett lån, med döda poster som sparas.
+1. Körningar, steg 3: anrop under `/v1/jobs` och sidan Körningar i back office, med historik, "Kör nu", paus och reläets döda poster.
 2. Skadeprocessen, steg 3: komplettering.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).

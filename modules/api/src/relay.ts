@@ -30,8 +30,27 @@ export interface DeadLetter {
   lastError: string;
 }
 
+/** Where dead letters are kept, and the lease that makes one server the relay (ADR 0037). */
+export interface RelayState {
+  tryLease(key: string, holder: string, until: string, now: string): Promise<boolean>;
+  releaseLease(key: string, holder: string): Promise<void>;
+  saveDeadLetter(d: DeadLetter & { deadAt: string }): Promise<void>;
+  deadLetters(): Promise<(DeadLetter & { deadAt: string })[]>;
+  removeDeadLetter(source: string, eventId: string): Promise<boolean>;
+}
+
 export interface RelayOptions {
   clock: { now(): string };
+  /**
+   * With state, one server at a time is the relay: it holds the lease 'relay'
+   * and renews it every round; the others wait. Dead letters are kept there,
+   * so they outlive a restart. Without, the relay keeps them in memory.
+   */
+  state?: RelayState;
+  /** This server, for the lease. */
+  holder?: string;
+  /** How long the lease lasts without a renewal. Default 30 s. */
+  leaseMs?: number;
   /** Attempts before an event becomes a dead letter. Default 10. */
   maxAttempts?: number;
   /** Events per source and round. Default 100. */
@@ -51,18 +70,21 @@ export class Relay {
   private readonly dead = new Map<string, DeadLetter>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
+  private loaded = false;
+  private leading = false;
 
   constructor(
     private readonly sources: RelaySource<{ id: string }>[],
     private readonly o: RelayOptions,
   ) {}
 
-  /** One round over every source. Returns how many events were delivered. */
+  /** One round over every source. Returns how many events were delivered; 0 when another server is the relay. */
   async tick(): Promise<number> {
     if (this.running) return 0;
     this.running = true;
     let delivered = 0;
     try {
+      if (!(await this.lead())) return 0;
       for (const s of this.sources) delivered += await this.drain(s);
     } finally {
       this.running = false;
@@ -88,7 +110,9 @@ export class Relay {
         const lastError = err instanceof Error ? err.message : String(err);
         if (count >= (this.o.maxAttempts ?? 10)) {
           this.attempts.delete(key);
-          this.dead.set(key, { source: s.name, eventId: e.id, attempts: count, lastError });
+          const letter = { source: s.name, eventId: e.id, attempts: count, lastError };
+          this.dead.set(key, letter);
+          await this.o.state?.saveDeadLetter({ ...letter, deadAt: this.o.clock.now() });
           this.o.log?.(`[relay] ${s.name} ${e.id} is a dead letter after ${count} attempts: ${lastError}`);
           continue; // the rest of the source may flow
         }
@@ -106,6 +130,41 @@ export class Relay {
     return [...this.dead.values()];
   }
 
+  /** Whether this server is the relay now. */
+  isLeading(): boolean {
+    return this.o.state ? this.leading : true;
+  }
+
+  /** Sends a dead letter again: it is forgotten, and the next round tries the event from the start. */
+  async retryDeadLetter(source: string, eventId: string): Promise<boolean> {
+    const key = `${source}:${eventId}`;
+    const had = this.dead.delete(key);
+    this.attempts.delete(key);
+    const stored = (await this.o.state?.removeDeadLetter(source, eventId)) ?? false;
+    return had || stored;
+  }
+
+  /**
+   * Takes or renews the lease, and on the first round as the relay reads the
+   * dead letters kept there, so they are skipped after a restart too.
+   */
+  private async lead(): Promise<boolean> {
+    const st = this.o.state;
+    if (!st) return true;
+    const now = this.o.clock.now();
+    const until = new Date(Date.parse(now) + (this.o.leaseMs ?? 30_000)).toISOString();
+    this.leading = await st.tryLease('relay', this.holder(), until, now);
+    if (this.leading && !this.loaded) {
+      for (const d of await st.deadLetters()) this.dead.set(`${d.source}:${d.eventId}`, { source: d.source, eventId: d.eventId, attempts: d.attempts, lastError: d.lastError });
+      this.loaded = true;
+    }
+    return this.leading;
+  }
+
+  private holder(): string {
+    return this.o.holder ?? 'relay';
+  }
+
   start(intervalMs = 1000): void {
     if (this.timer) return;
     this.timer = setInterval(() => void this.tick().catch((err) => this.o.log?.(`[relay] ${String(err)}`)), intervalMs);
@@ -116,5 +175,8 @@ export class Relay {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     while (this.running) await new Promise((r) => setTimeout(r, 10));
+    // Let go at once, so another server can take over without waiting for the lease to run out.
+    if (this.o.state && this.leading) await this.o.state.releaseLease('relay', this.holder()).catch(() => {});
+    this.leading = false;
   }
 }

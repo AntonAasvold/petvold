@@ -5,7 +5,7 @@
  */
 import type pg from 'pg';
 import type { Timestamp } from '@petvold/common';
-import type { JobRun, RunFilter, SchedulingStore } from './index.ts';
+import type { DeadLetterRecord, JobRun, RunFilter, SchedulingStore } from './index.ts';
 
 /** A timestamp as an ISO string, whether pg gave a Date or another module set a parser that gives a string. */
 const iso = (v: Date | string | null): string | undefined => (v === null ? undefined : new Date(v).toISOString());
@@ -64,6 +64,24 @@ export class PostgresSchedulingStore implements SchedulingStore {
   async pruneRuns(before: Timestamp): Promise<number> {
     const { rowCount } = await this.pool.query('delete from scheduling.run where started_at < $1', [before]);
     return rowCount ?? 0;
+  }
+
+  async saveDeadLetter(d: DeadLetterRecord): Promise<void> {
+    await this.pool.query(
+      `insert into scheduling.relay_dead_letter (source, event_id, attempts, last_error, dead_at) values ($1, $2, $3, $4, $5)
+       on conflict (source, event_id) do update set attempts = excluded.attempts, last_error = excluded.last_error, dead_at = excluded.dead_at`,
+      [d.source, d.eventId, d.attempts, d.lastError, d.deadAt],
+    );
+  }
+
+  async deadLetters(): Promise<DeadLetterRecord[]> {
+    const { rows } = await this.pool.query('select * from scheduling.relay_dead_letter order by dead_at, source, event_id');
+    return rows.map((r) => ({ source: r.source, eventId: r.event_id, attempts: r.attempts, lastError: r.last_error, deadAt: iso(r.dead_at)! }));
+  }
+
+  async removeDeadLetter(source: string, eventId: string): Promise<boolean> {
+    const { rowCount } = await this.pool.query('delete from scheduling.relay_dead_letter where source = $1 and event_id = $2', [source, eventId]);
+    return rowCount === 1;
   }
 }
 

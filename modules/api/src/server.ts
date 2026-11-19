@@ -63,7 +63,8 @@ async function health(): Promise<Response> {
   const dead = inst.relay.deadLetters();
   try {
     await inst.ping();
-    return Response.json({ status: dead.length ? 'degraded' : 'ok', deadLetters: dead.length }, { status: 200 });
+    // relay: 'leading' on the one server that delivers events, 'standby' on the others (ADR 0037).
+    return Response.json({ status: dead.length ? 'degraded' : 'ok', deadLetters: dead.length, relay: inst.relay.isLeading() ? 'leading' : 'standby' }, { status: 200 });
   } catch (err) {
     return Response.json({ status: 'down', error: (err as Error).message }, { status: 503 });
   }
