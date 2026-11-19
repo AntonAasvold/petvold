@@ -53,6 +53,19 @@ Avsnittet Parter (rätten `parties:read`) gäller personer och organisationer (A
 
 En anonymiserad part kan inte ändras.
 
+## Teckna och ändra policyer
+
+- **Teckna försäkring** (rätten `policies:write`) från djurets sida, med djur och ägare ifyllda, eller under `/policies/new`:
+  - välj en produktversion som säljs för djurets art på startdagen, med årsbelopp, självrisk och kampanjkod
+  - **prisindikation** från tariffen (`POST /v1/quotes`): grundpris, premie per år och för termen. En produkt utan tariff får premien för en term angiven för hand.
+  - **kundens godkännande:** kanal, tid, referens och, för en produkt med dokument, vilka dokument kunden fick se. Villkor och förköpsinformation krävs (ADR 0031, 0032).
+  - en produkt med hälsofrågor kräver en ansökan, och appen säger det
+- **På policyns sida** finns åtgärderna:
+  - **Ändra valen** från i dag eller senare, med skäl
+  - **Säg upp** med det skäl lagen känner till. Skälet avgör från när, och vissa skäl kräver dag eller anteckning.
+  - **Ångra uppsägningen,** bara när den är policyns senaste transaktion
+  - **Förnya för hand,** för en policy som förnyelsekörningen listat för beslut
+
 ## Djur
 
 Avsnittet Djur (rätten `animals:read`) gäller djurregistret (ADR 0024, 0027):

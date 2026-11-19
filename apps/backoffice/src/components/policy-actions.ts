@@ -110,7 +110,7 @@ export class PolicyActions extends LitElement {
     return html`
       <div class="buttons" role="group" aria-label=${msg('Policy actions', { id: 'policy.actions' })}>
         ${!cancellation
-          ? html`<wa-button appearance="outlined" @click=${() => this.toggle('change')}>${msg('Change the choices', { id: 'policy.change' })}</wa-button>
+          ? html`<wa-button appearance="outlined" @click=${() => this.toggle('change')}>${msg('Change the choices', { id: 'policy.changeChoices' })}</wa-button>
               <wa-button appearance="outlined" @click=${() => this.toggle('cancel')}>${msg('Cancel the policy', { id: 'policy.cancel' })}</wa-button>
               <wa-button appearance="outlined" @click=${() => this.toggle('renew')}>${msg('Renew by hand', { id: 'policy.renew' })}</wa-button>`
           : html`<wa-button appearance="outlined" @click=${() => this.toggle('reinstate')}>${msg('Reverse the cancellation', { id: 'policy.reinstate' })}</wa-button>`}
@@ -133,7 +133,7 @@ export class PolicyActions extends LitElement {
 
   private premiumInput(value: string, set: (v: string) => void) {
     if (this.product?.content.tariffSeries) return html`<p>${msg('The tariff prices it.', { id: 'policy.tariffPrices' })}</p>`;
-    return html`<wa-input label=${msg('Premium per term', { id: 'policy.premium' })} inputmode="decimal" .value=${value} @input=${(e: Event) => set((e.target as HTMLInputElement).value)}></wa-input>`;
+    return html`<wa-input label=${msg('Premium per term', { id: 'policy.premiumPerTerm' })} inputmode="decimal" .value=${value} @input=${(e: Event) => set((e.target as HTMLInputElement).value)}></wa-input>`;
   }
 
   private changeCard() {
@@ -142,7 +142,7 @@ export class PolicyActions extends LitElement {
     const value = (e: Event) => (e.target as HTMLInputElement).value;
     const money = (m: number) => formatMoney(m, this.policy.terms.at(-1)!.currency, lang);
     return html`<section class="pv-card pv-card--strong" aria-labelledby="change">
-      <div class="pv-card__head"><h2 class="pv-card__title" id="change">${msg('Change the choices', { id: 'policy.change' })}</h2></div>
+      <div class="pv-card__head"><h2 class="pv-card__title" id="change">${msg('Change the choices', { id: 'policy.changeChoices' })}</h2></div>
       <form class="pv-card__body" @submit=${this.doChange} novalidate>
         <p>${msg('From a day in the current term, today or later. The days left are charged or refunded at the new rate.', { id: 'policy.changeHow' })}</p>
         <div class="row">
@@ -157,7 +157,7 @@ export class PolicyActions extends LitElement {
         ${this.premiumInput(this.change.premium, (v) => (this.change = { ...this.change, premium: v }))}
         <wa-textarea label=${msg('Reason', { id: 'claim.reason' })} rows="2" .value=${this.change.reason} @input=${(e: Event) => (this.change = { ...this.change, reason: value(e) })}></wa-textarea>
         ${this.problems()}
-        <wa-button type="submit" variant="brand" ?loading=${this.busy}>${msg('Change the choices', { id: 'policy.change' })}</wa-button>
+        <wa-button type="submit" variant="brand" ?loading=${this.busy}>${msg('Change the choices', { id: 'policy.changeChoices' })}</wa-button>
       </form>
     </section>`;
   }
@@ -178,7 +178,7 @@ export class PolicyActions extends LitElement {
             ? html`<wa-input type="date" label=${msg('Effective date', { id: 'policy.effectiveDate' })} .value=${this.cancel.effectiveDate} @input=${(e: Event) => (this.cancel = { ...this.cancel, effectiveDate: value(e) })}></wa-input>`
             : nothing}
         </div>
-        <wa-textarea label=${msg('Note, without personal data', { id: 'policy.note' })} rows="2" .value=${this.cancel.note} @input=${(e: Event) => (this.cancel = { ...this.cancel, note: value(e) })}></wa-textarea>
+        <wa-textarea label=${msg('Note, without personal data', { id: 'policy.noteNoPersonal' })} rows="2" .value=${this.cancel.note} @input=${(e: Event) => (this.cancel = { ...this.cancel, note: value(e) })}></wa-textarea>
         ${this.problems()}
         <wa-button type="submit" variant="brand" ?loading=${this.busy}>${msg('Cancel the policy', { id: 'policy.cancel' })}</wa-button>
       </form>
@@ -190,7 +190,7 @@ export class PolicyActions extends LitElement {
       <div class="pv-card__head"><h2 class="pv-card__title" id="reinstate">${msg('Reverse the cancellation', { id: 'policy.reinstate' })}</h2></div>
       <form class="pv-card__body" @submit=${(e: Event) => this.doReinstate(e, c)} novalidate>
         <p>${msg('For example a death registered by mistake. The versions it ended apply again, and the refund is reversed.', { id: 'policy.reinstateHow' })}</p>
-        <wa-textarea label=${msg('Note, without personal data', { id: 'policy.note' })} rows="2" .value=${this.note} @input=${(e: Event) => (this.note = (e.target as HTMLTextAreaElement).value)}></wa-textarea>
+        <wa-textarea label=${msg('Note, without personal data', { id: 'policy.noteNoPersonal' })} rows="2" .value=${this.note} @input=${(e: Event) => (this.note = (e.target as HTMLTextAreaElement).value)}></wa-textarea>
         ${this.problems()}
         <wa-button type="submit" variant="brand" ?loading=${this.busy}>${msg('Reverse the cancellation', { id: 'policy.reinstate' })}</wa-button>
       </form>

@@ -125,7 +125,8 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [ ] Påminnelser och utgång för komplettering (skadeprocessen, steg 3) som en körning bland de andra
 
 **Back office: det som saknas** (inventering 2026-11-18: back office använder 68 av API:ets 115 operationer)
-- [ ] **Policy:** teckna, ändra, säga upp, återuppta och förnya en policy, med prisindikation (`POST /v1/quotes`) och ögonblicksbild. I dag går det bara att läsa policyn och besluta om ansökningar och förslag.
+- [x] **Policy:** teckna med prisindikation och kundens godkännande, ändra, säga upp, ångra en uppsägning och förnya för hand
+- [ ] **Policy:** ögonblicksbild och policyns sida enligt designsystemet
 - [ ] **Ansökan:** registrera en ansökan med teckningsfrågorna (`GET /v1/application-questions`)
 - [x] **Djur:** sök, registrera och rätta djur, id-nummer, ägarbyte, historik och kullar
 - [x] **Parter:** sök, registrera och ändra personer och organisationer, id-nummer, historik och begäran om radering

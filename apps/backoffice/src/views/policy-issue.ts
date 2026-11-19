@@ -263,7 +263,7 @@ export class PolicyIssue extends LitElement {
             <div class="pv-card__body">
               ${p && !p.content.tariffSeries
                 ? html`<p>${msg('This product has no tariff: give the premium for a term.', { id: 'policy.manualPremium' })}</p>
-                    <wa-input label=${msg('Premium per term', { id: 'policy.premium' })} inputmode="decimal" .value=${f.premium} @input=${(e: Event) => this.set({ premium: value(e) })}></wa-input>`
+                    <wa-input label=${msg('Premium per term', { id: 'policy.premiumPerTerm' })} inputmode="decimal" .value=${f.premium} @input=${(e: Event) => this.set({ premium: value(e) })}></wa-input>`
                 : html`<wa-button class="wide" appearance="outlined" ?loading=${this.busy === 'quote'} ?disabled=${!p} @click=${() => this.runQuote()}>${msg('Price indication', { id: 'policy.quote' })}</wa-button>
                     ${this.quote
                       ? html`<dl class="pv-dl" role="status" aria-label=${msg('Price', { id: 'policy.price' })}>
