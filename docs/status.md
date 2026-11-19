@@ -273,9 +273,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Åtgärder på policyn:** ändra valen, säga upp, ångra uppsägningen och förnya för hand.
   - **Tester:** 55 enhetstester och 30 flöden.
 
+- Back office, ansökan och grupper, PR #104:
+  - **Ansökan:** en produkt med hälsofrågor visar frågorna när man tecknar, och svaren skickas som en ansökan. Prisindikationen visar vad svaren skulle ge.
+  - **Grupper:** partens sida listar och skapar kull- och hushållsgrupper, och gruppens sida har medlemmar som kan läggas till och avslutas.
+  - **Tester:** 56 enhetstester och 32 flöden.
+
 **Nästa steg**
-1. Back office: ansökan med hälsofrågor, och grupper (kull och hushåll).
-2. Kön för radering med fyra ögon.
+1. Kön för radering med fyra ögon.
 3. Skadeprocessen, steg 3: komplettering.
 2. Skadeprocessen, steg 3: komplettering, som en körning bland de andra.
 2. Skadeprocessen, steg 3: komplettering.

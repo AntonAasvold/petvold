@@ -59,12 +59,18 @@ En anonymiserad part kan inte ändras.
   - välj en produktversion som säljs för djurets art på startdagen, med årsbelopp, självrisk och kampanjkod
   - **prisindikation** från tariffen (`POST /v1/quotes`): grundpris, premie per år och för termen. En produkt utan tariff får premien för en term angiven för hand.
   - **kundens godkännande:** kanal, tid, referens och, för en produkt med dokument, vilka dokument kunden fick se. Villkor och förköpsinformation krävs (ADR 0031, 0032).
-  - en produkt med hälsofrågor kräver en ansökan, och appen säger det
+  - **en produkt med hälsofrågor** visar frågorna. Svaren skickas med en ansökan (`POST /v1/applications`), och ansökans sida öppnas: godkänd, godkänd med förbehåll, till manuell prövning eller avslag (ADR 0031). En fråga om diagnoser som besvaras med ja kräver diagnoskoderna. Prisindikationen visar vad svaren skulle ge.
 - **På policyns sida** finns åtgärderna:
   - **Ändra valen** från i dag eller senare, med skäl
   - **Säg upp** med det skäl lagen känner till. Skälet avgör från när, och vissa skäl kräver dag eller anteckning.
   - **Ångra uppsägningen,** bara när den är policyns senaste transaktion
   - **Förnya för hand,** för en policy som förnyelsekörningen listat för beslut
+
+## Grupper
+
+Partens sida visar kull- och hushållsgrupper där parten är försäkringstagare, och den som har rätten `policies:write` kan skapa en ny (ADR 0007). En kullgrupp pekar på kullen i djurregistret. Gruppens sida visar medlemmarna över tid och har två åtgärder:
+- lägga till en policy från en dag. Gruppens försäkringstagare måste ha policyn, och en policy är med i en grupp i taget.
+- avsluta ett medlemskap med skäl
 
 ## Djur
 

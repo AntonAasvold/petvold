@@ -15,7 +15,8 @@ test('the document system sees what needs a person and reports a delivery', asyn
   await page.getByRole('link', { name: 'Notices' }).click();
   // Sixten's refusal lacks the insurer's text on review, so it waits for a person.
   const grid = page.getByRole('grid', { name: 'Notices' });
-  await expect(grid.getByRole('row').filter({ hasText: 'Application declined' })).toContainText('Text missing');
+  // The flow for applications may add a second decline for Sixten; both lack the review text.
+  await expect(grid.getByRole('row').filter({ hasText: 'Application declined' }).first()).toContainText('Text missing');
 
   await page.getByRole('tab', { name: 'Waiting' }).click();
   await grid.getByRole('row').filter({ hasText: 'Policy confirmation' }).first().getByRole('gridcell').first().click();
