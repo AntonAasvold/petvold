@@ -21,6 +21,8 @@ import '../views/login-view.ts';
 import '../views/claims-queue.ts';
 import '../views/claim-detail.ts';
 import '../views/claim-register.ts';
+import '../views/jobs-view.ts';
+import '../views/job-detail.ts';
 import '../views/policies-search.ts';
 import '../views/policy-detail.ts';
 import '../views/applications-queue.ts';
@@ -252,6 +254,8 @@ export class AppShell extends LitElement {
       { pattern: /^\/products\/(?<id>[^/]+)$/, render: (p) => html`<pv-product-detail .api=${this.api} .me=${this.me} product=${p.id!}></pv-product-detail>` },
       { pattern: /^\/rule-sets$/, render: () => html`<pv-rule-sets .api=${this.api}></pv-rule-sets>` },
       { pattern: /^\/rule-sets\/(?<id>[^/]+)$/, render: (p) => html`<pv-rule-set-detail .api=${this.api} .me=${this.me} series=${p.id!}></pv-rule-set-detail>` },
+      { pattern: /^\/jobs$/, render: () => html`<pv-jobs .api=${this.api} .me=${this.me}></pv-jobs>` },
+      { pattern: /^\/jobs\/(?<id>[^/]+)$/, render: (p) => html`<pv-job-detail .api=${this.api} .me=${this.me} job=${p.id!}></pv-job-detail>` },
       { pattern: /^\/settings$/, render: () => html`<pv-settings .api=${this.api} .me=${this.me}></pv-settings>` },
       { pattern: /^\/webhooks\/(?<id>[^/]+)$/, render: (p) => html`<pv-webhook-detail .api=${this.api} .me=${this.me} subscription-id=${p.id!}></pv-webhook-detail>` },
     ];
@@ -327,6 +331,8 @@ export class AppShell extends LitElement {
         return msg('Notices', { id: 'nav.notices' });
       case 'nav.webhooks':
         return msg('Webhooks', { id: 'nav.webhooks' });
+      case 'nav.jobs':
+        return msg('Runs', { id: 'nav.jobs' });
       case 'nav.products':
         return msg('Products', { id: 'nav.products' });
       case 'nav.ruleSets':

@@ -20,6 +20,9 @@ import { animalPort, claimsActivity, partySource, policySource, productPort } fr
 import { tariffCoverage } from '@petvold/pricing-core';
 import { questionsFor, underwritingCoverage } from '@petvold/underwriting-core';
 import { marketDate } from '@petvold/common';
+import { InMemorySchedulingStore, JobError, Scheduler, nextDailyRun } from '@petvold/scheduling';
+import { defaultJobs, jobRunners, type JobRunner } from './jobs.ts';
+import type { Relay } from './relay.ts';
 import {
   CatalogError,
   CatalogService,
@@ -127,6 +130,10 @@ export interface AppDeps {
   communications?: CommunicationsService;
   /** Webhook subscriptions (ADR 0033). Omitted: kept in memory; nothing feeds or sends them without the installation's relay and worker. */
   webhooks?: WebhookService;
+  /** Runs (ADR 0037). Omitted: the four jobs over these services, with history in memory. */
+  scheduler?: Scheduler;
+  /** The relay, to send a dead letter again (ADR 0037). Omitted: the dead letter is only removed from the store. */
+  relay?: Pick<Relay, 'retryDeadLetter'>;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
   /**
@@ -937,11 +944,6 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await policies.withdrawApplication(a.id, r.body, c.get('principal').subject) }));
   });
 
-  app.post('/v1/application-expiry-runs', async (c) => {
-    const scope = c.get('scope');
-    if (scope.clinicId || scope.policyIds) return problem(c, 403, 'Not permitted', 'A role bound to a clinic or to policies cannot run this');
-    return send(c, { expired: await policies.expireApplications(scope.markets, c.get('principal').subject) });
-  });
 
   // Notices to the customer (ADR 0032). Scope: the caller's markets; a role bound
   // to policies sees only notices on its policies, and a clinic none.
@@ -1154,13 +1156,6 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await policies.renew(p.id, r.body, c.get('principal').subject, priceRights(c)) }));
   });
 
-  app.post('/v1/renewal-runs', async (c) => {
-    const r = await readJson(c, 'RenewalRunRequest');
-    if (!r.ok) return r.res;
-    const scope = c.get('scope');
-    if (scope.clinicId || scope.policyIds) return problem(c, 403, 'Not permitted', 'A role bound to a clinic or to policies cannot run renewals');
-    return send(c, await policies.renewalRun({ dryRun: r.body.dryRun ?? false, markets: scope.markets }, c.get('principal').subject));
-  });
 
   // Proposals from the animal register's events (ADR 0029). Same scope as policies.
   const inScope = (c: Context<Env>, pr: Proposal) => {
@@ -1243,11 +1238,6 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await policies.endMember(g.id, c.req.param('policyId'), r.body, c.get('principal').subject) }));
   });
 
-  app.post('/v1/policy-proposal-expiry-runs', async (c) => {
-    const scope = c.get('scope');
-    if (scope.clinicId || scope.policyIds) return problem(c, 403, 'Not permitted', 'A role bound to a clinic or to policies cannot run this');
-    return send(c, { expired: await policies.expireProposals(scope.markets, c.get('principal').subject) });
-  });
 
   app.post('/v1/policies/:policyId/reinstatements', async (c) => {
     const p = await visiblePolicy(c);
@@ -1293,12 +1283,6 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await retention.change(r.body, c.get('principal').subject) }));
   });
 
-  app.post('/v1/retention-runs', async (c) => {
-    const r = await readJson(c, 'RetentionRunRequest');
-    if (!r.ok) return r.res;
-    const scope = c.get('scope');
-    return send(c, await retention.run({ dryRun: r.body.dryRun ?? false, markets: scope.markets }, c.get('principal').subject));
-  });
 
   app.get('/v1/parties/:partyId/revisions', async (c) => sendPage(c, await parties.revisions((await visibleParty(c)).id)));
 
@@ -1388,12 +1372,186 @@ export function createApp(d: AppDeps) {
     if (err instanceof AccessError) {
       return problem(c, err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);
     }
+    if (err instanceof JobError) {
+      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
+    }
     if (err instanceof DomainError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
       return problem(c, status, err.message);
     }
     console.error(err);
     return problem(c, 500, 'Internal error');
+  });
+
+  // Runs (ADR 0037): the jobs, their history, pause and run now, and the relay's
+  // dead letters. Scope: a job's markets are those within the caller's markets.
+  const scheduler =
+    d.scheduler ??
+    new Scheduler({
+      store: new InMemorySchedulingStore(),
+      clock: d.clock,
+      jobs: defaultJobs({ policies, retention }),
+      // As the installation does: markets with a product or a retention rule.
+      markets: async () =>
+        [...new Set([...(await products.allProducts()).flatMap((p) => p.versions.map((v) => v.content.market)), ...Object.keys((await retention.current()).markets)])].sort(),
+      holder: 'api',
+    });
+  const runners = jobRunners({ policies, retention }) as unknown as Record<string, JobRunner<unknown>>;
+  const byName = new Map(Object.values(runners).map((r) => [r.name, r]));
+  const controlId = () => `ctl_${crypto.randomUUID().replaceAll('-', '')}`;
+  const scopedMarkets = async (c: Context<Env>) => {
+    const all = await scheduler.markets();
+    const m = c.get('scope').markets;
+    return m === '*' ? all : all.filter((x) => m.has(x));
+  };
+  const jobView = async (job: string, markets: string[]) => {
+    const def = scheduler.job(job)!;
+    const paused = (await scheduler.store.pauses()).find((p) => p.job === job);
+    const now = d.clock.now();
+    return {
+      id: def.name,
+      schedule: def.schedule,
+      ...(paused ? { paused } : {}),
+      markets: await Promise.all(
+        markets.map(async (market) => {
+          const [lastRun] = await scheduler.store.listRuns({ job, market, limit: 1 });
+          const next =
+            !paused && def.schedule.kind === 'daily' ? nextDailyRun(def.schedule.at, market, now, await scheduler.store.lastScheduledRun(job, market)) : undefined;
+          return { market, ...(next ? { nextRunAt: next } : {}), ...(lastRun ? { lastRun } : {}) };
+        }),
+      ),
+    };
+  };
+  const requireJob = (c: Context<Env>) => {
+    const name = c.req.param('job')!;
+    if (!scheduler.job(name)) throw new JobError('not_found', `Job ${name} does not exist`);
+    return name;
+  };
+
+  app.get('/v1/jobs', async (c) => {
+    const markets = await scopedMarkets(c);
+    return sendPage(c, await Promise.all(scheduler.jobs.map((j) => jobView(j.name, markets))));
+  });
+
+  app.get('/v1/jobs/:job', async (c) => {
+    const job = requireJob(c);
+    return send(c, { ...(await jobView(job, await scopedMarkets(c))), controls: await scheduler.store.controls(job, 20) });
+  });
+
+  app.get('/v1/jobs/:job/runs', async (c) => {
+    const job = requireJob(c);
+    const markets = new Set(await scopedMarkets(c));
+    const market = c.req.query('market');
+    const runs = await scheduler.store.listRuns({ job, ...(market ? { market } : {}), limit: 2000 });
+    return sendPage(c, runs.filter((r) => markets.has(r.market)));
+  });
+
+  app.post('/v1/jobs/:job/runs', async (c) => {
+    const job = requireJob(c);
+    const r = await readJson(c, 'RunJobRequest');
+    if (!r.ok) return r.res;
+    if (!(await scopedMarkets(c)).includes(r.body.market)) return problem(c, 422, `Market ${r.body.market} is not one of this installation's markets within your scope`);
+    return idempotent(c, r.body, async () => {
+      const run = await scheduler.run(scheduler.job(job)!, r.body.market, { trigger: 'manual', by: c.get('principal').subject, dryRun: r.body.dryRun ?? false });
+      if (!run || run.status === 'skipped') throw new JobError('conflict', `${job} is running in ${r.body.market} on another server`);
+      return { status: 201, body: run };
+    });
+  });
+
+  app.post('/v1/jobs/:job/pauses', async (c) => {
+    const job = requireJob(c);
+    const r = await readJson(c, 'JobControlRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => {
+      const by = c.get('principal').subject;
+      const at = d.clock.now();
+      const reason = r.body.reason.trim();
+      const pause = { job, pausedBy: by, pausedAt: at, reason };
+      await (scheduler.store.pause(pause, { id: controlId(), job, action: 'pause', by, at, reason }));
+      return { status: 201, body: pause };
+    });
+  });
+
+  app.post('/v1/jobs/:job/resumptions', async (c) => {
+    const job = requireJob(c);
+    const r = await readJson(c, 'JobControlRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => {
+      const control = { id: controlId(), job, action: 'resume' as const, by: c.get('principal').subject, at: d.clock.now(), reason: r.body.reason.trim() };
+      await (scheduler.store.resume(job, control));
+      return { status: 201, body: control };
+    });
+  });
+
+  app.get('/v1/relay-dead-letters', async (c) =>
+    sendPage(
+      c,
+      (await scheduler.store.deadLetters()).map((x) => ({ id: `${x.source}:${x.eventId}`, ...x })),
+    ),
+  );
+
+  app.post('/v1/relay-dead-letters/:deadLetter/retries', async (c) => {
+    const id = c.req.param('deadLetter');
+    const at = id.indexOf(':');
+    const [source, eventId] = [id.slice(0, at), id.slice(at + 1)];
+    return idempotent(c, {}, async () => {
+      const had = d.relay ? await d.relay.retryDeadLetter(source, eventId) : await scheduler.store.removeDeadLetter(source, eventId);
+      if (!had) throw new JobError('not_found', `Dead letter ${id} does not exist`);
+      return { status: 204, body: null };
+    });
+  });
+
+  /**
+   * The old run operations (ADR 0037): the same jobs, one run per market in the
+   * caller's scope, kept in the history as 'api', joined into the response they
+   * always gave. A domain error from a market is answered as before.
+   */
+  const runForCaller = async (c: Context<Env>, job: string, dryRun: boolean) => {
+    const runner = byName.get(job)!;
+    const fulls: unknown[] = [];
+    let failure: unknown;
+    for (const market of await scopedMarkets(c)) {
+      const run = await scheduler.run(scheduler.job(job)!, market, { trigger: 'api', by: c.get('principal').subject, dryRun }, async (ctx) => {
+        try {
+          const full = await runner.execute(ctx);
+          fulls.push(full);
+          return runner.summarize(full);
+        } catch (e) {
+          failure = e;
+          throw e;
+        }
+      });
+      if (failure) throw failure;
+      if (!run || run.status === 'skipped') throw new JobError('conflict', `${job} is running in ${market} on another server`);
+    }
+    return runner.join(fulls, { dryRun, onDate: marketDate(undefined, d.clock.now()) });
+  };
+  const notBound = (c: Context<Env>) => {
+    const scope = c.get('scope');
+    return !!(scope.clinicId || scope.policyIds);
+  };
+
+  app.post('/v1/application-expiry-runs', async (c) => {
+    if (notBound(c)) return problem(c, 403, 'Not permitted', 'A role bound to a clinic or to policies cannot run this');
+    return send(c, await runForCaller(c, 'policies.application-expiry', false));
+  });
+
+  app.post('/v1/policy-proposal-expiry-runs', async (c) => {
+    if (notBound(c)) return problem(c, 403, 'Not permitted', 'A role bound to a clinic or to policies cannot run this');
+    return send(c, await runForCaller(c, 'policies.proposal-expiry', false));
+  });
+
+  app.post('/v1/renewal-runs', async (c) => {
+    const r = await readJson(c, 'RenewalRunRequest');
+    if (!r.ok) return r.res;
+    if (notBound(c)) return problem(c, 403, 'Not permitted', 'A role bound to a clinic or to policies cannot run renewals');
+    return send(c, await runForCaller(c, 'policies.renewal', r.body.dryRun ?? false));
+  });
+
+  app.post('/v1/retention-runs', async (c) => {
+    const r = await readJson(c, 'RetentionRunRequest');
+    if (!r.ok) return r.res;
+    return send(c, await runForCaller(c, 'parties.retention', r.body.dryRun ?? false));
   });
 
   return app;

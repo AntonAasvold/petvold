@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-19 | [Körningar i API:t och back office](2026-11-19-korningar-i-backoffice.md) | #99 |
 | 2026-11-19 | [Reläet bakom ett lån](2026-11-19-relaet-bakom-lan.md) | #98 |
 | 2026-11-19 | [Schemaläggaren och historiken för körningar](2026-11-19-schemalaggaren.md) | #97 |
 | 2026-11-18 | [ADR 0037: körningar](2026-11-18-adr-0037-korningar.md) | #96 |

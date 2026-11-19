@@ -37,6 +37,10 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 
   Räknaren visar högst 100, och "100+" om det finns fler. Den uppdateras när man byter sida.
 
+## Körningar
+
+Sidan Körningar (rätten `jobs:read`) visar Petvolds dagliga körningar och reläets döda poster. Den som har `jobs:operate` kan köra en körning nu, pausa och återuppta den, och skicka en död post igen. Se [Körningar](korningar.md).
+
 ## Logga in
 
 - **I drift** loggar man in med bolagets konto, via bolagets identitetstjänst (OIDC). Appen får en token som bara finns i minnet. En omladdning av sidan loggar in igen genom identitetstjänstens session.

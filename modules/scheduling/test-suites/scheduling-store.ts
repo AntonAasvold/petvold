@@ -80,6 +80,21 @@ export function schedulingStoreSuite(name: string, factory: StoreFactory): void 
       assert.deepEqual((await s.listRuns({ market: 'SE' })).map((r) => r.id), ['run_d', 'run_b', 'run_a']);
     });
 
+    it('a job is paused once and resumed once, and both are in the trail', async (s) => {
+      const pause = { job: 'parties.retention', pausedBy: 'drift@example.test', pausedAt: '2026-11-19T08:00:00.000Z', reason: 'Wrong rule for NO' };
+      await s.pause(pause, { id: 'ctl_1', job: pause.job, action: 'pause', by: pause.pausedBy, at: pause.pausedAt, reason: pause.reason });
+      assert.deepEqual(await s.pauses(), [pause]);
+      await assert.rejects(s.pause(pause, { id: 'ctl_x', job: pause.job, action: 'pause', by: 'b', at: pause.pausedAt, reason: 'again' }), /paused already/);
+      await s.resume(pause.job, { id: 'ctl_2', job: pause.job, action: 'resume', by: 'b@example.test', at: '2026-11-19T09:00:00.000Z', reason: 'Rule fixed' });
+      await assert.rejects(s.resume(pause.job, { id: 'ctl_y', job: pause.job, action: 'resume', by: 'b', at: '2026-11-19T09:00:00.000Z', reason: 'x' }), /not paused/);
+      assert.deepEqual(await s.pauses(), []);
+      assert.deepEqual((await s.controls(pause.job, 10)).map((c) => [c.id, c.action, c.by, c.reason]), [
+        ['ctl_2', 'resume', 'b@example.test', 'Rule fixed'],
+        ['ctl_1', 'pause', 'drift@example.test', 'Wrong rule for NO'],
+      ]);
+      assert.deepEqual(await s.controls('policies.renewal', 10), []);
+    });
+
     it('a dead letter is kept until it is removed, and the same event replaces it', async (s) => {
       await s.saveDeadLetter({ source: 'claims', eventId: '7', attempts: 10, lastError: 'timeout', deadAt: '2026-11-19T10:00:00.000Z' });
       await s.saveDeadLetter({ source: 'policies', eventId: '3', attempts: 10, lastError: 'boom', deadAt: '2026-11-19T09:00:00.000Z' });

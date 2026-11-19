@@ -65,6 +65,13 @@ tags:
       The events themselves, with the fields of each, are described in the
       events contract `asyncapi.yaml`, next to this one.
 
+  - name: jobs
+    x-displayName: runs
+    description: |
+      Petvold's daily runs (ADR 0037): renewal, expiry and retention, run once a
+      day per market, one server at a time, with their history. Pause, resume
+      and run now, and the relay's dead letters.
+
 paths:
   /v1/claims:
     get:
@@ -3399,6 +3406,227 @@ paths:
                 properties:
                   retried: { type: integer, minimum: 0 }
 
+
+  /v1/jobs:
+    get:
+      tags: [jobs]
+      operationId: listJobs
+      x-permission: jobs:read
+      summary: The runs, with schedule, pause and the latest and next run per market
+      description: |
+        Requires the permission `jobs:read`. Every job the scheduler knows, and
+        for each market within the caller's markets the latest run and when the
+        next scheduled one is due.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Job' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/jobs/{job}:
+    get:
+      tags: [jobs]
+      operationId: getJob
+      x-permission: jobs:read
+      summary: A job, with what was done to it
+      description: Requires the permission `jobs:read`. The job as in the list, and its latest pauses and resumptions.
+      parameters:
+        - $ref: '#/components/parameters/Job'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The job
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/jobs/{job}/runs:
+    get:
+      tags: [jobs]
+      operationId: listJobRuns
+      x-permission: jobs:read
+      summary: The job's history, newest first
+      description: |
+        Requires the permission `jobs:read`. Runs within the caller's markets,
+        kept for 400 days. A result holds counts and ids, never personal data.
+      parameters:
+        - $ref: '#/components/parameters/Job'
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The runs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/JobRun' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    post:
+      tags: [jobs]
+      operationId: runJob
+      x-permission: jobs:operate
+      summary: Run the job now in a market
+      description: |
+        Requires the permission `jobs:operate`. Runs at once, also when the job
+        is paused, and answers with the run when it is done. With `dryRun`
+        nothing is stored by the job, for the jobs that can (renewal and
+        retention). `409` when another server is running it in the market.
+      parameters:
+        - $ref: '#/components/parameters/Job'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunJobRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The run, succeeded or failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobRun' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/jobs/{job}/pauses:
+    post:
+      tags: [jobs]
+      operationId: pauseJob
+      x-permission: jobs:operate
+      summary: Pause the job in every market
+      description: |
+        Requires the permission `jobs:operate`. Takes effect at once, without
+        four eyes: whoever sees a job go wrong should be able to stop it. The
+        scheduler skips it until it is resumed; "Run now" still works. Kept with
+        who, when and why. `409` if it is paused already.
+      parameters:
+        - $ref: '#/components/parameters/Job'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobControlRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Paused
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobPause' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/jobs/{job}/resumptions:
+    post:
+      tags: [jobs]
+      operationId: resumeJob
+      x-permission: jobs:operate
+      summary: Resume a paused job
+      description: |
+        Requires the permission `jobs:operate`. A day that was missed while it
+        was paused runs once at the next round. `409` if it is not paused.
+      parameters:
+        - $ref: '#/components/parameters/Job'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobControlRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Resumed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobControl' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/relay-dead-letters:
+    get:
+      tags: [jobs]
+      operationId: listRelayDeadLetters
+      x-permission: jobs:read
+      summary: Events the relay set aside, oldest first
+      description: |
+        Requires the permission `jobs:read`. An event that could not be
+        delivered within Petvold after ten attempts (ADR 0008). It stays
+        unpublished in its module's outbox until it is sent again. Ids and the
+        error only, never the event.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The dead letters
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RelayDeadLetter' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/relay-dead-letters/{deadLetter}/retries:
+    post:
+      tags: [jobs]
+      operationId: retryRelayDeadLetter
+      x-permission: jobs:operate
+      summary: Send a dead letter again
+      description: |
+        Requires the permission `jobs:operate`. The relay forgets it and tries
+        the event from the start at its next round. Fix the cause first, or it
+        becomes a dead letter again after ten attempts.
+      parameters:
+        - { name: deadLetter, in: path, required: true, description: 'source:eventId, e.g. claims:42', schema: { type: string, pattern: '^[a-z]+:[A-Za-z0-9_-]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '204': { description: Sent again at the relay's next round }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3407,6 +3635,12 @@ components:
       bearerFormat: JWT
 
   parameters:
+    Job:
+      name: job
+      in: path
+      required: true
+      description: The job's name, e.g. policies.renewal.
+      schema: { type: string, pattern: '^[a-z]+\.[a-z-]+$' }
     ClaimId:
       name: claimId
       in: path
@@ -3617,6 +3851,106 @@ components:
         reason: The policy has been changed retroactively.
 
   schemas:
+    Job:
+      type: object
+      required: [id, schedule, markets]
+      properties:
+        id: { type: string, description: 'The job''s name, e.g. policies.renewal.' }
+        schedule: { $ref: '#/components/schemas/JobSchedule' }
+        paused: { $ref: '#/components/schemas/JobPause' }
+        markets:
+          type: array
+          items:
+            type: object
+            required: [market]
+            properties:
+              market: { $ref: '#/components/schemas/Market' }
+              nextRunAt: { $ref: '#/components/schemas/DateTime', description: When the next scheduled run is due. Omitted while paused. }
+              lastRun: { $ref: '#/components/schemas/JobRun' }
+
+    JobDetail:
+      allOf:
+        - $ref: '#/components/schemas/Job'
+        - type: object
+          required: [controls]
+          properties:
+            controls:
+              type: array
+              description: The latest pauses and resumptions, newest first.
+              items: { $ref: '#/components/schemas/JobControl' }
+
+    JobSchedule:
+      type: object
+      required: [kind]
+      description: 'daily: at a time of day in each market''s time zone. interval: every so many seconds.'
+      properties:
+        kind: { type: string, enum: [daily, interval] }
+        at: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' }
+        seconds: { type: integer, minimum: 1 }
+
+    JobRun:
+      type: object
+      required: [id, job, market, trigger, startedBy, startedAt, dryRun, status]
+      properties:
+        id: { type: string }
+        job: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        trigger: { type: string, enum: [schedule, manual, api], description: 'schedule: by the scheduler. manual: "Run now". api: an old run operation.' }
+        startedBy: { type: string }
+        startedAt: { $ref: '#/components/schemas/DateTime' }
+        scheduledFor: { $ref: '#/components/schemas/Date', description: The market's day a scheduled run was for. }
+        dryRun: { type: boolean }
+        status: { type: string, enum: [running, succeeded, failed, skipped] }
+        finishedAt: { $ref: '#/components/schemas/DateTime' }
+        result: { type: object, additionalProperties: true, description: Counts and ids, never personal data. }
+        error: { type: string }
+
+    JobPause:
+      type: object
+      required: [job, pausedBy, pausedAt, reason]
+      properties:
+        job: { type: string }
+        pausedBy: { type: string }
+        pausedAt: { $ref: '#/components/schemas/DateTime' }
+        reason: { type: string }
+
+    JobControl:
+      type: object
+      required: [id, job, action, by, at, reason]
+      properties:
+        id: { type: string }
+        job: { type: string }
+        action: { type: string, enum: [pause, resume] }
+        by: { type: string }
+        at: { $ref: '#/components/schemas/DateTime' }
+        reason: { type: string }
+
+    RunJobRequest:
+      type: object
+      additionalProperties: false
+      required: [market]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        dryRun: { type: boolean, default: false }
+
+    JobControlRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    RelayDeadLetter:
+      type: object
+      required: [id, source, eventId, attempts, lastError, deadAt]
+      properties:
+        id: { type: string, description: 'source:eventId, for sending it again.' }
+        source: { type: string, description: The module's outbox, e.g. claims or policies. }
+        eventId: { type: string }
+        attempts: { type: integer, minimum: 1 }
+        lastError: { type: string }
+        deadAt: { $ref: '#/components/schemas/DateTime' }
+
     Money:
       type: integer
       description: Amount in the smallest currency unit (cents, pence …).

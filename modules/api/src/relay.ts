@@ -70,7 +70,8 @@ export class Relay {
   private readonly dead = new Map<string, DeadLetter>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
-  private loaded = false;
+  /** When the dead letters were last read from the state, ms since epoch. */
+  private loadedAt = -Infinity;
   private leading = false;
 
   constructor(
@@ -145,8 +146,9 @@ export class Relay {
   }
 
   /**
-   * Takes or renews the lease, and on the first round as the relay reads the
-   * dead letters kept there, so they are skipped after a restart too.
+   * Takes or renews the lease, and as the relay reads the dead letters kept
+   * there, at the first round and every 10 s, so they are skipped after a
+   * restart too and one sent again elsewhere is tried.
    */
   private async lead(): Promise<boolean> {
     const st = this.o.state;
@@ -154,9 +156,11 @@ export class Relay {
     const now = this.o.clock.now();
     const until = new Date(Date.parse(now) + (this.o.leaseMs ?? 30_000)).toISOString();
     this.leading = await st.tryLease('relay', this.holder(), until, now);
-    if (this.leading && !this.loaded) {
+    // Read the dead letters again every 10 s: one sent again on another server is then tried here too.
+    if (this.leading && Date.parse(now) - this.loadedAt >= 10_000) {
+      this.dead.clear();
       for (const d of await st.deadLetters()) this.dead.set(`${d.source}:${d.eventId}`, { source: d.source, eventId: d.eventId, attempts: d.attempts, lastError: d.lastError });
-      this.loaded = true;
+      this.loadedAt = Date.parse(now);
     }
     return this.leading;
   }

@@ -93,3 +93,24 @@ test('history older than 400 days goes once a day', async () => {
   await scheduler.tick();
   assert.deepEqual(await store.listRuns({}), []);
 });
+
+test("the next run is today at the job's time in the market, or tomorrow when today's is done", async () => {
+  const { nextDailyRun, zonedTime } = await import('../src/index.ts');
+  assert.equal(zonedTime('2026-11-19', '02:00', 'Europe/Stockholm'), '2026-11-19T01:00:00.000Z');
+  assert.equal(zonedTime('2026-07-01', '02:00', 'Europe/Stockholm'), '2026-07-01T00:00:00.000Z');
+  assert.equal(nextDailyRun('02:00', 'SE', '2026-11-19T00:30:00.000Z', { scheduledFor: '2026-11-18' }), '2026-11-19T01:00:00.000Z');
+  assert.equal(nextDailyRun('02:00', 'SE', '2026-11-19T05:00:00.000Z', { scheduledFor: '2026-11-19' }), '2026-11-20T01:00:00.000Z');
+  assert.equal(nextDailyRun('02:00', 'SE', '2026-11-19T05:00:00.000Z', null), '2026-11-19T01:00:00.000Z', 'late: the time it should have run');
+});
+
+test('a paused job is skipped by the scheduler until it is resumed', async () => {
+  const now = { t: '2026-11-19T01:30:00Z' };
+  const calls: string[] = [];
+  const job: JobDefinition = { name: 'parties.retention', schedule: { kind: 'daily', at: '02:00' }, run: async (ctx) => (calls.push(ctx.market), {}) };
+  const { scheduler, store } = setup(now, [job]);
+  await store.pause({ job: job.name, pausedBy: 'd', pausedAt: now.t, reason: 'x' }, { id: 'c1', job: job.name, action: 'pause', by: 'd', at: now.t, reason: 'x' });
+  assert.deepEqual(await scheduler.tick(), []);
+  await store.resume(job.name, { id: 'c2', job: job.name, action: 'resume', by: 'd', at: now.t, reason: 'y' });
+  assert.equal((await scheduler.tick()).length, 2);
+  assert.deepEqual(calls, ['SE', 'NO']);
+});

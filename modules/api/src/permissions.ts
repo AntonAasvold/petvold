@@ -82,6 +82,10 @@ export const PERMISSIONS = [
   'webhooks:read',
   /** Create and change webhook subscriptions, and rotate their secrets. */
   'webhooks:manage',
+  /** See the runs, their history and the relay's dead letters (ADR 0037). */
+  'jobs:read',
+  /** Run a job now, pause and resume it, and send a dead letter again (ADR 0037). Takes effect at once. */
+  'jobs:operate',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -185,6 +189,8 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   'catalog-publisher': { permissions: ['catalog:read', 'catalog:publish'] },
   /** Manages roles and limits. No permissions in claims. */
   admin: { permissions: ['access:read', 'access:manage'] },
+  /** Watches and steers Petvold's runs and the relay (ADR 0037), e.g. the operations team. */
+  operations: { permissions: ['jobs:read', 'jobs:operate', 'webhooks:read'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */
   'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read'], bindsTo: 'policies' },
 };

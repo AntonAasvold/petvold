@@ -246,3 +246,55 @@ export function lineCategoryLabel(c: string): string {
       return c;
   }
 }
+
+export function jobLabel(name: string): string {
+  switch (name) {
+    case 'policies.application-expiry':
+      return msg('Expiry of applications', { id: 'job.application-expiry' });
+    case 'policies.proposal-expiry':
+      return msg('Expiry of transfers', { id: 'job.proposal-expiry' });
+    case 'policies.renewal':
+      return msg('Renewal', { id: 'job.renewal' });
+    case 'parties.retention':
+      return msg('Retention', { id: 'job.retention' });
+    default:
+      return name;
+  }
+}
+
+export function runStatusLabel(s: string): string {
+  switch (s) {
+    case 'running':
+      return msg('Running', { id: 'run.running' });
+    case 'succeeded':
+      return msg('Done', { id: 'run.succeeded' });
+    case 'failed':
+      return msg('Failed', { id: 'run.failed' });
+    case 'skipped':
+      return msg('Skipped', { id: 'run.skipped' });
+    default:
+      return s;
+  }
+}
+
+/** succeeded is done; failed stands out with a strong border; running waits; skipped is grey. */
+export function runStatusVariant(s: string): 'success' | 'danger' | 'warning' | 'neutral' {
+  return s === 'succeeded' ? 'success' : s === 'failed' ? 'danger' : s === 'running' ? 'warning' : 'neutral';
+}
+
+export function runTriggerLabel(t: string): string {
+  switch (t) {
+    case 'schedule':
+      return msg('Schedule', { id: 'run.schedule' });
+    case 'manual':
+      return msg('Run now', { id: 'run.manual' });
+    case 'api':
+      return msg('API call', { id: 'run.api' });
+    default:
+      return t;
+  }
+}
+
+export function scheduleLabel(s: { kind: string; at?: string; seconds?: number }): string {
+  return s.kind === 'daily' ? `${msg('Daily at', { id: 'job.dailyAt' })} ${s.at}` : `${msg('Every', { id: 'job.every' })} ${s.seconds} s`;
+}

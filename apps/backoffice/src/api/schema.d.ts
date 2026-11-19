@@ -2332,10 +2332,248 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The runs, with schedule, pause and the latest and next run per market
+         * @description Requires the permission `jobs:read`. Every job the scheduler knows, and
+         *     for each market within the caller's markets the latest run and when the
+         *     next scheduled one is due.
+         */
+        get: operations["listJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{job}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A job, with what was done to it
+         * @description Requires the permission `jobs:read`. The job as in the list, and its latest pauses and resumptions.
+         */
+        get: operations["getJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{job}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The job's history, newest first
+         * @description Requires the permission `jobs:read`. Runs within the caller's markets,
+         *     kept for 400 days. A result holds counts and ids, never personal data.
+         */
+        get: operations["listJobRuns"];
+        put?: never;
+        /**
+         * Run the job now in a market
+         * @description Requires the permission `jobs:operate`. Runs at once, also when the job
+         *     is paused, and answers with the run when it is done. With `dryRun`
+         *     nothing is stored by the job, for the jobs that can (renewal and
+         *     retention). `409` when another server is running it in the market.
+         */
+        post: operations["runJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{job}/pauses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause the job in every market
+         * @description Requires the permission `jobs:operate`. Takes effect at once, without
+         *     four eyes: whoever sees a job go wrong should be able to stop it. The
+         *     scheduler skips it until it is resumed; "Run now" still works. Kept with
+         *     who, when and why. `409` if it is paused already.
+         */
+        post: operations["pauseJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{job}/resumptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume a paused job
+         * @description Requires the permission `jobs:operate`. A day that was missed while it
+         *     was paused runs once at the next round. `409` if it is not paused.
+         */
+        post: operations["resumeJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/relay-dead-letters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Events the relay set aside, oldest first
+         * @description Requires the permission `jobs:read`. An event that could not be
+         *     delivered within Petvold after ten attempts (ADR 0008). It stays
+         *     unpublished in its module's outbox until it is sent again. Ids and the
+         *     error only, never the event.
+         */
+        get: operations["listRelayDeadLetters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/relay-dead-letters/{deadLetter}/retries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a dead letter again
+         * @description Requires the permission `jobs:operate`. The relay forgets it and tries
+         *     the event from the start at its next round. Fix the cause first, or it
+         *     becomes a dead letter again after ten attempts.
+         */
+        post: operations["retryRelayDeadLetter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Job: {
+            /** @description The job's name, e.g. policies.renewal. */
+            id: string;
+            schedule: components["schemas"]["JobSchedule"];
+            paused?: components["schemas"]["JobPause"];
+            markets: {
+                market: components["schemas"]["Market"];
+                /** @description When the next scheduled run is due. Omitted while paused. */
+                nextRunAt?: components["schemas"]["DateTime"];
+                lastRun?: components["schemas"]["JobRun"];
+            }[];
+        };
+        JobDetail: components["schemas"]["Job"] & {
+            /** @description The latest pauses and resumptions, newest first. */
+            controls: components["schemas"]["JobControl"][];
+        };
+        /** @description daily: at a time of day in each market's time zone. interval: every so many seconds. */
+        JobSchedule: {
+            /** @enum {string} */
+            kind: "daily" | "interval";
+            at?: string;
+            seconds?: number;
+        };
+        JobRun: {
+            id: string;
+            job: string;
+            market: components["schemas"]["Market"];
+            /**
+             * @description schedule: by the scheduler. manual: "Run now". api: an old run operation.
+             * @enum {string}
+             */
+            trigger: "schedule" | "manual" | "api";
+            startedBy: string;
+            startedAt: components["schemas"]["DateTime"];
+            /** @description The market's day a scheduled run was for. */
+            scheduledFor?: components["schemas"]["Date"];
+            dryRun: boolean;
+            /** @enum {string} */
+            status: "running" | "succeeded" | "failed" | "skipped";
+            finishedAt?: components["schemas"]["DateTime"];
+            /** @description Counts and ids */
+            result?: {
+                [key: string]: unknown;
+            };
+            error?: string;
+        };
+        JobPause: {
+            job: string;
+            pausedBy: string;
+            pausedAt: components["schemas"]["DateTime"];
+            reason: string;
+        };
+        JobControl: {
+            id: string;
+            job: string;
+            /** @enum {string} */
+            action: "pause" | "resume";
+            by: string;
+            at: components["schemas"]["DateTime"];
+            reason: string;
+        };
+        RunJobRequest: {
+            market: components["schemas"]["Market"];
+            /** @default false */
+            dryRun: boolean;
+        };
+        JobControlRequest: {
+            reason: string;
+        };
+        RelayDeadLetter: {
+            /** @description source:eventId, for sending it again. */
+            id: string;
+            /** @description The module's outbox */
+            source: string;
+            eventId: string;
+            attempts: number;
+            lastError: string;
+            deadAt: components["schemas"]["DateTime"];
+        };
         /** @description Amount in the smallest currency unit (cents, pence …). */
         Money: number;
         /** @description Amount in the smallest currency unit, never negative. */
@@ -4304,6 +4542,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description The job's name, e.g. policies.renewal. */
+        Job: string;
         ClaimId: string;
         /** @description The kind of reference data. */
         ReferenceKind: "species" | "breed" | "sex";
@@ -7947,6 +8187,261 @@ export interface operations {
                         retried: number;
                     };
                 };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listJobs: {
+        parameters: {
+            query?: {
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The jobs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Job"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The job's name, e.g. policies.renewal. */
+                job: components["parameters"]["Job"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetail"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listJobRuns: {
+        parameters: {
+            query?: {
+                market?: components["schemas"]["Market"];
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The job's name, e.g. policies.renewal. */
+                job: components["parameters"]["Job"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The runs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["JobRun"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    runJob: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The job's name, e.g. policies.renewal. */
+                job: components["parameters"]["Job"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunJobRequest"];
+            };
+        };
+        responses: {
+            /** @description The run, succeeded or failed */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRun"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    pauseJob: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The job's name, e.g. policies.renewal. */
+                job: components["parameters"]["Job"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobControlRequest"];
+            };
+        };
+        responses: {
+            /** @description Paused */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobPause"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    resumeJob: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The job's name, e.g. policies.renewal. */
+                job: components["parameters"]["Job"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobControlRequest"];
+            };
+        };
+        responses: {
+            /** @description Resumed */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobControl"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listRelayDeadLetters: {
+        parameters: {
+            query?: {
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dead letters */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["RelayDeadLetter"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    retryRelayDeadLetter: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description source:eventId, e.g. claims:42 */
+                deadLetter: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sent again at the relay's next round */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
