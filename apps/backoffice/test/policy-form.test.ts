@@ -50,8 +50,8 @@ test('issuing needs animal, policyholder, product and acceptance; a product with
 test('a product with underwriting takes an application, and one with documents needs terms and pre-contract shown', () => {
   assert.equal(needsApplication(withDocs), true);
   const f = withProductDefaults(emptyIssue(today, now, { animalId: 'ani_bosse', holder: 'pty_owner001' }), withDocs);
-  assert.deepEqual(issueProblems(f, withDocs, today, now), ['policy.needsApplication', 'policy.needDocuments']);
-  assert.deepEqual(issueProblems({ ...f, documents: ['terms:sv', 'pre-contract:sv'] }, withDocs, today, now), ['policy.needsApplication']);
+  assert.deepEqual(issueProblems(f, withDocs, today, now), ['policy.needDocuments']);
+  assert.deepEqual(issueProblems({ ...f, documents: ['terms:sv', 'pre-contract:sv'] }, withDocs, today, now), []);
 });
 
 test('the issue body has the choices, the premium without a tariff and the documents shown', () => {
@@ -81,4 +81,22 @@ test('a change starts today or later with a reason; only the latest cancellation
   ];
   assert.equal(reversibleCancellation(t)?.id, 'ptx_2');
   assert.equal(reversibleCancellation([...t, { id: 'ptx_3', type: 'change', requestedAt: '2026-11-02T00:00:00Z' }]), undefined);
+});
+
+test('an application answers every question, names declared diagnoses, and sends them with the policy', async () => {
+  const { answersFor, answerProblems, applicationBody } = await import('../src/policy-form.ts');
+  const a = answersFor([
+    { id: 'treated-last-12-months', type: 'boolean' },
+    { id: 'known-diagnoses', type: 'diagnoses' },
+  ]);
+  assert.deepEqual(answerProblems(a), ['policy.needAnswers']);
+  const answered = [{ ...a[0]!, value: false }, { ...a[1]!, value: true }];
+  assert.deepEqual(answerProblems(answered), ['policy.needDiagnoses']);
+  answered[1]!.diagnoses = 'ora-otit, hud-allergi';
+  assert.deepEqual(answerProblems(answered), []);
+  const f = { ...withProductDefaults(emptyIssue(today, now, { animalId: 'ani_rocky', holder: 'pty_owner004' }), withDocs), documents: ['terms:sv', 'pre-contract:sv'] };
+  assert.deepEqual(applicationBody(f, withDocs, answered).answers, [
+    { question: 'treated-last-12-months', value: false },
+    { question: 'known-diagnoses', value: true, diagnosisCodes: ['ORA-OTIT', 'HUD-ALLERGI'] },
+  ]);
 });

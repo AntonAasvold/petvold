@@ -29,12 +29,13 @@ import type { Me } from '../permissions.ts';
 import { versionOn } from '../policy-logic.ts';
 import { navigate } from '../router.ts';
 import { pvComponents } from '../styles/pv-components.ts';
-import { policyStatusLabel, problemLabel } from './labels.ts';
+import { groupKindLabel, policyStatusLabel, problemLabel } from './labels.ts';
 
 type Party = components['schemas']['PartyRecord'];
 type Policy = components['schemas']['PolicyRecord'];
 type Revision = components['schemas']['Party'];
 type Animal = components['schemas']['AnimalRecord'];
+type Group = components['schemas']['PolicyGroup'];
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -47,6 +48,8 @@ export class PartyDetail extends LitElement {
   @state() private policies: Policy[] = [];
   @state() private revisions: Revision[] = [];
   @state() private animals: Animal[] = [];
+  @state() private groups: Group[] = [];
+  @state() private newGroup = { kind: 'household' as 'household' | 'litter', litterId: '' };
   @state() private problem: Problem | null = null;
   @state() private editing: PartyForm | null = null;
   @state() private reason = '';
@@ -138,7 +141,7 @@ export class PartyDetail extends LitElement {
     this.problem = null;
     const path = { params: { path: { partyId: this.partyId } } };
     try {
-      const [party, revisions, policies, animals] = await Promise.all([
+      const [party, revisions, policies, animals, groups] = await Promise.all([
         unwrap(this.api.GET('/v1/parties/{partyId}', path)),
         unwrap(this.api.GET('/v1/parties/{partyId}/revisions', path)),
         // Only for whoever may read policies; otherwise the card is not shown.
@@ -148,8 +151,12 @@ export class PartyDetail extends LitElement {
         this.may('animals:read')
           ? this.api.GET('/v1/animals', { params: { query: { ownerPartyId: this.partyId } } }).then((r) => r.data?.items ?? [], () => [])
           : Promise.resolve([]),
+        this.may('policies:read')
+          ? this.api.GET('/v1/policy-groups', { params: { query: { policyholderPartyId: this.partyId } } }).then((r) => r.data?.items ?? [], () => [])
+          : Promise.resolve([]),
       ]);
       this.animals = animals;
+      this.groups = groups;
       this.party = party;
       this.revisions = revisions.items;
       this.policies = policies;
@@ -200,11 +207,69 @@ export class PartyDetail extends LitElement {
             : nothing}
         </div>
         <div class="side">
+          ${this.may('policies:read') ? this.groupsCard(p) : nothing}
           ${writable ? this.changeCard(p) : nothing} ${this.may('parties:privacy') && !p.anonymized ? this.erasureCard() : nothing}
           <pv-event-log heading=${msg('History', { id: 'claim.history' })} .entries=${this.history()}></pv-event-log>
         </div>
       </div>
     `;
+  }
+
+  /** Litter and household groups the party holds (ADR 0007), and a form for a new one. */
+  private groupsCard(p: Party) {
+    const writable = this.may('policies:write') && !p.anonymized;
+    return html`<section class="pv-card" aria-labelledby="groups">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="groups">${msg('Groups', { id: 'group.groups' })}</h2></div>
+      <div class="pv-card__body">
+        ${this.groups.length
+          ? html`<dl class="pv-dl">
+              ${this.groups.map(
+                (g) => html`<div class="pv-dl__row">
+                  <dt>${groupKindLabel(g.kind)} · ${g.members.filter((m) => !m.to).length} ${msg('members', { id: 'group.membersLower' })}</dt>
+                  <dd><a href=${`/groups/${g.id}`} class="pv-mono" @click=${(e: Event) => (e.preventDefault(), navigate(`/groups/${encodeURIComponent(g.id)}`))}>${g.id}</a></dd>
+                </div>`,
+              )}
+            </dl>`
+          : html`<p>${msg('No groups.', { id: 'group.none' })}</p>`}
+        ${writable
+          ? html`<form class="row" @submit=${this.createGroup}>
+              <wa-select label=${msg('New group', { id: 'group.new' })} value=${this.newGroup.kind} @change=${(e: Event) => (this.newGroup = { ...this.newGroup, kind: (e.target as HTMLSelectElement).value as 'household' | 'litter' })}>
+                <wa-option value="household">${groupKindLabel('household')}</wa-option>
+                <wa-option value="litter">${groupKindLabel('litter')}</wa-option>
+              </wa-select>
+              ${this.newGroup.kind === 'litter'
+                ? html`<wa-input label=${msg('Litter id', { id: 'group.litterId' })} .value=${this.newGroup.litterId} @input=${(e: Event) => (this.newGroup = { ...this.newGroup, litterId: (e.target as HTMLInputElement).value })}></wa-input>`
+                : nothing}
+              <wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'group'}>${msg('Create the group', { id: 'group.create' })}</wa-button>
+            </form>`
+          : nothing}
+      </div>
+    </section>`;
+  }
+
+  private async createGroup(e: Event) {
+    e.preventDefault();
+    const g = this.newGroup;
+    if (g.kind === 'litter' && !/^lit_[A-Za-z0-9]+$/.test(g.litterId.trim())) {
+      this.notice = { variant: 'danger', text: problemLabel('group.needLitter') };
+      return;
+    }
+    this.busy = 'group';
+    let created: { id: string } | undefined;
+    const { ok, notice } = await act(
+      async () => {
+        const r = await this.api.POST('/v1/policy-groups', {
+          params: { header: { 'Idempotency-Key': this.keys.for(`group:${g.kind}:${g.litterId}`) } },
+          body: { market: this.party!.market, kind: g.kind, holderPartyId: this.partyId, ...(g.kind === 'litter' ? { litterId: g.litterId.trim() } : {}) },
+        });
+        created = r.data;
+        return r;
+      },
+      () => ({ variant: 'success', text: msg('The group is created.', { id: 'group.created' }) }),
+    );
+    this.busy = '';
+    this.notice = notice;
+    if (ok && created) navigate(`/groups/${encodeURIComponent(created.id)}`);
   }
 
   private animalsCard() {
