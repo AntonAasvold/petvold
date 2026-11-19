@@ -53,6 +53,9 @@ await inst.ping().catch((err: Error) => {
 await seedSampleData(inst, clock);
 inst.relay.start(1_000);
 inst.webhookWorker.start(1_000);
+// Not by default: with no history, the first round would at once renew and
+// expire the sample data that the flow tests count on (ADR 0037).
+if (process.env.PETVOLD_SCHEDULER === 'on') inst.scheduler.start();
 
 const DEV_TOKENS: Record<string, Principal> = {
   'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler'], markets: '*' },

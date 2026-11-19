@@ -117,8 +117,8 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 
 I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara som anrop som något utanför Petvold måste starta. Ingen historik sparas. Reläet och webhook-arbetaren går med ett fast intervall som inte går att se eller ändra.
 - [x] [ADR 0037](adr/0037-korningar.md) om körningar
-- [ ] Schemaläggare i servern med lås (`pg_try_advisory_lock` eller en tabell för lås), som också gäller reläet
-- [ ] Historik över körningar: start, slut, vad som gjordes (antal), fel och vem eller vad som startade den
+- [x] Schemaläggare i servern med lån i en tabell, och historik över körningar: start, slut, resultat med antal, fel och vem eller vad som startade den (ADR 0037, steg 1)
+- [ ] Reläet bakom ett lån, med döda poster som sparas (steg 2)
 - [ ] Back office: lista över körningar med nästa och senaste körning, historik, "Kör nu", paus och schema som går att ändra med fyra ögon
 - [ ] Back office: reläet och webhook-arbetaren med kö, eftersläpning och döda poster
 - [ ] Påminnelser och utgång för komplettering (skadeprocessen, steg 3) som en körning bland de andra

@@ -230,8 +230,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Back office** får sidan Körningar.
   - **Utförande:** fem PR:er.
 
+- Körningar, steg 1, PR #97 (ADR 0037):
+  - **Modulen `scheduling`** med `Scheduler`, lån i `scheduling.lease`, historik i `scheduling.run` (migration 0038) och en gemensam testsvit för minnet och Postgres.
+  - **Körningarna:** utgång av ansökningar och förslag, förnyelse och gallring körs varje dag per marknad, i marknadens tid, med resultat utan personuppgifter.
+  - **Servern för drift** startar schemaläggaren. Dev-servern gör det bara med `PETVOLD_SCHEDULER=on`.
+  - **Driften** behöver `SCHEDULING_DATABASE_URL` och rollen `scheduling_service`.
+  - **Tester:** 473 i kärnan och API:t, 135 mot databasen och 25 flöden.
+
 **Nästa steg**
-1. Körningar, steg 1: modulen `scheduling` med lån, historik och schemaläggaren.
+1. Körningar, steg 2: reläet bakom ett lån, med döda poster som sparas.
 2. Skadeprocessen, steg 3: komplettering.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).

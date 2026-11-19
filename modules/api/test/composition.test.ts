@@ -8,7 +8,7 @@ import { createApp } from '../src/index.ts';
 test('the modules are connected, and the relay drives the policy module from the animal register', async () => {
   const clock = { now: () => '2026-11-15T10:00:00.000Z' };
   const inst = await compose({ databases: {}, engineVersion: 'test', clock });
-  assert.deepEqual(Object.values(inst.storage), ['memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory']);
+  assert.deepEqual(Object.values(inst.storage), ['memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory']);
   await seedSampleData(inst, clock);
   await seedSampleData(inst, clock); // twice is harmless
   const app = createApp({ ...inst.deps, auth: { authenticate: async () => ({ subject: 'h', roles: ['handler'], markets: '*' }) } });
@@ -96,4 +96,19 @@ test('the claim number prefix per market is read from the environment, and a bad
   assert.deepEqual(claimNumberPrefixFromEnv({ PETVOLD_CLAIM_NUMBER_PREFIX: 'SE=S, NO=N' }), { SE: 'S', NO: 'N' });
   assert.deepEqual(claimNumberPrefixFromEnv({}), {});
   assert.throws(() => claimNumberPrefixFromEnv({ PETVOLD_CLAIM_NUMBER_PREFIX: 'se=s' }), /MARKET=PREFIX/);
+});
+
+test("the scheduler runs the four jobs once per market and day, with counts and ids only in the history (ADR 0037)", async () => {
+  // 03:30 in Stockholm: every job's time has come.
+  const clock = { now: () => '2026-11-19T02:30:00.000Z' };
+  const inst = await compose({ databases: {}, engineVersion: 'test', clock });
+  await seedSampleData(inst, clock);
+  const runs = await inst.scheduler.tick();
+  assert.deepEqual([...new Set(runs.map((r) => r.job))], ['policies.application-expiry', 'policies.proposal-expiry', 'policies.renewal', 'parties.retention']);
+  assert.ok(runs.every((r) => r.status === 'succeeded'), JSON.stringify(runs.filter((r) => r.status !== 'succeeded')));
+  assert.ok(runs.some((r) => r.market === 'SE'));
+  const renewal = runs.find((r) => r.job === 'policies.renewal' && r.market === 'SE')!;
+  assert.deepEqual(Object.keys(renewal.result!).sort(), ['cancelled', 'checked', 'needsDecision', 'notYet', 'renewed', 'renewedPolicyIds']);
+  assert.deepEqual(await inst.scheduler.tick(), [], 'once a day');
+  await inst.close();
 });

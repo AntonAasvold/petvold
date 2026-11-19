@@ -6,7 +6,8 @@
  * Configuration from the environment (never a .env file):
  * - CLAIMS_DATABASE_URL, ACCESS_DATABASE_URL, DECISIONING_DATABASE_URL,
  *   CATALOG_DATABASE_URL, ANIMALS_DATABASE_URL, PARTIES_DATABASE_URL,
- *   POLICIES_DATABASE_URL, COMMUNICATIONS_DATABASE_URL and WEBHOOKS_DATABASE_URL:
+ *   POLICIES_DATABASE_URL, COMMUNICATIONS_DATABASE_URL, WEBHOOKS_DATABASE_URL
+ *   and SCHEDULING_DATABASE_URL:
  *   every one is required, each with the module's own role.
  * - PETVOLD_WEBHOOK_KEY: 32 bytes in base64 that seal the webhook secrets (ADR 0033). Required.
  * - PETVOLD_WEBHOOK_ALLOW_HOSTS: hosts a webhook may name although local or http, comma-separated. Default none.
@@ -53,6 +54,7 @@ await inst.ping().catch((err: Error) => {
 });
 inst.relay.start(1_000);
 inst.webhookWorker.start(1_000);
+inst.scheduler.start();
 
 const app = createApp({ ...inst.deps, auth, corsOrigins: corsOriginsFromEnv(process.env) });
 

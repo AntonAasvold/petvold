@@ -14,7 +14,7 @@ npm start            # node --import tsx modules/api/src/server.ts
 
 | Variabel | Krävs | Betyder |
 | --- | --- | --- |
-| `CLAIMS_DATABASE_URL`, `ACCESS_DATABASE_URL`, `DECISIONING_DATABASE_URL`, `CATALOG_DATABASE_URL`, `ANIMALS_DATABASE_URL`, `PARTIES_DATABASE_URL`, `POLICIES_DATABASE_URL`, `COMMUNICATIONS_DATABASE_URL`, `WEBHOOKS_DATABASE_URL` | Ja, alla | En databasadress per modul, med modulens egen tjänsteroll (ADR 0001) |
+| `CLAIMS_DATABASE_URL`, `ACCESS_DATABASE_URL`, `DECISIONING_DATABASE_URL`, `CATALOG_DATABASE_URL`, `ANIMALS_DATABASE_URL`, `PARTIES_DATABASE_URL`, `POLICIES_DATABASE_URL`, `COMMUNICATIONS_DATABASE_URL`, `WEBHOOKS_DATABASE_URL`, `SCHEDULING_DATABASE_URL` | Ja, alla | En databasadress per modul, med modulens egen tjänsteroll (ADR 0001) |
 | `PETVOLD_VERSION` | Ja | Versionen som sparas med varje beslut (ADR 0018) |
 | `PETVOLD_CLAIM_NUMBER_PREFIX` | Nej | Skadenumrets prefix per marknad, till exempel `SE=S,NO=N` (ADR 0036). Förval `S`. Ett prefix är versaler och siffror, högst åtta tecken. Ett felaktigt värde stoppar starten. |
 | `PETVOLD_AUTH_ISSUER` | Ja | Utfärdaren av tokens, till exempel bolagets identitetstjänst |

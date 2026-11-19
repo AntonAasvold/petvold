@@ -36,6 +36,10 @@ import { lookup } from 'node:dns/promises';
 import { randomBytes } from 'node:crypto';
 import { fetchTransport, InMemoryWebhookStore, SecretBox, WebhookService, WebhookWorker, type Transport, type WebhookStore } from '@petvold/webhooks';
 import { PostgresWebhookStore } from '@petvold/webhooks/postgres';
+import { InMemorySchedulingStore, Scheduler, type SchedulingStore } from '@petvold/scheduling';
+import { PostgresSchedulingStore } from '@petvold/scheduling/postgres';
+import { hostname } from 'node:os';
+import { defaultJobs } from './jobs.ts';
 import { PostgresPolicyStore } from '@petvold/policies/postgres';
 import { tariffCoverage } from '@petvold/pricing-core';
 import { underwritingCoverage } from '@petvold/underwriting-core';
@@ -44,7 +48,7 @@ import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './pe
 import { Relay, relaySource } from './relay.ts';
 import { animalPort, claimsActivity, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
 
-export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks'] as const;
+export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling'] as const;
 export type DatabaseName = (typeof DATABASES)[number];
 
 export interface InstallationConfig {
@@ -78,6 +82,7 @@ export const DATABASE_ENV: Record<DatabaseName, string> = {
   policies: 'POLICIES_DATABASE_URL',
   communications: 'COMMUNICATIONS_DATABASE_URL',
   webhooks: 'WEBHOOKS_DATABASE_URL',
+  scheduling: 'SCHEDULING_DATABASE_URL',
 };
 
 /** The database URLs from the environment, skipping empty ones. */
@@ -123,8 +128,11 @@ export interface Installation {
     policies: PolicyStore;
     notices: NoticeStore;
     webhooks: WebhookStore;
+    scheduling: SchedulingStore;
   };
   relay: Relay;
+  /** Runs the daily jobs when they are due (ADR 0037). Start it next to the relay. */
+  scheduler: Scheduler;
   /** Sends queued webhook deliveries (ADR 0033). Start it next to the relay. */
   webhookWorker: WebhookWorker;
   /** Where each module keeps its data: 'postgres' or 'memory'. */
@@ -267,6 +275,23 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     clock,
   });
 
+  // Runs (ADR 0037): the jobs run per market, one server at a time. The
+  // installation's markets are those with a product or a retention rule.
+  const schedulingPool = pool('scheduling', 2);
+  const schedulingStore: SchedulingStore = schedulingPool ? new PostgresSchedulingStore(schedulingPool) : new InMemorySchedulingStore();
+  const scheduler = new Scheduler({
+    store: schedulingStore,
+    clock,
+    jobs: defaultJobs({ policies, retention }),
+    markets: async () => {
+      const fromProducts = (await products.allProducts()).flatMap((p) => p.versions.map((v) => v.content.market));
+      const fromRetention = Object.keys((await retention.current()).markets);
+      return [...new Set([...fromProducts, ...fromRetention])].sort();
+    },
+    holder: `${hostname()}:${process.pid}`,
+    log,
+  });
+
   // The outboxes' relays (ADR 0008). Claims events have no receiver inside
   // Petvold yet and are logged; the others drive the policy module and the claims engine.
   const relay = new Relay(
@@ -337,14 +362,17 @@ export async function compose(config: InstallationConfig): Promise<Installation>
       policies: policyStore,
       notices: noticeStore,
       webhooks: webhookStore,
+      scheduling: schedulingStore,
     },
     relay,
+    scheduler,
     webhookWorker,
     storage: Object.fromEntries(DATABASES.map((d) => [d, config.databases[d] ? 'postgres' : 'memory'])) as Record<DatabaseName, 'postgres' | 'memory'>,
     async ping() {
       await Promise.all(pools.map((p) => p.query('select 1')));
     },
     async close() {
+      await scheduler.stop();
       await relay.stop();
       await webhookWorker.stop();
       await Promise.all(pools.map((p) => p.end()));
