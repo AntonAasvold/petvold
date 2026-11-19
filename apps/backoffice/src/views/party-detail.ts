@@ -34,6 +34,7 @@ import { policyStatusLabel, problemLabel } from './labels.ts';
 type Party = components['schemas']['PartyRecord'];
 type Policy = components['schemas']['PolicyRecord'];
 type Revision = components['schemas']['Party'];
+type Animal = components['schemas']['AnimalRecord'];
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -45,6 +46,7 @@ export class PartyDetail extends LitElement {
   @state() private party: Party | null = null;
   @state() private policies: Policy[] = [];
   @state() private revisions: Revision[] = [];
+  @state() private animals: Animal[] = [];
   @state() private problem: Problem | null = null;
   @state() private editing: PartyForm | null = null;
   @state() private reason = '';
@@ -136,14 +138,18 @@ export class PartyDetail extends LitElement {
     this.problem = null;
     const path = { params: { path: { partyId: this.partyId } } };
     try {
-      const [party, revisions, policies] = await Promise.all([
+      const [party, revisions, policies, animals] = await Promise.all([
         unwrap(this.api.GET('/v1/parties/{partyId}', path)),
         unwrap(this.api.GET('/v1/parties/{partyId}/revisions', path)),
         // Only for whoever may read policies; otherwise the card is not shown.
         this.may('policies:read')
           ? this.api.GET('/v1/policies', { params: { query: { policyholderPartyId: this.partyId } } }).then((r) => r.data?.items ?? [], () => [])
           : Promise.resolve([]),
+        this.may('animals:read')
+          ? this.api.GET('/v1/animals', { params: { query: { ownerPartyId: this.partyId } } }).then((r) => r.data?.items ?? [], () => [])
+          : Promise.resolve([]),
       ]);
+      this.animals = animals;
       this.party = party;
       this.revisions = revisions.items;
       this.policies = policies;
@@ -179,6 +185,7 @@ export class PartyDetail extends LitElement {
       <div class="cols">
         <div class="basis">
           ${this.detailsCard(p)} ${this.identifiersCard(p, writable)}
+          ${this.may('animals:read') ? this.animalsCard() : nothing}
           ${this.may('policies:read')
             ? html`<section class="pv-card" aria-labelledby="policies">
             <div class="pv-card__head"><h2 class="pv-card__title" id="policies">${msg('Policies as policyholder', { id: 'party.policies' })}</h2></div>
@@ -198,6 +205,30 @@ export class PartyDetail extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private animalsCard() {
+    return html`<section class="pv-card" aria-labelledby="animals">
+      <div class="pv-card__head">
+        <h2 class="pv-card__title" id="animals">${msg('Animals owned today', { id: 'party.animals' })}</h2>
+        ${this.may('animals:write') && !this.party?.anonymized
+          ? html`<wa-button size="small" appearance="outlined" @click=${() => navigate(`/animals/new?owner=${encodeURIComponent(this.partyId)}`)}
+              >${msg('Register an animal', { id: 'animal.register' })}</wa-button
+            >`
+          : nothing}
+      </div>
+      <pv-data-grid
+        .columns=${[
+          { key: 'name', header: msg('Name', { id: 'party.name' }), value: (a: Animal) => a.name },
+          { key: 'id', header: msg('Animal id', { id: 'animal.id' }), value: (a: Animal) => a.id },
+          { key: 'born', header: msg('Date of birth', { id: 'party.birthDate' }), value: (a: Animal) => formatDate(a.birthDate, getLocale()) },
+        ]}
+        .rows=${this.animals}
+        label=${msg('Animals owned today', { id: 'party.animals' })}
+        empty-text=${msg('No animals.', { id: 'party.noAnimals' })}
+        @pv-row-activate=${(e: CustomEvent<{ row: Animal }>) => navigate(`/animals/${encodeURIComponent(e.detail.row.id)}`)}
+      ></pv-data-grid>
+    </section>`;
   }
 
   private detailsCard(p: Party) {

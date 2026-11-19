@@ -29,6 +29,7 @@ export const SECTIONS: Section[] = [
   { path: '/claims', label: 'nav.claims', icon: 'file-invoice', anyOf: ['claims:read'], count: { path: '/v1/claims', query: { status: 'awaiting-decision' } } },
   { path: '/policies', label: 'nav.policies', icon: 'paw', anyOf: ['policies:read'] },
   { path: '/parties', label: 'nav.parties', icon: 'address-book', anyOf: ['parties:read'] },
+  { path: '/animals', label: 'nav.animals', icon: 'dog', anyOf: ['animals:read'] },
   { path: '/applications', label: 'nav.applications', icon: 'list-check', anyOf: ['policies:read'], count: { path: '/v1/applications', query: { status: 'referred' } } },
   { path: '/proposals', label: 'nav.proposals', icon: 'user-check', anyOf: ['policies:read'], count: { path: '/v1/policy-proposals', query: { status: 'pending' } } },
   { path: '/notices', label: 'nav.notices', icon: 'envelope', anyOf: ['notices:read'], count: { path: '/v1/notices', query: { attention: true } } },

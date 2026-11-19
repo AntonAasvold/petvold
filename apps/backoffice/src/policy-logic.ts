@@ -74,6 +74,8 @@ export function searchTarget(input: string): { path: string; query?: string } {
       return { path: `/notices/${encodeURIComponent(s.id)}` };
     case 'party':
       return { path: `/parties/${encodeURIComponent(s.id)}` };
+    case 'animal':
+      return { path: `/animals/${encodeURIComponent(s.id)}` };
     default:
       return { path: '/policies', query: input.trim() };
   }

@@ -263,8 +263,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Sökfältet** i toppraden öppnar en part för ett `pty_`-id.
   - **Tester:** 46 enhetstester och 28 flöden.
 
+- Back office, djur, PR #102:
+  - **Avsnittet Djur:** sök på chip, registreringsnummer, pass, ägare eller id; registrera ett djur och en kull; djurets sida med rättelse, nummer, ägarbyte, policyer och historik.
+  - **Partens sida** visar djuren parten äger, och sökfältet öppnar ett djur för ett `ani_`-id.
+  - **Tester:** 50 enhetstester och 29 flöden.
+
 **Nästa steg**
-1. Back office: djur (sök, registrera, ändra, id-nummer, ägarbyte, historik och kullar), sedan policyer.
+1. Back office: policyer, alltså teckna med prisindikation, ändra, säga upp, återuppta och förnya.
 2. Skadeprocessen, steg 3: komplettering, som en körning bland de andra.
 2. Skadeprocessen, steg 3: komplettering.
 2. ADR om premier och betalningar (M5).

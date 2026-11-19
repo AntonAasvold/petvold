@@ -110,6 +110,9 @@ export class ClaimDetail extends LitElement {
         color: var(--ink);
         font-weight: 600;
       }
+      .facts a {
+        color: var(--ink);
+      }
       .cols {
         display: flex;
         flex-wrap: wrap;
