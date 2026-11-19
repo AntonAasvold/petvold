@@ -14,6 +14,7 @@ import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/checkbox/checkbox.js';
 import '@awesome.me/webawesome/dist/components/textarea/textarea.js';
 import '@awesome.me/webawesome/dist/components/spinner/spinner.js';
+import '@awesome.me/webawesome/dist/components/input/input.js';
 import { unwrap, type Api, type Problem } from '../api/client.ts';
 import type { components } from '../api/schema';
 import { act, type Notice } from '../actions.ts';
@@ -24,7 +25,7 @@ import type { LogEntry } from '../components/event-log.ts';
 import { IdempotencyKeys } from '../decide.ts';
 import { formatDateTime } from '../format.ts';
 import { getLocale } from '../i18n.ts';
-import { controlProblems, mayOperateJobs, resultLine } from '../jobs-logic.ts';
+import { controlProblems, mayApproveChange, mayConfigureJobs, mayOperateJobs, resultLine, scheduleChangeProblems } from '../jobs-logic.ts';
 import type { Me } from '../permissions.ts';
 import { navigate } from '../router.ts';
 import { pvComponents } from '../styles/pv-components.ts';
@@ -32,6 +33,7 @@ import { jobLabel, problemLabel, runStatusLabel, runStatusVariant, runTriggerLab
 
 type JobDetail = components['schemas']['JobDetail'];
 type JobRun = components['schemas']['JobRun'];
+type ScheduleChange = components['schemas']['ScheduleChange'];
 
 @customElement('pv-job-detail')
 export class JobDetailView extends LitElement {
@@ -47,6 +49,10 @@ export class JobDetailView extends LitElement {
   @state() private shown: string[] = [];
   @state() private notice: Notice | null = null;
   @state() private busy = '';
+  @state() private changes: ScheduleChange[] = [];
+  @state() private change = { at: '', enabled: true, reason: '' };
+  @state() private changeShown: string[] = [];
+  @state() private rejectReason = '';
   private keys = new IdempotencyKeys();
 
   constructor() {
@@ -123,9 +129,15 @@ export class JobDetailView extends LitElement {
     this.problem = null;
     const path = { params: { path: { job: this.job } } };
     try {
-      const [detail, runs] = await Promise.all([unwrap(this.api.GET('/v1/jobs/{job}', path)), unwrap(this.api.GET('/v1/jobs/{job}/runs', path))]);
+      const [detail, runs, changes] = await Promise.all([
+        unwrap(this.api.GET('/v1/jobs/{job}', path)),
+        unwrap(this.api.GET('/v1/jobs/{job}/runs', path)),
+        unwrap(this.api.GET('/v1/jobs/{job}/schedule-changes', path)),
+      ]);
       this.detail = detail;
       this.runs = runs.items;
+      this.changes = changes.items;
+      if (!this.change.at) this.change = { ...this.change, at: detail.schedule.at ?? '', enabled: detail.schedule.enabled ?? true };
       if (!this.market) this.market = detail.markets[0]?.market ?? '';
     } catch (e) {
       this.problem = e as Problem;
@@ -149,6 +161,7 @@ export class JobDetailView extends LitElement {
         <h1>${jobLabel(d.id)}</h1>
         <span class="pv-badge pv-badge--id">${d.id}</span>
         ${d.paused ? html`<span class="pv-badge pv-badge--pending">${msg('Paused', { id: 'job.paused' })}</span>` : nothing}
+        ${d.schedule.enabled === false ? html`<span class="pv-badge pv-badge--sim">${msg('Turned off', { id: 'jobs.off' })}</span>` : nothing}
       </div>
       <p class="facts">${scheduleLabel(d.schedule)} · ${msg("in each market's own time", { id: 'job.marketTime' })}</p>
       <div class="cols">
@@ -164,7 +177,8 @@ export class JobDetailView extends LitElement {
         <div class="side">
           ${this.notice ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'danger' ? 'alert' : 'status'}>${this.notice.text}</wa-callout>` : nothing}
           ${mayOperateJobs(this.me) ? this.runCard(d) : nothing} ${mayOperateJobs(this.me) ? this.pauseCard(d) : nothing}
-          <pv-event-log heading=${msg('Paused and resumed', { id: 'jobs.trail' })} empty=${msg('Never paused.', { id: 'jobs.noTrail' })} .entries=${this.trail(d)}></pv-event-log>
+          ${d.schedule.kind === 'daily' ? this.scheduleCard(d) : nothing}
+          <pv-event-log heading=${msg('Changes', { id: 'jobs.trail' })} empty=${msg('Never paused or changed.', { id: 'jobs.noTrail' })} .entries=${this.trail(d)}></pv-event-log>
         </div>
       </div>
     `;
@@ -204,7 +218,118 @@ export class JobDetailView extends LitElement {
     </section>`;
   }
 
+  /**
+   * The schedule with four eyes (ADR 0037): the current time, a change waiting
+   * for someone else, or a form to propose one.
+   */
+  private scheduleCard(d: JobDetail) {
+    const pending = d.pendingChange;
+    const lang = getLocale();
+    return html`<section class="pv-card" aria-labelledby="schedule">
+      <div class="pv-card__head">
+        <h2 class="pv-card__title" id="schedule">${msg('Schedule', { id: 'run.schedule' })}</h2>
+        <span class="pv-card__meta">${d.schedule.version ? `${msg('version', { id: 'jobs.version' })} ${d.schedule.version}` : msg('default', { id: 'jobs.default' })}</span>
+      </div>
+      <div class="pv-card__body">
+        <p>${scheduleLabel(d.schedule)}${d.schedule.enabled === false ? ` · ${msg('Turned off', { id: 'jobs.off' })}` : ''}</p>
+        ${pending
+          ? html`<div class="pv-note">
+                <strong>${msg('Waiting for approval', { id: 'jobs.waiting' })}</strong>:
+                ${pending.enabled ? `${msg('Daily at', { id: 'job.dailyAt' })} ${pending.at}` : msg('Turn off', { id: 'jobs.turnOff' })} ·
+                ${pending.reason} · ${pending.proposedBy}, ${formatDateTime(pending.proposedAt, lang)}
+              </div>
+              ${mayApproveChange(this.me, pending)
+                ? html`<wa-button variant="brand" ?loading=${this.busy === 'approve'} @click=${() => this.decideChange(pending, 'approve')}
+                    >${msg('Approve the change', { id: 'jobs.approve' })}</wa-button
+                  >`
+                : pending.proposedBy === this.me?.subject
+                  ? html`<p>${msg('Someone else must approve your change.', { id: 'jobs.fourEyes' })}</p>`
+                  : nothing}
+              ${mayConfigureJobs(this.me)
+                ? pending.proposedBy === this.me?.subject
+                  ? html`<wa-textarea label=${msg('Why it is withdrawn', { id: 'jobs.withdrawReason' })} rows="2" .value=${this.rejectReason} @input=${(e: Event) => (this.rejectReason = (e.target as HTMLTextAreaElement).value)}></wa-textarea>
+                      <wa-button appearance="outlined" ?loading=${this.busy === 'reject'} @click=${() => this.decideChange(pending, 'reject')}>${msg('Withdraw your change', { id: 'jobs.withdraw' })}</wa-button>`
+                  : html`<wa-textarea label=${msg('Why it is rejected', { id: 'jobs.rejectReason' })} rows="2" .value=${this.rejectReason} @input=${(e: Event) => (this.rejectReason = (e.target as HTMLTextAreaElement).value)}></wa-textarea>
+                      <wa-button appearance="outlined" ?loading=${this.busy === 'reject'} @click=${() => this.decideChange(pending, 'reject')}>${msg('Reject the change', { id: 'jobs.reject' })}</wa-button>`
+                : nothing}`
+          : mayConfigureJobs(this.me)
+            ? html`<form class="pv-card__body" style="padding: 0" @submit=${this.proposeChange}>
+                <wa-input type="time" label=${msg('Time in each market', { id: 'jobs.time' })} .value=${this.change.at} @input=${(e: Event) => (this.change = { ...this.change, at: (e.target as HTMLInputElement).value })}></wa-input>
+                <wa-checkbox ?checked=${this.change.enabled} @change=${(e: Event) => (this.change = { ...this.change, enabled: (e.target as HTMLInputElement).checked })}>${msg('Runs on schedule', { id: 'jobs.enabled' })}</wa-checkbox>
+                <wa-textarea label=${msg('Reason', { id: 'claim.reason' })} rows="2" .value=${this.change.reason} @input=${(e: Event) => (this.change = { ...this.change, reason: (e.target as HTMLTextAreaElement).value })}></wa-textarea>
+                ${this.changeShown.length ? html`<wa-callout variant="danger" role="alert">${this.changeShown.map((p) => html`<div>${problemLabel(p)}</div>`)}</wa-callout>` : nothing}
+                <p>${msg('Another person with the right to configure runs approves the change before it applies.', { id: 'jobs.changeHow' })}</p>
+                <wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'propose'}>${msg('Propose the change', { id: 'jobs.propose' })}</wa-button>
+              </form>`
+            : nothing}
+      </div>
+    </section>`;
+  }
+
+  private async proposeChange(e: Event) {
+    e.preventDefault();
+    this.changeShown = scheduleChangeProblems(this.change);
+    if (this.changeShown.length) return;
+    const key = `propose:${this.job}`;
+    this.busy = 'propose';
+    const { ok, notice } = await act(
+      () =>
+        this.api.POST('/v1/jobs/{job}/schedule-changes', {
+          params: { path: { job: this.job }, header: { 'Idempotency-Key': this.keys.for(key) } },
+          body: { at: this.change.at, enabled: this.change.enabled, reason: this.change.reason.trim() },
+        }),
+      () => ({ variant: 'success', text: msg('The change waits for someone else to approve it.', { id: 'jobs.proposed' }) }),
+    );
+    this.busy = '';
+    this.notice = notice;
+    if (ok) {
+      this.keys.done(key);
+      this.change = { ...this.change, reason: '' };
+      await this.load();
+    }
+  }
+
+  private async decideChange(c: ScheduleChange, how: 'approve' | 'reject') {
+    if (how === 'reject' && !this.rejectReason.trim()) {
+      this.notice = { variant: 'danger', text: problemLabel('settings.needReason') };
+      return;
+    }
+    const key = `${how}:${c.id}`;
+    this.busy = how;
+    const params = { params: { path: { job: this.job, changeId: c.id }, header: { 'Idempotency-Key': this.keys.for(key) } } };
+    const { ok, notice } = await act(
+      () =>
+        how === 'approve'
+          ? this.api.POST('/v1/jobs/{job}/schedule-changes/{changeId}/approvals', params)
+          : this.api.POST('/v1/jobs/{job}/schedule-changes/{changeId}/rejections', { ...params, body: { reason: this.rejectReason.trim() } }),
+      () => ({
+        variant: 'success',
+        text: how === 'approve' ? msg('Approved. The schedule applies from the next round.', { id: 'jobs.approved' }) : msg('The change is rejected.', { id: 'jobs.rejected' }),
+      }),
+    );
+    this.busy = '';
+    this.notice = notice;
+    if (ok) {
+      this.keys.done(key);
+      this.rejectReason = '';
+      this.change = { at: '', enabled: true, reason: '' };
+      await this.load();
+    }
+  }
+
   private trail(d: JobDetail): LogEntry[] {
+    const changes: LogEntry[] = this.changes.map((c) => ({
+      key: c.id,
+      at: c.decidedAt ?? c.proposedAt,
+      state: c.status === 'pending' ? ('pending' as const) : ('solid' as const),
+      badge: c.status === 'pending' ? msg('Waiting for approval', { id: 'jobs.waiting' }) : c.status === 'approved' ? msg('Approved', { id: 'jobs.approvedBadge' }) : msg('Rejected', { id: 'jobs.rejectedBadge' }),
+      line: `${c.enabled ? `${msg('Daily at', { id: 'job.dailyAt' })} ${c.at}` : msg('Turn off', { id: 'jobs.turnOff' })} · ${c.decisionReason ?? c.reason}`,
+      status: `job.schedule · ${c.proposedBy}${c.decidedBy ? ` → ${c.decidedBy}` : ''}`,
+    }));
+    return [...changes, ...this.controlEntries(d)];
+  }
+
+  private controlEntries(d: JobDetail): LogEntry[] {
     return d.controls.map((c) => ({
       key: c.id,
       at: c.at,

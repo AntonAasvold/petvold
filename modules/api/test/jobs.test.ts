@@ -9,6 +9,7 @@ import { validatorFor } from '../src/contract.ts';
 
 const tokens: Record<string, Principal> = {
   ops: { subject: 'drift@example.test', roles: ['operations'], markets: '*' },
+  ops2: { subject: 'drift2@example.test', roles: ['operations'], markets: '*' },
   handler: { subject: 'handlaggare@example.test', roles: ['handler'], markets: '*' },
   renewal: { subject: 'renewal-job', roles: ['renewal-job'], markets: '*' },
 };
@@ -42,7 +43,7 @@ test('the list shows every job with its schedule, and for each market the next r
   assert.equal(r.status, 200);
   r.body.items.forEach((j: unknown) => valid('Job', j));
   const renewal = r.body.items.find((j: any) => j.id === 'policies.renewal');
-  assert.deepEqual(renewal.schedule, { kind: 'daily', at: '02:00' });
+  assert.deepEqual(renewal.schedule, { kind: 'daily', at: '02:00', enabled: true, version: 0 });
   assert.equal(renewal.markets.find((m: any) => m.market === 'SE').nextRunAt, '2026-11-19T01:00:00.000Z');
   assert.equal((await call('GET', '/v1/jobs', 'handler')).status, 403, 'a handler has no jobs:read');
 });
@@ -93,4 +94,41 @@ test("the relay's dead letters are listed and sent again", async () => {
   assert.equal((await call('POST', '/v1/relay-dead-letters/claims:42/retries')).status, 204);
   assert.equal((await call('POST', '/v1/relay-dead-letters/claims:42/retries')).status, 404);
   assert.deepEqual((await call('GET', '/v1/relay-dead-letters')).body.items, []);
+});
+
+test('a schedule change waits for a second person, and then moves the next run (ADR 0037)', async () => {
+  const { call } = await setup();
+  const proposed = await call('POST', '/v1/jobs/policies.renewal/schedule-changes', 'ops', { at: '04:30', enabled: true, reason: 'After the night batch' });
+  assert.equal(proposed.status, 201);
+  valid('ScheduleChange', proposed.body);
+  assert.equal((await call('POST', '/v1/jobs/policies.renewal/schedule-changes', 'ops2', { at: '05:00', enabled: true, reason: 'x' })).status, 409, 'one waiting at a time');
+  const job = (await call('GET', '/v1/jobs/policies.renewal')).body;
+  assert.deepEqual([job.schedule.at, job.pendingChange.id], ['02:00', proposed.body.id], 'nothing changes before approval');
+
+  const path = `/v1/jobs/policies.renewal/schedule-changes/${proposed.body.id}`;
+  assert.equal((await call('POST', `${path}/approvals`, 'ops')).status, 403, 'not by the proposer');
+  assert.equal((await call('POST', `${path}/approvals`, 'handler')).status, 403, 'not without jobs:configure');
+  const approved = await call('POST', `${path}/approvals`, 'ops2');
+  assert.deepEqual([approved.status, approved.body.status, approved.body.decidedBy], [201, 'approved', 'drift2@example.test']);
+
+  const after = (await call('GET', '/v1/jobs/policies.renewal')).body;
+  assert.deepEqual(after.schedule, { kind: 'daily', at: '04:30', enabled: true, version: 1 });
+  assert.equal(after.markets.find((m: any) => m.market === 'SE').nextRunAt, '2026-11-19T03:30:00.000Z');
+
+  // Turned off: no next run. A rejection needs a reason.
+  const off = await call('POST', '/v1/jobs/policies.renewal/schedule-changes', 'ops2', { at: '04:30', enabled: false, reason: 'Off during the migration' });
+  const offPath = `/v1/jobs/policies.renewal/schedule-changes/${off.body.id}`;
+  assert.equal((await call('POST', `${offPath}/rejections`, 'ops', {})).status, 422);
+  const rejected = await call('POST', `${offPath}/rejections`, 'ops', { reason: 'Not during the renewal season' });
+  assert.equal(rejected.body.status, 'rejected');
+  const history = await call('GET', '/v1/jobs/policies.renewal/schedule-changes');
+  // The clock stands still in the test; in use the newest comes first.
+  assert.deepEqual(history.body.items.map((x: any) => x.status).sort(), ['approved', 'rejected']);
+});
+
+test('job.failed is a public event with the job, not the error', async () => {
+  const { toCloudEvent } = await import('@petvold/webhooks');
+  const e = toCloudEvent({ id: 'run_1', type: 'job.failed', runId: 'run_1', market: 'SE', occurredAt: '2026-11-19T01:00:00Z', data: { job: 'policies.renewal', trigger: 'schedule', startedAt: '2026-11-19T01:00:00Z', error: 'Policy of Anna Example' } });
+  assert.deepEqual(e?.data, { runId: 'run_1', job: 'policies.renewal', trigger: 'schedule', startedAt: '2026-11-19T01:00:00Z' });
+  assert.equal(e?.type, 'petvold.job.failed.v1');
 });

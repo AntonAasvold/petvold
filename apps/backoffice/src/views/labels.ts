@@ -101,6 +101,8 @@ export function problemLabel(id: string): string {
       return msg('A claim cannot duplicate itself.', { id: 'close.notItself' });
     case 'decide.needReason':
       return msg('Write a reason.', { id: 'decide.needReason' });
+    case 'jobs.badTime':
+      return msg('Give the time as HH:MM, e.g. 02:30.', { id: 'jobs.badTime' });
     case 'register.needPolicy':
       return msg('Fetch the policy first.', { id: 'register.needPolicy' });
     case 'register.needDates':

@@ -24,6 +24,7 @@ export const DEV_TOKENS = [
   'dev-documents',
   'dev-integration',
   'dev-operations',
+  'dev-operations-2',
   'dev-communications',
   'dev-admin',
   'dev-catalog',

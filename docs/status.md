@@ -251,8 +251,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Back office:** sidan Körningar med försenade körningar, döda poster och en sida per körning. Dev-tokenen heter `dev-operations`.
   - **Tester:** 483 i kärnan och API:t, 137 mot databasen, 42 enhetstester och 26 flöden.
 
+- Körningar, steg 4, PR #100 (ADR 0037):
+  - **Schemaändringar med fyra ögon:** en person föreslår en tid eller avstängning, en annan godkänner eller avvisar. Lagras i `scheduling.job_setting` och `scheduling.job_schedule_change` (migration 0041). Rättigheten är `jobs:configure`.
+  - **`job.failed`** går till webhooks, utan felet.
+  - **`/healthz`** blir `degraded` av körningar som misslyckats, är mer än en timme sena eller är pausade.
+  - **Back office:** kortet Schema på körningens sida, och spåret visar ändringarna. Dev-tokenen `dev-operations-2` behövs för fyra ögon.
+  - **Tester:** 488 i kärnan och API:t, 138 mot databasen, 43 enhetstester och 27 flöden.
+
 **Nästa steg**
-1. Körningar, steg 4: schemaändringar med fyra ögon, `job.failed` till webhooks och larm i `/healthz`.
+1. Back office: policy, djur och parter, som är det största glappet för kundservice (se roadmapen).
+2. Skadeprocessen, steg 3: komplettering, som en körning bland de andra.
 2. Skadeprocessen, steg 3: komplettering.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).

@@ -114,3 +114,37 @@ test('a paused job is skipped by the scheduler until it is resumed', async () =>
   assert.equal((await scheduler.tick()).length, 2);
   assert.deepEqual(calls, ['SE', 'NO']);
 });
+
+test("an approved schedule moves the job's time, and a job turned off is not run", async () => {
+  const now = { t: '2026-11-19T01:30:00Z' }; // 02:30 in Stockholm
+  const calls: string[] = [];
+  const job: JobDefinition = { name: 'policies.renewal', schedule: { kind: 'daily', at: '02:00' }, run: async (ctx) => (calls.push(ctx.market), {}) };
+  const { scheduler, store } = setup(now, [job]);
+  await store.proposeChange({ id: 'jsc_1', job: job.name, at: '04:00', enabled: true, reason: 'After the batch', proposedBy: 'a', proposedAt: now.t, status: 'pending' });
+  await store.approveChange('jsc_1', 'b', now.t);
+  assert.deepEqual(await scheduler.schedule(job.name), { kind: 'daily', at: '04:00', enabled: true, version: 1 });
+  assert.deepEqual(await scheduler.tick(), [], '04:00 has not come');
+  await store.proposeChange({ id: 'jsc_2', job: job.name, at: '04:00', enabled: false, reason: 'Off', proposedBy: 'a', proposedAt: now.t, status: 'pending' });
+  await store.approveChange('jsc_2', 'b', now.t);
+  now.t = '2026-11-19T05:00:00Z';
+  assert.deepEqual(await scheduler.tick(), [], 'turned off');
+  assert.deepEqual(calls, []);
+});
+
+test('a failed run is told of, and the health shows failed, late and paused jobs', async () => {
+  const now = { t: '2026-11-19T01:30:00Z' };
+  const failedRuns: string[] = [];
+  const store = new InMemorySchedulingStore();
+  const failing: JobDefinition = { name: 'policies.renewal', schedule: { kind: 'daily', at: '02:00' }, run: async () => Promise.reject(new Error('No rules')) };
+  const late: JobDefinition = { name: 'parties.retention', schedule: { kind: 'daily', at: '01:00' }, run: async () => ({}) };
+  const scheduler = new Scheduler({ store, clock: { now: () => now.t }, jobs: [failing, late], markets: async () => ['SE'], holder: 'a', onFailed: async (r) => void failedRuns.push(r.job) });
+  await scheduler.run(failing, 'SE', { trigger: 'manual', by: 'd', dryRun: false });
+  assert.deepEqual(failedRuns, ['policies.renewal']);
+  // 01:00 in Stockholm was 00:00 UTC; at 01:30 UTC it is 90 minutes late.
+  const h = await scheduler.health();
+  assert.deepEqual(h.failed.map((f) => f.job), ['policies.renewal']);
+  assert.deepEqual(h.late.map((l) => [l.job, l.market]), [['parties.retention', 'SE']]);
+  await store.pause({ job: 'parties.retention', pausedBy: 'd', pausedAt: now.t, reason: 'x' }, { id: 'c', job: 'parties.retention', action: 'pause', by: 'd', at: now.t, reason: 'x' });
+  const paused = await scheduler.health();
+  assert.deepEqual([paused.paused, paused.late], [['parties.retention'], []], 'paused is not also late');
+});

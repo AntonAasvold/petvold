@@ -58,6 +58,32 @@ Rollen `operations` har rättigheterna, och dev-tokenen `dev-operations` ger den
 | `GET /v1/relay-dead-letters` | `jobs:read` | Reläets döda poster |
 | `POST /v1/relay-dead-letters/{deadLetter}/retries` | `jobs:operate` | Skicka en död post igen |
 
+## Ändra schemat
+
+En körnings tid, eller att den är avstängd, ändras med fyra ögon:
+
+1. **Någon med `jobs:configure` föreslår** en ny tid i marknadernas egen tid, eller att körningen stängs av, med ett skäl. En körning har högst en ändring som väntar.
+2. **En annan person med `jobs:configure` godkänner.** Den som föreslog kan inte godkänna, och databasen vägrar det också. Ändringen gäller från schemaläggarens nästa omgång och får ett versionsnummer.
+3. **Eller avvisar med ett skäl.** Den som föreslog kan dra tillbaka sin ändring på samma sätt.
+
+En avstängd körning körs inte enligt schemat, men "Kör nu" fungerar. Spåret på körningens sida visar varje ändring med vem som föreslog, vem som beslutade och varför.
+
+| Anrop | Rättighet |
+| --- | --- |
+| `GET`, `POST /v1/jobs/{job}/schedule-changes` | `jobs:read`, `jobs:configure` |
+| `POST /v1/jobs/{job}/schedule-changes/{changeId}/approvals` | `jobs:configure`, inte den som föreslog |
+| `POST /v1/jobs/{job}/schedule-changes/{changeId}/rejections` | `jobs:configure`, med `reason` |
+
+## Larm
+
+- **`job.failed`** går till webhooks varje gång en körning misslyckas, med körning, marknad, startsätt och start. Felet följer inte med, eftersom det kan nämna en kund. Det finns i historiken.
+- **`/healthz`** säger `degraded` och listar under `jobs`:
+  - `failed`: körningar vars senaste körning i en marknad misslyckades
+  - `late`: körningar som är mer än en timme sena
+  - `paused`: pausade körningar
+
+  En avstängd körning är inte försenad: någon har beslutat det med fyra ögon.
+
 **De gamla anropen** (`POST /v1/renewal-runs`, `/v1/retention-runs`, `/v1/application-expiry-runs` och `/v1/policy-proposal-expiry-runs`) svarar som förut. De kör nu körningen en gång per marknad i anroparens omfång och sparar historiken med startsättet "Anrop".
 
 ## Reläet
@@ -68,9 +94,8 @@ En händelse som inte går att leverera efter tio försök blir en död post. De
 
 ## Det som kommer
 
-Steg 1–3 i ADR 0037 är byggda. Det som återstår:
+Steg 1–4 i ADR 0037 är byggda. Det som återstår:
 
-- **Steg 4:** schemaändringar med fyra ögon, händelsen `job.failed` och larm i `/healthz`.
 - **Steg 5:** påminnelser och utgång för komplettering av skador.
 
-Tills dess går tiderna inte att ändra.
+Kö och eftersläpning för reläet och webhook-arbetaren ska också synas i back office.

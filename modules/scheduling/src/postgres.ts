@@ -5,7 +5,7 @@
  */
 import type pg from 'pg';
 import type { Timestamp } from '@petvold/common';
-import { JobConflictError, type DeadLetterRecord, type JobControl, type JobPause, type JobRun, type RunFilter, type SchedulingStore } from './index.ts';
+import { JobConflictError, JobError, type DeadLetterRecord, type JobControl, type JobPause, type JobRun, type JobSetting, type RunFilter, type ScheduleChange, type SchedulingStore } from './index.ts';
 
 /** A timestamp as an ISO string, whether pg gave a Date or another module set a parser that gives a string. */
 const iso = (v: Date | string | null): string | undefined => (v === null ? undefined : new Date(v).toISOString());
@@ -95,6 +95,62 @@ export class PostgresSchedulingStore implements SchedulingStore {
     return rows.map((r) => ({ id: r.id, job: r.job, action: r.action, by: r.by_whom, at: iso(r.at)!, reason: r.reason }));
   }
 
+  async proposeChange(c: ScheduleChange): Promise<void> {
+    try {
+      await this.pool.query(
+        `insert into scheduling.job_schedule_change (id, job, at, enabled, reason, proposed_by, proposed_at, status) values ($1, $2, $3, $4, $5, $6, $7, 'pending')`,
+        [c.id, c.job, c.at, c.enabled, c.reason, c.proposedBy, c.proposedAt],
+      );
+    } catch (e) {
+      if ((e as { code?: string }).code === '23505') throw new JobConflictError(`${c.job} already has a change waiting for approval`);
+      throw e;
+    }
+  }
+
+  async getChange(id: string): Promise<ScheduleChange | null> {
+    const { rows } = await this.pool.query('select * from scheduling.job_schedule_change where id = $1', [id]);
+    return rows[0] ? toChange(rows[0]) : null;
+  }
+
+  async changes(job: string, limit: number): Promise<ScheduleChange[]> {
+    const { rows } = await this.pool.query('select * from scheduling.job_schedule_change where job = $1 order by proposed_at desc, id desc limit $2', [job, limit]);
+    return rows.map(toChange);
+  }
+
+  async approveChange(id: string, by: string, at: Timestamp): Promise<JobSetting> {
+    let setting!: JobSetting;
+    await this.tx(async (db) => {
+      const { rows } = await db.query('select * from scheduling.job_schedule_change where id = $1 for update', [id]);
+      const c = rows[0] ? toChange(rows[0]) : null;
+      if (!c || c.status !== 'pending') throw new JobConflictError(`Change ${id} is not waiting for approval`);
+      if (c.proposedBy === by) throw new JobError('forbidden', 'Someone else must approve the change');
+      await db.query(`update scheduling.job_schedule_change set status = 'approved', decided_by = $2, decided_at = $3 where id = $1`, [id, by, at]);
+      const { rows: s } = await db.query(
+        `insert into scheduling.job_setting (job, at, enabled, version, reason, proposed_by, approved_by, changed_at) values ($1, $2, $3, 1, $4, $5, $6, $7)
+         on conflict (job) do update set at = excluded.at, enabled = excluded.enabled, version = scheduling.job_setting.version + 1,
+           reason = excluded.reason, proposed_by = excluded.proposed_by, approved_by = excluded.approved_by, changed_at = excluded.changed_at
+         returning *`,
+        [c.job, c.at, c.enabled, c.reason, c.proposedBy, by, at],
+      );
+      setting = toSetting(s[0]);
+    });
+    return setting;
+  }
+
+  async rejectChange(id: string, by: string, at: Timestamp, reason: string): Promise<ScheduleChange> {
+    const { rows } = await this.pool.query(
+      `update scheduling.job_schedule_change set status = 'rejected', decided_by = $2, decided_at = $3, decision_reason = $4 where id = $1 and status = 'pending' returning *`,
+      [id, by, at, reason],
+    );
+    if (!rows[0]) throw new JobConflictError(`Change ${id} is not waiting for approval`);
+    return toChange(rows[0]);
+  }
+
+  async settings(): Promise<JobSetting[]> {
+    const { rows } = await this.pool.query('select * from scheduling.job_setting order by job');
+    return rows.map(toSetting);
+  }
+
   private async tx(fn: (db: pg.PoolClient) => Promise<void>): Promise<void> {
     const db = await this.pool.connect();
     try {
@@ -126,6 +182,26 @@ export class PostgresSchedulingStore implements SchedulingStore {
     const { rowCount } = await this.pool.query('delete from scheduling.relay_dead_letter where source = $1 and event_id = $2', [source, eventId]);
     return rowCount === 1;
   }
+}
+
+function toChange(r: Record<string, any>): ScheduleChange {
+  return {
+    id: r.id,
+    job: r.job,
+    at: r.at,
+    enabled: r.enabled,
+    reason: r.reason,
+    proposedBy: r.proposed_by,
+    proposedAt: iso(r.proposed_at)!,
+    status: r.status,
+    ...(r.decided_by === null ? {} : { decidedBy: r.decided_by }),
+    ...(r.decided_at === null ? {} : { decidedAt: iso(r.decided_at)! }),
+    ...(r.decision_reason === null ? {} : { decisionReason: r.decision_reason }),
+  };
+}
+
+function toSetting(r: Record<string, any>): JobSetting {
+  return { job: r.job, at: r.at, enabled: r.enabled, version: r.version, reason: r.reason, proposedBy: r.proposed_by, approvedBy: r.approved_by, changedAt: iso(r.changed_at)! };
 }
 
 async function insertControl(db: pg.PoolClient, c: JobControl): Promise<void> {

@@ -95,6 +95,29 @@ export function schedulingStoreSuite(name: string, factory: StoreFactory): void 
       assert.deepEqual(await s.controls('policies.renewal', 10), []);
     });
 
+    it('a schedule change waits for a second person, one at a time per job, and becomes the setting', async (s) => {
+      const change = { id: 'jsc_1', job: 'policies.renewal', at: '04:30', enabled: true, reason: 'After the night batch', proposedBy: 'a@example.test', proposedAt: '2026-11-19T08:00:00.000Z', status: 'pending' as const };
+      await s.proposeChange(change);
+      await assert.rejects(s.proposeChange({ ...change, id: 'jsc_2' }), /waiting for approval/);
+      assert.deepEqual(await s.getChange('jsc_1'), change);
+      await assert.rejects(s.approveChange('jsc_1', 'a@example.test', '2026-11-19T09:00:00.000Z'), /Someone else/);
+      const setting = await s.approveChange('jsc_1', 'b@example.test', '2026-11-19T09:00:00.000Z');
+      assert.deepEqual(setting, { job: 'policies.renewal', at: '04:30', enabled: true, version: 1, reason: 'After the night batch', proposedBy: 'a@example.test', approvedBy: 'b@example.test', changedAt: '2026-11-19T09:00:00.000Z' });
+      await assert.rejects(s.approveChange('jsc_1', 'c@example.test', '2026-11-19T09:00:00.000Z'), /not waiting/);
+
+      await s.proposeChange({ ...change, id: 'jsc_3', enabled: false, reason: 'Off for the migration', proposedAt: '2026-11-19T10:00:00.000Z' });
+      const rejected = await s.rejectChange('jsc_3', 'b@example.test', '2026-11-19T11:00:00.000Z', 'Not now');
+      assert.deepEqual([rejected.status, rejected.decisionReason], ['rejected', 'Not now']);
+      await s.proposeChange({ ...change, id: 'jsc_4', at: '05:00', proposedBy: 'b@example.test', proposedAt: '2026-11-19T12:00:00.000Z' });
+      assert.equal((await s.approveChange('jsc_4', 'a@example.test', '2026-11-19T12:30:00.000Z')).version, 2);
+      assert.deepEqual((await s.settings()).map((x) => [x.job, x.at, x.version]), [['policies.renewal', '05:00', 2]]);
+      assert.deepEqual((await s.changes('policies.renewal', 10)).map((c) => [c.id, c.status]), [
+        ['jsc_4', 'approved'],
+        ['jsc_3', 'rejected'],
+        ['jsc_1', 'approved'],
+      ]);
+    });
+
     it('a dead letter is kept until it is removed, and the same event replaces it', async (s) => {
       await s.saveDeadLetter({ source: 'claims', eventId: '7', attempts: 10, lastError: 'timeout', deadAt: '2026-11-19T10:00:00.000Z' });
       await s.saveDeadLetter({ source: 'policies', eventId: '3', attempts: 10, lastError: 'boom', deadAt: '2026-11-19T09:00:00.000Z' });

@@ -290,6 +290,10 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     },
     holder: `${hostname()}:${process.pid}`,
     log,
+    // job.failed to webhooks, so the insurer's operations can alert (ADR 0037).
+    onFailed: async (run) => {
+      await webhooks.enqueue({ id: run.id, type: 'job.failed', runId: run.id, market: run.market, occurredAt: run.finishedAt ?? run.startedAt, data: { job: run.job, trigger: run.trigger, startedAt: run.startedAt } });
+    },
   });
 
   // The outboxes' relays (ADR 0008). Claims events have no receiver inside

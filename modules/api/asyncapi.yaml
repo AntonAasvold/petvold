@@ -34,6 +34,7 @@ channels:
       claimReviewRequested: { $ref: '#/components/messages/claimReviewRequested' }
       claimWithdrawn: { $ref: '#/components/messages/claimWithdrawn' }
       claimDismissed: { $ref: '#/components/messages/claimDismissed' }
+      jobFailed: { $ref: '#/components/messages/jobFailed' }
       animalOwnershipChanged: { $ref: '#/components/messages/animalOwnershipChanged' }
       animalDied: { $ref: '#/components/messages/animalDied' }
       policyIssued: { $ref: '#/components/messages/policyIssued' }
@@ -67,6 +68,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/claimReviewRequested' }
       - { $ref: '#/channels/subscription/messages/claimWithdrawn' }
       - { $ref: '#/channels/subscription/messages/claimDismissed' }
+      - { $ref: '#/channels/subscription/messages/jobFailed' }
       - { $ref: '#/channels/subscription/messages/animalOwnershipChanged' }
       - { $ref: '#/channels/subscription/messages/animalDied' }
       - { $ref: '#/channels/subscription/messages/policyIssued' }
@@ -194,6 +196,18 @@ components:
             properties:
               type: { const: petvold.claim.dismissed.v1 }
               data: { $ref: '#/components/schemas/ClaimDismissedData' }
+    jobFailed:
+      name: petvold.job.failed.v1
+      title: job.failed
+      summary: 'A run failed in a market (ADR 0037), for the insurer''s operations to alert on. See the error in the run''s history.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.job.failed.v1 }
+              data: { $ref: '#/components/schemas/JobFailedData' }
     animalOwnershipChanged:
       name: petvold.animal.ownership_changed.v1
       title: animal.ownership_changed
@@ -522,6 +536,15 @@ components:
         closureId: { type: string }
         reasonCode: { type: string, enum: [duplicate, registered-in-error, not-a-claim] }
         duplicateOf: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+    JobFailedData:
+      type: object
+      additionalProperties: false
+      required: [runId, job, trigger, startedAt]
+      properties:
+        runId: { type: string }
+        job: { type: string, description: 'The job''s name, e.g. policies.renewal.' }
+        trigger: { type: string, enum: [schedule, manual, api] }
+        startedAt: { type: string, format: date-time }
     AnimalOwnershipChangedData:
       type: object
       additionalProperties: false

@@ -17,7 +17,7 @@ export type Timestamp = string;
  * and 6). Anything else in a module's event stays inside Petvold: names, notes,
  * who did it. Types are versioned: a breaking change is a new `.vN`.
  */
-export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId';
+export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId';
 
 export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectField; fields: string[] }> = {
   'claim.registered': { source: 'claims', subject: 'claimId', fields: ['claimNo', 'policyId', 'animalId', 'channel', 'clinicId', 'treatmentFrom', 'treatmentTo', 'diagnosisCode', 'currency'] },
@@ -33,6 +33,8 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'notice.created': { source: 'communications', subject: 'noticeId', fields: ['noticeType', 'schema', 'recipientPartyId', 'language', 'policyId', 'applicationId', 'dueBy'] },
   'notice.delivered': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel', 'sentAt', 'documentId', 'late'] },
   'notice.failed': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel'] },
+  // A run failed (ADR 0037), for the insurer's operations to alert on. The error stays inside Petvold.
+  'job.failed': { source: 'scheduling', subject: 'runId', fields: ['job', 'trigger', 'startedAt'] },
   'policy.issued': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'animalId', 'policyholderPartyId', 'productVersion', 'startDate', 'endDate', 'premium', 'applicationId'] },
   'policy.changed': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'termNo', 'changeNo', 'from', 'premiumAdjustment', 'currency'] },
   'policy.renewed': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'termNo', 'startDate', 'endDate', 'productVersion', 'premium'] },
@@ -57,6 +59,7 @@ export interface SourceEvent {
   claimId?: string;
   animalId?: string;
   noticeId?: string;
+  runId?: string;
   market: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;

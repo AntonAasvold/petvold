@@ -86,6 +86,8 @@ export const PERMISSIONS = [
   'jobs:read',
   /** Run a job now, pause and resume it, and send a dead letter again (ADR 0037). Takes effect at once. */
   'jobs:operate',
+  /** Propose, approve and reject changes of a job's schedule, with four eyes (ADR 0037). */
+  'jobs:configure',
   /** Read the role settings and their history (ADR 0020). */
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
@@ -190,7 +192,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Manages roles and limits. No permissions in claims. */
   admin: { permissions: ['access:read', 'access:manage'] },
   /** Watches and steers Petvold's runs and the relay (ADR 0037), e.g. the operations team. */
-  operations: { permissions: ['jobs:read', 'jobs:operate', 'webhooks:read'] },
+  operations: { permissions: ['jobs:read', 'jobs:operate', 'jobs:configure', 'webhooks:read'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */
   'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read'], bindsTo: 'policies' },
 };

@@ -2446,6 +2446,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs/{job}/schedule-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Proposed, approved and rejected changes of the job's schedule, newest first
+         * @description Requires the permission `jobs:read`.
+         */
+        get: operations["listScheduleChanges"];
+        put?: never;
+        /**
+         * Propose a new time for the job, or that it is turned off
+         * @description Requires the permission `jobs:configure`. Nothing changes until another
+         *     person with `jobs:configure` approves it (four eyes, ADR 0037): turning
+         *     off renewal or retention affects customers and the law. A job has at
+         *     most one change waiting (`409`). Only daily jobs have a time.
+         */
+        post: operations["proposeScheduleChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{job}/schedule-changes/{changeId}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a schedule change, by someone other than the proposer
+         * @description Requires the permission `jobs:configure`, and that the caller did not
+         *     propose it (`403`). The change becomes the job's schedule at once, and
+         *     the scheduler uses it from its next round. `409` if it is not waiting.
+         */
+        post: operations["approveScheduleChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{job}/schedule-changes/{changeId}/rejections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a schedule change with a reason
+         * @description Requires the permission `jobs:configure`. The proposer may withdraw their own change this way. `409` if it is not waiting.
+         */
+        post: operations["rejectScheduleChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/relay-dead-letters": {
         parameters: {
             query?: never;
@@ -2500,6 +2569,7 @@ export interface components {
             id: string;
             schedule: components["schemas"]["JobSchedule"];
             paused?: components["schemas"]["JobPause"];
+            pendingChange?: components["schemas"]["ScheduleChange"];
             markets: {
                 market: components["schemas"]["Market"];
                 /** @description When the next scheduled run is due. Omitted while paused. */
@@ -2517,6 +2587,10 @@ export interface components {
             kind: "daily" | "interval";
             at?: string;
             seconds?: number;
+            /** @description false when turned off with four eyes. "Run now" still works. */
+            enabled?: boolean;
+            /** @description The installation's approved setting it comes from; 0 for the default. */
+            version?: number;
         };
         JobRun: {
             id: string;
@@ -2554,6 +2628,28 @@ export interface components {
             action: "pause" | "resume";
             by: string;
             at: components["schemas"]["DateTime"];
+            reason: string;
+        };
+        ScheduleChange: {
+            id: string;
+            job: string;
+            at: string;
+            enabled: boolean;
+            reason: string;
+            proposedBy: string;
+            proposedAt: components["schemas"]["DateTime"];
+            /** @enum {string} */
+            status: "pending" | "approved" | "rejected";
+            decidedBy?: string;
+            decidedAt?: components["schemas"]["DateTime"];
+            /** @description Why it was rejected. */
+            decisionReason?: string;
+        };
+        ProposeScheduleChangeRequest: {
+            /** @description The time of day in each market's time zone. */
+            at: string;
+            /** @description false turns the job off. */
+            enabled: boolean;
             reason: string;
         };
         RunJobRequest: {
@@ -4542,6 +4638,7 @@ export interface components {
         };
     };
     parameters: {
+        ScheduleChangeId: string;
         /** @description The job's name, e.g. policies.renewal. */
         Job: string;
         ClaimId: string;
@@ -8381,6 +8478,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobControl"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listScheduleChanges: {
+        parameters: {
+            query?: {
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The job's name, e.g. policies.renewal. */
+                job: components["parameters"]["Job"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The changes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ScheduleChange"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    proposeScheduleChange: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The job's name, e.g. policies.renewal. */
+                job: components["parameters"]["Job"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposeScheduleChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Waiting for approval */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleChange"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    approveScheduleChange: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The job's name, e.g. policies.renewal. */
+                job: components["parameters"]["Job"];
+                changeId: components["parameters"]["ScheduleChangeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleChange"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    rejectScheduleChange: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The job's name, e.g. policies.renewal. */
+                job: components["parameters"]["Job"];
+                changeId: components["parameters"]["ScheduleChangeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobControlRequest"];
+            };
+        };
+        responses: {
+            /** @description Rejected */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleChange"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

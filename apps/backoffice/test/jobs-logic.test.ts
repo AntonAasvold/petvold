@@ -31,3 +31,13 @@ test('a run is late when its time passed more than five minutes ago', async () =
   assert.equal(isLate('2026-11-19T01:00:00Z', '2026-11-19T01:04:00Z'), false);
   assert.equal(isLate('2026-11-19T01:00:00Z', '2026-11-19T01:06:00Z'), true);
 });
+
+test('a schedule change needs a time and a reason, and is approved by someone else', async () => {
+  const { mayApproveChange, scheduleChangeProblems } = await import('../src/jobs-logic.ts');
+  const ops = { subject: 'a', roles: ['operations'], permissions: ['jobs:configure'] } as never;
+  assert.equal(mayApproveChange(ops, { proposedBy: 'a', status: 'pending' }), false, 'not your own');
+  assert.equal(mayApproveChange(ops, { proposedBy: 'b', status: 'pending' }), true);
+  assert.equal(mayApproveChange(ops, { proposedBy: 'b', status: 'approved' }), false);
+  assert.deepEqual(scheduleChangeProblems({ at: '4:30', reason: '' }), ['jobs.badTime', 'settings.needReason']);
+  assert.deepEqual(scheduleChangeProblems({ at: '04:30', reason: 'After the batch' }), []);
+});
