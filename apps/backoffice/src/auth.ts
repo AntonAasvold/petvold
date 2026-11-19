@@ -33,6 +33,7 @@ export const DEV_TOKENS = [
   'dev-publisher',
   'dev-registrar',
   'dev-privacy',
+  'dev-privacy-2',
 ] as const;
 
 export function devSession(): Session {
