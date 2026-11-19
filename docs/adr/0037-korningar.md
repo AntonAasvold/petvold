@@ -1,6 +1,6 @@
 # 0037. Körningar: schema, lås, historik och styrning i back office
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-18
 
 ## Sammanhang
