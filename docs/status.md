@@ -258,8 +258,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Back office:** kortet Schema på körningens sida, och spåret visar ändringarna. Dev-tokenen `dev-operations-2` behövs för fyra ögon.
   - **Tester:** 488 i kärnan och API:t, 138 mot databasen, 43 enhetstester och 27 flöden.
 
+- Back office, parter, PR #101:
+  - **Avsnittet Parter:** sök med nummer eller id, registrera, partens sida med uppgifter, nummer och policyer, ändring med skäl, nytt nummer och begäran om radering, och historiken.
+  - **Sökfältet** i toppraden öppnar en part för ett `pty_`-id.
+  - **Tester:** 46 enhetstester och 28 flöden.
+
 **Nästa steg**
-1. Back office: policy, djur och parter, som är det största glappet för kundservice (se roadmapen).
+1. Back office: djur (sök, registrera, ändra, id-nummer, ägarbyte, historik och kullar), sedan policyer.
 2. Skadeprocessen, steg 3: komplettering, som en körning bland de andra.
 2. Skadeprocessen, steg 3: komplettering.
 2. ADR om premier och betalningar (M5).

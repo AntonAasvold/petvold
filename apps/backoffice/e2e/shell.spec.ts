@@ -19,13 +19,13 @@ test('the top bar names Petvold and the back office, and the menu counts what wa
   expect(bg).toBe('rgb(0, 0, 0)');
 });
 
-test('the top bar search opens a claim by its id, and finds policies by policyholder', async ({ page }) => {
+test('the top bar search opens a claim and a party by id, and the party shows its policies', async ({ page }) => {
   const search = page.getByRole('searchbox', { name: 'Search for a claim, policy, animal or customer' });
   await search.fill('clm_021877');
   await search.press('Enter');
   await expect(page).toHaveURL(/\/claims\/clm_021877$/);
   await search.fill('pty_owner001');
   await search.press('Enter');
-  await expect(page).toHaveURL(/\/policies$/);
-  await expect(page.getByRole('grid', { name: 'Policies' }).getByRole('gridcell', { name: 'pol_bella' })).toBeVisible();
+  await expect(page).toHaveURL(/\/parties\/pty_owner001$/);
+  await expect(page.getByRole('grid', { name: 'Policies as policyholder' }).getByRole('gridcell', { name: 'pol_bella' })).toBeVisible();
 });

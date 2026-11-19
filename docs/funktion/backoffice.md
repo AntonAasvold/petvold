@@ -37,6 +37,22 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 
   Räknaren visar högst 100, och "100+" om det finns fler. Den uppdateras när man byter sida.
 
+## Parter
+
+Avsnittet Parter (rätten `parties:read`) gäller personer och organisationer (ADR 0026):
+
+- **Hitta en part** med personnummer, organisationsnummer eller part-id. Ett nummer skickas i sökningens innehåll och hamnar aldrig i en adress. Ett `pty_`-id i sökfältet i toppraden öppnar parten direkt.
+- **Registrera en part** (rätten `parties:write`): person eller organisation, marknad, namn, kontaktuppgifter, adress, språk och ett nummer om det finns. Appen säger vad som saknas innan något skickas, till exempel en adress som bara delvis är ifylld.
+- **Partens sida:**
+  - uppgifterna och numren, där personnummer visas maskade
+  - policyerna där parten är försäkringstagare, för den som får läsa policyer
+  - historiken med varje revision
+- **Ändra uppgifterna** (rätten `parties:write`): formuläret börjar på de nuvarande uppgifterna och kräver ett skäl. Varje ändring blir en ny revision.
+- **Lägg till ett nummer** (rätten `parties:write`).
+- **Begär radering** (rätten `parties:privacy`) med ett skäl utan personuppgifter. En annan dataskyddsansvarig beslutar (ADR 0028).
+
+En anonymiserad part kan inte ändras.
+
 ## Körningar
 
 Sidan Körningar (rätten `jobs:read`) visar Petvolds dagliga körningar och reläets döda poster. Den som har `jobs:operate` kan köra en körning nu, pausa och återuppta den, och skicka en död post igen. Se [Körningar](korningar.md).
