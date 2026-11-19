@@ -14,6 +14,7 @@ import { unwrap, type Api, type Problem } from '../api/client.ts';
 import type { components } from '../api/schema';
 import { act, type Notice } from '../actions.ts';
 import '../components/data-grid.ts';
+import '../components/policy-actions.ts';
 import type { Column } from '../components/data-grid.ts';
 import { IdempotencyKeys } from '../decide.ts';
 import { formatDate, formatDateTime, formatMoney } from '../format.ts';
@@ -152,6 +153,9 @@ export class PolicyDetail extends LitElement {
             <dd>${formatDate(p.inceptionDate, lang)}</dd>
           </dl>
         </wa-card>
+        ${this.me?.permissions.includes('policies:write')
+          ? html`<div class="wide"><pv-policy-actions .api=${this.api} .policy=${p} .transactions=${this.history.transactions} @pv-changed=${() => this.load()}></pv-policy-actions></div>`
+          : nothing}
         ${this.proposals.map((pr) => this.proposalCard(pr))}
         <div class="wide">
           <h3>${msg('Terms', { id: 'policy.terms' })}</h3>

@@ -355,3 +355,53 @@ export function identifierLabel(t: string): string {
       return t;
   }
 }
+
+/** How the customer accepted: the channel's name. */
+export function channelLabelFor(c: string): string {
+  switch (c) {
+    case 'phone':
+      return msg('Phone', { id: 'party.phone' });
+    case 'paper':
+      return msg('Paper', { id: 'policy.channelPaper' });
+    case 'web':
+      return msg('Web', { id: 'policy.channelWeb' });
+    case 'app':
+      return msg('App', { id: 'policy.channelApp' });
+    default:
+      return c;
+  }
+}
+
+export function documentLabel(t: string): string {
+  switch (t) {
+    case 'terms':
+      return msg('Terms', { id: 'policy.docTerms' });
+    case 'pre-contract':
+      return msg('Pre-contract information', { id: 'policy.docPreContract' });
+    case 'ipid':
+      return msg('Product fact sheet', { id: 'policy.docIpid' });
+    default:
+      return t;
+  }
+}
+
+export function cancellationLabel(r: string): string {
+  switch (r) {
+    case 'customer-term-end':
+      return msg('The customer, at the end of the term', { id: 'cancel.customer-term-end' });
+    case 'customer-immediate':
+      return msg('The customer, at once', { id: 'cancel.customer-immediate' });
+    case 'withdrawal':
+      return msg('Withdrawal within the cooling-off period', { id: 'cancel.withdrawal' });
+    case 'need-ceased':
+      return msg('The need ceased, e.g. the animal died', { id: 'cancel.need-ceased' });
+    case 'insurer-term-end':
+      return msg('The insurer, at the end of the term', { id: 'cancel.insurer-term-end' });
+    case 'insurer-breach':
+      return msg('The insurer, for a breach', { id: 'cancel.insurer-breach' });
+    case 'unpaid-premium':
+      return msg('Unpaid premium', { id: 'cancel.unpaid-premium' });
+    default:
+      return r;
+  }
+}
