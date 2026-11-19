@@ -20,6 +20,7 @@
     "@petvold/parties": "^0.1.0",
     "@petvold/policies": "^0.1.0",
     "@petvold/pricing-core": "^0.1.0",
+    "@petvold/scheduling": "^0.1.0",
     "@petvold/underwriting-core": "^0.1.0",
     "@petvold/webhooks": "^0.1.0",
     "ajv": "^8.20.0",
