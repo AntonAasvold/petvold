@@ -101,6 +101,34 @@ export function problemLabel(id: string): string {
       return msg('A claim cannot duplicate itself.', { id: 'close.notItself' });
     case 'decide.needReason':
       return msg('Write a reason.', { id: 'decide.needReason' });
+    case 'policy.needAnimal':
+      return msg('Give the animal as an animal id, e.g. ani_doris.', { id: 'policy.needAnimal' });
+    case 'policy.needHolder':
+      return msg('Give the policyholder as a party id, e.g. pty_owner002.', { id: 'policy.needHolder' });
+    case 'policy.needProduct':
+      return msg('Choose a product version.', { id: 'policy.needProduct' });
+    case 'policy.needStart':
+      return msg('Give the start date.', { id: 'policy.needStart' });
+    case 'policy.needsApplication':
+      return msg('The product takes an application.', { id: 'policy.needsApplication' });
+    case 'policy.needPremium':
+      return msg('Give the premium as an amount, e.g. 3600.', { id: 'policy.needPremium' });
+    case 'policy.needChannel':
+      return msg('Give where the customer accepted.', { id: 'policy.needChannel' });
+    case 'policy.badAcceptedAt':
+      return msg('Give when the customer accepted. It cannot be in the future.', { id: 'policy.badAcceptedAt' });
+    case 'policy.needDocuments':
+      return msg('Tick that the customer was shown the terms and the pre-contract information.', { id: 'policy.needDocuments' });
+    case 'policy.needCancelReason':
+      return msg('Choose the reason for the cancellation.', { id: 'policy.needCancelReason' });
+    case 'policy.futureReceived':
+      return msg('The notice cannot have been received in the future.', { id: 'policy.futureReceived' });
+    case 'policy.needEffective':
+      return msg('Give the day the need ceased.', { id: 'policy.needEffective' });
+    case 'policy.needNote':
+      return msg('Write a note.', { id: 'policy.needNote' });
+    case 'policy.changeFrom':
+      return msg('The change applies from today or later.', { id: 'policy.changeFrom' });
     case 'animal.needSpecies':
       return msg('Choose the species.', { id: 'animal.needSpecies' });
     case 'animal.needSex':
@@ -353,5 +381,55 @@ export function identifierLabel(t: string): string {
       return msg('Passport', { id: 'animal.passport' });
     default:
       return t;
+  }
+}
+
+/** How the customer accepted: the channel's name. */
+export function channelLabelFor(c: string): string {
+  switch (c) {
+    case 'phone':
+      return msg('Phone', { id: 'party.phone' });
+    case 'paper':
+      return msg('Paper', { id: 'policy.channelPaper' });
+    case 'web':
+      return msg('Web', { id: 'policy.channelWeb' });
+    case 'app':
+      return msg('App', { id: 'policy.channelApp' });
+    default:
+      return c;
+  }
+}
+
+export function documentLabel(t: string): string {
+  switch (t) {
+    case 'terms':
+      return msg('Terms', { id: 'policy.docTerms' });
+    case 'pre-contract':
+      return msg('Pre-contract information', { id: 'policy.docPreContract' });
+    case 'ipid':
+      return msg('Product fact sheet', { id: 'policy.docIpid' });
+    default:
+      return t;
+  }
+}
+
+export function cancellationLabel(r: string): string {
+  switch (r) {
+    case 'customer-term-end':
+      return msg('The customer, at the end of the term', { id: 'cancel.customer-term-end' });
+    case 'customer-immediate':
+      return msg('The customer, at once', { id: 'cancel.customer-immediate' });
+    case 'withdrawal':
+      return msg('Withdrawal within the cooling-off period', { id: 'cancel.withdrawal' });
+    case 'need-ceased':
+      return msg('The need ceased, e.g. the animal died', { id: 'cancel.need-ceased' });
+    case 'insurer-term-end':
+      return msg('The insurer, at the end of the term', { id: 'cancel.insurer-term-end' });
+    case 'insurer-breach':
+      return msg('The insurer, for a breach', { id: 'cancel.insurer-breach' });
+    case 'unpaid-premium':
+      return msg('Unpaid premium', { id: 'cancel.unpaid-premium' });
+    default:
+      return r;
   }
 }

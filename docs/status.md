@@ -268,8 +268,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Partens sida** visar djuren parten äger, och sökfältet öppnar ett djur för ett `ani_`-id.
   - **Tester:** 50 enhetstester och 29 flöden.
 
+- Back office, policyer, PR #103:
+  - **Teckna försäkring** från djurets sida, med produkt som säljs, prisindikation, premie för hand utan tariff och kundens godkännande med dokument.
+  - **Åtgärder på policyn:** ändra valen, säga upp, ångra uppsägningen och förnya för hand.
+  - **Tester:** 55 enhetstester och 30 flöden.
+
 **Nästa steg**
-1. Back office: policyer, alltså teckna med prisindikation, ändra, säga upp, återuppta och förnya.
+1. Back office: ansökan med hälsofrågor, och grupper (kull och hushåll).
+2. Kön för radering med fyra ögon.
+3. Skadeprocessen, steg 3: komplettering.
 2. Skadeprocessen, steg 3: komplettering, som en körning bland de andra.
 2. Skadeprocessen, steg 3: komplettering.
 2. ADR om premier och betalningar (M5).

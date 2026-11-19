@@ -180,6 +180,11 @@ export class AnimalDetail extends LitElement {
         <span class="pv-badge pv-badge--id">${a.id}</span>
         <span class="pv-badge">${labelOf(r?.species ?? [], a.species)}${a.breed ? `, ${labelOf(r?.breeds ?? [], a.breed)}` : ''} · ${a.market}</span>
         ${a.deceasedOn ? html`<span class="pv-badge pv-badge--solid">${msg('Died', { id: 'animal.died' })} ${a.deceasedOn}</span>` : nothing}
+        ${this.may('policies:write') && !a.deceasedOn
+          ? html`<wa-button size="small" appearance="outlined" @click=${() => navigate(`/policies/new?animal=${encodeURIComponent(a.id)}&holder=${encodeURIComponent(ownerOn(a.ownerships, today())?.partyId ?? '')}`)}
+              >${msg('Issue a policy', { id: 'policy.issue' })}</wa-button
+            >`
+          : nothing}
       </div>
       ${this.notice ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'danger' ? 'alert' : 'status'}>${this.notice.text}</wa-callout>` : nothing}
       <div class="cols">
