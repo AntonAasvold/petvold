@@ -53,6 +53,20 @@ Avsnittet Parter (rätten `parties:read`) gäller personer och organisationer (A
 
 En anonymiserad part kan inte ändras.
 
+## Djur
+
+Avsnittet Djur (rätten `animals:read`) gäller djurregistret (ADR 0024, 0027):
+
+- **Hitta ett djur** med chipnummer, registreringsnummer, pass, ägare (part-id) eller djur-id. Ett `ani_`-id i sökfältet i toppraden öppnar djuret direkt.
+- **Registrera ett djur** (rätten `animals:write`): marknad, art, ras, kön, namn, födelsedatum, kastrerad, om kliniker får hitta det, chipnummer och ägare från en dag. Från partens sida är ägaren ifylld. Art, ras och kön väljs ur referensdatan på användarens språk.
+- **Djurets sida** visar uppgifter, nummer, ägare över tid, policyer (för den som får läsa policyer), kullen det föddes i och historiken.
+- **Rätta uppgifterna** med skäl, till exempel kastrerad, rättad ras eller dödsdatum. Art och marknad ändras aldrig.
+- **Ägarbyte** till en annan part från en dag. Det nuvarande ägarskapet slutar den dagen, och en policy på djuret får ett förslag om överlåtelse. Ett dött djur byter inte ägare.
+- **Lägg till ett nummer:** chipnummer, registreringsnummer eller pass.
+- **Registrera en kull:** uppfödaren äger varje djur från födelsedagen, mor och far anges som djur-id, och varje djur får namn, kön, ras och chipnummer. Kullens sida länkar till djuren.
+
+Partens sida visar också djuren parten äger i dag, med "Registrera djur".
+
 ## Körningar
 
 Sidan Körningar (rätten `jobs:read`) visar Petvolds dagliga körningar och reläets döda poster. Den som har `jobs:operate` kan köra en körning nu, pausa och återuppta den, och skicka en död post igen. Se [Körningar](korningar.md).

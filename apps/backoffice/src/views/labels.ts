@@ -101,6 +101,36 @@ export function problemLabel(id: string): string {
       return msg('A claim cannot duplicate itself.', { id: 'close.notItself' });
     case 'decide.needReason':
       return msg('Write a reason.', { id: 'decide.needReason' });
+    case 'animal.needSpecies':
+      return msg('Choose the species.', { id: 'animal.needSpecies' });
+    case 'animal.needSex':
+      return msg('Choose the sex.', { id: 'animal.needSex' });
+    case 'animal.needName':
+      return msg("Give the animal's name.", { id: 'animal.needName' });
+    case 'animal.needBirthDate':
+      return msg('Give the date of birth.', { id: 'animal.needBirthDate' });
+    case 'animal.futureBirth':
+      return msg('The date of birth cannot be in the future.', { id: 'animal.futureBirth' });
+    case 'animal.badChip':
+      return msg('A microchip is 15 digits.', { id: 'animal.badChip' });
+    case 'animal.needOwner':
+      return msg('Give the owner as a party id, e.g. pty_owner001.', { id: 'animal.needOwner' });
+    case 'animal.needOwnerFrom':
+      return msg('Give the day the owner owns it from.', { id: 'animal.needOwnerFrom' });
+    case 'animal.badDeath':
+      return msg('The date of death is between the birth and today.', { id: 'animal.badDeath' });
+    case 'animal.sameOwner':
+      return msg('That party already owns the animal.', { id: 'animal.sameOwner' });
+    case 'animal.transferBefore':
+      return msg('The new owner must start after the current one did.', { id: 'animal.transferBefore' });
+    case 'animal.needBreeder':
+      return msg('Give the breeder as a party id.', { id: 'animal.needBreeder' });
+    case 'animal.badParent':
+      return msg('A parent is an animal id, e.g. ani_bella.', { id: 'animal.badParent' });
+    case 'animal.litterSize':
+      return msg('A litter has 1–24 animals.', { id: 'animal.litterSize' });
+    case 'animal.litterAnimal':
+      return msg('Each animal in the litter needs a name and a sex.', { id: 'animal.litterAnimal' });
     case 'party.needName':
       return msg('Give the given name and the family name.', { id: 'party.needName' });
     case 'party.needOrgName':
@@ -311,4 +341,17 @@ export function runTriggerLabel(t: string): string {
 
 export function scheduleLabel(s: { kind: string; at?: string; seconds?: number }): string {
   return s.kind === 'daily' ? `${msg('Daily at', { id: 'job.dailyAt' })} ${s.at}` : `${msg('Every', { id: 'job.every' })} ${s.seconds} s`;
+}
+
+export function identifierLabel(t: string): string {
+  switch (t) {
+    case 'microchip':
+      return msg('Microchip', { id: 'animal.microchip' });
+    case 'registration':
+      return msg('Registration number', { id: 'animal.registration' });
+    case 'passport':
+      return msg('Passport', { id: 'animal.passport' });
+    default:
+      return t;
+  }
 }
