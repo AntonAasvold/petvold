@@ -5,7 +5,7 @@
  */
 import type pg from 'pg';
 import type { Timestamp } from '@petvold/common';
-import type { DeadLetterRecord, JobRun, RunFilter, SchedulingStore } from './index.ts';
+import { JobConflictError, type DeadLetterRecord, type JobControl, type JobPause, type JobRun, type RunFilter, type SchedulingStore } from './index.ts';
 
 /** A timestamp as an ISO string, whether pg gave a Date or another module set a parser that gives a string. */
 const iso = (v: Date | string | null): string | undefined => (v === null ? undefined : new Date(v).toISOString());
@@ -66,6 +66,49 @@ export class PostgresSchedulingStore implements SchedulingStore {
     return rowCount ?? 0;
   }
 
+  async pause(p: JobPause, log: JobControl): Promise<void> {
+    await this.tx(async (db) => {
+      const { rowCount } = await db.query(
+        `insert into scheduling.job_pause (job, paused_by, paused_at, reason) values ($1, $2, $3, $4) on conflict (job) do nothing`,
+        [p.job, p.pausedBy, p.pausedAt, p.reason],
+      );
+      if (rowCount !== 1) throw new JobConflictError(`${p.job} is paused already`);
+      await insertControl(db, log);
+    });
+  }
+
+  async resume(job: string, log: JobControl): Promise<void> {
+    await this.tx(async (db) => {
+      const { rowCount } = await db.query('delete from scheduling.job_pause where job = $1', [job]);
+      if (rowCount !== 1) throw new JobConflictError(`${job} is not paused`);
+      await insertControl(db, log);
+    });
+  }
+
+  async pauses(): Promise<JobPause[]> {
+    const { rows } = await this.pool.query('select * from scheduling.job_pause order by job');
+    return rows.map((r) => ({ job: r.job, pausedBy: r.paused_by, pausedAt: iso(r.paused_at)!, reason: r.reason }));
+  }
+
+  async controls(job: string, limit: number): Promise<JobControl[]> {
+    const { rows } = await this.pool.query('select * from scheduling.job_control where job = $1 order by at desc, id desc limit $2', [job, limit]);
+    return rows.map((r) => ({ id: r.id, job: r.job, action: r.action, by: r.by_whom, at: iso(r.at)!, reason: r.reason }));
+  }
+
+  private async tx(fn: (db: pg.PoolClient) => Promise<void>): Promise<void> {
+    const db = await this.pool.connect();
+    try {
+      await db.query('begin');
+      await fn(db);
+      await db.query('commit');
+    } catch (e) {
+      await db.query('rollback');
+      throw e;
+    } finally {
+      db.release();
+    }
+  }
+
   async saveDeadLetter(d: DeadLetterRecord): Promise<void> {
     await this.pool.query(
       `insert into scheduling.relay_dead_letter (source, event_id, attempts, last_error, dead_at) values ($1, $2, $3, $4, $5)
@@ -83,6 +126,10 @@ export class PostgresSchedulingStore implements SchedulingStore {
     const { rowCount } = await this.pool.query('delete from scheduling.relay_dead_letter where source = $1 and event_id = $2', [source, eventId]);
     return rowCount === 1;
   }
+}
+
+async function insertControl(db: pg.PoolClient, c: JobControl): Promise<void> {
+  await db.query('insert into scheduling.job_control (id, job, action, by_whom, at, reason) values ($1, $2, $3, $4, $5, $6)', [c.id, c.job, c.action, c.by, c.at, c.reason]);
 }
 
 function toRun(r: Record<string, any>): JobRun {

@@ -351,7 +351,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   );
 
   return {
-    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks },
+    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks, scheduler, relay },
     stores: {
       claims: claimsStore,
       roles: roleStore,

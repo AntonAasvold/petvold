@@ -244,8 +244,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **`drift.md`** säger nu att Petvold kör körningarna själv.
   - **Tester:** 476 i kärnan och API:t och 136 mot databasen.
 
+- Körningar, steg 3, PR #99 (ADR 0037):
+  - **API:** `/v1/jobs` med lista, historik, "Kör nu", paus och återupptagande, och `/v1/relay-dead-letters` med "Skicka igen". Rättigheterna är `jobs:read` och `jobs:operate`, och den nya rollen heter `operations`.
+  - **Gamla anrop:** `POST /v1/renewal-runs` och de andra går genom schemaläggaren per marknad, sparar historik som "Anrop" och svarar som förut.
+  - **Paus och spår** (migration 0040). En pausad körning hoppas över av schemaläggaren.
+  - **Back office:** sidan Körningar med försenade körningar, döda poster och en sida per körning. Dev-tokenen heter `dev-operations`.
+  - **Tester:** 483 i kärnan och API:t, 137 mot databasen, 42 enhetstester och 26 flöden.
+
 **Nästa steg**
-1. Körningar, steg 3: anrop under `/v1/jobs` och sidan Körningar i back office, med historik, "Kör nu", paus och reläets döda poster.
+1. Körningar, steg 4: schemaändringar med fyra ögon, `job.failed` till webhooks och larm i `/healthz`.
 2. Skadeprocessen, steg 3: komplettering.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).

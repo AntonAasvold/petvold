@@ -64,6 +64,8 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `notices:configure` | Ändra bolagets inställningar för meddelanden: texter, dagar för "snarast" och typer som stängs av | `POST /v1/settings/notices/versions` |
 | `webhooks:read` | Läsa prenumerationer på webhooks och deras utskick (ADR 0033), aldrig hemligheterna | `GET /v1/webhook-subscriptions`, `.../{id}`, `.../deliveries`, `GET /v1/webhook-deliveries` |
 | `webhooks:manage` | Skapa och ändra prenumerationer, byta hemlighet och skicka döda händelser igen | `POST /v1/webhook-subscriptions`, `PUT .../{id}`, `.../secret-rotations`, `.../retries`, `.../delivery-retries` |
+| `jobs:read` | Se körningarna, deras historik och reläets döda poster (ADR 0037) | `GET /v1/jobs`, `GET /v1/jobs/{job}`, `.../runs`, `GET /v1/relay-dead-letters` |
+| `jobs:operate` | Köra en körning nu, pausa och återuppta den, och skicka en död post igen. Gäller direkt, utan fyra ögon. | `POST /v1/jobs/{job}/runs`, `.../pauses`, `.../resumptions`, `POST /v1/relay-dead-letters/{deadLetter}/retries` |
 | `access:read` | Läsa rollinställningen och dess historik (ADR 0020) | `GET /v1/settings/roles`, `.../versions` |
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/settings/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
@@ -88,6 +90,7 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `underwriter` | `policies:read`, `policies:write`, `policies:quote`, `policies:price-override`, `policies:underwrite`, `animals:read`, `parties:read`, `catalog:read`, `notices:read` | – | Beslutar om ansökningar och priser som behöver en person, till exempel manuellt pris |
 | `document-service` | `notices:read`, `notices:deliver`, `parties:read`, `policies:read`, `catalog:read` | – | Bolagets dokumentsystem: hämtar meddelanden, gör och skickar dokumenten och rapporterar utskicken (ADR 0032) |
 | `integration-admin` | `webhooks:read`, `webhooks:manage` | – | Kopplar bolagets system till Petvolds händelser med webhooks (ADR 0033) |
+| `operations` | `jobs:read`, `jobs:operate`, `webhooks:read` | – | Driften: följer och styr körningarna och reläet (ADR 0037) |
 | `communications-manager` | `notices:read`, `notices:configure` | – | Skriver bolagets texter i meddelandena och ändrar inställningarna, till exempel compliance eller kundkommunikation |
 | `renewal-job` | `policies:renew` | – | Schemalagd förnyelse, avslut av överlåtelser som inte godkändes i tid och utgång av ansökningar |
 | `privacy-officer` | `parties:read`, `parties:privacy`, `parties:erase`, `parties:retention` | – | Dataskyddsansvarig. Två personer behövs för att anonymisera. |

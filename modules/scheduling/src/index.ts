@@ -59,6 +59,24 @@ export interface RunFilter {
   limit?: number;
 }
 
+/** A paused job: the scheduler skips it in every market until it is resumed. "Run now" still works. */
+export interface JobPause {
+  job: string;
+  pausedBy: string;
+  pausedAt: Timestamp;
+  reason: string;
+}
+
+/** What someone did to a job, for the trail (ADR 0037). Runs are in the history; this is pause and resume. */
+export interface JobControl {
+  id: string;
+  job: string;
+  action: 'pause' | 'resume';
+  by: string;
+  at: Timestamp;
+  reason: string;
+}
+
 /** An event the relay set aside after too many attempts (ADR 0037). Kept until someone sends it again. */
 export interface DeadLetterRecord {
   /** The outbox, e.g. 'claims' or 'policies'. */
@@ -86,12 +104,39 @@ export interface SchedulingStore {
   listRuns(filter: RunFilter): Promise<JobRun[]>;
   /** Removes runs that started before `before`. Returns how many. */
   pruneRuns(before: Timestamp): Promise<number>;
+  /** Pauses a job and logs it, in one step. Throws JobConflictError if it is paused already. */
+  pause(p: JobPause, log: JobControl): Promise<void>;
+  /** Resumes a job and logs it, in one step. Throws JobConflictError if it is not paused. */
+  resume(job: string, log: JobControl): Promise<void>;
+  /** Every paused job. */
+  pauses(): Promise<JobPause[]>;
+  /** What was done to a job, newest first. */
+  controls(job: string, limit: number): Promise<JobControl[]>;
   /** Keeps a dead letter; the same event again replaces it. */
   saveDeadLetter(d: DeadLetterRecord): Promise<void>;
   /** Every dead letter, oldest first. */
   deadLetters(): Promise<DeadLetterRecord[]>;
   /** Forgets a dead letter, so the relay tries the event again. Returns whether there was one. */
   removeDeadLetter(source: string, eventId: string): Promise<boolean>;
+}
+
+/** An error about a job, with a code the API turns into a status. */
+export class JobError extends Error {
+  constructor(
+    public readonly code: 'not_found' | 'conflict' | 'validation',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'JobError';
+  }
+}
+
+/** A pause or a resume that does not fit the job's state. */
+export class JobConflictError extends JobError {
+  constructor(message: string) {
+    super('conflict', message);
+    this.name = 'JobConflictError';
+  }
 }
 
 /** How long run history is kept (ADR 0037): a whole year can be compared with the one before. */
@@ -116,6 +161,39 @@ export function dailyDue(at: string, market: string, now: Timestamp, last: { sch
   if (timeOfDay(now, zone) < at) return null;
   if (last?.scheduledFor && last.scheduledFor >= today) return null;
   return today;
+}
+
+/**
+ * The point in time a local date and time in a zone is. A time that does not
+ * exist that night (summer time) moves forward by the gap, as the scheduler
+ * runs it. Pure.
+ */
+export function zonedTime(date: ISODate, time: string, timeZone: string): Timestamp {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  const [hh, mm] = time.split(':').map(Number) as [number, number];
+  const wanted = Date.UTC(y, m - 1, d, hh, mm);
+  const offsetAt = (t: number) => {
+    const p = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(t));
+    const get = (k: string) => Number(p.find((x) => x.type === k)!.value);
+    return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute')) - t;
+  };
+  let t = wanted - offsetAt(wanted);
+  t = wanted - offsetAt(t);
+  return new Date(t).toISOString();
+}
+
+/**
+ * When a daily job runs next in a market: today at its time if today's run has
+ * not been made, else tomorrow. A time in the past means it is late, e.g. while
+ * no scheduler runs. Pure.
+ */
+export function nextDailyRun(at: string, market: string, now: Timestamp, last: { scheduledFor?: ISODate } | null): Timestamp {
+  const zone = MARKET_TIME_ZONES[market] ?? 'UTC';
+  const today = marketDate(market, now);
+  const doneToday = !!last?.scheduledFor && last.scheduledFor >= today;
+  if (!doneToday) return zonedTime(today, at, zone);
+  const tomorrow = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  return zonedTime(tomorrow, at, zone);
 }
 
 /** A schedule's time of day must be HH:MM. */
@@ -164,8 +242,9 @@ export class Scheduler {
     const now = this.d.clock.now();
     const out: JobRun[] = [];
     const markets = await this.d.markets();
+    const paused = new Set((await this.d.store.pauses()).map((p) => p.job));
     for (const job of this.d.jobs) {
-      if (job.schedule.kind !== 'daily') continue;
+      if (job.schedule.kind !== 'daily' || paused.has(job.name)) continue;
       for (const market of markets) {
         const day = dailyDue(job.schedule.at, market, now, await this.d.store.lastScheduledRun(job.name, market));
         if (!day) continue;
@@ -182,7 +261,13 @@ export class Scheduler {
    * another server holds the lease: then nothing is stored for a scheduled run,
    * and a manual one is recorded as skipped.
    */
-  async run(job: JobDefinition, market: string, how: { trigger: RunTrigger; by: string; dryRun: boolean; scheduledFor?: ISODate }): Promise<JobRun | null> {
+  async run(
+    job: JobDefinition,
+    market: string,
+    how: { trigger: RunTrigger; by: string; dryRun: boolean; scheduledFor?: ISODate },
+    /** For a caller that needs more than the summary, e.g. the API's old run responses: it runs the job and returns the summary to keep. */
+    exec: (ctx: JobContext) => Promise<JobResult> = (ctx) => job.run(ctx),
+  ): Promise<JobRun | null> {
     const key = `${job.name}:${market}`;
     const started = this.d.clock.now();
     const run: JobRun = {
@@ -207,7 +292,7 @@ export class Scheduler {
     try {
       await this.d.store.startRun(run);
       try {
-        const result = await job.run({ market, onDate: marketDate(market, started), dryRun: how.dryRun, by: how.by });
+        const result = await exec({ market, onDate: marketDate(market, started), dryRun: how.dryRun, by: how.by });
         const done = { status: 'succeeded' as const, finishedAt: this.d.clock.now(), result };
         await this.d.store.finishRun(run.id, done);
         return { ...run, ...done };
@@ -222,6 +307,20 @@ export class Scheduler {
       clearInterval(renew);
       await this.d.store.releaseLease(key, this.d.holder);
     }
+  }
+
+  /** The job by name, or undefined. */
+  job(name: string): JobDefinition | undefined {
+    return this.d.jobs.find((j) => j.name === name);
+  }
+
+  /** The installation's markets now. */
+  markets(): Promise<string[]> {
+    return this.d.markets();
+  }
+
+  get store(): SchedulingStore {
+    return this.d.store;
   }
 
   /** Checks once a minute by default; a round never overlaps the one before. */
@@ -260,6 +359,8 @@ export class InMemorySchedulingStore implements SchedulingStore {
   private leases = new Map<string, { holder: string; expiresAt: Timestamp }>();
   private runs: JobRun[] = [];
   private dead = new Map<string, DeadLetterRecord>();
+  private paused = new Map<string, JobPause>();
+  private log: JobControl[] = [];
 
   async tryLease(key: string, holder: string, until: Timestamp, now: Timestamp): Promise<boolean> {
     const l = this.leases.get(key);
@@ -299,6 +400,29 @@ export class InMemorySchedulingStore implements SchedulingStore {
     const n = this.runs.length;
     this.runs = this.runs.filter((r) => r.startedAt >= before);
     return n - this.runs.length;
+  }
+
+  async pause(p: JobPause, log: JobControl): Promise<void> {
+    if (this.paused.has(p.job)) throw new JobConflictError(`${p.job} is paused already`);
+    this.paused.set(p.job, structuredClone(p));
+    this.log.push(structuredClone(log));
+  }
+
+  async resume(job: string, log: JobControl): Promise<void> {
+    if (!this.paused.delete(job)) throw new JobConflictError(`${job} is not paused`);
+    this.log.push(structuredClone(log));
+  }
+
+  async pauses(): Promise<JobPause[]> {
+    return [...this.paused.values()].map((p) => structuredClone(p));
+  }
+
+  async controls(job: string, limit: number): Promise<JobControl[]> {
+    return this.log
+      .filter((c) => c.job === job)
+      .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : a.id < b.id ? 1 : -1))
+      .slice(0, limit)
+      .map((c) => structuredClone(c));
   }
 
   async saveDeadLetter(d: DeadLetterRecord): Promise<void> {

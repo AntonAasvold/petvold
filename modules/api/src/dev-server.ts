@@ -7,7 +7,7 @@
  * `npm run dev:up`), else in memory.
  *
  * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-admin'
- * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals and parties), 'dev-privacy' and 'dev-privacy-2' (erasure), 'dev-retention-job' (retention run), 'dev-seller' (policies), 'dev-underwriter' (manual prices), 'dev-documents' (the document system), 'dev-communications' (notice settings), 'dev-integration' (webhooks), 'dev-renewal-job' (renewal run), 'dev-clinic'
+ * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals and parties), 'dev-privacy' and 'dev-privacy-2' (erasure), 'dev-retention-job' (retention run), 'dev-seller' (policies), 'dev-underwriter' (manual prices), 'dev-documents' (the document system), 'dev-communications' (notice settings), 'dev-integration' (webhooks), 'dev-operations' (runs), 'dev-renewal-job' (renewal run), 'dev-clinic'
  * (clinic), 'dev-job' (reassessment job), 'dev-customer' (customer channel). Roles map to
  * permissions with DEFAULT_ROLES (ADR 0016).
  * The API page is at /docs and example requests are in examples/claims.http.
@@ -74,6 +74,7 @@ const DEV_TOKENS: Record<string, Principal> = {
   'dev-documents': { subject: 'document-service', roles: ['document-service'], markets: ['SE'] },
   'dev-communications': { subject: 'communications@example.test', roles: ['communications-manager'], markets: ['SE'] },
   'dev-integration': { subject: 'integration@example.test', roles: ['integration-admin'], markets: '*' },
+  'dev-operations': { subject: 'drift@example.test', roles: ['operations'], markets: '*' },
   'dev-renewal-job': { subject: 'renewal-job', roles: ['renewal-job'], markets: '*' },
   'dev-retention-job': { subject: 'retention-job', roles: ['retention-job'], markets: '*' },
   'dev-clinic': { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },

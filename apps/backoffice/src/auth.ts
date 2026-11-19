@@ -23,6 +23,7 @@ export const DEV_TOKENS = [
   'dev-seller',
   'dev-documents',
   'dev-integration',
+  'dev-operations',
   'dev-communications',
   'dev-admin',
   'dev-catalog',

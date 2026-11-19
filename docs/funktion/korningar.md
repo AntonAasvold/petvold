@@ -36,18 +36,41 @@ Resultatet har bara antal och id:n, aldrig personuppgifter. En ansökans svar om
 | `policies.renewal` | `checked`, `renewed`, `cancelled`, `notYet`, `needsDecision` (policy och skäl), `renewedPolicyIds` |
 | `parties.retention` | `settingsVersion`, `checked`, `due`, `ongoing`, `withinRetention`, `pendingRequest`, `requestIds` |
 
+## Se och styra
+
+Sidan **Körningar** i back office (rätten `jobs:read`) visar varje körning och marknad med schema, senaste och nästa körning. "Försenad" står när tiden passerat med mer än fem minuter utan att körningen gjorts, till exempel när ingen schemaläggare kör.
+
+En sida per körning visar historiken och, för den som har `jobs:operate`:
+
+- **Kör nu** i en marknad, med eller utan provkörning. Körningen sker direkt, också när den är pausad, och hamnar i historiken som "Kör nu" med vem som startade den.
+- **Pausa** med ett skäl. Gäller direkt i alla marknader, utan fyra ögon: den som ser en körning göra fel ska kunna stoppa den. Schemaläggaren hoppar över den tills den återupptas.
+- **Återuppta** med ett skäl. En dag som missades medan den var pausad körs vid nästa omgång.
+- **Spåret** visar varje paus och återupptagande med vem, när och varför.
+
+Rollen `operations` har rättigheterna, och dev-tokenen `dev-operations` ger den lokalt.
+
+| Anrop | Rättighet | Gör |
+| --- | --- | --- |
+| `GET /v1/jobs`, `GET /v1/jobs/{job}` | `jobs:read` | Körningarna, med paus och spår |
+| `GET /v1/jobs/{job}/runs` | `jobs:read` | Historiken, nyast först |
+| `POST /v1/jobs/{job}/runs` | `jobs:operate` | Kör nu i en marknad (`market`, `dryRun`). `409` om en annan server kör den. |
+| `POST /v1/jobs/{job}/pauses`, `.../resumptions` | `jobs:operate` | Pausa och återuppta, med `reason` |
+| `GET /v1/relay-dead-letters` | `jobs:read` | Reläets döda poster |
+| `POST /v1/relay-dead-letters/{deadLetter}/retries` | `jobs:operate` | Skicka en död post igen |
+
+**De gamla anropen** (`POST /v1/renewal-runs`, `/v1/retention-runs`, `/v1/application-expiry-runs` och `/v1/policy-proposal-expiry-runs`) svarar som förut. De kör nu körningen en gång per marknad i anroparens omfång och sparar historiken med startsättet "Anrop".
+
 ## Reläet
 
 Reläet levererar varje moduls händelser i ordning (ADR 0008). Med flera servrar är en av dem reläet: den håller lånet `relay` och förnyar det varje sekund. De andra väntar och tar över om den stannar.
 
-En händelse som inte går att leverera efter tio försök blir en död post. Den sparas och finns kvar efter en omstart, tills någon skickar den igen. `/healthz` visar antalet och om servern är reläet.
+En händelse som inte går att leverera efter tio försök blir en död post. Den sparas och finns kvar efter en omstart, tills någon skickar den igen. Sidan Körningar listar de döda posterna med "Skicka igen", och menyn räknar dem. `/healthz` visar antalet och om servern är reläet.
 
 ## Det som kommer
 
-Steg 1 och 2 i ADR 0037 är byggda: schemaläggaren, lånen, historiken och reläet bakom ett lån. Det som återstår:
+Steg 1–3 i ADR 0037 är byggda. Det som återstår:
 
-- **Steg 3:** anrop under `/v1/jobs` och sidan Körningar i back office, med historik, "Kör nu" och paus. Anropen som finns i dag (`POST /v1/renewal-runs` och de andra) börjar då också spara historik.
 - **Steg 4:** schemaändringar med fyra ögon, händelsen `job.failed` och larm i `/healthz`.
 - **Steg 5:** påminnelser och utgång för komplettering av skador.
 
-Tills dess går tiderna inte att ändra, och historiken går bara att läsa i databasen (`scheduling.run`).
+Tills dess går tiderna inte att ändra.
