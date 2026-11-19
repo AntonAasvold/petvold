@@ -223,8 +223,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 
 - Inventering av back office (PR #95): back office använder 68 av API:ets 115 operationer. Det som saknas står i roadmapen under "Back office: det som saknas", och körningar har ett eget avsnitt.
 
+- ADR 0037, körningar (beslutad), PR #96:
+  - **En modul, `scheduling`,** med schema per körning (`daily` per marknad eller `interval`), lån i databasen vid flera servrar och historik i 400 dagar.
+  - **Reläet** blir en enda server åt gången, och dess döda poster sparas.
+  - **Styrning:** "Kör nu" och paus direkt (`jobs:operate`), schemaändringar med fyra ögon (`jobs:configure`), och `job.failed` och hälsokontrollen larmar.
+  - **Back office** får sidan Körningar.
+  - **Utförande:** fem PR:er.
+
 **Nästa steg**
-1. ADR om körningar: schema, lås vid flera instanser, historik, och visning och styrning i back office. Se roadmapen under Körningar.
+1. Körningar, steg 1: modulen `scheduling` med lån, historik och schemaläggaren.
 2. Skadeprocessen, steg 3: komplettering.
 2. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
