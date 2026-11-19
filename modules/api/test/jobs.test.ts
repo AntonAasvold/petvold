@@ -1,7 +1,7 @@
 /** Runs through the API (ADR 0037): the list, history, run now, pause and the relay's dead letters. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Principal } from '../src/auth.ts';
+import type { Principal } from '@petvold/api';
 import { compose } from '../src/composition.ts';
 import { seedSampleData } from '../src/seed.ts';
 import { createApp } from '../src/index.ts';
