@@ -101,6 +101,18 @@ export function problemLabel(id: string): string {
       return msg('A claim cannot duplicate itself.', { id: 'close.notItself' });
     case 'decide.needReason':
       return msg('Write a reason.', { id: 'decide.needReason' });
+    case 'party.needName':
+      return msg('Give the given name and the family name.', { id: 'party.needName' });
+    case 'party.needOrgName':
+      return msg("Give the organization's name.", { id: 'party.needOrgName' });
+    case 'party.badEmail':
+      return msg('The email does not look like an email address.', { id: 'party.badEmail' });
+    case 'party.badPhone':
+      return msg('Give the phone in international format, e.g. +46701234567.', { id: 'party.badPhone' });
+    case 'party.partAddress':
+      return msg('Give the whole address: street, postal code and city.', { id: 'party.partAddress' });
+    case 'party.badLanguage':
+      return msg('The language is two small letters, e.g. sv.', { id: 'party.badLanguage' });
     case 'jobs.badTime':
       return msg('Give the time as HH:MM, e.g. 02:30.', { id: 'jobs.badTime' });
     case 'register.needPolicy':

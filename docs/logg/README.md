@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-19 | [Parter i back office](2026-11-19-parter-i-backoffice.md) | #101 |
 | 2026-11-19 | [Schemaändringar med fyra ögon och larm för körningar](2026-11-19-korningar-schema-och-larm.md) | #100 |
 | 2026-11-19 | [Körningar i API:t och back office](2026-11-19-korningar-i-backoffice.md) | #99 |
 | 2026-11-19 | [Reläet bakom ett lån](2026-11-19-relaet-bakom-lan.md) | #98 |

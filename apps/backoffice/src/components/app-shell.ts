@@ -22,6 +22,9 @@ import '../views/claims-queue.ts';
 import '../views/claim-detail.ts';
 import '../views/claim-register.ts';
 import '../views/jobs-view.ts';
+import '../views/parties-view.ts';
+import '../views/party-register.ts';
+import '../views/party-detail.ts';
 import '../views/job-detail.ts';
 import '../views/policies-search.ts';
 import '../views/policy-detail.ts';
@@ -254,6 +257,9 @@ export class AppShell extends LitElement {
       { pattern: /^\/products\/(?<id>[^/]+)$/, render: (p) => html`<pv-product-detail .api=${this.api} .me=${this.me} product=${p.id!}></pv-product-detail>` },
       { pattern: /^\/rule-sets$/, render: () => html`<pv-rule-sets .api=${this.api}></pv-rule-sets>` },
       { pattern: /^\/rule-sets\/(?<id>[^/]+)$/, render: (p) => html`<pv-rule-set-detail .api=${this.api} .me=${this.me} series=${p.id!}></pv-rule-set-detail>` },
+      { pattern: /^\/parties$/, render: () => html`<pv-parties .api=${this.api} .me=${this.me}></pv-parties>` },
+      { pattern: /^\/parties\/new$/, render: () => html`<pv-party-register .api=${this.api}></pv-party-register>` },
+      { pattern: /^\/parties\/(?<id>[^/]+)$/, render: (p) => html`<pv-party-detail .api=${this.api} .me=${this.me} party-id=${p.id!}></pv-party-detail>` },
       { pattern: /^\/jobs$/, render: () => html`<pv-jobs .api=${this.api} .me=${this.me}></pv-jobs>` },
       { pattern: /^\/jobs\/(?<id>[^/]+)$/, render: (p) => html`<pv-job-detail .api=${this.api} .me=${this.me} job=${p.id!}></pv-job-detail>` },
       { pattern: /^\/settings$/, render: () => html`<pv-settings .api=${this.api} .me=${this.me}></pv-settings>` },
@@ -331,6 +337,8 @@ export class AppShell extends LitElement {
         return msg('Notices', { id: 'nav.notices' });
       case 'nav.webhooks':
         return msg('Webhooks', { id: 'nav.webhooks' });
+      case 'nav.parties':
+        return msg('Parties', { id: 'nav.parties' });
       case 'nav.jobs':
         return msg('Runs', { id: 'nav.jobs' });
       case 'nav.products':
