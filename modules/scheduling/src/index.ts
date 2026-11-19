@@ -59,6 +59,16 @@ export interface RunFilter {
   limit?: number;
 }
 
+/** An event the relay set aside after too many attempts (ADR 0037). Kept until someone sends it again. */
+export interface DeadLetterRecord {
+  /** The outbox, e.g. 'claims' or 'policies'. */
+  source: string;
+  eventId: string;
+  attempts: number;
+  lastError: string;
+  deadAt: Timestamp;
+}
+
 export interface SchedulingStore {
   /**
    * Takes or renews the lease on `key` until `until`, if it is free, has run
@@ -76,6 +86,12 @@ export interface SchedulingStore {
   listRuns(filter: RunFilter): Promise<JobRun[]>;
   /** Removes runs that started before `before`. Returns how many. */
   pruneRuns(before: Timestamp): Promise<number>;
+  /** Keeps a dead letter; the same event again replaces it. */
+  saveDeadLetter(d: DeadLetterRecord): Promise<void>;
+  /** Every dead letter, oldest first. */
+  deadLetters(): Promise<DeadLetterRecord[]>;
+  /** Forgets a dead letter, so the relay tries the event again. Returns whether there was one. */
+  removeDeadLetter(source: string, eventId: string): Promise<boolean>;
 }
 
 /** How long run history is kept (ADR 0037): a whole year can be compared with the one before. */
@@ -243,6 +259,7 @@ export class Scheduler {
 export class InMemorySchedulingStore implements SchedulingStore {
   private leases = new Map<string, { holder: string; expiresAt: Timestamp }>();
   private runs: JobRun[] = [];
+  private dead = new Map<string, DeadLetterRecord>();
 
   async tryLease(key: string, holder: string, until: Timestamp, now: Timestamp): Promise<boolean> {
     const l = this.leases.get(key);
@@ -282,6 +299,18 @@ export class InMemorySchedulingStore implements SchedulingStore {
     const n = this.runs.length;
     this.runs = this.runs.filter((r) => r.startedAt >= before);
     return n - this.runs.length;
+  }
+
+  async saveDeadLetter(d: DeadLetterRecord): Promise<void> {
+    this.dead.set(`${d.source}:${d.eventId}`, structuredClone(d));
+  }
+
+  async deadLetters(): Promise<DeadLetterRecord[]> {
+    return [...this.dead.values()].sort((a, b) => (a.deadAt < b.deadAt ? -1 : a.deadAt > b.deadAt ? 1 : 0)).map((d) => structuredClone(d));
+  }
+
+  async removeDeadLetter(source: string, eventId: string): Promise<boolean> {
+    return this.dead.delete(`${source}:${eventId}`);
   }
 
   private newestFirst(): JobRun[] {

@@ -80,6 +80,19 @@ export function schedulingStoreSuite(name: string, factory: StoreFactory): void 
       assert.deepEqual((await s.listRuns({ market: 'SE' })).map((r) => r.id), ['run_d', 'run_b', 'run_a']);
     });
 
+    it('a dead letter is kept until it is removed, and the same event replaces it', async (s) => {
+      await s.saveDeadLetter({ source: 'claims', eventId: '7', attempts: 10, lastError: 'timeout', deadAt: '2026-11-19T10:00:00.000Z' });
+      await s.saveDeadLetter({ source: 'policies', eventId: '3', attempts: 10, lastError: 'boom', deadAt: '2026-11-19T09:00:00.000Z' });
+      await s.saveDeadLetter({ source: 'claims', eventId: '7', attempts: 12, lastError: 'still timeout', deadAt: '2026-11-19T11:00:00.000Z' });
+      assert.deepEqual(await s.deadLetters(), [
+        { source: 'policies', eventId: '3', attempts: 10, lastError: 'boom', deadAt: '2026-11-19T09:00:00.000Z' },
+        { source: 'claims', eventId: '7', attempts: 12, lastError: 'still timeout', deadAt: '2026-11-19T11:00:00.000Z' },
+      ]);
+      assert.equal(await s.removeDeadLetter('claims', '7'), true);
+      assert.equal(await s.removeDeadLetter('claims', '7'), false);
+      assert.deepEqual((await s.deadLetters()).map((d) => d.eventId), ['3']);
+    });
+
     it('history before a point in time is pruned', async (s) => {
       await s.startRun(run('run_old', { startedAt: '2025-10-01T01:00:00.000Z', scheduledFor: '2025-10-01' }));
       await s.startRun(run('run_new'));

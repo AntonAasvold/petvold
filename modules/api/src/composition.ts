@@ -346,7 +346,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
         markPublished: (ids, at) => noticeStore.markPublished(ids, at),
       }),
     ],
-    { clock, log },
+    // One server at a time is the relay, and dead letters outlive a restart (ADR 0037).
+    { clock, log, state: schedulingStore, holder: `${hostname()}:${process.pid}` },
   );
 
   return {

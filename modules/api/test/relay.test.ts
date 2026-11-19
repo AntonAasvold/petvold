@@ -55,3 +55,43 @@ test('an event that keeps failing becomes a dead letter, and the rest flow', asy
   assert.deepEqual(b.delivered, ['x']); // another source is not held up
   assert.ok(lines.some((l) => /dead letter/.test(l)));
 });
+
+test('with a lease, one server at a time is the relay, and the other takes over when it stops (ADR 0037)', async () => {
+  const { InMemorySchedulingStore } = await import('@petvold/scheduling');
+  const state = new InMemorySchedulingStore();
+  const now = '2026-11-19T10:00:00.000Z';
+  const a = source('a', ['1', '2'], () => false);
+  const one = new Relay([a.src], { clock: { now: () => now }, state, holder: 'server-1' });
+  const two = new Relay([a.src], { clock: { now: () => now }, state, holder: 'server-2' });
+  assert.equal(await one.tick(), 2);
+  assert.equal(await two.tick(), 0, 'server-2 waits');
+  assert.deepEqual([one.isLeading(), two.isLeading()], [true, false]);
+  await one.stop();
+  assert.equal(await two.tick(), 0, 'nothing left, but now it leads');
+  assert.equal(two.isLeading(), true);
+});
+
+test('dead letters outlive a restart, and one sent again is tried from the start', async () => {
+  const { InMemorySchedulingStore } = await import('@petvold/scheduling');
+  const state = new InMemorySchedulingStore();
+  let now = Date.parse('2026-11-19T10:00:00Z');
+  let broken = true;
+  const a = source('a', ['1', '2'], (id) => id === '1' && broken);
+  const clock = { now: () => new Date(now).toISOString() };
+  const first = new Relay([a.src], { clock, state, holder: 'server-1', maxAttempts: 1 });
+  assert.equal(await first.tick(), 1, '1 becomes a dead letter at once, 2 flows');
+  assert.deepEqual((await state.deadLetters()).map((d) => [d.source, d.eventId, d.attempts]), [['a', '1', 1]]);
+  await first.stop();
+
+  // After a restart the new relay reads the dead letter and does not try it again by itself.
+  const second = new Relay([a.src], { clock, state, holder: 'server-1', maxAttempts: 1 });
+  now += 60_000;
+  assert.equal(await second.tick(), 0);
+  assert.deepEqual(second.deadLetters().map((d) => d.eventId), ['1']);
+
+  broken = false;
+  assert.equal(await second.retryDeadLetter('a', '1'), true);
+  assert.equal(await second.tick(), 1);
+  assert.deepEqual([second.deadLetters(), await state.deadLetters()], [[], []]);
+  assert.deepEqual(a.delivered, ['2', '1']);
+});

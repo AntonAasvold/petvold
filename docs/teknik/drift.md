@@ -57,25 +57,29 @@ Ur token läses `sub` (vem), roller, marknader (en lista eller `*`), och för ro
 Varje modul skriver sina händelser i en egen outbox i samma transaktion som ändringen (ADR 0008). Reläet (`relay.ts`) körs i servern varje sekund:
 - **Ordning och leverans.** Händelser levereras i ordning per outbox. En händelse markeras som publicerad först när den har levererats, så leveransen sker minst en gång. Mottagarna tål upprepning.
 - **Omförsök.** En händelse som inte går att leverera försöker igen med växande paus: 1, 2, 4 sekunder och så vidare, upp till 5 minuter. Under tiden väntar resten av samma outbox.
-- **Död kö.** Efter 10 försök blir händelsen en **död bokstav**. Den loggas och ligger kvar opublicerad i outboxen, men hoppas över så att resten kan flöda. `/healthz` visar antalet.
+- **Död kö.** Efter 10 försök blir händelsen en **död bokstav**. Den loggas och ligger kvar opublicerad i outboxen, men hoppas över så att resten kan flöda. Den sparas i `scheduling.relay_dead_letter` och finns kvar efter en omstart, tills någon skickar den igen (ADR 0037). `/healthz` visar antalet.
 - **Mottagare i dag:** djurregistrets händelser blir förslag i policymodulen, policymodulens ersatta versioner ger omprövning i skademotorn, och skademotorns händelser loggas.
 
-Om flera instanser av servern körs, kör var och en sitt eget relä. Leveransen sker ändå minst en gång, men samma händelse kan levereras av två instanser samtidigt. Ett relä med lås per outbox, till exempel med pg-boss, är en öppen punkt.
+**Flera servrar.** En server i taget är reläet (ADR 0037). Den håller lånet `relay` i `scheduling.lease` och förnyar det varje runda. De andra väntar och tar över när lånet går ut, efter 30 sekunder, eller direkt när servern stängs i ordning. Ordningen per outbox hålls därför också med flera servrar. Webhook-arbetaren klarar redan flera servrar med `for update skip locked`.
 
 ## Hälsa och avstängning
 
 - **`GET /healthz`** finns utanför kontraktet och kräver ingen inloggning:
   - `200` med `{"status":"ok"}` när alla databaser svarar
   - `{"status":"degraded"}` när det finns döda bokstäver
+  - `relay` är `leading` på den server som är reläet och `standby` på de andra
   - `503` när en databas inte svarar
 - **SIGTERM och SIGINT:** servern slutar ta emot anrop, stoppar reläet efter pågående runda och stänger databasanslutningarna.
 
 ## Schemalagda körningar
 
-Dessa anropas av installationens schemaläggare med en token för respektive roll:
+Servern kör dem själv varje dag per marknad, en server i taget, och sparar historiken (ADR 0037, se [Körningar](../funktion/korningar.md)). Ingen schemaläggare utanför Petvold behövs.
 
-| Körning | Anrop | Roll | Förslag |
-| --- | --- | --- | --- |
-| Förnyelse | `POST /v1/renewal-runs` | `renewal-job` | Varje dag |
-| Överlåtelser som löpt ut | `POST /v1/policy-proposal-expiry-runs` | `renewal-job` | Varje dag |
-| Gallring | `POST /v1/retention-runs` | `retention-job` | Varje vecka |
+| Körning | Förval (marknadens tid) | Samma körning som anropet |
+| --- | --- | --- |
+| Utgång av ansökningar | 01:00 | `POST /v1/application-expiry-runs` |
+| Överlåtelser som löpt ut | 01:15 | `POST /v1/policy-proposal-expiry-runs` |
+| Förnyelse | 02:00 | `POST /v1/renewal-runs` |
+| Gallring | 03:00 | `POST /v1/retention-runs` |
+
+Anropen finns kvar för den som vill starta en körning utifrån, med en token för rollen `renewal-job` eller `retention-job`.
