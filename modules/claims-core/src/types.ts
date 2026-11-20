@@ -44,6 +44,46 @@ export interface Claim {
   diagnosisCode: string;
   lines: ClaimLine[];
   receivedAt: Timestamp;
+  /**
+   * 1 as registered, then one more for each correction (ADR 0036). Omitted: 1.
+   * Not part of the assessment's input, so a correction that changes nothing
+   * the rules read gives the same inputHash.
+   */
+  revision?: number;
+}
+
+/** What a correction may change (ADR 0036). Policy, animal, market and currency never change: a claim on the wrong policy is dismissed and registered anew. */
+export const CORRECTABLE_FIELDS = ['channel', 'treatmentFrom', 'treatmentTo', 'diagnosisCode', 'lines'] as const;
+export type CorrectableField = (typeof CORRECTABLE_FIELDS)[number];
+export type ClaimData = Pick<Claim, CorrectableField>;
+
+/**
+ * A correction of a claim's details (ADR 0036). The claim gets a new revision;
+ * earlier revisions are kept, and each decision names the revision it was made on.
+ */
+export interface ClaimCorrection {
+  id: string;
+  claimId: string;
+  /** The revision the correction made, 2 or more. */
+  revision: number;
+  /** The fields that changed. */
+  fields: CorrectableField[];
+  reason: string;
+  correctedBy: string;
+  correctedAt: Timestamp;
+  /**
+   * The claim waits for a new decision by a person: the latest decision was a
+   * person's, or the machine's but the corrected claim now needs a handler.
+   * A later decision on this revision or after closes it.
+   */
+  reopens: boolean;
+}
+
+/** A revision of a claim: its details then, and the correction that made it (none for revision 1). */
+export interface ClaimRevision {
+  revision: number;
+  data: ClaimData;
+  correction?: ClaimCorrection;
 }
 
 /** A claim as registered: the server gives the id and the claim number when the client leaves them out (ADR 0036). */
@@ -379,6 +419,8 @@ export interface ClaimDecision {
   approvedBy?: string;
   /** The proposal the approval turned into this decision. */
   proposalId?: string;
+  /** The claim's revision the decision was made on (ADR 0036). Omitted: 1. */
+  claimRevision?: number;
 }
 
 /**

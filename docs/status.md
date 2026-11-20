@@ -300,8 +300,19 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Back office** sätter ett tak på datumväljaren och stoppar ett datum som ligger längre fram.
   - 505 tester och 63 enhetstester i back office.
 
+- Rättelse av skador (ADR 0036, steg 4), PR #108:
+  - **`POST /v1/claims/{id}/corrections`** för behandlingsdagar, diagnos, fakturarader och kanal, med skäl och `expectedRevision`. `GET …/revisions` listar revisionerna.
+  - **Efter ett beslut:**
+    - En persons beslut öppnas igen för en person.
+    - Ett automatiskt beslut står kvar vid samma utfall och fattas om när utfallet ändras och fortfarande får beslutas automatiskt. Annars går ärendet till en handläggare.
+  - **Beslutet sparar revisionen** (`claimRevision`). Revisionen ingår inte i bedömningens indata, så gamla beslut räknas om som förut.
+  - **Migration 0043:** `claims.claim_correction`. Ärendet och raderna ändras aldrig.
+  - **Händelsen `claim.corrected`** till webhooks, med de ändrade fälten men utan värdena.
+  - **Back office:** "Rätta" i ärendets huvud öppnar formuläret ifyllt. Huvudet visar revisionen, och historiken visar rättelserna.
+  - 133 operationer i kontraktet.
+
 **Nästa steg**
-1. Skadeprocessen, steg 4: rättelse med revisioner.
+1. Back office: formulär för produkter och regler i stället för JSON.
 2. Skadeprocessen, steg 5 och 6: bilagor som referenser, skadebesked och meddelanden om komplettering, där påminnelsen blir ett meddelande till kunden.
 3. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).

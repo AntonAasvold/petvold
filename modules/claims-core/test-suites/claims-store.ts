@@ -12,7 +12,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreConflictError, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore, type DecisionCommit } from '../src/ports.ts';
-import type { Assessment, Claim, ClaimClosure, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot, ReviewRequest, DecisionProposal, InformationRequest } from '../src/types.ts';
+import type { Assessment, Claim, ClaimClosure, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot, ReviewRequest, DecisionProposal, InformationRequest, ClaimCorrection, ClaimData } from '../src/types.ts';
 import { accounts, type LimitKey } from '../src/ledger.ts';
 
 /** A store that also exposes its outbox, as every implementation must. */
@@ -691,6 +691,73 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       await store.commitDecision(commit(decision('clm_b', 1, 0)));
       await assert.rejects(store.closeClaim(closure('clm_b'), [], []), isConflict('claim_decided'));
       assert.equal(await store.getClosure('clm_b'), null);
+    });
+
+    // Corrections (ADR 0036) -----------------------------------------------------
+
+    const correction = (claimId: string, revision: number, overrides: Partial<ClaimCorrection> = {}): ClaimCorrection => ({
+      id: `cor_${claimId}_${revision}`,
+      claimId,
+      revision,
+      fields: ['diagnosisCode'],
+      reason: 'Wrong code',
+      correctedBy: 'handlaggare@example.test',
+      correctedAt: `2026-10-0${revision + 2}T10:00:00.000Z`,
+      reopens: false,
+      ...overrides,
+    });
+    const corrected = (k: ClaimCorrection): ClaimsEvent[] => [{ type: 'claim.corrected', occurredAt: k.correctedAt, correction: k }];
+
+    it('a correction makes a new revision: the claim reads as corrected, and every revision is kept', async (store) => {
+      const c = claim('clm_a');
+      await save(store, c);
+      const data: ClaimData = { channel: 'clinic_direct', treatmentFrom: '2026-09-30', treatmentTo: '2026-10-02', diagnosisCode: 'ORT-KORSBAND-V', lines: [c.lines[0]!] };
+      const k = correction('clm_a', 2, { fields: ['channel', 'treatmentFrom', 'diagnosisCode', 'lines'] });
+      await store.correctClaim(k, data, corrected(k));
+      assert.deepEqual(await store.getClaim('clm_a'), { ...c, ...data, revision: 2 });
+      const [listed] = await store.listClaims({});
+      assert.deepEqual([listed!.treatmentFrom, listed!.diagnosisCode, listed!.channel], ['2026-09-30', 'ORT-KORSBAND-V', 'clinic_direct']);
+      const revisions = await store.getRevisions('clm_a');
+      assert.deepEqual(revisions.map((r) => r.revision), [1, 2]);
+      assert.deepEqual(revisions[0], { revision: 1, data: { channel: c.channel, treatmentFrom: c.treatmentFrom, treatmentTo: c.treatmentTo, diagnosisCode: c.diagnosisCode, lines: c.lines } });
+      assert.deepEqual(revisions[1], { revision: 2, data, correction: k });
+      assert.deepEqual(await store.getRevisions('clm_unknown'), []);
+      assert.deepEqual(await pendingTypes(store), ['claim.registered', 'claim.corrected']);
+    });
+
+    it('revisions follow each other: a correction of an old revision or of a closed claim is refused, and nothing is stored', async (store) => {
+      const c = claim('clm_a');
+      await save(store, c);
+      const data: ClaimData = { channel: c.channel, treatmentFrom: c.treatmentFrom, treatmentTo: c.treatmentTo, diagnosisCode: 'ORT-KORSBAND-V', lines: c.lines };
+      await store.correctClaim(correction('clm_a', 2), data, []);
+      await assert.rejects(store.correctClaim(correction('clm_a', 2, { id: 'cor_again' }), data, corrected(correction('clm_a', 2))), isConflict('revision_changed'));
+      await assert.rejects(store.correctClaim(correction('clm_a', 4), data, []), isConflict('revision_changed'));
+      await store.correctClaim(correction('clm_a', 3), { ...data, diagnosisCode: 'ORA-OTIT' }, []);
+      assert.equal((await store.getClaim('clm_a'))!.revision, 3);
+
+      await save(store, claim('clm_b', { claimNo: 'S-b' }));
+      await store.closeClaim(closure('clm_b'), [], []);
+      await assert.rejects(store.correctClaim(correction('clm_b', 2), data, []), isConflict('claim_closed'));
+      assert.deepEqual((await store.getRevisions('clm_b')).length, 1);
+      assert.deepEqual(await pendingTypes(store), ['claim.registered', 'claim.registered']);
+    });
+
+    it('a decision keeps its revision, and a reopening correction after it puts the claim back to awaiting-decision', async (store) => {
+      const c = claim('clm_a');
+      await save(store, c);
+      const d1 = decision('clm_a', 1, 0, { decidedBy: 'handlaggare@example.test' });
+      await store.commitDecision(commit(d1));
+      const data: ClaimData = { channel: c.channel, treatmentFrom: c.treatmentFrom, treatmentTo: c.treatmentTo, diagnosisCode: 'ORT-KORSBAND-V', lines: c.lines };
+      await store.correctClaim(correction('clm_a', 2, { reopens: true }), data, []);
+      assert.equal((await store.listClaims({}))[0]!.state, 'awaiting-decision');
+      assert.deepEqual(await store.claimActivity('pol_suite', '2026-01-01', '2027-01-01').then((a) => a.open), true);
+      const d2 = decision('clm_a', 2, 0, { decidedBy: 'handlaggare@example.test', claimRevision: 2 });
+      await store.commitDecision(commit(d2));
+      assert.deepEqual((await store.getDecisions('clm_a')).map((d) => d.claimRevision), [undefined, 2]);
+      assert.equal((await store.listClaims({}))[0]!.state, 'decided');
+      // A correction that does not reopen leaves the decision standing.
+      await store.correctClaim(correction('clm_a', 3), { ...data, treatmentTo: '2026-10-03' }, []);
+      assert.equal((await store.listClaims({}))[0]!.state, 'decided');
     });
 
     // Requests for information (ADR 0036) --------------------------------------

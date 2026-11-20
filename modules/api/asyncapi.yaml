@@ -34,6 +34,7 @@ channels:
       claimReviewRequested: { $ref: '#/components/messages/claimReviewRequested' }
       claimWithdrawn: { $ref: '#/components/messages/claimWithdrawn' }
       claimDismissed: { $ref: '#/components/messages/claimDismissed' }
+      claimCorrected: { $ref: '#/components/messages/claimCorrected' }
       claimInformationRequested: { $ref: '#/components/messages/claimInformationRequested' }
       claimInformationReminded: { $ref: '#/components/messages/claimInformationReminded' }
       claimInformationReceived: { $ref: '#/components/messages/claimInformationReceived' }
@@ -73,6 +74,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/claimReviewRequested' }
       - { $ref: '#/channels/subscription/messages/claimWithdrawn' }
       - { $ref: '#/channels/subscription/messages/claimDismissed' }
+      - { $ref: '#/channels/subscription/messages/claimCorrected' }
       - { $ref: '#/channels/subscription/messages/claimInformationRequested' }
       - { $ref: '#/channels/subscription/messages/claimInformationReminded' }
       - { $ref: '#/channels/subscription/messages/claimInformationReceived' }
@@ -266,6 +268,18 @@ components:
             properties:
               type: { const: petvold.claim.information_cancelled.v1 }
               data: { $ref: '#/components/schemas/ClaimInformationRequestData' }
+    claimCorrected:
+      name: petvold.claim.corrected.v1
+      title: claim.corrected
+      summary: 'The claim''s details were corrected and it has a new revision (ADR 0036). Which fields changed, not the values or the reason.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.corrected.v1 }
+              data: { $ref: '#/components/schemas/ClaimCorrectedData' }
     jobFailed:
       name: petvold.job.failed.v1
       title: job.failed
@@ -606,6 +620,19 @@ components:
         closureId: { type: string }
         reasonCode: { type: string, enum: [duplicate, registered-in-error, not-a-claim] }
         duplicateOf: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+    ClaimCorrectedData:
+      type: object
+      additionalProperties: false
+      required: [claimId, correctionId, revision, fields, reopens]
+      properties:
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        correctionId: { type: string }
+        revision: { type: integer, minimum: 2 }
+        fields:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [channel, treatmentFrom, treatmentTo, diagnosisCode, lines] }
+        reopens: { type: boolean, description: 'The claim waits for a new decision by a person.' }
     ClaimInformationRequestData:
       type: object
       additionalProperties: false

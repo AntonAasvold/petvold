@@ -31,6 +31,7 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'claim.review_requested': { source: 'claims', subject: 'claimId', fields: ['reviewRequestId', 'decisionId', 'decisionSeq'] },
   'claim.withdrawn': { source: 'claims', subject: 'claimId', fields: ['closureId'] },
   'claim.dismissed': { source: 'claims', subject: 'claimId', fields: ['closureId', 'reasonCode', 'duplicateOf'] },
+  'claim.corrected': { source: 'claims', subject: 'claimId', fields: ['correctionId', 'revision', 'fields', 'reopens'] },
   'claim.information_requested': { source: 'claims', subject: 'claimId', fields: INFORMATION_FIELDS },
   'claim.information_reminded': { source: 'claims', subject: 'claimId', fields: INFORMATION_FIELDS },
   'claim.information_received': { source: 'claims', subject: 'claimId', fields: INFORMATION_FIELDS },

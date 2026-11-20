@@ -104,6 +104,23 @@ export function informationItemLabel(i: string): string {
   }
 }
 
+export function correctionFieldLabel(f: string): string {
+  switch (f) {
+    case 'channel':
+      return msg('Channel', { id: 'claims.col.channel' });
+    case 'treatmentFrom':
+      return msg('First day of treatment', { id: 'register.from' });
+    case 'treatmentTo':
+      return msg('Last day of treatment', { id: 'register.to' });
+    case 'diagnosisCode':
+      return msg('Diagnosis', { id: 'claims.col.diagnosis' });
+    case 'lines':
+      return msg('Invoice', { id: 'register.invoice' });
+    default:
+      return f;
+  }
+}
+
 export function recipientLabel(r: string): string {
   return r === 'clinic' ? msg('The clinic', { id: 'info.recipient.clinic' }) : r === 'customer' ? msg('The customer', { id: 'info.recipient.customer' }) : r;
 }

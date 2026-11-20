@@ -4,12 +4,16 @@
  * currency and animal from the policy, so the handler cannot get them wrong.
  * Pure; tested with node:test. The API validates everything again.
  */
-import { toMinorUnits } from './settings-logic.ts';
+import { minorPerMajor, toMinorUnits } from './settings-logic.ts';
 
 /** Line categories the sample rules know. The product's rules decide what is reimbursed. */
 export const LINE_CATEGORIES = ['examination', 'diagnostics', 'medication', 'surgery', 'anaesthesia', 'hospitalisation', 'food'] as const;
 
 export interface LineForm {
+  /** The line's id on a stored claim, kept when it is corrected. */
+  id?: string;
+  /** A line's own diagnosis, kept when it is corrected; the form does not change it. */
+  diagnosisCode?: string;
   description: string;
   category: string;
   /** In major units as typed, e.g. "1 250,50". */
@@ -72,7 +76,8 @@ export function toClaimInput(f: ClaimForm, policy: PolicyFacts) {
     lines: f.lines.map((l, i) => {
       const vat = l.vat.trim() ? toMinorUnits(l.vat, policy.currency)! : 0;
       return {
-        id: String(i + 1),
+        id: l.id ?? String(i + 1),
+        ...(l.diagnosisCode ? { diagnosisCode: l.diagnosisCode } : {}),
         description: l.description.trim(),
         category: l.category,
         amount: toMinorUnits(l.amount, policy.currency)!,
@@ -80,6 +85,54 @@ export function toClaimInput(f: ClaimForm, policy: PolicyFacts) {
       };
     }),
   };
+}
+
+/** An amount in minor units as the form shows it, e.g. 85000 SEK as "850". */
+export function toMajorText(minor: number, currency: string): string {
+  const per = minorPerMajor(currency);
+  const decimals = Math.round(Math.log10(per));
+  const text = (minor / per).toFixed(decimals);
+  return decimals && text.endsWith('.' + '0'.repeat(decimals)) ? text.slice(0, -decimals - 1) : text;
+}
+
+interface StoredClaim {
+  channel: 'customer' | 'clinic_direct';
+  treatmentFrom: string;
+  treatmentTo: string;
+  diagnosisCode: string;
+  currency: string;
+  lines: { id: string; description: string; category: string; diagnosisCode?: string; amount: number; vat?: number }[];
+}
+
+/** The form filled in from a stored claim, to correct it (ADR 0036). */
+export function formFromClaim(c: StoredClaim): ClaimForm {
+  return {
+    channel: c.channel,
+    treatmentFrom: c.treatmentFrom,
+    treatmentTo: c.treatmentTo,
+    diagnosisCode: c.diagnosisCode,
+    lines: c.lines.map((l) => ({
+      id: l.id,
+      ...(l.diagnosisCode ? { diagnosisCode: l.diagnosisCode } : {}),
+      description: l.description,
+      category: l.category,
+      amount: toMajorText(l.amount, c.currency),
+      vat: l.vat ? toMajorText(l.vat, c.currency) : '',
+    })),
+  };
+}
+
+/** A new line in a correction gets an id the claim does not have. */
+export function newLineId(lines: LineForm[]): string {
+  let n = lines.length + 1;
+  while (lines.some((l) => l.id === `l${n}`)) n++;
+  return `l${n}`;
+}
+
+/** The body for POST /v1/claims/{id}/corrections: every correctable field; the server works out what changed. */
+export function correctionBody(f: ClaimForm, policy: PolicyFacts, reason: string, expectedRevision: number) {
+  const { channel, treatmentFrom, treatmentTo, diagnosisCode, lines } = toClaimInput(f, policy);
+  return { channel, treatmentFrom, treatmentTo, diagnosisCode, lines, reason: reason.trim(), expectedRevision };
 }
 
 /** The sum of the lines in minor units, for the form's total; lines that are not amounts count as 0. */

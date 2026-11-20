@@ -889,3 +889,23 @@ test('a request for information: the claim waits, the clinic answers, and the qu
   assert.equal(((await cancel.json()) as any).status, 'cancelled');
   assert.equal((await call('POST', `/v1/claims/${id}/information-requests/inf_none/answers`, { key: 'key-info-10', body: {} })).status, 404);
 });
+
+test('a claim is corrected to a new revision; the revisions are listed, and an old revision gives 409 (ADR 0036)', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { key: 'key-cor-1', body: input(cruciateClaim()), token: 'clinic' });
+  const id = 'clm_048213';
+  const body = { diagnosisCode: 'ORT-KORSBAND-V', treatmentTo: '2026-11-11', reason: 'The last day was wrong', expectedRevision: 1 };
+  assert.equal((await call('POST', `/v1/claims/${id}/corrections`, { key: 'key-cor-2', body: { ...body, policyId: 'pol_x' } })).status, 422);
+  const res = await call('POST', `/v1/claims/${id}/corrections`, { key: 'key-cor-3', body });
+  assert.equal(res.status, 201);
+  const result = (await res.json()) as any;
+  assertSchema('CorrectionResult', result);
+  assert.deepEqual([result.correction.revision, result.correction.fields, result.claim.revision], [2, ['treatmentTo'], 2]);
+  assert.equal((await call('POST', `/v1/claims/${id}/corrections`, { key: 'key-cor-4', body: { ...body, treatmentTo: '2026-11-12' } })).status, 409);
+  const claim = (await (await call('GET', `/v1/claims/${id}`)).json()) as any;
+  assertSchema('Claim', claim);
+  assert.deepEqual([claim.revision, claim.treatmentTo], [2, '2026-11-11']);
+  const revisions = (await (await call('GET', `/v1/claims/${id}/revisions`)).json()) as any;
+  revisions.items.forEach((r: unknown) => assertSchema('ClaimRevision', r));
+  assert.deepEqual(revisions.items.map((r: any) => r.revision), [1, 2]);
+});

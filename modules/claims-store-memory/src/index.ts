@@ -27,6 +27,9 @@ import type {
   InformationRequest,
   InformationRequestStatus,
   MarketCode,
+  ClaimCorrection,
+  ClaimData,
+  ClaimRevision,
   IdGenerator,
   Timestamp,
 } from '@petvold/claims-core';
@@ -47,6 +50,8 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   private reviews: ReviewRequest[] = [];
   private proposals: DecisionProposal[] = [];
   private information: InformationRequest[] = [];
+  /** Corrections per claim, revision 2 and on (ADR 0036). The claim itself stays as registered. */
+  private corrections = new Map<string, { correction: ClaimCorrection; data: ClaimData }[]>();
   private outbox: Array<OutboxEntry & { publishedAt?: Timestamp }> = [];
   private outboxSeq = 0;
 
@@ -81,8 +86,40 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   }
 
   async getClaim(id: string) {
-    const c = this.claims.get(id);
+    const c = this.current(id);
     return c ? structuredClone(c) : null;
+  }
+
+  /** The claim with its latest revision's details. */
+  private current(id: string): Claim | undefined {
+    const c = this.claims.get(id);
+    const last = this.corrections.get(id)?.at(-1);
+    return c && last ? { ...c, ...last.data, revision: last.correction.revision } : c;
+  }
+
+  /** A correction after the latest decision reopened the claim for a person. */
+  private reopened(claimId: string, latest: ClaimDecision | undefined): boolean {
+    return !!latest && (this.corrections.get(claimId) ?? []).some((x) => x.correction.revision > (latest.claimRevision ?? 1) && x.correction.reopens);
+  }
+
+  async correctClaim(correction: ClaimCorrection, data: ClaimData, events: ClaimsEvent[]) {
+    const c = this.current(correction.claimId);
+    if (!c) throw new Error(`Claim ${correction.claimId} does not exist`);
+    if (this.closures.has(correction.claimId)) throw new StoreConflictError('claim_closed', `Claim ${correction.claimId} is closed`);
+    if ((c.revision ?? 1) !== correction.revision - 1) {
+      throw new StoreConflictError('revision_changed', `Claim ${correction.claimId} is at revision ${c.revision ?? 1}`);
+    }
+    const list = this.corrections.get(correction.claimId) ?? [];
+    list.push(structuredClone({ correction, data }));
+    this.corrections.set(correction.claimId, list);
+    this.appendEvents(events);
+  }
+
+  async getRevisions(claimId: string): Promise<ClaimRevision[]> {
+    const c = this.claims.get(claimId);
+    if (!c) return [];
+    const first: ClaimRevision = { revision: 1, data: { channel: c.channel, treatmentFrom: c.treatmentFrom, treatmentTo: c.treatmentTo, diagnosisCode: c.diagnosisCode, lines: c.lines } };
+    return structuredClone([first, ...(this.corrections.get(claimId) ?? []).map((x) => ({ revision: x.correction.revision, data: x.data, correction: x.correction }))]);
   }
 
   async findDeductiblePeriod(animalId: string, group: string, onDate: ISODate, excludeClaimId?: string) {
@@ -125,7 +162,8 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
 
   async listClaims(filter: ClaimFilter): Promise<ClaimSummary[]> {
     const out: ClaimSummary[] = [];
-    for (const c of this.claims.values()) {
+    for (const id of this.claims.keys()) {
+      const c = this.current(id)!;
       if (filter.market && c.market !== filter.market) continue;
       if (filter.policyId && c.policyId !== filter.policyId) continue;
       if (filter.animalId && c.animalId !== filter.animalId) continue;
@@ -141,7 +179,7 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
         ? 'awaiting-information'
         : this.reviews.some((r) => r.claimId === c.id && !r.closedAt)
           ? 'review-requested'
-          : latest
+          : latest && !this.reopened(c.id, latest)
             ? 'decided'
             : 'awaiting-decision';
       if (filter.state && state !== filter.state) continue;
@@ -170,12 +208,14 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   async claimActivity(policyId: string, from: ISODate, to: ISODate) {
     let open = false;
     let lastAt: string | undefined;
-    for (const c of this.claims.values()) {
+    for (const id of this.claims.keys()) {
+      const c = this.current(id)!;
       if (c.policyId !== policyId || c.treatmentFrom < from || c.treatmentFrom >= to) continue;
       const decided = this.decisions.filter((d) => d.claimId === c.id);
       const closure = this.closures.get(c.id);
       const waiting = this.information.some((r) => r.claimId === c.id && r.status === 'open');
-      if (!closure && (!decided.length || waiting || this.reviews.some((r) => r.claimId === c.id && !r.closedAt) || this.proposals.some((p) => p.claimId === c.id && p.status === 'open'))) open = true;
+      const latest = decided.reduce<ClaimDecision | undefined>((a, d) => (!a || d.seq > a.seq ? d : a), undefined);
+      if (!closure && (!decided.length || waiting || this.reopened(c.id, latest) || this.reviews.some((r) => r.claimId === c.id && !r.closedAt) || this.proposals.some((p) => p.claimId === c.id && p.status === 'open'))) open = true;
       for (const t of [c.receivedAt, ...decided.map((d) => d.decidedAt), ...(closure ? [closure.closedAt] : [])]) if (!lastAt || t > lastAt) lastAt = t;
     }
     return { open, ...(lastAt ? { lastAt } : {}) };

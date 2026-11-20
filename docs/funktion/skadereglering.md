@@ -106,6 +106,37 @@ Varje bedömning prövar reglerna i denna ordning och visar resultatet för var 
 
 Listan är tom när ärendet kan regleras automatiskt. Den räknas fram när bedömningen läses och sparas inte med beslutet, så sparade bedömningar räknas om exakt som förut.
 
+## Rättelse
+
+En uppgift som registrerats fel rättas med `POST /v1/claims/{id}/corrections` (rättighet `claims:register`, ADR 0036). Anropet har de nya uppgifterna, ett skäl (`reason`) och revisionen som rättas (`expectedRevision`).
+
+- **Vad som går att rätta:** behandlingsdagarna, diagnoskoden, fakturaraderna och kanalen. Uppgifter som utelämnas behåller sitt värde.
+- **Vad som inte går att rätta:** policy, djur, marknad och valuta, eftersom de styr försäkringsbeloppet och självriskperioderna. Ett ärende på fel policy avvisas och registreras på nytt.
+- **Revisioner:** ärendet har `revision`, 1 som registrerat och en till för varje rättelse. Tidigare revisioner sparas och ändras aldrig. `GET /v1/claims/{id}/revisions` visar varje revision med uppgifterna och rättelsen.
+- **Beslutet** sparar vilken revision det fattades på (`claimRevision`). Underlaget i beslutet har hela ärendet som det var, så gamla beslut räknas om som förut.
+- **En annan revision emellan** ger `409`. Den som rättar har då sett en gammal version.
+- **Rättelse går inte** på ett stängt ärende eller när ett förslag väntar på attest.
+
+**Rättelse efter ett beslut:**
+
+| Senaste beslutet | Efter rättelsen |
+| --- | --- |
+| Fattat av en person | Ärendet öppnas igen (`reopened`), läget blir `awaiting-decision`, och en person fattar ett nytt beslut. Maskinen ersätter aldrig en persons bedömning, och en omprövning efter en policyändring väntar också. |
+| Automatiskt, samma utfall och belopp | Beslutet står kvar. |
+| Automatiskt, annat utfall som fortfarande får beslutas automatiskt | Ett nytt automatiskt beslut fattas på den nya revisionen, och skillnaden bokförs. Det kommer i svaret (`decision`). |
+| Automatiskt, men ärendet behöver nu en handläggare | Ärendet öppnas igen för en person. |
+
+**Exempel:**
+
+```
+POST /v1/claims/clm_048213/corrections
+Idempotency-Key: 9a2e…
+{ "diagnosisCode": "ORA-OTIT", "reason": "Journalen säger öroninflammation.", "expectedRevision": 1 }
+
+201 { "correction": { "revision": 2, "fields": ["diagnosisCode"], "reopens": false, … },
+      "claim": { "revision": 2, … }, "decision": null }
+```
+
 ## Stänga utan beslut
 
 Ett ärende som inte ska prövas kan stängas innan det beslutas (ADR 0036). Det går inte att ångra.
@@ -292,5 +323,6 @@ Händelser skrivs i samma transaktion som ändringen:
 | `claim.information_expired` | Svarsdatumet har passerat utan svar |
 | `claim.information_cancelled` | En begäran återkallas, eller ärendet stängs |
 | `claim.withdrawn`, `claim.dismissed` | Ärendet stängs utan beslut |
+| `claim.corrected` | Ärendet rättas och får en ny revision. Händelsen säger vilka fält som ändrades, inte värdena eller skälet. |
 
 Händelserna levereras minst en gång, i ordning. Bolagets system får dem med [webhooks](webhooks.md), utan den sökandes ord eller vem som beslutade (ADR 0033).

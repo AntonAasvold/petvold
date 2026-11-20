@@ -17,6 +17,9 @@ import type {
   ClaimClosure,
   InformationRequest,
   InformationRequestStatus,
+  ClaimCorrection,
+  ClaimData,
+  ClaimRevision,
   MarketCode,
 } from './types.ts';
 import type { LimitKey } from './ledger.ts';
@@ -50,6 +53,7 @@ export interface ClaimsStore {
   saveClaim(claim: Claim, events: ClaimsEvent[], journals?: LedgerJournal[]): Promise<void>;
   /** The balance of a ledger account: debits positive, credits negative. 0 for an unknown account. */
   getBalance(account: string): Promise<MinorUnits>;
+  /** The claim as it stands: its latest revision's details, with `revision`. */
   getClaim(claimId: string): Promise<Claim | null>;
   /** Whether a claim already has this claim number. */
   claimNoTaken(claimNo: string): Promise<boolean>;
@@ -156,6 +160,16 @@ export interface ClaimsStore {
    * (dueDate < onDate). Oldest first.
    */
   informationRequestsDue(market: MarketCode, onDate: ISODate): Promise<InformationRequest[]>;
+  /**
+   * Stores a correction (ADR 0036): `data` becomes the claim's details from
+   * revision `correction.revision`, and `events` are written in the same
+   * transaction. The claim and its earlier revisions are never changed.
+   * Throws StoreConflictError('revision_changed') if the claim's revision is
+   * not correction.revision - 1, and ('claim_closed') if it is closed.
+   */
+  correctClaim(correction: ClaimCorrection, data: ClaimData, events: ClaimsEvent[]): Promise<void>;
+  /** Every revision of the claim, oldest first: revision 1 as registered, then each correction. Empty for an unknown claim. */
+  getRevisions(claimId: string): Promise<ClaimRevision[]>;
   /** The claim's closure, or null while it is open. */
   getClosure(claimId: string): Promise<ClaimClosure | null>;
   /** The claim's proposals, oldest first. */
@@ -184,7 +198,8 @@ export class StoreConflictError extends Error {
       | 'claim_closed'
       | 'claim_decided'
       | 'information_open'
-      | 'information_closed',
+      | 'information_closed'
+      | 'revision_changed',
     message: string,
   ) {
     super(message);
@@ -231,6 +246,7 @@ export type ClaimsEvent =
   | { type: 'claim.proposal_returned'; occurredAt: Timestamp; proposal: DecisionProposal }
   | { type: 'claim.payout_ordered'; occurredAt: Timestamp; order: PayoutOrder }
   | { type: 'claim.withdrawn' | 'claim.dismissed'; occurredAt: Timestamp; closure: ClaimClosure }
+  | { type: 'claim.corrected'; occurredAt: Timestamp; correction: ClaimCorrection }
   | {
       type: 'claim.information_requested' | 'claim.information_reminded' | 'claim.information_received' | 'claim.information_expired' | 'claim.information_cancelled';
       occurredAt: Timestamp;
@@ -254,6 +270,8 @@ export function eventClaimId(e: ClaimsEvent): string {
     case 'claim.withdrawn':
     case 'claim.dismissed':
       return e.closure.claimId;
+    case 'claim.corrected':
+      return e.correction.claimId;
     case 'claim.information_requested':
     case 'claim.information_reminded':
     case 'claim.information_received':

@@ -11,6 +11,7 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Attestera | Attestera eller skicka tillbaka någon annans förslag | `claims:approve` |
 | Pröva | Begär prövning av ett automatiskt beslut för kundens räkning, med kundens synpunkt. En begäran besvaras av ett nytt beslut. | `claims:request-review`, `claims:decide` |
 | Ompröva | Bedöm ärendet igen med det som är känt nu | `claims:reassess` |
+| Rätta | Rätta behandlingsdagar, diagnos, fakturarader och kanal, med skäl. Ärendet får en ny revision. | `claims:register` |
 | Komplettera | Begär underlag av kunden eller kliniken, registrera att det kommit in, eller återkalla begäran | `claims:request-information`, och `claims:register` för att registrera svaret |
 | Policyer | Sök på policy-, djur- eller part-id, personnummer eller chipnummer. Policyn med termer, förbehåll, versioner över tid och historik. | `policies:read`, och `parties:read` eller `animals:read` för personnummer och chip |
 | Ansökningar | Kön för manuell prövning, och godkända och avslagna ansökningar. Ansökan med svar och reglernas kontroller. Godkänn eller avslå med motivering, eller återkalla. | `policies:read`, `policies:underwrite` för att pröva, `policies:write` för att återkalla |
@@ -137,6 +138,12 @@ En skada som inte har beslutats kan stängas i kortet "Stäng utan beslut" (ADR 
 - **Avvisa** (rätten `claims:decide`), med skälet dubblett, registrerad av misstag eller inte en skada. Vid dubblett anges den andra skadans id.
 
 Båda kräver en motivering. Ett stängt ärende visar avslutet i stället för beslutskortet, och märket i huvudet är helfyllt. Skadornas kö har flikarna Återkallade och Avvisade.
+
+## Rätta en skada
+
+Knappen "Rätta" i ärendets huvud öppnar samma formulär som för en ny skada, ifyllt med ärendet som det är nu (ADR 0036). Policyn går inte att ändra. Raderna behåller sina id:n, och en ny rad får ett id som ärendet inte har. Förhandsbedömningen visar vad den rättade skadan skulle ge. Ett skäl krävs.
+
+Efter rättelsen visar huvudet "Revision 2". Historiken visar rättelsen med de ändrade uppgifterna och skälet, och vid ett beslut står revisionen det fattades på. Var det senaste beslutet en persons öppnas ärendet igen: läget blir "Väntar på beslut", en rad säger varför, och beslutskortet kommer tillbaka. Knappen visas inte för ett stängt ärende eller när ett förslag väntar på attest.
 
 ## Komplettering
 
