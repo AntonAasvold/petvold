@@ -311,9 +311,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Back office:** "Rätta" i ärendets huvud öppnar formuläret ifyllt. Huvudet visar revisionen, och historiken visar rättelserna.
   - 133 operationer i kontraktet.
 
+- Formulär för produkter och skaderegler i back office, PR #109:
+  - **En produktversion** redigeras i ett formulär: marknad, namn, arter, serier, försäkringsbelopp, självrisker med steg efter ålder och inställningar för policyer.
+  - **Skaderegler** har ett eget formulär: gränsen för automatiskt beslut, moms, kategorier, diagnosgrupper och dagarna för komplettering.
+  - **JSON som alternativ.** Det går att växla till JSON, och det som formuläret inte visar finns kvar. Tariffer, prisvillkor och teckningsregler redigeras fortfarande som JSON.
+  - **En vald version** visar en sammanfattning.
+  - 69 enhetstester och 35 flöden i back office.
+
 **Nästa steg**
-1. Back office: formulär för produkter och regler i stället för JSON.
-2. Skadeprocessen, steg 5 och 6: bilagor som referenser, skadebesked och meddelanden om komplettering, där påminnelsen blir ett meddelande till kunden.
+1. Skadeprocessen, steg 5 och 6: bilagor som referenser, skadebesked och meddelanden om komplettering, där påminnelsen blir ett meddelande till kunden.
 3. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.

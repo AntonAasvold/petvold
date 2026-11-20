@@ -24,7 +24,7 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Produkter | Produkterna och varje produktversion med innehåll, säljperiod och livscykel | `catalog:read`, `catalog:write` för utkast, `catalog:publish` för att publicera, skicka tillbaka och avsluta försäljning |
 | Regeluppsättningar | Serierna (skaderegler, tariffer, prisvillkor och teckningsregler) och varje version med livscykel | `rules:read`, `rules:write` för utkast, `rules:publish` för att publicera, skicka tillbaka och avveckla |
 
-*Inte byggt än:* simulering av en regelversion mot sparade beslut, och formulär för innehållet i stället för JSON.
+*Inte byggt än:* simulering av en regelversion mot sparade beslut, och formulär för tariffer, prisvillkor och teckningsregler.
 
 ## Toppraden och menyn
 
@@ -242,7 +242,12 @@ Varje inställning är versionerad (ADR 0020, 0028, 0032). En ändring blir en n
 Produkter och regeluppsättningar har samma livscykel (ADR 0021, 0023): utkast, granskning och publicering. En produkts försäljning kan sedan avslutas, och en regelversion kan avvecklas.
 
 1. **Nytt utkast.** "Nytt utkast från den här" kopierar innehållet från vald version. För en produkt föreslås nästa versionsnamn, till exempel `2026.2`. Regelversioner numreras av API:t.
-2. **Ändra.** Innehållet redigeras som JSON. API:t kontrollerar det mot kontraktet och produktens regler, och appen visar varje fält som är fel.
+2. **Ändra.** Formuläret används för produkter och skaderegler, men det går också att växla till JSON.
+   - **En produkt:** marknad och valuta, namn per språk, arter, serierna för skaderegler, tariff, prisvillkor och teckningsregler, försäkringsbeloppen, självriskerna och inställningarna för policyer. En självrisk har kod, namn, fast belopp och hur ofta det tas ut, periodens längd, rörlig procent och högre procent efter ålder. Tomma inställningar får förvalet, som visas i grått. Produktens dokument redigeras i JSON.
+   - **Skaderegler:** marknad, gränsen för automatiskt beslut, om moms ersätts, kategorier som aldrig ersätts, diagnosgrupper (en per rad, `kod = grupp`), och dagarna för komplettering.
+   - **Tariffer, prisvillkor och teckningsregler** redigeras som JSON.
+   - **Kontrollerna:** formuläret säger vad som är fel innan något skickas. Det som formuläret inte visar finns kvar när utkastet sparas. API:t kontrollerar innehållet mot kontraktet och produktens regler, och appen visar varje fält som är fel.
+   - **En vald version** visar en sammanfattning, och innehållet som JSON går att fälla ut.
 3. **Skicka till granskning.** Innehållet låses med en kontrollsumma.
 4. **Publicera eller skicka tillbaka.** Den som skickade in kan inte publicera (fyra ögon), och appen säger det. Att skicka tillbaka kräver ett skäl.
 5. **Avsluta.** En produkts försäljning avslutas från en dag, med skäl. Två versioner av en produkt kan inte säljas samma dag, så den gamla avslutas innan den nya publiceras. En regelversion avvecklas med skäl.

@@ -128,7 +128,7 @@ export class ProductDetail extends LitElement {
         ><wa-icon slot="start" name="arrow-left"></wa-icon>${msg('Back', { id: 'common.back' })}</wa-button
       >
       <h2>${msg('Product', { id: 'policy.product' })} ${this.product}</h2>
-      <pv-versions-panel .adapter=${this.adapter()} .me=${this.me}></pv-versions-panel>`;
+      <pv-versions-panel .adapter=${this.adapter()} .me=${this.me} .api=${this.api}></pv-versions-panel>`;
   }
 }
 
