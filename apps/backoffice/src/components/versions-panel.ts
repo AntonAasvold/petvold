@@ -1,8 +1,9 @@
 /**
  * <pv-versions-panel>: the versions of a product or a rule set series, and their
  * lifecycle (ADR 0021, 0023): draft, review with four eyes, publication, and the
- * end. The kind's calls come from an adapter; the content is edited as JSON and
- * the API validates it.
+ * end. The kind's calls come from an adapter. A product and claims rules are
+ * edited as a form, or as JSON; tariffs, price terms and underwriting rules as
+ * JSON. The API validates everything.
  */
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -16,6 +17,12 @@ import '@awesome.me/webawesome/dist/components/textarea/textarea.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import { act, type Notice } from '../actions.ts';
 import { lifecycleActions, parseJson, type Kind } from '../catalog-logic.ts';
+import type { Api } from '../api/client.ts';
+import { isClaimsRules, productFormFrom, rulesFormFrom } from '../product-form.ts';
+import { problemLabel } from '../views/labels.ts';
+import { pvComponents } from '../styles/pv-components.ts';
+import './content-forms.ts';
+import type { ContentResult } from './content-forms.ts';
 import { formatDate, formatDateTime } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import type { Me } from '../permissions.ts';
@@ -69,7 +76,12 @@ export interface VersionsAdapter {
 export class VersionsPanel extends LitElement {
   @property({ attribute: false }) adapter!: VersionsAdapter;
   @property({ attribute: false }) me: Me | null = null;
+  /** For the product form's species. */
+  @property({ attribute: false }) api: Api | null = null;
   @state() private rows: VersionRow[] = [];
+  /** How the content is edited, and the content the form starts from. */
+  @state() private mode: 'form' | 'json' = 'json';
+  @state() private formContent: unknown = {};
   @state() private selected: VersionRow | null = null;
   @state() private editing: 'new' | 'edit' | null = null;
   @state() private form: { version: string; from: string; to: string; model: string; json: string } = { version: '', from: '', to: '', model: '', json: '' };
@@ -83,7 +95,7 @@ export class VersionsPanel extends LitElement {
     updateWhenLocaleChanges(this);
   }
 
-  static styles = css`
+  static styles = [pvComponents, css`
     wa-card {
       margin-top: var(--wa-space-l);
     }
@@ -122,7 +134,16 @@ export class VersionsPanel extends LitElement {
     dd {
       margin: 0;
     }
-  `;
+    .modes {
+      display: flex;
+      gap: var(--space-2);
+    }
+    details summary {
+      cursor: pointer;
+      font: 500 13px/1.4 var(--font-sans);
+      color: var(--text-secondary);
+    }
+  `];
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -214,7 +235,11 @@ export class VersionsPanel extends LitElement {
                 </form>`
               : nothing}
             <h4>${msg('Content', { id: 'notice.content' })}</h4>
-            <pre>${JSON.stringify(v.content, null, 2)}</pre>
+            ${this.summary(v.content)}
+            <details ?open=${!this.hasForm(v.content)}>
+              <summary>${msg('The content as JSON', { id: 'catalog.asJson' })}</summary>
+              <pre>${JSON.stringify(v.content, null, 2)}</pre>
+            </details>
           </wa-card>`
         : nothing}
       ${this.editing ? this.editor() : nothing}
@@ -231,9 +256,72 @@ export class VersionsPanel extends LitElement {
     >`;
   }
 
+  /** A product and claims rules have a form; other content is JSON only. */
+  private hasForm(content: unknown): boolean {
+    return this.adapter.kind === 'product' || isClaimsRules(content);
+  }
+
+  /** The main facts of a product or claims rules, to read without the JSON. */
+  private summary(content: unknown) {
+    if (!this.hasForm(content)) return nothing;
+    const c = (content ?? {}) as Record<string, unknown>;
+    const row = (dt: string, dd: unknown) => html`<div class="pv-dl__row"><dt>${dt}</dt><dd>${dd || '–'}</dd></div>`;
+    if (this.adapter.kind === 'product') {
+      const f = productFormFrom(c);
+      return html`<dl class="pv-dl">
+        ${row(msg('Market', { id: 'claim.market' }), `${f.market}, ${f.currency}`)}
+        ${row(msg('Species', { id: 'product.species' }), f.species.join(', '))}
+        ${row(msg('Claims rules series', { id: 'product.ruleSeries' }), f.ruleSeries)}
+        ${row(msg('Tariff series (optional)', { id: 'product.tariffSeries' }), f.tariffSeries)}
+        ${row(msg('Annual limits', { id: 'product.annualLimits' }), f.annualLimits)}
+        ${row(msg('Deductible', { id: 'product.deductible' }), f.deductibles.map((d) => d.code).join(', '))}
+        ${row(msg('Waiting period, days', { id: 'product.waiting' }), f.waitingPeriodDays)}
+      </dl>`;
+    }
+    const r = rulesFormFrom(c);
+    return html`<dl class="pv-dl">
+      ${row(msg('Market', { id: 'claim.market' }), r.market)}
+      ${row(msg('Settled automatically up to', { id: 'rules.autoSettle' }), r.autoSettleMax)}
+      ${row(msg('Categories never reimbursed', { id: 'rules.nonReimbursable' }), r.nonReimbursable)}
+      ${row(msg('Diagnosis groups', { id: 'rules.groups' }), String(Object.keys((c.diagnosisGroups as object) ?? {}).length))}
+    </dl>`;
+  }
+
+  /** The form's result, or null with its problems shown. */
+  private formResult(): ContentResult | null {
+    const el = this.renderRoot.querySelector<HTMLElement & { result(): ContentResult }>('pv-product-content, pv-rules-content');
+    if (!el) return null;
+    const r = el.result();
+    if (r.problems.length) {
+      this.notice = { variant: 'danger', text: r.problems.map((p) => problemLabel(p)).join(' ') };
+      return null;
+    }
+    return r;
+  }
+
+  private switchMode(mode: 'form' | 'json') {
+    if (mode === this.mode) return;
+    if (mode === 'json') {
+      const r = this.formResult();
+      if (!r) return;
+      this.form = { ...this.form, json: JSON.stringify(r.content, null, 2) };
+    } else {
+      const parsed = parseJson(this.form.json);
+      if (!parsed.ok) {
+        this.notice = { variant: 'danger', text: `${msg('The content is not valid JSON:', { id: 'catalog.badJson' })} ${parsed.error}` };
+        return;
+      }
+      this.formContent = parsed.value;
+    }
+    this.notice = null;
+    this.mode = mode;
+  }
+
   private startEdit(mode: 'new' | 'edit') {
     const v = this.selected!;
     this.editing = mode;
+    this.formContent = v.content;
+    this.mode = this.hasForm(v.content) ? 'form' : 'json';
     this.form = {
       version: mode === 'new' ? this.adapter.nextVersion(this.rows) : v.label,
       from: v.from,
@@ -256,7 +344,19 @@ export class VersionsPanel extends LitElement {
           <wa-input type="date" label=${this.adapter.kind === 'product' ? msg('Sales from', { id: 'catalog.salesFrom' }) : msg('In force from', { id: 'catalog.effectiveFrom' })} .value=${this.form.from} @input=${set('from')}></wa-input>
           ${this.adapter.kind === 'product' ? html`<wa-input type="date" label=${msg('Sales until (optional)', { id: 'catalog.salesUntil' })} .value=${this.form.to} @input=${set('to')}></wa-input>` : nothing}
         </div>
-        <wa-textarea label=${msg('Content (JSON)', { id: 'catalog.json' })} rows="24" .value=${this.form.json} @input=${set('json')}></wa-textarea>
+        ${this.hasForm(this.formContent)
+          ? html`<div class="modes" role="group" aria-label=${msg('Edit as', { id: 'catalog.editAs' })}>
+              <wa-button size="small" appearance=${this.mode === 'form' ? 'accent' : 'outlined'} aria-pressed=${this.mode === 'form'} @click=${() => this.switchMode('form')}
+                >${msg('Form', { id: 'catalog.form' })}</wa-button
+              >
+              <wa-button size="small" appearance=${this.mode === 'json' ? 'accent' : 'outlined'} aria-pressed=${this.mode === 'json'} @click=${() => this.switchMode('json')}>JSON</wa-button>
+            </div>`
+          : nothing}
+        ${this.mode === 'form'
+          ? this.adapter.kind === 'product'
+            ? html`<pv-product-content .api=${this.api} .content=${this.formContent}></pv-product-content>`
+            : html`<pv-rules-content .content=${this.formContent}></pv-rules-content>`
+          : html`<wa-textarea label=${msg('Content (JSON)', { id: 'catalog.json' })} rows="24" .value=${this.form.json} @input=${set('json')}></wa-textarea>`}
         <div class="row">
           <wa-button type="submit" variant="brand" ?loading=${this.busy === 'save'}>${msg('Save the draft', { id: 'catalog.save' })}</wa-button>
           <wa-button appearance="outlined" @click=${() => (this.editing = null)}>${msg('Cancel', { id: 'catalog.cancel' })}</wa-button>
@@ -267,12 +367,20 @@ export class VersionsPanel extends LitElement {
 
   private async save(e: Event) {
     e.preventDefault();
-    const parsed = parseJson(this.form.json);
-    if (!parsed.ok) {
-      this.notice = { variant: 'danger', text: `${msg('The content is not valid JSON:', { id: 'catalog.badJson' })} ${parsed.error}` };
-      return;
+    let content: unknown;
+    if (this.mode === 'form') {
+      const r = this.formResult();
+      if (!r) return;
+      content = r.content;
+    } else {
+      const parsed = parseJson(this.form.json);
+      if (!parsed.ok) {
+        this.notice = { variant: 'danger', text: `${msg('The content is not valid JSON:', { id: 'catalog.badJson' })} ${parsed.error}` };
+        return;
+      }
+      content = parsed.value;
     }
-    const f = { version: this.form.version.trim(), from: this.form.from, to: this.form.to, model: this.form.model.trim(), content: parsed.value };
+    const f = { version: this.form.version.trim(), from: this.form.from, to: this.form.to, model: this.form.model.trim(), content };
     const ok = await this.run('save', false, this.editing === 'new' ? this.adapter.create(f) : this.adapter.update(this.selected!, f));
     if (ok) this.editing = null;
   }

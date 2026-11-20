@@ -127,6 +127,42 @@ export function recipientLabel(r: string): string {
 
 export function problemLabel(id: string): string {
   switch (id) {
+    case 'product.badMarket':
+      return msg('The market is two capital letters, e.g. SE.', { id: 'product.badMarket' });
+    case 'product.badCurrency':
+      return msg('The currency is three capital letters, e.g. SEK.', { id: 'product.badCurrency' });
+    case 'product.needSpecies':
+      return msg('Choose at least one species.', { id: 'product.needSpecies' });
+    case 'product.needName':
+      return msg('Give the product a name.', { id: 'product.needName' });
+    case 'product.needRuleSeries':
+      return msg('Give the claims rules series, e.g. SE-HUND-VV.', { id: 'product.needRuleSeries' });
+    case 'product.priceTermsNeedTariff':
+      return msg('Price terms need a tariff series.', { id: 'product.priceTermsNeedTariff' });
+    case 'product.badLimits':
+      return msg('Give the annual limits as amounts, separated by semicolons.', { id: 'product.badLimits' });
+    case 'product.badDefaultLimit':
+      return msg('The default annual limit must be one of the annual limits.', { id: 'product.badDefaultLimit' });
+    case 'product.needDeductible':
+      return msg('Add at least one deductible.', { id: 'product.needDeductible' });
+    case 'product.badDeductible':
+      return msg('Each deductible needs a code in small letters, a name, a fixed amount and a variable per cent.', { id: 'product.badDeductible' });
+    case 'product.needPeriodDays':
+      return msg('A deductible per period needs the length of the period.', { id: 'product.needPeriodDays' });
+    case 'product.duplicateDeductible':
+      return msg('Two deductibles have the same code.', { id: 'product.duplicateDeductible' });
+    case 'product.badDefaultDeductible':
+      return msg('Choose the default deductible.', { id: 'product.badDefaultDeductible' });
+    case 'product.badWaiting':
+      return msg('The waiting period is a number of days.', { id: 'product.badWaiting' });
+    case 'product.badSetting':
+      return msg('The policy settings are whole numbers.', { id: 'product.badSetting' });
+    case 'rules.badGroups':
+      return msg('Write the diagnosis groups one per line as code = group, each code once.', { id: 'rules.badGroups' });
+    case 'rules.badAutoSettle':
+      return msg('Give the amount settled automatically.', { id: 'rules.badAutoSettle' });
+    case 'rules.badInformationDays':
+      return msg('Give both days for requests for information, 1 to 365, or neither.', { id: 'rules.badInformationDays' });
     case 'policy.startTooFar':
       return msg('The start date is further ahead than the product allows.', { id: 'policy.startTooFar' });
     case 'info.needItems':

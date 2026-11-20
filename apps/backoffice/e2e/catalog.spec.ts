@@ -19,10 +19,22 @@ test('a product version: draft, review and publication with four eyes', async ({
   const version = await page.getByRole('textbox', { name: 'Version' }).inputValue();
   expect(version).toMatch(/^\d{4}\.\d+$/);
   await page.getByLabel('Sales from').fill(`${nextYear}-01-01`);
+  // The content is a form: a mistake is shown before anything is sent, and JSON is a click away.
+  const content = page.locator('pv-product-content');
+  await content.getByRole('textbox', { name: 'Annual limits' }).fill('30 000; lots');
+  await page.getByRole('button', { name: 'Save the draft' }).click();
+  await expect(page.locator('pv-versions-panel').getByRole('alert')).toContainText('Give the annual limits as amounts');
+  await content.getByRole('textbox', { name: 'Annual limits' }).fill('30 000; 60 000');
+  await content.getByRole('spinbutton', { name: 'Waiting period, days' }).fill('45');
+  await content.getByRole('spinbutton', { name: 'Start at most, days ahead' }).fill('60');
+  await page.getByRole('button', { name: 'JSON' }).click();
+  await expect(page.getByRole('textbox', { name: 'Content (JSON)' })).toHaveValue(/"maxStartAheadDays": 60/);
+  await page.getByRole('button', { name: 'Form' }).click();
   await page.getByRole('button', { name: 'Save the draft' }).click();
   await expect(status(page)).toContainText('Done.');
   const versions = page.getByRole('grid', { name: 'Versions' });
   await versions.getByRole('gridcell', { name: version, exact: true }).click();
+  await expect(page.locator('pv-versions-panel').locator('.pv-dl')).toContainText('45');
   await page.getByRole('button', { name: 'Submit for review' }).click();
   await expect(status(page)).toContainText('Done.');
   await expect(page.getByText('Someone else must publish what you submitted.')).toBeVisible();
@@ -48,11 +60,17 @@ test('a rule set version: a new draft is submitted and published by someone else
   await expect(page.getByRole('heading', { name: 'Rule set SE-HUND-VV' })).toBeVisible();
   await page.getByRole('button', { name: 'New draft from this' }).click();
   await page.getByLabel('In force from').fill(`${nextYear}-01-01`);
+  const rules = page.locator('pv-rules-content');
+  await rules.getByRole('spinbutton', { name: 'Reminder after, days' }).fill('10');
+  await page.getByRole('button', { name: 'Save the draft' }).click();
+  await expect(page.locator('pv-versions-panel').getByRole('alert')).toContainText('Give both days for requests for information');
+  await rules.getByRole('spinbutton', { name: 'Due after, days' }).fill('21');
   await page.getByRole('button', { name: 'Save the draft' }).click();
   await expect(status(page)).toContainText('Done.');
   const versions = page.getByRole('grid', { name: 'Versions' });
   const draft = versions.getByRole('row').filter({ hasText: 'Draft' });
   await draft.getByRole('gridcell').first().click();
+  await expect(page.locator('pv-versions-panel').locator('pre')).toContainText('"expiresAfterDays": 21');
   await page.getByRole('button', { name: 'Submit for review' }).click();
   await expect(status(page)).toContainText('Done.');
 
