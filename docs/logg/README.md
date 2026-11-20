@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-20 | [ADR 0038: dokument, arkiv och länkar](2026-11-20-adr-0038-dokument.md) | #114 |
 | 2026-11-20 | [Skadebesked och meddelanden om komplettering](2026-11-20-skadebesked.md) | #113 |
 | 2026-11-20 | [dev-all, och djur som redan är försäkrade](2026-11-20-dev-all.md) | #112 |
 | 2026-11-20 | [Bilagor som referenser till bolagets arkiv](2026-11-20-bilagor.md) | #111 |

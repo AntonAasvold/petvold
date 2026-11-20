@@ -345,8 +345,14 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Back office:** ärendets historik visar meddelandena till kunden.
   - ADR 0036 är byggd. 524 tester, 152 databastester och 39 flöden.
 
+- ADR 0038 om dokument, föreslagen, PR #114:
+  - **Gotenberg** i en egen container utan nätåtkomst, och mallar i HTML/CSS med designsystemets tokens.
+  - **Modulen `documents`** med ett arkiv i S3-lagring (MinIO lokalt).
+  - **Systemen sparar dokumentets id,** och länkar som slutar gälla skapas när de behövs, loggas och kan spärras. Ingen permanent hemlig adress.
+  - **Bolagets dokumentsystem finns kvar** som förval.
+
 **Nästa steg**
-1. ADR om dokument: Gotenberg för PDF och ett enkelt arkiv, och uppladdning av bilagor.
+1. Besluta ADR 0038, och bygg steg 1: modulen `documents` med arkivet och länkarna.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
 3. Back office: översikten på startsidan, omräkning av beslut och policyns sida enligt designsystemet.
 
