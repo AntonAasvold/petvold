@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_RULES, type PolicyView, type SourceEvent, type TermView, type TransactionView } from '../src/index.ts';
+import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_RULES, type ClaimSource, type PolicyView, type SourceEvent, type TermView, type TransactionView } from '../src/index.ts';
 
 const vetCare = { code: 'vet_care', annualLimit: 6_000_000, waitingPeriodDays: 30 };
 const term = (termNo: number, o: Partial<TermView> = {}): TermView => ({
@@ -16,7 +16,7 @@ const term = (termNo: number, o: Partial<TermView> = {}): TermView => ({
   ...o,
 });
 
-function setup(o: { language?: string; policy?: Partial<PolicyView>; transactions?: Record<string, TransactionView> } = {}) {
+function setup(o: { language?: string; policy?: Partial<PolicyView>; transactions?: Record<string, TransactionView>; claims?: ClaimSource } = {}) {
   let n = 0;
   let now = '2026-11-16T10:00:00.000Z';
   const store = new InMemoryNoticeStore();
@@ -45,6 +45,7 @@ function setup(o: { language?: string; policy?: Partial<PolicyView>; transaction
         id === 'ppr_1' ? { id, kind: 'transfer', fromPartyId: 'pty_anna', toPartyId: 'pty_bo', from: '2027-06-01', deadline: '2027-07-10' } : null,
     },
     settings: new InMemoryNoticeSettingsStore(),
+    ...(o.claims ? { claims: o.claims } : {}),
     parties: { languageOf: async (id) => (id === 'pty_anna' ? o.language : undefined) },
     clock: { now: () => now },
     ids: { next: (p) => `${p}_${++n}` },
@@ -204,4 +205,64 @@ test('the insurer\'s settings: versions, promptly days, optional types turned of
   assert.equal(await s.handlePolicyEvent(event('policy.cancelled', { transactionId: 'ptx_c' })), null, 'turned off');
   // The notice made before keeps what it was made with.
   assert.equal((await s.get(declined.id)).content.review, undefined);
+});
+
+// Claims (ADR 0036) -----------------------------------------------------------
+
+const claimFacts = { claimId: 'clm_1', claimNo: 'S-2026-000001', policyId: 'pol_1', animalId: 'ani_rex', market: 'SE', treatmentFrom: '2027-02-01' };
+const claims = (recipient: 'customer' | 'clinic' = 'customer'): ClaimSource => ({
+  decision: async (claimId, seq) =>
+    claimId === 'clm_1' && seq === 1
+      ? {
+          ...claimFacts,
+          decisionId: 'dec_1',
+          seq: 1,
+          outcome: 'partial',
+          payout: { amount: 1_216_500, currency: 'SEK' },
+          automated: false,
+          mainReason: { reason: 'decision.partial', params: { payout: 1_216_500, currency: 'SEK' } },
+          steps: [{ step: 'billed', amount: 1_864_000, reason: 'step.billed', params: { currency: 'SEK' } }],
+          deviation: { reasonCode: 'not_covered', reason: 'The food is not covered' },
+          reviewAvailable: false,
+        }
+      : null,
+  informationRequest: async (claimId, requestId) =>
+    claimId === 'clm_1' && requestId === 'inf_1'
+      ? { ...claimFacts, requestId, recipient, items: ['medical-record'], note: 'The record from the first visit', dueDate: '2027-03-15' }
+      : null,
+});
+const claimEvent = (type: string, data: Record<string, unknown>) => ({ id: `claims:${type}`, type, claimId: 'clm_1', occurredAt: '2026-11-16T10:00:00.000Z', data });
+
+test('a claims decision gives the customer a notice with the calculation, and needs the review text (ADR 0036)', async () => {
+  const { s } = setup({ claims: claims() });
+  const n = (await s.handleClaimEvent(claimEvent('claim.decided', { seq: 1 })))!;
+  assert.deepEqual([n.type, n.schema, n.recipientPartyId, n.policyId, n.dueBy], ['claim-decision', 'claim-decision.v1', 'pty_anna', 'pol_1', '2026-11-19']);
+  assert.deepEqual([n.content.claimNo, n.content.outcome, n.content.payout, n.content.deviation], ['S-2026-000001', 'partial', { amount: 1_216_500, currency: 'SEK' }, { reasonCode: 'not_covered', reason: 'The food is not covered' }]);
+  assert.ok(n.legalBasis.some((l) => l.includes('chapter 7 section 1')));
+  assert.deepEqual((await s.get(n.id)).incomplete, ['review'], 'without the insurer\'s review text it waits for a person');
+  assert.equal(await s.handleClaimEvent(claimEvent('claim.decided', { seq: 1 })), null, 'a repeat gives nothing new');
+});
+
+test('a request for information to the customer, its reminder and expiry give notices; the expiry may be turned off', async () => {
+  const { s } = setup({ claims: claims() });
+  const asked = (await s.handleClaimEvent(claimEvent('claim.information_requested', { requestId: 'inf_1' })))!;
+  assert.deepEqual([asked.type, asked.content.note, asked.content.dueDate, asked.content.items], ['claim-information-request', 'The record from the first visit', '2027-03-15', ['medical-record']]);
+  const reminded = (await s.handleClaimEvent(claimEvent('claim.information_reminded', { requestId: 'inf_1' })))!;
+  assert.equal(reminded.type, 'claim-information-reminder');
+  const expired = (await s.handleClaimEvent(claimEvent('claim.information_expired', { requestId: 'inf_1' })))!;
+  assert.deepEqual([expired.type, expired.content.decidedOnAvailableBasis, 'note' in expired.content, expired.legalBasis], ['claim-information-expired', true, false, []]);
+
+  const off = setup({ claims: claims() });
+  await off.s.changeSettings({ markets: { SE: { disabledTypes: ['claim-information-expired'] } }, basedOnVersion: 1, reason: 'Handlers call the customer' }, 'h');
+  assert.equal(await off.s.handleClaimEvent(claimEvent('claim.information_expired', { requestId: 'inf_1' })), null);
+  await rejects(off.s.changeSettings({ markets: { SE: { disabledTypes: ['claim-decision'] } }, basedOnVersion: 2, reason: 'x' }, 'h'), 'validation', /required by law/);
+});
+
+test('a request to the clinic, other claims events and an installation without the claims port give no notice', async () => {
+  const { s } = setup({ claims: claims('clinic') });
+  assert.equal(await s.handleClaimEvent(claimEvent('claim.information_requested', { requestId: 'inf_1' })), null);
+  assert.equal(await s.handleClaimEvent(claimEvent('claim.registered', {})), null);
+  const without = setup();
+  assert.equal(await without.s.handleClaimEvent(claimEvent('claim.decided', { seq: 1 })), null);
+  await assert.rejects(s.handleClaimEvent(claimEvent('claim.decided', { seq: 9 })), /does not exist/);
 });

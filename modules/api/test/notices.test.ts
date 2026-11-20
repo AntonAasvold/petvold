@@ -54,8 +54,10 @@ test('the document system reads pending notices and reports deliveries; the queu
   const failed = await call('POST', path, 'docs', { outcome: 'failed', channel: 'letter', reason: 'No postal address' });
   assert.equal(failed.status, 201);
   assert.ok(validatorFor('Notice')(structuredClone(failed.body)), JSON.stringify(validatorFor('Notice').errors));
-  // Failed, and the refusal that lacks the insurer's review text.
-  assert.deepEqual((await call('GET', '/v1/notices?attention=true', 'handler')).body.items.map((n: any) => n.status === 'failed' ? n.id : n.type), [confirmation.id, 'application-declined']);
+  // Failed, and the refusal and the claims decisions that lack the insurer's review text (ADR 0036).
+  const queue = (await call('GET', '/v1/notices?attention=true', 'handler')).body.items.map((n: any) => (n.status === 'failed' ? n.id : n.type));
+  assert.deepEqual(queue.filter((x: string) => x !== 'claim-decision'), [confirmation.id, 'application-declined']);
+  assert.ok(queue.includes('claim-decision'));
 
   at('2026-11-16T09:00:00.000Z');
   const sent = await call('POST', path, 'docs', { outcome: 'sent', channel: 'digital-mailbox', sentAt: '2026-11-16T08:30:00Z', documentId: 'arch-2026-000123', sha256: 'c'.repeat(64) });

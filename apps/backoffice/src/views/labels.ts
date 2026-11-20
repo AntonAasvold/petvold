@@ -389,6 +389,14 @@ export function noticeTypeLabel(t: string): string {
       return msg('Application declined', { id: 'notice.type.application-declined' });
     case 'transfer-offer':
       return msg('Offer to a new owner', { id: 'notice.type.transfer-offer' });
+    case 'claim-decision':
+      return msg('Claims decision', { id: 'notice.type.claim-decision' });
+    case 'claim-information-request':
+      return msg('Request for information', { id: 'notice.type.claim-information-request' });
+    case 'claim-information-reminder':
+      return msg('Reminder about information', { id: 'notice.type.claim-information-reminder' });
+    case 'claim-information-expired':
+      return msg('The information did not come in', { id: 'notice.type.claim-information-expired' });
     default:
       return t;
   }

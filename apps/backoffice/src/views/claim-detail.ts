@@ -21,7 +21,7 @@ import { getLocale } from '../i18n.ts';
 import { navigate } from '../router.ts';
 import { partyName, versionOn } from '../policy-logic.ts';
 import { pvComponents } from '../styles/pv-components.ts';
-import { attachmentKindLabel, channelLabel, claimStatusLabel, correctionFieldLabel, dismissalLabel, informationItemLabel, outcomeLabel, recipientLabel, ruleStatusLabel, statusVariant } from './labels.ts';
+import { attachmentKindLabel, noticeStatusLabel, noticeTypeLabel, channelLabel, claimStatusLabel, correctionFieldLabel, dismissalLabel, informationItemLabel, outcomeLabel, recipientLabel, ruleStatusLabel, statusVariant } from './labels.ts';
 import '../components/claim-actions.ts';
 import '../components/claim-information.ts';
 import '../components/claim-attachments.ts';
@@ -45,6 +45,7 @@ type ReviewRequest = components['schemas']['ReviewRequest'];
 type InformationRequest = components['schemas']['InformationRequest'];
 type ClaimRevision = components['schemas']['ClaimRevision'];
 type Attachment = components['schemas']['ClaimAttachment'];
+type Notice = components['schemas']['Notice'];
 
 @customElement('pv-claim-detail')
 export class ClaimDetail extends LitElement {
@@ -56,6 +57,8 @@ export class ClaimDetail extends LitElement {
   @state() private information: InformationRequest[] = [];
   @state() private revisions: ClaimRevision[] = [];
   @state() private attachments: Attachment[] = [];
+  /** The notices to the customer about this claim (ADR 0036), for those who may read notices. */
+  @state() private notices: Notice[] = [];
   @state() private claim: Claim | null = null;
   @state() private assessment: Assessment | null = null;
   @state() private decisions: Decision[] = [];
@@ -206,6 +209,15 @@ export class ClaimDetail extends LitElement {
       return;
     }
     void this.loadWho();
+    void this.loadNotices();
+  }
+
+  /** Notices are listed per policy; those about this claim name it in their content. Not needed to decide. */
+  private async loadNotices() {
+    if (!this.me?.permissions.includes('notices:read') || !this.claim) return;
+    const c = this.claim;
+    const { data } = await this.api.GET('/v1/notices', { params: { query: { policyId: c.policyId, limit: 200 } } }).catch(() => ({ data: undefined }));
+    this.notices = (data?.items ?? []).filter((n) => (n.content as { claimId?: string }).claimId === c.id);
   }
 
   /** The animal and the policyholder for the head. Not needed to decide, so a missing permission only leaves them out. */
@@ -358,6 +370,7 @@ export class ClaimDetail extends LitElement {
               information: this.information,
               corrections: this.revisions.flatMap((r) => (r.correction ? [r.correction] : [])),
               attachments: this.attachments,
+              notices: this.notices,
               ...(c.closure ? { closure: c.closure } : {}),
             }).map((e) => this.logEntry(e))}
           ></pv-event-log>
@@ -431,6 +444,16 @@ export class ClaimDetail extends LitElement {
           badge: claimStatusLabel(e.type === 'claim.withdrawn' ? 'withdrawn' : 'dismissed'),
           line: `${e.reasonCode ? `${dismissalLabel(e.reasonCode)}${e.duplicateOf ? ` (${e.duplicateOf})` : ''} · ` : ''}${e.reason}`,
           status: `${e.type} · ${e.by}`,
+        };
+      case 'notice.created':
+        return {
+          key: `${e.type}:${e.id}`,
+          at: e.at,
+          state: e.status === 'sent' ? 'solid' : 'pending',
+          badge: msg('To the customer', { id: 'history.toCustomer' }),
+          line: `${noticeTypeLabel(e.noticeType)} · ${noticeStatusLabel(e.status)}`,
+          status: `${e.type} · ${e.id}`,
+          action: html`<button type="button" @click=${() => navigate(`/notices/${encodeURIComponent(e.id)}`)}>${msg('Open', { id: 'history.open' })}</button>`,
         };
       case 'claim.attachment_added':
         return {

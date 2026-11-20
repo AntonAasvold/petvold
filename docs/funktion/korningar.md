@@ -96,6 +96,6 @@ En händelse som inte går att leverera efter tio försök blir en död post. De
 
 ## Det som kommer
 
-Alla fem stegen i ADR 0037 är byggda. Påminnelsen blir ett meddelande till kunden först med steg 6 i ADR 0036. Till dess syns den som händelsen `claim.information_reminded`.
+Alla fem stegen i ADR 0037 är byggda. Påminnelsen och utgången blir meddelanden till kunden när begäran gick till kunden (ADR 0036, se [Meddelanden](meddelanden.md)).
 
 Kö och eftersläpning för reläet och webhook-arbetaren ska också synas i back office.

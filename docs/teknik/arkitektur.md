@@ -86,6 +86,11 @@ En ny lagring är klar när den klarar modulens gemensamma testsvit i `test-suit
   - beslut, bokföring, policyversioner, ansökningar och meddelanden kan inte ändras eller raderas
   - två aktiva policyer för samma djur samma dag går inte (exclusion constraint)
 - **Avslut utan beslut** (ADR 0036) finns i `claims.claim_closure` (migration 0037), en rad per ärende som aldrig ändras. Två triggrar håller reglerna: ett ärende med beslut kan inte stängas (felkod `PVC02`) och ett stängt ärende kan inte beslutas (`PVC01`). Lagringen gör koderna till `StoreConflictError`. En reservjournal får peka på avslutet, eftersom avslutet löser upp reserven. Läget räknas fortfarande fram ur det som är sparat, och avslutet står först.
+- **Meddelanden om skador** (ADR 0036):
+  - **Reläet** skickar skadornas händelser `claim.decided` och `claim.information_requested`, `_reminded` och `_expired` till `CommunicationsService.handleClaimEvent` via `claimsEventForNotices`. Händelsens id får prefixet `claims:`, eftersom skadornas outbox numrerar händelserna utan prefix.
+  - **Porten:** meddelandemodulen läser beslutet med förklaringen och begäran genom porten `ClaimSource` (`claimSource` i `wiring.ts`), aldrig skademotorns tabeller.
+  - **Mottagaren** är försäkringstagaren på första behandlingsdagen, från policymodulens port.
+  - **Migration 0045** utökar meddelandets typer.
 - **Bilagor** (ADR 0036) finns i `claims.claim_attachment` (migration 0044), en rad per bilaga som aldrig ändras.
   - **Ersättning:** `replaces` är unik, så en bilaga ersätts en gång.
   - **Trigger:** en ersatt bilaga och en begäran om komplettering måste höra till samma ärende, och ett stängt ärende får inga bilagor (`PVC01`).

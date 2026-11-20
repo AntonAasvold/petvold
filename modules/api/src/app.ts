@@ -16,7 +16,7 @@ import {
 import { InMemoryPolicyStore, PolicyError, PolicyService, type Application, type ApplicationStatus, type PolicyGroup, type PolicyRecord, type Proposal } from '@petvold/policies';
 import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_TYPES, type NoticeType, type NoticeView } from '@petvold/communications';
 import { InMemoryWebhookStore, SecretBox, WebhookError, WebhookService, type Subscription } from '@petvold/webhooks';
-import { animalPort, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
+import { animalPort, claimSource, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
 import { tariffCoverage } from '@petvold/pricing-core';
 import { questionsFor, underwritingCoverage } from '@petvold/underwriting-core';
 import { marketDate } from '@petvold/common';
@@ -1004,6 +1004,7 @@ export function createApp(d: AppDeps) {
       settings: new InMemoryNoticeSettingsStore(),
       policies: policySource(policies),
       parties: partySource(parties),
+      claims: claimSource(d.service),
       clock: d.clock,
       ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
     });

@@ -899,4 +899,10 @@ export const templates: Record<string, string> = {
   'history.attachment': 'Bilaga',
   'policy.insuredBy': 'Djuret är redan försäkrat genom',
   'policy.freeFrom': 'En ny policy kan börja',
+  'notice.type.claim-decision': 'Skadebesked',
+  'notice.type.claim-information-request': 'Begäran om komplettering',
+  'notice.type.claim-information-reminder': 'Påminnelse om komplettering',
+  'notice.type.claim-information-expired': 'Underlaget kom inte in',
+  'history.toCustomer': 'Till kunden',
+  'history.open': 'Öppna',
 };

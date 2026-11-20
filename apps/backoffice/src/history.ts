@@ -13,6 +13,8 @@ export interface HistoryInput {
   closure?: { id: string; kind: 'withdrawn' | 'dismissed'; reasonCode?: string; reason: string; duplicateOf?: string; closedBy: string; closedAt: string };
   /** Corrections (ADR 0036): the claim's revisions after the first. */
   corrections?: { id: string; revision: number; fields: string[]; reason: string; correctedBy: string; correctedAt: string; reopens: boolean }[];
+  /** Notices to the customer about the claim (ADR 0036). */
+  notices?: { id: string; type: string; createdAt: string; status: string }[];
   /** Attachments (ADR 0036). */
   attachments?: { id: string; kind: string; addedBy: string; addedAt: string; replaces?: string }[];
   /** Requests for information (ADR 0036). */
@@ -41,6 +43,7 @@ export type HistoryEvent =
   | { type: 'proposal.returned'; at: string; id: string; by: string; reason?: string }
   | { type: 'review.requested'; at: string; id: string; seq: number; open: boolean }
   | { type: 'claim.withdrawn' | 'claim.dismissed'; at: string; id: string; by: string; reason: string; reasonCode?: string; duplicateOf?: string }
+  | { type: 'notice.created'; at: string; id: string; noticeType: string; status: string }
   | { type: 'claim.attachment_added'; at: string; id: string; by: string; kind: string; replaces?: string }
   | { type: 'claim.corrected'; at: string; id: string; by: string; revision: number; fields: string[]; reason: string; reopens: boolean }
   | { type: InformationEventType; at: string; id: string; by: string; recipient: string; items: string[]; open: boolean; note?: string };
@@ -67,6 +70,7 @@ export function claimHistory(i: HistoryInput): HistoryEvent[] {
       ...(k.duplicateOf ? { duplicateOf: k.duplicateOf } : {}),
     });
   }
+  for (const n of i.notices ?? []) out.push({ type: 'notice.created', at: n.createdAt, id: n.id, noticeType: n.type, status: n.status });
   for (const a of i.attachments ?? []) {
     out.push({ type: 'claim.attachment_added', at: a.addedAt, id: a.id, by: a.addedBy, kind: a.kind, ...(a.replaces ? { replaces: a.replaces } : {}) });
   }
@@ -96,6 +100,7 @@ export function claimHistory(i: HistoryInput): HistoryEvent[] {
     'review.requested',
     'proposal.returned',
     'claim.decided',
+    'notice.created',
     'claim.withdrawn',
     'claim.dismissed',
   ];

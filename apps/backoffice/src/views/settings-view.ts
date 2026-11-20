@@ -36,7 +36,7 @@ type NoticeSettings = components['schemas']['NoticeSettings'];
 type Tab = 'roles' | 'retention' | 'notices';
 type Version = { version: number; changedBy: string; changedAt: string; reason: string };
 const CURRENCIES = ['SEK', 'EUR', 'NOK', 'DKK'];
-const OPTIONAL_NOTICES = ['cancellation-confirmation', 'transfer-offer'] as const;
+const OPTIONAL_NOTICES = ['cancellation-confirmation', 'transfer-offer', 'claim-information-expired'] as const;
 
 @customElement('pv-settings')
 export class SettingsView extends LitElement {

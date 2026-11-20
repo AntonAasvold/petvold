@@ -5,9 +5,9 @@
  */
 import { AnimalError, type AnimalService } from '@petvold/animals';
 import { CatalogError, onSale, policySettingsOf, productVersionId, vetCareTermsFor, type ProductService } from '@petvold/catalog';
-import { eventClaimId, type ClaimsEvent, type ClaimsService } from '@petvold/claims-core';
+import { DomainError, eventClaimId, type ClaimsEvent, type ClaimsService } from '@petvold/claims-core';
 import type { SourceEvent as WebhookSourceEvent } from '@petvold/webhooks';
-import type { PartySource, PolicySource } from '@petvold/communications';
+import type { ClaimSource, PartySource, PolicySource, SourceEvent as NoticeSourceEvent } from '@petvold/communications';
 import { PartyError, type ActivitySource, type PartyService } from '@petvold/parties';
 import { PolicyError, type AnimalPort, type PolicyService, type ProductPort } from '@petvold/policies';
 
@@ -86,6 +86,72 @@ export function claimsActivity(policies: PolicyService, claims: ClaimsService): 
 }
 
 /** Policies and applications as the communications module reads them (ADR 0032). */
+/**
+ * The claims engine as the communications module reads it (ADR 0036): a
+ * decision with its explanation, and a request for information. Nothing else.
+ */
+export function claimSource(claims: ClaimsService): ClaimSource {
+  const orNull = <T>(p: Promise<T>) =>
+    p.catch((e: unknown) => {
+      if (e instanceof DomainError && e.code === 'not_found') return null;
+      throw e;
+    });
+  return {
+    async decision(claimId, seq) {
+      const claim = await orNull(claims.getClaim(claimId));
+      const x = claim ? await orNull(claims.explainDecision(claimId, seq)) : null;
+      if (!claim || !x) return null;
+      return {
+        claimId,
+        claimNo: claim.claimNo,
+        policyId: claim.policyId,
+        animalId: claim.animalId,
+        market: claim.market,
+        treatmentFrom: claim.treatmentFrom,
+        decisionId: x.decisionId,
+        seq: x.seq,
+        outcome: x.outcome,
+        payout: { amount: x.payout, currency: x.currency },
+        automated: x.automated,
+        mainReason: x.mainReason,
+        steps: x.steps,
+        ...(x.deviation ? { deviation: x.deviation } : {}),
+        reviewAvailable: x.humanReview.available,
+      };
+    },
+    async informationRequest(claimId, requestId) {
+      const claim = await orNull(claims.getClaim(claimId));
+      const r = claim ? (await claims.getInformationRequests(claimId)).find((x) => x.id === requestId) : undefined;
+      if (!claim || !r) return null;
+      return {
+        claimId,
+        claimNo: claim.claimNo,
+        policyId: claim.policyId,
+        animalId: claim.animalId,
+        market: claim.market,
+        treatmentFrom: claim.treatmentFrom,
+        requestId: r.id,
+        recipient: r.recipient,
+        items: [...r.items],
+        note: r.note,
+        dueDate: r.dueDate,
+      };
+    },
+  };
+}
+
+/** A claims event as the communications module takes it: the claim, and the decision's seq or the request's id. */
+export function claimsEventForNotices(entry: { id: string; event: ClaimsEvent }): (NoticeSourceEvent & { claimId: string }) | null {
+  const e = entry.event;
+  // The outbox's ids are numbers per source: the prefix keeps them apart from other sources' events.
+  const base = { id: `claims:${entry.id}`, type: e.type, claimId: eventClaimId(e), occurredAt: e.occurredAt };
+  if (e.type === 'claim.decided') return { ...base, data: { seq: e.decision.seq } };
+  if (e.type === 'claim.information_requested' || e.type === 'claim.information_reminded' || e.type === 'claim.information_expired') {
+    return { ...base, data: { requestId: e.request.id } };
+  }
+  return null;
+}
+
 export function policySource(policies: PolicyService): PolicySource {
   const orNull = <T>(p: Promise<T>) =>
     p.catch((e: unknown) => {
