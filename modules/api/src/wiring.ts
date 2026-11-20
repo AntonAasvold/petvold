@@ -34,6 +34,7 @@ export function productPort(products: ProductService): ProductPort {
         renewalLeadDays: settings.renewalLeadDays,
         transferAcceptanceDays: settings.transferAcceptanceDays,
         applicationExpiryDays: settings.applicationExpiryDays,
+        maxStartAheadDays: settings.maxStartAheadDays,
         ...(v.content.tariffSeries ? { tariffSeries: v.content.tariffSeries } : {}),
         ...(v.content.priceTermsSeries ? { priceTermsSeries: v.content.priceTermsSeries } : {}),
         ...(v.content.underwritingSeries ? { underwritingSeries: v.content.underwritingSeries } : {}),

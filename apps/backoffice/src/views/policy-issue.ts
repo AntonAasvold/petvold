@@ -20,7 +20,7 @@ import { IdempotencyKeys } from '../decide.ts';
 import { formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import { displayName } from '../party-logic.ts';
-import { CHANNELS, answerProblems, answersBody, answersFor, applicationBody, emptyIssue, issueBody, issueProblems, needsApplication, quoteBody, withProductDefaults, type AnswerForm, type IssueForm, type ProductLike } from '../policy-form.ts';
+import { CHANNELS, answerProblems, answersBody, answersFor, applicationBody, emptyIssue, issueBody, issueProblems, latestStart, needsApplication, quoteBody, withProductDefaults, type AnswerForm, type IssueForm, type ProductLike } from '../policy-form.ts';
 import { navigate } from '../router.ts';
 import { pvComponents } from '../styles/pv-components.ts';
 import { channelLabelFor, documentLabel, problemLabel, underwritingLabel } from './labels.ts';
@@ -246,7 +246,7 @@ export class PolicyIssue extends LitElement {
                 >
                   ${this.products.map((x) => html`<wa-option value=${x.id}>${x.name} (${x.id})</wa-option>`)}
                 </wa-select>
-                <wa-input type="date" label=${msg('Start date', { id: 'policy.start' })} .value=${f.startDate} @change=${(e: Event) => (this.set({ startDate: value(e) }), void this.loadProducts())}></wa-input>
+                <wa-input type="date" label=${msg('Start date', { id: 'policy.start' })} .value=${f.startDate} min=${today()} max=${p ? latestStart(p, today()) : nothing} @change=${(e: Event) => (this.set({ startDate: value(e) }), void this.loadProducts())}></wa-input>
               </div>
               ${p && needsApplication(p)
                 ? html`<p class="pv-note">${msg('This product has health questions: the answers go with an application, which may be referred to an underwriter.', { id: 'policy.needsApplicationNote' })}</p>`

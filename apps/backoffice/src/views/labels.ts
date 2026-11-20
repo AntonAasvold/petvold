@@ -110,6 +110,8 @@ export function recipientLabel(r: string): string {
 
 export function problemLabel(id: string): string {
   switch (id) {
+    case 'policy.startTooFar':
+      return msg('The start date is further ahead than the product allows.', { id: 'policy.startTooFar' });
     case 'info.needItems':
       return msg('Choose what is missing.', { id: 'info.needItems' });
     case 'info.needNote':

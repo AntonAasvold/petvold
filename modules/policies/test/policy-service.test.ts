@@ -89,6 +89,14 @@ test('a policy never starts before the day it is issued, and an animal is insure
   await rejects(s.issue(input({ startDate: '2027-01-01' }), by), 'conflict', /already has a policy/);
 });
 
+test('a policy starts at most the product\'s maxStartAheadDays ahead, 90 by default', async () => {
+  const s = setup({ 'SE-HUND@1': offer(), 'SE-SOON@1': offer({ maxStartAheadDays: 0 }) });
+  // 2026-11-15 + 90 days = 2027-02-13.
+  await rejects(s.issue(input({ startDate: '2027-02-14' }), by), 'validation', /at most 90 days ahead, by 2027-02-13/);
+  await rejects(s.issue(input({ productVersion: 'SE-SOON@1', startDate: '2026-11-16' }), by), 'validation', /at most 0 days ahead/);
+  await s.issue(input({ startDate: '2027-02-13' }), by);
+});
+
 test('invalid applications are refused', async () => {
   const s = setup({ 'SE-HUND@1': offer(), 'SE-OLD@1': offer({ onSale: false }), 'DE-HUND@1': offer({ market: 'DE', currency: 'EUR' }) });
   await rejects(s.issue(input({ market: 'NO' }), by), 'validation', /market profile/);

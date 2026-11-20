@@ -294,7 +294,11 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Back office:** kortet för komplettering, fliken "Väntar på komplettering", kolumnen "Underlaget komplett" och dagar kvar att betala.
   - **E2E-testet för avvisning** var beroende av dagens datum: förslaget i testet blev ett avslag den 20 november. Testet är rättat.
   - 131 operationer i kontraktet.
-- 504 tester, 145 databastester, 62 enhetstester och 35 flöden i back office.
+- 504 tester, 145 databastester, 62 enhetstester och 34 flöden i back office.
+- Startdag i förväg, PR #107:
+  - **`policy.maxStartAheadDays`** på produkten, 0–365 och förval 90. Det kontrolleras vid tecknande, ansökan, godkännande av en ansökan och prisindikation, men inte vid förnyelse.
+  - **Back office** sätter ett tak på datumväljaren och stoppar ett datum som ligger längre fram.
+  - 505 tester och 63 enhetstester i back office.
 
 **Nästa steg**
 1. Skadeprocessen, steg 4: rättelse med revisioner.

@@ -5076,6 +5076,7 @@ components:
             renewalLeadDays: { type: integer, minimum: 1, maximum: 120, default: 45, description: 'Days before the term ends that it is renewed. Shorter than the term.' }
             transferAcceptanceDays: { type: integer, minimum: 1, maximum: 90, default: 30, description: Days a new owner has to accept a transferred policy. }
             applicationExpiryDays: { type: integer, minimum: 1, maximum: 90, default: 30, description: 'Days an application referred to a person may wait before the expiry run ends it (ADR 0031).' }
+            maxStartAheadDays: { type: integer, minimum: 0, maximum: 365, default: 90, description: 'How many days after the day of issue a new policy may start. The price and the underwriting are set on the day of issue. 0, it starts the same day.' }
         vetCare:
           type: object
           additionalProperties: false

@@ -8,6 +8,7 @@ import {
   emptyIssue,
   issueBody,
   issueProblems,
+  latestStart,
   needsApplication,
   reversibleCancellation,
   withProductDefaults,
@@ -99,4 +100,13 @@ test('an application answers every question, names declared diagnoses, and sends
     { question: 'treated-last-12-months', value: false },
     { question: 'known-diagnoses', value: true, diagnosisCodes: ['ORA-OTIT', 'HUD-ALLERGI'] },
   ]);
+});
+
+test("a start date beyond the product's maxStartAheadDays is stopped, 90 days by default", () => {
+  const f = withProductDefaults(emptyIssue(today, now, { animalId: 'ani_bosse', holder: 'pty_owner001' }), priced);
+  const last = latestStart(priced, today);
+  assert.deepEqual(issueProblems({ ...f, startDate: last }, priced, today, now), []);
+  const next = latestStart({ ...priced, content: { ...priced.content, policy: { maxStartAheadDays: 91 } } }, today);
+  assert.deepEqual(issueProblems({ ...f, startDate: next }, priced, today, now), ['policy.startTooFar']);
+  assert.equal(latestStart({ ...priced, content: { ...priced.content, policy: { maxStartAheadDays: 0 } } }, today), today);
 });
