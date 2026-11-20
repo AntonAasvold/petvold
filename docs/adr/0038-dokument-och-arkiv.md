@@ -1,6 +1,6 @@
 # 0038. Dokument: PDF med Gotenberg, ett arkiv och tidsbegränsade länkar
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-20
 
 ## Sammanhang
@@ -27,6 +27,7 @@ Det behövs alltså ett sätt att göra PDF:er från Petvolds egna mallar, och e
 
 2. **PDF:er görs med [Gotenberg](https://gotenberg.dev) (MIT) i en egen container.**
    - **Bara på det interna nätet.** Petvold anropar den, och den nås aldrig utifrån.
+   - **Petvold gör underlaget.** Modulen fyller mallen med data och skickar färdig HTML, typsnitt och bilder till Gotenberg. Gotenberg gör bara om det till PDF.
    - **Gotenberg lagrar ingenting.** Den gör om HTML till PDF och glömmer den. Lagringen är arkivets (punkt 4).
    - **Utan nätåtkomst.** Chromium i Gotenberg får inte hämta något utanför anropet, så att en mall eller data inte kan få den att nå interna adresser (SSRF). Typsnitt, bilder och stilmallar skickas med i anropet. Containern har ingen väg ut.
    - **Bakom en port** (`PdfRenderer`), så att en annan motor kan bytas in. LibreOffice ingår i Gotenberg, så Word-mallar kan läggas till senare utan att containern byts.
