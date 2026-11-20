@@ -60,9 +60,15 @@ export interface PolicySettings {
   transferAcceptanceDays?: number;
   /** Days an application referred to a person may wait before it expires (ADR 0031). Default 30. */
   applicationExpiryDays?: number;
+  /**
+   * How many days after the day of issue a new policy may start, 0-365. Default
+   * 90. The price and the underwriting are set on the day of issue, so a start
+   * far ahead would lock them for long.
+   */
+  maxStartAheadDays?: number;
 }
 
-export const POLICY_SETTING_DEFAULTS: Required<PolicySettings> = { midTermCancellation: 'term-end', termMonths: 12, renewalLeadDays: 45, transferAcceptanceDays: 30, applicationExpiryDays: 30 };
+export const POLICY_SETTING_DEFAULTS: Required<PolicySettings> = { midTermCancellation: 'term-end', termMonths: 12, renewalLeadDays: 45, transferAcceptanceDays: 30, applicationExpiryDays: 30, maxStartAheadDays: 90 };
 
 /** The product's policy settings with defaults filled in. Pure. */
 export function policySettingsOf(c: ProductContent): Required<PolicySettings> {
@@ -447,6 +453,9 @@ export class ProductService {
       }
       if (ps.applicationExpiryDays !== undefined && (!Number.isSafeInteger(ps.applicationExpiryDays) || ps.applicationExpiryDays < 1 || ps.applicationExpiryDays > 90)) {
         fail('policy.applicationExpiryDays must be 1-90');
+      }
+      if (ps.maxStartAheadDays !== undefined && (!Number.isSafeInteger(ps.maxStartAheadDays) || ps.maxStartAheadDays < 0 || ps.maxStartAheadDays > 365)) {
+        fail('policy.maxStartAheadDays must be 0-365');
       }
     }
     if (c.documents !== undefined) validateDocuments(c.documents, fail);

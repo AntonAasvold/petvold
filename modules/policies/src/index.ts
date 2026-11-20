@@ -531,6 +531,8 @@ export interface ProductOffer {
   transferAcceptanceDays: number;
   /** Days an application referred to a person may wait before it expires (ADR 0031). Omitted: 30. */
   applicationExpiryDays?: number;
+  /** How many days after the day of issue a new policy may start. Omitted: 90. */
+  maxStartAheadDays?: number;
   /** The tariff series that prices it (ADR 0030). Omitted: no tariff, the premium is given by hand. */
   tariffSeries?: string;
   /** The price terms series (ADR 0030). */
@@ -1590,6 +1592,7 @@ export class PolicyService implements PolicyPort {
     if (!offer.onSale) throw new PolicyError('validation', `${input.productVersion} is not on sale on ${input.startDate}`);
     if (offer.market !== input.market) throw new PolicyError('validation', `${input.productVersion} is not sold in market ${input.market}`);
     if (!offer.species.includes(animal.species)) throw new PolicyError('validation', `${input.productVersion} does not cover ${animal.species}`);
+    assertStartAhead(offer, input.startDate, today);
     if (offer.termMonths > profile.maxTermMonths) throw new PolicyError('validation', `${input.productVersion} has terms longer than ${input.market} allows`);
     let chosen: VetCareTerms & { deductibleOption: string };
     try {
@@ -2000,6 +2003,7 @@ export class PolicyService implements PolicyPort {
     if (!offer.onSale) throw new PolicyError('validation', `${input.productVersion} is not on sale on ${input.startDate}`);
     if (offer.market !== input.market) throw new PolicyError('validation', `${input.productVersion} is not sold in market ${input.market}`);
     if (!offer.species.includes(animal.species)) throw new PolicyError('validation', `${input.productVersion} does not cover ${animal.species}`);
+    assertStartAhead(offer, input.startDate, today);
     checkAcceptedDocuments(acceptance, offer, input.productVersion);
     let vetCare: VetCareTerms & { deductibleOption: string };
     try {
@@ -2360,4 +2364,14 @@ export class InMemoryPolicyStore implements PolicyStore {
     if (application) this.applications.push(structuredClone(application));
     if (decision) this.applicationDecisions.set(decision.applicationId, structuredClone(decision.decision));
   }
+}
+
+/**
+ * A new policy starts at most the product's maxStartAheadDays after the day of
+ * issue (default 90): the price and the underwriting are set on that day.
+ */
+function assertStartAhead(offer: Pick<ProductOffer, 'maxStartAheadDays'>, startDate: ISODate, today: ISODate): void {
+  const days = offer.maxStartAheadDays ?? 90;
+  const latest = addDays(today, days);
+  if (startDate > latest) throw new PolicyError('validation', `A policy may start at most ${days} days ahead, by ${latest}`);
 }

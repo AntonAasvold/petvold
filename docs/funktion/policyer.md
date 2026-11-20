@@ -34,7 +34,7 @@ Petvold kontrollerar att:
 - valen finns i produkten. Ett utelämnat val ger produktens förval.
 - premien är i produktens valuta
 - godkännandet har en kanal och en tid som inte ligger i framtiden, och anger produktens villkor och förköpsinformation om produkten har dokument
-- **startdagen inte ligger före dagen för tecknandet**
+- **startdagen inte ligger före dagen för tecknandet**, och inte mer än produktens `policy.maxStartAheadDays` efter den (förval 90 dagar)
 - **djuret inte redan har en policy** för någon av dagarna (`409`)
 
 Termens längd kommer från produkten (`policy.termMonths`, förval 12 månader). Den får inte vara längre än marknaden tillåter, i Sverige ett år (FAL 3 kap. 2 §). Transaktionen går igenom stegen utkast, prissatt, riskbedömd och utfärdad. **Premien** räknas med produktens tariff ([Pris](pris.md#priset-på-policyn)). För en produkt utan tariff anger anroparen den. Steget riskbedömd visar om teckningsregler prövades och vilken version som godkände.

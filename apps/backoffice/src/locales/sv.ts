@@ -788,4 +788,5 @@ export const templates: Record<string, string> = {
   'info.needNote': 'Skriv vad som saknas.',
   'info.dueAfterToday': 'Svarsdatumet ska vara efter i dag.',
   'job.information-requests': 'Påminnelse och utgång av kompletteringar',
+  'policy.startTooFar': 'Startdagen ligger längre fram än produkten tillåter.',
 };

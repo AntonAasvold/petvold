@@ -154,6 +154,7 @@ En produktversion säger vad som kan säljas och med vilka val (ADR 0023). Id:t 
 | `policy.renewalLeadDays` | Dagar före förfallodagen som förnyelsen körs, 1–120 och kortare än termen. Om pris eller villkor ändras vid förnyelsen bör kunden få besked mer än en månad före förfallodagen. | 45 (förval) |
 | `policy.transferAcceptanceDays` | Dagar som en ny ägare har på sig att godkänna en överlåten policy | 30 (förval) |
 | `policy.applicationExpiryDays` | Dagar som en ansökan får vänta på manuell prövning innan den går ut ([Teckning](teckning.md#manuell-prövning)), 1–90 | 30 (förval) |
+| `policy.maxStartAheadDays` | Hur många dagar efter dagen för tecknandet en ny policy får börja, 0–365. Priset och teckningsreglerna bestäms den dag policyn tecknas, så en start långt fram skulle låsa dem länge. 0 betyder att policyn börjar samma dag. Gäller tecknande, ansökan, en persons godkännande av en ansökan och prisindikationen, inte förnyelse. | 90 (förval) |
 | `documents` | Produktens dokument till kunden (ADR 0032), se [Produktens dokument](#produktens-dokument) | villkor, förköpsinformation och faktablad på svenska och engelska |
 
 Inställningarna under `policy` kan utelämnas, och då gäller förvalen. De låses med resten av innehållet när versionen publiceras.

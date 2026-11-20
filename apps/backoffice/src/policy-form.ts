@@ -16,6 +16,7 @@ export interface ProductLike {
     underwritingSeries?: string;
     vetCare: { annualLimits: number[]; defaultAnnualLimit?: number; deductibles: { code: string; labels?: Record<string, string> }[]; defaultDeductible?: string };
     documents?: { type: 'terms' | 'pre-contract' | 'ipid'; language: string; sha256: string }[];
+    policy?: { maxStartAheadDays?: number };
   };
 }
 
@@ -72,6 +73,13 @@ export function withProductDefaults(f: IssueForm, p: ProductLike): IssueForm {
 export const needsApplication = (p: ProductLike | null): boolean => !!p?.content.underwritingSeries;
 
 /** What issuing is missing, as message ids. */
+/** The last day a new policy of the product may start: the product's maxStartAheadDays after today, 90 by default. */
+export function latestStart(p: ProductLike, today: string): string {
+  const d = new Date(`${today}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + (p.content.policy?.maxStartAheadDays ?? 90));
+  return d.toISOString().slice(0, 10);
+}
+
 export function issueProblems(f: IssueForm, p: ProductLike | null, today: string, now: string): string[] {
   const out: string[] = [];
   if (!/^ani_[A-Za-z0-9]+$/.test(f.animalId.trim())) out.push('policy.needAnimal');
@@ -79,6 +87,7 @@ export function issueProblems(f: IssueForm, p: ProductLike | null, today: string
   if (!p) out.push('policy.needProduct');
   if (!f.startDate) out.push('policy.needStart');
   else if (f.startDate < today) out.push('application.startInPast');
+  else if (p && f.startDate > latestStart(p, today)) out.push('policy.startTooFar');
   if (p && !p.content.tariffSeries && toMinorUnits(f.premium, p.content.currency) === null) out.push('policy.needPremium');
   if (!f.channel.trim()) out.push('policy.needChannel');
   if (!f.acceptedAt || f.acceptedAt > now) out.push('policy.badAcceptedAt');
