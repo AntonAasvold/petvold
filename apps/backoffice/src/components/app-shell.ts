@@ -255,7 +255,7 @@ export class AppShell extends LitElement {
       { pattern: /^\/claims\/new$/, render: () => html`<pv-claim-register .api=${this.api}></pv-claim-register>` },
       { pattern: /^\/claims\/(?<id>[^/]+)\/correct$/, render: (p) => html`<pv-claim-register .api=${this.api} claim-id=${p.id!}></pv-claim-register>` },
       { pattern: /^\/claims\/(?<id>[^/]+)$/, render: (p) => html`<pv-claim-detail .api=${this.api} .me=${this.me} claim-id=${p.id!}></pv-claim-detail>` },
-      { pattern: /^\/policies$/, render: () => html`<pv-policies-search .api=${this.api}></pv-policies-search>` },
+      { pattern: /^\/policies$/, render: () => html`<pv-policies-search .api=${this.api} .me=${this.me}></pv-policies-search>` },
       { pattern: /^\/policies\/new$/, render: () => html`<pv-policy-issue .api=${this.api}></pv-policy-issue>` },
       { pattern: /^\/policies\/(?<id>[^/]+)$/, render: (p) => html`<pv-policy-detail .api=${this.api} .me=${this.me} policy-id=${p.id!}></pv-policy-detail>` },
       { pattern: /^\/applications$/, render: () => html`<pv-applications-queue .api=${this.api}></pv-applications-queue>` },

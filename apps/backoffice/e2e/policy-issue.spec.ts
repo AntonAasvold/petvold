@@ -14,7 +14,7 @@ test('a policy is issued from the animal, cancelled and the cancellation reverse
   await expect(page).toHaveURL(/\/policies\/new\?animal=ani_sixten&holder=pty_owner004$/);
 
   const form = page.locator('pv-policy-issue');
-  await expect(form.getByText('Sixten')).toBeVisible();
+  await expect(form.locator('.who')).toContainText('Sixten');
   await form.getByRole('combobox', { name: 'Product version on sale' }).click();
   await page.getByRole('option', { name: /SE-HUND-VV-LIV@2026\.2/ }).click();
   // No tariff: the premium is given by hand, and the form says so before sending.
@@ -41,4 +41,27 @@ test('a policy is issued from the animal, cancelled and the cancellation reverse
   await actions.getByRole('region', { name: 'Reverse the cancellation' }).getByRole('button', { name: 'Reverse the cancellation' }).click();
   await expect(actions.getByRole('status')).toContainText('The cancellation is reversed.');
   await expect(page.getByRole('grid', { name: 'History' }).getByRole('row')).toHaveCount(4);
+});
+
+test("a policy is started from the customer's page, choosing among the customer's animals", async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('combobox', { name: 'Token' }).click();
+  await page.getByRole('option', { name: 'dev-seller', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  const search = page.getByRole('searchbox', { name: 'Search for a claim, policy, animal or customer' });
+  await search.fill('pty_owner004');
+  await search.press('Enter');
+  await page.getByRole('region', { name: 'Policies as policyholder' }).getByRole('button', { name: 'Issue a policy' }).click();
+  await expect(page).toHaveURL(/\/policies\/new\?holder=pty_owner004$/);
+
+  const form = page.locator('pv-policy-issue');
+  await form.getByRole('combobox', { name: "The policyholder's animals" }).click();
+  await page.getByRole('option', { name: /^Sixten/ }).click();
+  await expect(form.getByRole('textbox', { name: 'Animal id' })).toHaveValue('ani_sixten');
+  await expect(form.getByRole('combobox', { name: 'Product version on sale' })).toBeVisible();
+
+  // The policies page has the same way in.
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Policies' }).click();
+  await page.getByRole('button', { name: 'Issue a policy' }).click();
+  await expect(page).toHaveURL(/\/policies\/new$/);
 });

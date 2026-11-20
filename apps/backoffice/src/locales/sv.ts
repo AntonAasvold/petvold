@@ -873,4 +873,5 @@ export const templates: Record<string, string> = {
   'rules.nonReimbursableHint': 'Med komma emellan, till exempel food',
   'rules.reminderDays': 'Påminnelse efter, dagar',
   'rules.vat': 'Moms på veterinärfakturor ersätts',
+  'policy.holderAnimals': 'Försäkringstagarens djur',
 };

@@ -46,6 +46,8 @@ export class PolicyIssue extends LitElement {
   })();
   @state() private products: Product[] = [];
   @state() private animal: { name: string; species: string; market: string } | null = null;
+  /** The policyholder's animals today, to choose from instead of typing an id. */
+  @state() private holderAnimals: { id: string; name: string }[] = [];
   @state() private holderName = '';
   @state() private quote: Quote | null = null;
   /** The underwriting questions, for a product with health questions (ADR 0031). */
@@ -160,6 +162,11 @@ export class PolicyIssue extends LitElement {
     this.animal = animal ? { name: animal.name, species: animal.species, market: animal.market } : null;
     const holder = /^pty_/.test(f.policyholderPartyId) ? await this.api.GET('/v1/parties/{partyId}', { params: { path: { partyId: f.policyholderPartyId.trim() } } }).then((r) => r.data ?? null, () => null) : null;
     this.holderName = displayName(holder);
+    this.holderAnimals = holder
+      ? await this.api
+          .GET('/v1/animals', { params: { query: { ownerPartyId: holder.id } } })
+          .then((r) => (r.data?.items ?? []).filter((a) => !a.deceasedOn).map((a) => ({ id: a.id, name: a.name })), () => [])
+      : [];
     if (animal) this.form = { ...this.form, market: animal.market };
   }
 
@@ -213,6 +220,15 @@ export class PolicyIssue extends LitElement {
           <section class="pv-card" aria-labelledby="who">
             <div class="pv-card__head"><h2 class="pv-card__title" id="who">${msg('Animal and policyholder', { id: 'policy.who' })}</h2></div>
             <div class="pv-card__body">
+              ${this.holderAnimals.length
+                ? html`<wa-select
+                    label=${msg("The policyholder's animals", { id: 'policy.holderAnimals' })}
+                    value=${this.holderAnimals.some((a) => a.id === f.animalId) ? f.animalId : ''}
+                    @change=${(e: Event) => (this.set({ animalId: value(e) }), void this.loadWho().then(() => this.loadProducts()))}
+                  >
+                    ${this.holderAnimals.map((a) => html`<wa-option value=${a.id}>${a.name} (${a.id})</wa-option>`)}
+                  </wa-select>`
+                : nothing}
               <div class="row">
                 <wa-input
                   label=${msg('Animal id', { id: 'animal.id' })}

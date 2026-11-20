@@ -318,6 +318,11 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **En vald version** visar en sammanfattning.
   - 69 enhetstester och 35 flöden i back office.
 
+- Teckna från kunden, PR #110:
+  - **Knappen "Teckna försäkring"** finns nu också på kundens sida och på sidan Policyer, inte bara på djurets sida.
+  - **Från kunden** listar formuläret kundens levande djur att välja bland.
+  - 36 flöden i back office.
+
 **Nästa steg**
 1. Skadeprocessen, steg 5 och 6: bilagor som referenser, skadebesked och meddelanden om komplettering, där påminnelsen blir ett meddelande till kunden.
 3. ADR om premier och betalningar (M5).

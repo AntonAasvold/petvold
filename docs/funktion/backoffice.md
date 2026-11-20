@@ -57,7 +57,12 @@ En anonymiserad part kan inte ändras.
 
 ## Teckna och ändra policyer
 
-- **Teckna försäkring** (rätten `policies:write`) från djurets sida, med djur och ägare ifyllda, eller under `/policies/new`:
+- **Teckna försäkring** (rätten `policies:write`) går att starta på tre ställen:
+  - **djurets sida**, med djur och ägare ifyllda
+  - **kundens sida**, i kortet med kundens policyer, med kunden som försäkringstagare. Formuläret listar kundens levande djur att välja bland, och ett annat djur kan anges med id.
+  - **sidan Policyer**, med ett tomt formulär
+
+  Formuläret:
   - välj en produktversion som säljs för djurets art på startdagen, med årsbelopp, självrisk och kampanjkod
   - **prisindikation** från tariffen (`POST /v1/quotes`): grundpris, premie per år och för termen. En produkt utan tariff får premien för en term angiven för hand.
   - **kundens godkännande:** kanal, tid, referens och, för en produkt med dokument, vilka dokument kunden fick se. Villkor och förköpsinformation krävs (ADR 0031, 0032).
