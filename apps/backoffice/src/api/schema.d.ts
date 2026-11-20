@@ -3380,6 +3380,11 @@ export interface components {
                  * @default 30
                  */
                 applicationExpiryDays: number;
+                /**
+                 * @description How many days after the day of issue a new policy may start. The price and the underwriting are set on the day of issue. 0, it starts the same day.
+                 * @default 90
+                 */
+                maxStartAheadDays: number;
             };
             vetCare: {
                 annualLimits: components["schemas"]["NonNegativeMoney"][];
