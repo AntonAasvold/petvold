@@ -21,9 +21,10 @@ import { getLocale } from '../i18n.ts';
 import { navigate } from '../router.ts';
 import { partyName, versionOn } from '../policy-logic.ts';
 import { pvComponents } from '../styles/pv-components.ts';
-import { channelLabel, claimStatusLabel, correctionFieldLabel, dismissalLabel, informationItemLabel, outcomeLabel, recipientLabel, ruleStatusLabel, statusVariant } from './labels.ts';
+import { attachmentKindLabel, channelLabel, claimStatusLabel, correctionFieldLabel, dismissalLabel, informationItemLabel, outcomeLabel, recipientLabel, ruleStatusLabel, statusVariant } from './labels.ts';
 import '../components/claim-actions.ts';
 import '../components/claim-information.ts';
+import '../components/claim-attachments.ts';
 import { daysLeftToPay, decidedLate } from '../information-logic.ts';
 import '../components/waterfall.ts';
 import '../components/event-log.ts';
@@ -43,6 +44,7 @@ type Proposal = components['schemas']['DecisionProposal'];
 type ReviewRequest = components['schemas']['ReviewRequest'];
 type InformationRequest = components['schemas']['InformationRequest'];
 type ClaimRevision = components['schemas']['ClaimRevision'];
+type Attachment = components['schemas']['ClaimAttachment'];
 
 @customElement('pv-claim-detail')
 export class ClaimDetail extends LitElement {
@@ -53,6 +55,7 @@ export class ClaimDetail extends LitElement {
   @state() private reviews: ReviewRequest[] = [];
   @state() private information: InformationRequest[] = [];
   @state() private revisions: ClaimRevision[] = [];
+  @state() private attachments: Attachment[] = [];
   @state() private claim: Claim | null = null;
   @state() private assessment: Assessment | null = null;
   @state() private decisions: Decision[] = [];
@@ -180,7 +183,7 @@ export class ClaimDetail extends LitElement {
     this.problem = null;
     const path = { params: { path: { claimId: this.claimId } } };
     try {
-      const [claim, assessment, decisions, proposals, reviews, information, revisions] = await Promise.all([
+      const [claim, assessment, decisions, proposals, reviews, information, revisions, attachments] = await Promise.all([
         unwrap(this.api.GET('/v1/claims/{claimId}', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/assessment', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/decisions', path)),
@@ -188,6 +191,7 @@ export class ClaimDetail extends LitElement {
         unwrap(this.api.GET('/v1/claims/{claimId}/review-requests', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/information-requests', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/revisions', path)),
+        unwrap(this.api.GET('/v1/claims/{claimId}/attachments', path)),
       ]);
       this.claim = claim;
       this.assessment = assessment;
@@ -196,6 +200,7 @@ export class ClaimDetail extends LitElement {
       this.reviews = reviews.items;
       this.information = information.items;
       this.revisions = revisions.items;
+      this.attachments = attachments.items;
     } catch (e) {
       this.problem = e as Problem;
       return;
@@ -313,6 +318,7 @@ export class ClaimDetail extends LitElement {
               </dl>
             </div>
           </section>
+          <pv-claim-attachments .api=${this.api} .me=${this.me} claim-id=${c.id} status=${status} .attachments=${this.attachments} @pv-changed=${() => this.load()}></pv-claim-attachments>
         </div>
         <div class="side">
           ${c.reopened
@@ -351,6 +357,7 @@ export class ClaimDetail extends LitElement {
               reviews: this.reviews,
               information: this.information,
               corrections: this.revisions.flatMap((r) => (r.correction ? [r.correction] : [])),
+              attachments: this.attachments,
               ...(c.closure ? { closure: c.closure } : {}),
             }).map((e) => this.logEntry(e))}
           ></pv-event-log>
@@ -423,6 +430,15 @@ export class ClaimDetail extends LitElement {
           state: 'solid',
           badge: claimStatusLabel(e.type === 'claim.withdrawn' ? 'withdrawn' : 'dismissed'),
           line: `${e.reasonCode ? `${dismissalLabel(e.reasonCode)}${e.duplicateOf ? ` (${e.duplicateOf})` : ''} · ` : ''}${e.reason}`,
+          status: `${e.type} · ${e.by}`,
+        };
+      case 'claim.attachment_added':
+        return {
+          key: `${e.type}:${e.id}`,
+          at: e.at,
+          state: 'solid',
+          badge: msg('Attachment', { id: 'history.attachment' }),
+          line: `${attachmentKindLabel(e.kind)}${e.replaces ? ` · ${msg('Replaces', { id: 'attachment.replaces' })} ${e.replaces}` : ''}`,
           status: `${e.type} · ${e.by}`,
         };
       case 'claim.corrected':

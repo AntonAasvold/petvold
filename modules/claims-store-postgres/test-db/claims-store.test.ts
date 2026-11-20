@@ -26,7 +26,7 @@ after(async () => {
 claimsStoreSuite('PostgresClaimsStore', async () => {
   await owner.query(
     `truncate claims.journal_line, claims.journal, claims.deductible_period, claims.decision_evidence, claims.review_request, claims.decision_proposal, claims.decision,
-              claims.claim_correction, claims.information_request, claims.claim_closure, claims.claim_line, claims.claim, claims.outbox, claims.idempotency, claims.claim_number_series`,
+              claims.claim_attachment, claims.claim_correction, claims.information_request, claims.claim_closure, claims.claim_line, claims.claim, claims.outbox, claims.idempotency, claims.claim_number_series`,
   );
   return { store: new PostgresClaimsStore(pool) };
 });
@@ -34,7 +34,7 @@ claimsStoreSuite('PostgresClaimsStore', async () => {
 test('the outbox keeps its order across a digit boundary in the id sequence (9 before 10)', async () => {
   await owner.query(
     `truncate claims.journal_line, claims.journal, claims.deductible_period, claims.decision_evidence, claims.review_request,
-              claims.decision_proposal, claims.decision, claims.claim_correction, claims.information_request, claims.claim_closure, claims.claim_line, claims.claim, claims.outbox, claims.idempotency, claims.claim_number_series`,
+              claims.decision_proposal, claims.decision, claims.claim_attachment, claims.claim_correction, claims.information_request, claims.claim_closure, claims.claim_line, claims.claim, claims.outbox, claims.idempotency, claims.claim_number_series`,
   );
   await owner.query(`select setval(pg_get_serial_sequence('claims.outbox', 'id'), 8)`);
   const store = new PostgresClaimsStore(pool);

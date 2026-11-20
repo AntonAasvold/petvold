@@ -12,7 +12,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreConflictError, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore, type DecisionCommit } from '../src/ports.ts';
-import type { Assessment, Claim, ClaimClosure, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot, ReviewRequest, DecisionProposal, InformationRequest, ClaimCorrection, ClaimData } from '../src/types.ts';
+import type { Assessment, Claim, ClaimClosure, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot, ReviewRequest, DecisionProposal, InformationRequest, ClaimCorrection, ClaimData, ClaimAttachment } from '../src/types.ts';
 import { accounts, type LimitKey } from '../src/ledger.ts';
 
 /** A store that also exposes its outbox, as every implementation must. */
@@ -691,6 +691,44 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       await store.commitDecision(commit(decision('clm_b', 1, 0)));
       await assert.rejects(store.closeClaim(closure('clm_b'), [], []), isConflict('claim_decided'));
       assert.equal(await store.getClosure('clm_b'), null);
+    });
+
+    // Attachments (ADR 0036) ------------------------------------------------------
+
+    const attachment = (claimId: string, id: string, overrides: Partial<ClaimAttachment> = {}): ClaimAttachment => ({
+      id,
+      claimId,
+      kind: 'invoice',
+      mediaType: 'application/pdf',
+      size: 184_320,
+      sha256: 'a'.repeat(64),
+      url: `https://archive.example.test/${id}`,
+      addedBy: 'handlaggare@example.test',
+      addedAt: '2026-10-03T08:00:00.000Z',
+      ...overrides,
+    });
+
+    it('an attachment is read back with its event, and one replaces another once', async (store) => {
+      await save(store, claim('clm_a'));
+      const first = attachment('clm_a', 'att_1');
+      await store.saveAttachment(first, [{ type: 'claim.attachment_added', occurredAt: first.addedAt, attachment: first }]);
+      const better = attachment('clm_a', 'att_2', { replaces: 'att_1', sha256: 'b'.repeat(64), addedAt: '2026-10-04T08:00:00.000Z' });
+      await store.saveAttachment(better, []);
+      assert.deepEqual(await store.getAttachments('clm_a'), [first, better]);
+      await assert.rejects(store.saveAttachment(attachment('clm_a', 'att_3', { replaces: 'att_1' }), []), isConflict('attachment_replaced'));
+      assert.deepEqual(await store.getAttachments('clm_unknown'), []);
+      assert.deepEqual(await pendingTypes(store), ['claim.registered', 'claim.attachment_added']);
+    });
+
+    it('a closed claim gets no attachments, and a decision keeps the attachments in its evidence', async (store) => {
+      await save(store, claim('clm_a'));
+      await store.closeClaim(closure('clm_a'), [], []);
+      await assert.rejects(store.saveAttachment(attachment('clm_a', 'att_1'), []), isConflict('claim_closed'));
+      await save(store, claim('clm_b', { claimNo: 'S-b' }));
+      const d = decision('clm_b', 1, 0);
+      const c = commit(d);
+      await store.commitDecision({ ...c, evidence: { ...c.evidence, attachments: [{ id: 'att_x', sha256: 'c'.repeat(64) }] } });
+      assert.deepEqual((await store.getEvidence(d.id))!.attachments, [{ id: 'att_x', sha256: 'c'.repeat(64) }]);
     });
 
     // Corrections (ADR 0036) -----------------------------------------------------

@@ -104,6 +104,23 @@ export function informationItemLabel(i: string): string {
   }
 }
 
+export function attachmentKindLabel(k: string): string {
+  switch (k) {
+    case 'invoice':
+      return msg('Invoice', { id: 'register.invoice' });
+    case 'medical-record':
+      return msg('Medical record', { id: 'info.item.medical-record' });
+    case 'referral':
+      return msg('Referral', { id: 'info.item.referral' });
+    case 'photo':
+      return msg('Photo', { id: 'attachment.photo' });
+    case 'other':
+      return msg('Other', { id: 'info.item.other' });
+    default:
+      return k;
+  }
+}
+
 export function correctionFieldLabel(f: string): string {
   switch (f) {
     case 'channel':
@@ -165,6 +182,14 @@ export function problemLabel(id: string): string {
       return msg('Give both days for requests for information, 1 to 365, or neither.', { id: 'rules.badInformationDays' });
     case 'policy.startTooFar':
       return msg('The start date is further ahead than the product allows.', { id: 'policy.startTooFar' });
+    case 'attachment.badUrl':
+      return msg('Give the address in the archive: https://… or urn:…', { id: 'attachment.badUrl' });
+    case 'attachment.badSha':
+      return msg('The checksum is 64 hex digits (sha256).', { id: 'attachment.badSha' });
+    case 'attachment.badMediaType':
+      return msg('The media type is e.g. application/pdf.', { id: 'attachment.badMediaType' });
+    case 'attachment.badSize':
+      return msg('The size is a number of bytes.', { id: 'attachment.badSize' });
     case 'info.needItems':
       return msg('Choose what is missing.', { id: 'info.needItems' });
     case 'info.needNote':

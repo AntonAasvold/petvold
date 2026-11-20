@@ -323,8 +323,17 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Från kunden** listar formuläret kundens levande djur att välja bland.
   - 36 flöden i back office.
 
+- Bilagor till skador (ADR 0036, steg 5), PR #111:
+  - **`POST` och `GET /v1/claims/{id}/attachments`:** typ, mediatyp, storlek, sha256 och adress i bolagets arkiv. Petvold sparar aldrig filen.
+  - **En bilaga ändras aldrig.** En ny kan ersätta den en gång.
+  - **Varje beslut sparar** de bilagor som gällde, med id och kontrollsumma, och förklaringen visar dem i `basis.attachments`. De ingår inte i `inputHash`.
+  - **Migration 0044:** `claims.claim_attachment` och `decision_evidence.attachments`.
+  - **Händelsen `claim.attachment_added`** går till webhooks.
+  - **Back office:** kortet "Bilagor" med länk till arkivet och formuläret för en ny bilaga.
+  - 135 operationer, 520 tester, 152 databastester, 71 enhetstester och 37 flöden i back office.
+
 **Nästa steg**
-1. Skadeprocessen, steg 5 och 6: bilagor som referenser, skadebesked och meddelanden om komplettering, där påminnelsen blir ett meddelande till kunden.
+1. Skadeprocessen, steg 6: bilagor som referenser, skadebesked och meddelanden om komplettering, där påminnelsen blir ett meddelande till kunden.
 3. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.

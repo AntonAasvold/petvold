@@ -18,6 +18,7 @@ import {
   type ClaimCorrection,
   type ClaimData,
   type ClaimRevision,
+  type ClaimAttachment,
   type LimitKey,
   type ClaimFilter,
   type ClaimSummary,
@@ -282,6 +283,44 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
     });
   }
 
+  async saveAttachment(a: ClaimAttachment, events: ClaimsEvent[]): Promise<void> {
+    await this.tx(async (db) => {
+      await db.query(
+        `insert into claims.claim_attachment (id, claim_id, kind, media_type, size_bytes, sha256, url, information_request_id, replaces, added_by, added_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [a.id, a.claimId, a.kind, a.mediaType, a.size, a.sha256, a.url, a.informationRequestId ?? null, a.replaces ?? null, a.addedBy, a.addedAt],
+      );
+      await insertEvents(db, events);
+    }).catch((e: PgError) => {
+      if (e.code === UNIQUE_VIOLATION && e.constraint === 'claim_attachment_replaces_key') {
+        throw new StoreConflictError('attachment_replaced', `Attachment ${a.replaces} is replaced already`);
+      }
+      if (e.code === CLAIM_CLOSED) throw new StoreConflictError('claim_closed', `Claim ${a.claimId} is closed`);
+      throw e;
+    });
+  }
+
+  async getAttachments(claimId: string): Promise<ClaimAttachment[]> {
+    const { rows } = await this.pool.query(
+      `select id, claim_id, kind, media_type, size_bytes, sha256, url, information_request_id, replaces, added_by, added_at
+       from claims.claim_attachment where claim_id = $1 order by added_at, id`,
+      [claimId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      claimId: r.claim_id,
+      kind: r.kind,
+      mediaType: r.media_type,
+      size: r.size_bytes,
+      sha256: r.sha256,
+      url: r.url,
+      ...(r.information_request_id === null ? {} : { informationRequestId: r.information_request_id }),
+      ...(r.replaces === null ? {} : { replaces: r.replaces }),
+      addedBy: r.added_by,
+      addedAt: r.added_at,
+    }));
+  }
+
   async getRevisions(claimId: string): Promise<ClaimRevision[]> {
     const claim = await this.pool.query(`select 1 from claims.claim where id = $1`, [claimId]);
     if (!claim.rows.length) return [];
@@ -376,7 +415,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
 
   async latestDecisionsWithEvidence(from: Timestamp, to: Timestamp, limit: number) {
     const { rows } = await this.pool.query(
-      `select ${DECISION_COLUMNS}, e.input, e.calculation_model, e.engine_version
+      `select ${DECISION_COLUMNS}, e.input, e.calculation_model, e.engine_version, e.attachments
        from claims.decision d
        join claims.decision_evidence e on e.decision_id = d.id
        where d.decided_at >= $1 and d.decided_at < $2
@@ -387,7 +426,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
     );
     return rows.map((r) => ({
       decision: toDecision(r),
-      evidence: { decisionId: r.id, input: r.input, calculationModel: r.calculation_model, engineVersion: r.engine_version },
+      evidence: { decisionId: r.id, input: r.input, calculationModel: r.calculation_model, engineVersion: r.engine_version, ...(r.attachments === null ? {} : { attachments: r.attachments }) },
     }));
   }
 
@@ -481,12 +520,12 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
 
   async getEvidence(decisionId: string): Promise<DecisionEvidence | null> {
     const { rows } = await this.pool.query(
-      `select decision_id, input, calculation_model, engine_version from claims.decision_evidence where decision_id = $1`,
+      `select decision_id, input, calculation_model, engine_version, attachments from claims.decision_evidence where decision_id = $1`,
       [decisionId],
     );
     const e = rows[0];
     return e
-      ? { decisionId: e.decision_id, input: e.input, calculationModel: e.calculation_model, engineVersion: e.engine_version }
+      ? { decisionId: e.decision_id, input: e.input, calculationModel: e.calculation_model, engineVersion: e.engine_version, ...(e.attachments === null ? {} : { attachments: e.attachments }) }
       : null;
   }
 
@@ -540,8 +579,8 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
         if (closed.rowCount !== 1) throw new Error(`Review request ${closesReviewRequestId} is not open for claim ${d.claimId}`);
       }
       await db.query(
-        `insert into claims.decision_evidence (decision_id, input, calculation_model, engine_version) values ($1, $2, $3, $4)`,
-        [evidence.decisionId, JSON.stringify(evidence.input), evidence.calculationModel, evidence.engineVersion],
+        `insert into claims.decision_evidence (decision_id, input, calculation_model, engine_version, attachments) values ($1, $2, $3, $4, $5)`,
+        [evidence.decisionId, JSON.stringify(evidence.input), evidence.calculationModel, evidence.engineVersion, evidence.attachments ? JSON.stringify(evidence.attachments) : null],
       );
       await insertJournals(db, journals);
       await db.query(`delete from claims.deductible_period where opened_by_claim_id = $1`, [d.claimId]);

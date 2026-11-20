@@ -137,6 +137,34 @@ Idempotency-Key: 9a2e…
       "claim": { "revision": 2, … }, "decision": null }
 ```
 
+## Bilagor
+
+Faktura, journal, remiss, foto och andra dokument kopplas till ärendet som referenser till bolagets arkiv (ADR 0036). Petvold sparar aldrig filen, bara adressen och kontrollsumman. Arkivet har redan åtkomstkontroll och gallring.
+
+| Anrop | Rättighet |
+| --- | --- |
+| `POST /v1/claims/{id}/attachments` | `claims:register` |
+| `GET /v1/claims/{id}/attachments` | `claims:read` |
+
+- **En bilaga har:**
+  - typ: `invoice`, `medical-record`, `referral`, `photo` eller `other`
+  - mediatyp och storlek i byte
+  - kontrollsumma (sha256)
+  - adressen i arkivet: en `https`-adress eller en URN
+  - vem som lade till den och när
+  - valfritt den begäran om komplettering den svarar på
+- **En bilaga ändras aldrig.** En ny kan ersätta den (`replaces`), till exempel en bättre skanning, och en bilaga ersätts bara en gång.
+- **Beviset:** varje beslut sparar de bilagor som gällde när det fattades, med id och kontrollsumma. De visas i förklaringen under `basis.attachments`. Bilagorna är inte indata till reglerna, så de ingår inte i `inputHash`, och gamla beslut räknas om som förut.
+- **Ett stängt ärende** får inga bilagor.
+
+**Exempel:**
+
+```
+POST /v1/claims/clm_048213/attachments
+{ "kind": "invoice", "mediaType": "application/pdf", "size": 184320,
+  "sha256": "9f2c…", "url": "https://arkiv.bolaget.se/docs/7c1f9e2a" }
+```
+
 ## Stänga utan beslut
 
 Ett ärende som inte ska prövas kan stängas innan det beslutas (ADR 0036). Det går inte att ångra.
@@ -323,6 +351,7 @@ Händelser skrivs i samma transaktion som ändringen:
 | `claim.information_expired` | Svarsdatumet har passerat utan svar |
 | `claim.information_cancelled` | En begäran återkallas, eller ärendet stängs |
 | `claim.withdrawn`, `claim.dismissed` | Ärendet stängs utan beslut |
+| `claim.attachment_added` | En bilaga läggs till, med adress och kontrollsumma |
 | `claim.corrected` | Ärendet rättas och får en ny revision. Händelsen säger vilka fält som ändrades, inte värdena eller skälet. |
 
 Händelserna levereras minst en gång, i ordning. Bolagets system får dem med [webhooks](webhooks.md), utan den sökandes ord eller vem som beslutade (ADR 0033).

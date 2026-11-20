@@ -11,6 +11,7 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Attestera | Attestera eller skicka tillbaka någon annans förslag | `claims:approve` |
 | Pröva | Begär prövning av ett automatiskt beslut för kundens räkning, med kundens synpunkt. En begäran besvaras av ett nytt beslut. | `claims:request-review`, `claims:decide` |
 | Ompröva | Bedöm ärendet igen med det som är känt nu | `claims:reassess` |
+| Bilagor | Lägg till en bilaga som adress i bolagets arkiv med kontrollsumma, eller ersätt en | `claims:register` |
 | Rätta | Rätta behandlingsdagar, diagnos, fakturarader och kanal, med skäl. Ärendet får en ny revision. | `claims:register` |
 | Komplettera | Begär underlag av kunden eller kliniken, registrera att det kommit in, eller återkalla begäran | `claims:request-information`, och `claims:register` för att registrera svaret |
 | Policyer | Sök på policy-, djur- eller part-id, personnummer eller chipnummer. Policyn med termer, förbehåll, versioner över tid och historik. | `policies:read`, och `parties:read` eller `animals:read` för personnummer och chip |
@@ -143,6 +144,15 @@ En skada som inte har beslutats kan stängas i kortet "Stäng utan beslut" (ADR 
 - **Avvisa** (rätten `claims:decide`), med skälet dubblett, registrerad av misstag eller inte en skada. Vid dubblett anges den andra skadans id.
 
 Båda kräver en motivering. Ett stängt ärende visar avslutet i stället för beslutskortet, och märket i huvudet är helfyllt. Skadornas kö har flikarna Återkallade och Avvisade.
+
+## Bilagor
+
+Kortet "Bilagor" under detaljerna listar ärendets bilagor (ADR 0036):
+- typ, mediatyp, storlek, vem och när
+- kontrollsumman
+- länken "Öppna i arkivet", som går till bolagets arkiv. Arkivet avgör vem som får se filen.
+
+En ersatt bilaga är överstruken och märkt "Ersatt". "Lägg till bilaga" öppnar formuläret: typ, adress i arkivet, kontrollsumma, mediatyp, storlek och valfritt vilken bilaga den ersätter. Filen måste först finnas i arkivet, eftersom Petvold inte tar emot filer än.
 
 ## Rätta en skada
 

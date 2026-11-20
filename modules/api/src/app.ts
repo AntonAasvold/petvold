@@ -415,6 +415,16 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await d.service.correctClaim(c.req.param('claimId'), r.body, p.subject) }));
   });
 
+  // Attachments (ADR 0036): references to the insurer's archive.
+  app.get('/v1/claims/:claimId/attachments', async (c) => sendPage(c, await d.service.getAttachments(c.req.param('claimId'))));
+
+  app.post('/v1/claims/:claimId/attachments', async (c) => {
+    const p = c.get('principal');
+    const r = await readJson(c, 'AttachmentInput');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await d.service.addAttachment(c.req.param('claimId'), r.body, p.subject) }));
+  });
+
   app.get('/v1/claims/:claimId/revisions', async (c) => sendPage(c, await d.service.getRevisions(c.req.param('claimId'))));
 
   // Requests for information (ADR 0036): the claim waits for the customer or the clinic.

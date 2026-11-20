@@ -13,5 +13,5 @@ export type { DecisionExplanation, ExplanationStep, ExplanationStepCode, Explain
 export { accounts } from './ledger.ts';
 export { basisCompleteAt, informationMissing, informationDates, daysBetween, dueAction, MAX_INFORMATION_DAYS } from './information.ts';
 export type { LimitKey } from './ledger.ts';
-export type { DecideCommand, DecideResult, AmountLimits, ApproveCommand, ReturnProposalCommand, ReviewRequestCommand, InformationRequestCommand, InformationAnswerCommand, CorrectionCommand, CorrectionResult, InformationRunResult, ClaimView, LimitsView, ClaimsServiceDeps, DomainErrorCode } from './service.ts';
+export type { DecideCommand, DecideResult, AmountLimits, ApproveCommand, ReturnProposalCommand, ReviewRequestCommand, InformationRequestCommand, InformationAnswerCommand, CorrectionCommand, CorrectionResult, AttachmentCommand, InformationRunResult, ClaimView, LimitsView, ClaimsServiceDeps, DomainErrorCode } from './service.ts';
 export { sha256, canonicalJson } from './util.ts';

@@ -170,3 +170,29 @@ test("a handler corrects a decided claim; the person's decision is reopened and 
   await expect(actions.getByRole('heading', { name: 'Decision', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').first()).toContainText('claim.corrected');
 });
+
+test('an attachment is added as a reference to the archive, and a better scan replaces it (ADR 0036)', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('grid', { name: 'Claims' }).getByRole('row').nth(1).click();
+  const card = page.locator('pv-claim-attachments');
+  await card.getByRole('button', { name: 'Add an attachment' }).click();
+  await card.getByRole('button', { name: 'Add the attachment' }).click();
+  await expect(card.getByRole('alert')).toContainText('Give the address in the archive');
+  await card.getByRole('textbox', { name: 'Address in the archive' }).fill('https://archive.example.test/docs/scan-1');
+  await card.getByRole('textbox', { name: 'Checksum (sha256)' }).fill('a'.repeat(64));
+  await card.getByRole('textbox', { name: 'Size in bytes' }).fill('184320');
+  await card.getByRole('button', { name: 'Add the attachment' }).click();
+  await expect(card.getByRole('status')).toContainText('The attachment is added.');
+  await expect(card.getByRole('link', { name: 'Open in the archive' })).toHaveAttribute('href', 'https://archive.example.test/docs/scan-1');
+
+  await card.getByRole('button', { name: 'Add an attachment' }).click();
+  await card.getByRole('combobox', { name: 'Replaces (optional)' }).click();
+  await page.getByRole('option', { name: /^Invoice · att_/ }).click();
+  await card.getByRole('textbox', { name: 'Address in the archive' }).fill('https://archive.example.test/docs/scan-2');
+  await card.getByRole('textbox', { name: 'Checksum (sha256)' }).fill('b'.repeat(64));
+  await card.getByRole('textbox', { name: 'Size in bytes' }).fill('204800');
+  await card.getByRole('button', { name: 'Add the attachment' }).click();
+  await expect(card.getByText('Replaced', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').first()).toContainText('claim.attachment_added');
+});
