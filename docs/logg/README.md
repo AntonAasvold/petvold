@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-20 | [Dokument, steg 2: uppladdning och kundens dokument](2026-11-20-dokument-steg-2.md) | #116 |
 | 2026-11-20 | [Dokument, steg 1: arkivet och länkarna](2026-11-20-dokument-steg-1.md) | #115 |
 | 2026-11-20 | [ADR 0038: dokument, arkiv och länkar](2026-11-20-adr-0038-dokument.md) | #114 |
 | 2026-11-20 | [Skadebesked och meddelanden om komplettering](2026-11-20-skadebesked.md) | #113 |

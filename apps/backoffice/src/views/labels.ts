@@ -182,6 +182,14 @@ export function problemLabel(id: string): string {
       return msg('Give both days for requests for information, 1 to 365, or neither.', { id: 'rules.badInformationDays' });
     case 'policy.startTooFar':
       return msg('The start date is further ahead than the product allows.', { id: 'policy.startTooFar' });
+    case 'document.needFile':
+      return msg('Choose a file.', { id: 'document.needFile' });
+    case 'document.badType':
+      return msg('The file is a PDF, JPEG, PNG or HEIC.', { id: 'document.badType' });
+    case 'document.tooLarge':
+      return msg('The file is larger than 25 MB.', { id: 'document.tooLarge' });
+    case 'document.empty':
+      return msg('The file is empty.', { id: 'document.empty' });
     case 'attachment.badUrl':
       return msg('Give the address in the archive: https://… or urn:…', { id: 'attachment.badUrl' });
     case 'attachment.badSha':

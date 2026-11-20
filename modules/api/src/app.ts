@@ -426,6 +426,15 @@ export function createApp(d: AppDeps) {
     const p = c.get('principal');
     const r = await readJson(c, 'AttachmentInput');
     if (!r.ok) return r.res;
+    // A file in Petvold's archive (ADR 0038): the document must be on this claim and match.
+    const inArchive = /^urn:petvold:doc:(doc_[A-Za-z0-9_]+)$/.exec(r.body.url);
+    if (inArchive) {
+      const doc = await documents.get(inArchive[1]!).catch(() => null);
+      if (!doc || doc.owner.claimId !== c.req.param('claimId')) return problem(c, 422, `Document ${inArchive[1]} is not on the claim`);
+      if (doc.sha256 !== r.body.sha256 || doc.size !== r.body.size || doc.mediaType !== String(r.body.mediaType).toLowerCase()) {
+        return problem(c, 422, `The attachment does not match document ${doc.id}: sha256, size and mediaType come from the document`);
+      }
+    }
     return idempotent(c, r.body, async () => ({ status: 201, body: await d.service.addAttachment(c.req.param('claimId'), r.body, p.subject) }));
   });
 
@@ -1467,6 +1476,72 @@ export function createApp(d: AppDeps) {
   });
 
   app.get('/v1/documents/:documentId', async (c) => send(c, await visibleDocument(c)));
+
+  /**
+   * Every document about a customer in one list (ADR 0038 point 8), wherever
+   * the file is: Petvold's archive, notices the insurer's document system sent,
+   * and claim attachments in the insurer's archive. Only what the caller may
+   * see: each kind needs its own permission, within the scope.
+   */
+  app.get('/v1/parties/:partyId/documents', async (c) => {
+    const party = await visibleParty(c);
+    const scope = c.get('scope');
+    const out: Record<string, unknown>[] = [];
+    // Claims on the party's policies, for their attachments.
+    const claimsOf = async () => {
+      if (!can(c, 'claims:read')) return [];
+      const policyIds = (await policies.findByPolicyholder(party.id)).map((p) => p.id);
+      const all = (await Promise.all(policyIds.map((policyId) => d.service.listClaims({ policyId })))).flat();
+      return all.filter((x) => coversClaim(scope, x));
+    };
+    const claims = await claimsOf();
+    const attachments = (await Promise.all(claims.map(async (x) => (await d.service.getAttachments(x.id)).map((a) => ({ ...a, claimNo: x.claimNo, policyId: x.policyId }))))).flat();
+    const kindOf = new Map(attachments.flatMap((a) => (a.url.startsWith('urn:petvold:doc:') ? [[a.url.slice('urn:petvold:doc:'.length), a.kind] as const] : [])));
+    if (can(c, 'documents:read')) {
+      for (const doc of await documents.list({ partyId: party.id })) {
+        if (!(await seesDocument(c, doc))) continue;
+        out.push({
+          source: 'petvold',
+          type: doc.owner.noticeId ? 'notice' : 'attachment',
+          at: doc.createdAt,
+          documentId: doc.id,
+          mediaType: doc.mediaType,
+          size: doc.size,
+          sha256: doc.sha256,
+          ...(kindOf.get(doc.id) ? { kind: kindOf.get(doc.id) } : {}),
+          ...(doc.filename ? { filename: doc.filename } : {}),
+          ...(doc.owner.claimId ? { claimId: doc.owner.claimId } : {}),
+          ...(doc.owner.policyId ? { policyId: doc.owner.policyId } : {}),
+          ...(doc.erasedAt ? { erased: true } : {}),
+        });
+      }
+    }
+    for (const a of attachments) {
+      if (a.url.startsWith('urn:petvold:doc:')) continue;
+      out.push({ source: 'insurer', type: 'attachment', at: a.addedAt, kind: a.kind, mediaType: a.mediaType, size: a.size, sha256: a.sha256, url: a.url, claimId: a.claimId, policyId: a.policyId, attachmentId: a.id });
+    }
+    if (can(c, 'notices:read')) {
+      for (const n of await communications.list({ recipientPartyId: party.id })) {
+        if (!seesNotice(scope, n)) continue;
+        const sent = n.deliveries.find((x) => x.outcome === 'sent' && x.documentId);
+        if (!sent) continue;
+        out.push({
+          source: 'insurer',
+          type: 'notice',
+          at: sent.sentAt,
+          noticeType: n.type,
+          noticeId: n.id,
+          archiveId: sent.documentId,
+          sha256: sent.sha256,
+          channel: sent.channel,
+          ...(n.policyId ? { policyId: n.policyId } : {}),
+          ...(typeof n.content.claimId === 'string' ? { claimId: n.content.claimId } : {}),
+        });
+      }
+    }
+    out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    return sendPage(c, out);
+  });
 
   app.get('/v1/documents/:documentId/links', async (c) => sendPage(c, await documents.links((await visibleDocument(c)).id)));
 

@@ -18,6 +18,7 @@ import type { components } from '../api/schema';
 import { act, type Notice } from '../actions.ts';
 import '../components/data-grid.ts';
 import '../components/event-log.ts';
+import '../components/party-documents.ts';
 import type { Column } from '../components/data-grid.ts';
 import type { LogEntry } from '../components/event-log.ts';
 import { partyFields } from '../components/party-fields.ts';
@@ -212,6 +213,7 @@ export class PartyDetail extends LitElement {
             ></pv-data-grid>
           </section>`
             : nothing}
+          <pv-party-documents .api=${this.api} party-id=${this.partyId}></pv-party-documents>
         </div>
         <div class="side">
           ${this.may('policies:read') ? this.groupsCard(p) : nothing}

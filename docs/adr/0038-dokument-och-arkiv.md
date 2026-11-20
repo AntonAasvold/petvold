@@ -78,7 +78,7 @@ Det behövs alltså ett sätt att göra PDF:er från Petvolds egna mallar, och e
    - **Back office** visar dokumentet genom en länk som skapas när någon klickar och gäller i 15 minuter.
 
 8. **Alla dokument för en kund.**
-   - **`GET /v1/documents?partyId=pty_…`** listar kundens dokument, nyast först, med typ, datum, vad det hör till och läge (`available` eller gallrat). Listan kan filtreras på typ, policy och ärende.
+   - **`GET /v1/parties/{partyId}/documents`** listar kundens dokument, nyast först, med typ, datum, vad det hör till och var det finns. `GET /v1/documents?partyId=` listar bara Petvolds arkiv.
    - **Kopplingen till kunden sparas när dokumentet skapas,** från det det hör till. En kund som byter, till exempel vid en överlåtelse, ser de dokument som gällde hen, inte den nya ägarens.
    - **Dokument i bolagets arkiv tas med.** Ett meddelande som bolagets dokumentsystem gjorde (inställningen `insurer`) och en bilaga med en adress i bolagets arkiv får en rad med typ, datum, kontrollsumma och bolagets dokument-id eller adress. Filen öppnas då i bolagets arkiv och inte genom Petvold. Kunden får alltså en enda lista, var dokumentet än ligger.
    - **Listan visar bara det anroparen får se:** dokument på ärenden kräver `claims:read`, meddelanden `notices:read` och policydokument `policies:read`, inom anroparens omfång (ADR 0016). Det krävs också `parties:read` för att lista per kund.

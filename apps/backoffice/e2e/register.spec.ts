@@ -177,6 +177,7 @@ test('an attachment is added as a reference to the archive, and a better scan re
   await page.getByRole('grid', { name: 'Claims' }).getByRole('row').nth(1).click();
   const card = page.locator('pv-claim-attachments');
   await card.getByRole('button', { name: 'Add an attachment' }).click();
+  await card.getByRole('radio', { name: /^In the insurer's archive/ }).check();
   await card.getByRole('button', { name: 'Add the attachment' }).click();
   await expect(card.getByRole('alert')).toContainText('Give the address in the archive');
   await card.getByRole('textbox', { name: 'Address in the archive' }).fill('https://archive.example.test/docs/scan-1');
@@ -187,6 +188,7 @@ test('an attachment is added as a reference to the archive, and a better scan re
   await expect(card.getByRole('link', { name: 'Open in the archive' })).toHaveAttribute('href', 'https://archive.example.test/docs/scan-1');
 
   await card.getByRole('button', { name: 'Add an attachment' }).click();
+  await card.getByRole('radio', { name: /^In the insurer's archive/ }).check();
   await card.getByRole('combobox', { name: 'Replaces (optional)' }).click();
   await page.getByRole('option', { name: /^Invoice · att_/ }).click();
   await card.getByRole('textbox', { name: 'Address in the archive' }).fill('https://archive.example.test/docs/scan-2');
@@ -219,4 +221,31 @@ test('a request to the customer becomes a notice to the customer, shown in the c
   }).toPass({ timeout: 15_000 });
   await history.getByRole('button', { name: 'Open' }).first().click();
   await expect(page).toHaveURL(/\/notices\/ntc_/);
+});
+
+test("a file is uploaded to Petvold's archive as an attachment, opens through a short link, and is in the customer's documents (ADR 0038)", async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('grid', { name: 'Claims' }).getByRole('row').nth(1).click();
+  const card = page.locator('pv-claim-attachments');
+  await card.getByRole('button', { name: 'Add an attachment' }).click();
+  await card.getByRole('button', { name: 'Add the attachment' }).click();
+  await expect(card.getByRole('alert')).toContainText('Choose a file.');
+  await card.getByLabel('File', { exact: true }).setInputFiles({ name: 'invoice.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\n% the invoice\n') });
+  await card.getByRole('button', { name: 'Add the attachment' }).click();
+  await expect(card.getByRole('status')).toContainText('The attachment is added.');
+
+  // Open makes a link that works 15 minutes; the link gives the file back.
+  const [created] = await Promise.all([page.waitForResponse((r) => r.url().endsWith('/links') && r.request().method() === 'POST'), card.getByRole('button', { name: 'Open', exact: true }).first().click()]);
+  const { url } = (await created.json()) as { url: string };
+  expect(url).toMatch(/\/d\/lnk_/);
+  const file = await page.request.get(url);
+  expect([file.status(), file.headers()['content-type'], (await file.body()).toString()]).toEqual([200, 'application/pdf', '%PDF-1.7\n% the invoice\n']);
+
+  // The customer's page lists it, kept in Petvold's archive.
+  const search = page.getByRole('searchbox', { name: 'Search for a claim, policy, animal or customer' });
+  await search.fill('pty_owner001');
+  await search.press('Enter');
+  const docs = page.getByRole('grid', { name: 'Documents' });
+  await expect(docs.getByRole('row').filter({ hasText: "Petvold's archive" }).first()).toContainText('Invoice');
 });

@@ -561,6 +561,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/parties/{partyId}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every document about a customer, wherever it is kept
+         * @description Requires the permission `parties:read`. One list, newest first (ADR 0038 point 8):
+         *     - `source: petvold`: files in Petvold's archive (needs `documents:read`). Open one with `POST /v1/documents/{id}/links`.
+         *     - `source: insurer`, `type: notice`: notices the insurer's document system sent, with its archive id and checksum (needs `notices:read`).
+         *     - `source: insurer`, `type: attachment`: claim attachments in the insurer's archive, with their address (needs `claims:read`).
+         *
+         *     Each entry is only there if the caller may see what it belongs to, within the scope.
+         */
+        get: operations["listPartyDocuments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/documents": {
         parameters: {
             query?: never;
@@ -3209,6 +3234,42 @@ export interface components {
             createdAt: components["schemas"]["DateTime"];
             /** @description The file was removed by retention; the record stays. */
             erasedAt?: components["schemas"]["DateTime"];
+        };
+        /** @description A document about a customer, in Petvold's archive or the insurer's. */
+        CustomerDocument: {
+            /**
+             * @description Where the file is: petvold opens with a link; insurer opens in the insurer's archive.
+             * @enum {string}
+             */
+            source: "petvold" | "insurer";
+            /** @enum {string} */
+            type: "attachment" | "notice";
+            /** @description Added, made or sent. */
+            at: components["schemas"]["DateTime"];
+            /** @description source petvold: the document. */
+            documentId?: string;
+            /**
+             * @description An attachment's kind.
+             * @enum {string}
+             */
+            kind?: "invoice" | "medical-record" | "referral" | "photo" | "other";
+            filename?: string;
+            mediaType?: string;
+            size?: number;
+            sha256?: string;
+            /** @description source insurer, type attachment: the address in the insurer's archive. */
+            url?: string;
+            /** @description source insurer, type notice: the document's id in the insurer's archive. */
+            archiveId?: string;
+            /** @description type notice: how it was sent. */
+            channel?: string;
+            noticeType?: components["schemas"]["NoticeType"];
+            noticeId?: string;
+            attachmentId?: string;
+            claimId?: string;
+            policyId?: string;
+            /** @description The file was removed by retention; it cannot be opened. */
+            erased?: boolean;
         };
         DocumentLinkRequest: {
             /**
@@ -6025,6 +6086,40 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listPartyDocuments: {
+        parameters: {
+            query?: {
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                partyId: components["parameters"]["PartyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of documents */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["CustomerDocument"][];
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["Unprocessable"];
         };
     };
