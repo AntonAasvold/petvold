@@ -33,8 +33,11 @@ import type {
   ClaimData,
   ClaimRevision,
   CorrectableField,
+  ClaimAttachment,
+  AttachmentKind,
+  AttachmentRef,
 } from './types.ts';
-import { CORRECTABLE_FIELDS, INFORMATION_ITEMS } from './types.ts';
+import { ATTACHMENT_KINDS, CORRECTABLE_FIELDS, INFORMATION_ITEMS } from './types.ts';
 import { canonicalJson } from './util.ts';
 import { addDays, assertDate, marketDate } from '@petvold/common';
 import { MAX_INFORMATION_DAYS, basisCompleteAt, daysBetween, dueAction, informationDates, informationMissing } from './information.ts';
@@ -126,6 +129,16 @@ export interface CorrectionResult {
   claim: Claim;
   /** A new automated decision, when the latest was automated and the outcome changed. */
   decision: ClaimDecision | null;
+}
+
+export interface AttachmentCommand {
+  kind: AttachmentKind;
+  mediaType: string;
+  size: number;
+  sha256: string;
+  url: string;
+  informationRequestId?: string;
+  replaces?: string;
 }
 
 export interface InformationAnswerCommand {
@@ -562,6 +575,59 @@ export class ClaimsService {
     return { correction, claim: next, decision };
   }
 
+  /**
+   * Adds a document to the claim as a reference to the insurer's archive (ADR
+   * 0036). It never changes; a new one may replace it. Not on a closed claim.
+   */
+  async addAttachment(claimId: string, cmd: AttachmentCommand, by: string): Promise<ClaimAttachment> {
+    await this.requireClaim(claimId);
+    const fail = (m: string): never => {
+      throw new DomainError('validation', m);
+    };
+    if (!ATTACHMENT_KINDS.includes(cmd.kind)) fail(`kind is one of ${ATTACHMENT_KINDS.join(', ')}`);
+    if (!/^[a-z]+\/[a-z0-9.+-]+$/i.test(cmd.mediaType ?? '')) fail('mediaType is a media type, e.g. application/pdf');
+    if (!Number.isSafeInteger(cmd.size) || cmd.size < 1) fail('size is the number of bytes');
+    if (!/^[0-9a-f]{64}$/.test(cmd.sha256 ?? '')) fail('sha256 is 64 lowercase hex digits');
+    if (!/^(https:\/\/\S+|urn:[a-z0-9][a-z0-9-]{0,31}:\S+)$/i.test(cmd.url ?? '')) fail('url is an https address or a URN in the archive');
+    if (await this.d.store.getClosure(claimId)) throw new DomainError('conflict', `Claim ${claimId} is closed`);
+    const existing = await this.d.store.getAttachments(claimId);
+    if (cmd.replaces !== undefined) {
+      if (!existing.some((a) => a.id === cmd.replaces)) fail(`Attachment ${cmd.replaces} is not on the claim`);
+      if (existing.some((a) => a.replaces === cmd.replaces)) throw new DomainError('conflict', `Attachment ${cmd.replaces} is replaced already`);
+    }
+    if (cmd.informationRequestId !== undefined && !(await this.d.store.getInformationRequests(claimId)).some((r) => r.id === cmd.informationRequestId)) {
+      fail(`Request ${cmd.informationRequestId} is not on the claim`);
+    }
+    const now = this.d.clock.now();
+    const attachment: ClaimAttachment = {
+      id: this.d.ids.next('att'),
+      claimId,
+      kind: cmd.kind,
+      mediaType: cmd.mediaType.toLowerCase(),
+      size: cmd.size,
+      sha256: cmd.sha256,
+      url: cmd.url,
+      ...(cmd.informationRequestId ? { informationRequestId: cmd.informationRequestId } : {}),
+      ...(cmd.replaces ? { replaces: cmd.replaces } : {}),
+      addedBy: by,
+      addedAt: now,
+    };
+    await asConflict(this.d.store.saveAttachment(attachment, [{ type: 'claim.attachment_added', occurredAt: now, attachment }]));
+    return attachment;
+  }
+
+  async getAttachments(claimId: string): Promise<ClaimAttachment[]> {
+    await this.requireClaim(claimId);
+    return this.d.store.getAttachments(claimId);
+  }
+
+  /** The attachments in force, not replaced, as a decision's evidence names them. */
+  private async attachmentsInForce(claimId: string): Promise<AttachmentRef[]> {
+    const all = await this.d.store.getAttachments(claimId);
+    const replaced = new Set(all.flatMap((a) => (a.replaces ? [a.replaces] : [])));
+    return all.filter((a) => !replaced.has(a.id)).map((a) => ({ id: a.id, sha256: a.sha256 }));
+  }
+
   /** The claim's revisions, oldest first (ADR 0036). */
   async getRevisions(claimId: string): Promise<ClaimRevision[]> {
     await this.requireClaim(claimId);
@@ -948,6 +1014,7 @@ export class ClaimsService {
       input,
       calculationModel: CALCULATION_MODEL,
       engineVersion: this.d.engineVersion ?? 'unknown',
+      attachments: await this.attachmentsInForce(claim.id),
     };
 
     const journals: LedgerJournal[] = [];

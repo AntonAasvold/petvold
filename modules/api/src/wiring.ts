@@ -232,6 +232,14 @@ export async function claimsEventForWebhooks(
       const k = e.closure;
       return { ...base, data: { closureId: k.id, ...(k.reasonCode ? { reasonCode: k.reasonCode } : {}), ...(k.duplicateOf ? { duplicateOf: k.duplicateOf } : {}) } };
     }
+    case 'claim.attachment_added': {
+      // The archive's address and the checksum, not the file; the archive decides who may open it.
+      const a = e.attachment;
+      return {
+        ...base,
+        data: { attachmentId: a.id, kind: a.kind, mediaType: a.mediaType, size: a.size, sha256: a.sha256, url: a.url, ...(a.replaces ? { replaces: a.replaces } : {}) },
+      };
+    }
     case 'claim.corrected': {
       // Which fields changed, not the new values or the reason: they stay inside Petvold.
       const k = e.correction;

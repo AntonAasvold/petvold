@@ -30,6 +30,7 @@ import type {
   ClaimCorrection,
   ClaimData,
   ClaimRevision,
+  ClaimAttachment,
   IdGenerator,
   Timestamp,
 } from '@petvold/claims-core';
@@ -50,6 +51,7 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   private reviews: ReviewRequest[] = [];
   private proposals: DecisionProposal[] = [];
   private information: InformationRequest[] = [];
+  private attachments: ClaimAttachment[] = [];
   /** Corrections per claim, revision 2 and on (ADR 0036). The claim itself stays as registered. */
   private corrections = new Map<string, { correction: ClaimCorrection; data: ClaimData }[]>();
   private outbox: Array<OutboxEntry & { publishedAt?: Timestamp }> = [];
@@ -113,6 +115,32 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
     list.push(structuredClone({ correction, data }));
     this.corrections.set(correction.claimId, list);
     this.appendEvents(events);
+  }
+
+  async saveAttachment(attachment: ClaimAttachment, events: ClaimsEvent[]) {
+    if (!this.claims.has(attachment.claimId)) throw new Error(`Claim ${attachment.claimId} does not exist`);
+    if (this.attachments.some((a) => a.id === attachment.id)) throw new Error(`Attachment ${attachment.id} already exists`);
+    if (attachment.replaces !== undefined) {
+      if (!this.attachments.some((a) => a.id === attachment.replaces && a.claimId === attachment.claimId)) {
+        throw new Error(`Attachment ${attachment.replaces} is not on claim ${attachment.claimId}`);
+      }
+      if (this.attachments.some((a) => a.replaces === attachment.replaces)) {
+        throw new StoreConflictError('attachment_replaced', `Attachment ${attachment.replaces} is replaced already`);
+      }
+    }
+    if (attachment.informationRequestId !== undefined && !this.information.some((r) => r.id === attachment.informationRequestId && r.claimId === attachment.claimId)) {
+      throw new Error(`Request ${attachment.informationRequestId} is not on claim ${attachment.claimId}`);
+    }
+    if (this.closures.has(attachment.claimId)) throw new StoreConflictError('claim_closed', `Claim ${attachment.claimId} is closed`);
+    this.attachments.push(structuredClone(attachment));
+    this.appendEvents(events);
+  }
+
+  async getAttachments(claimId: string) {
+    return this.attachments
+      .filter((a) => a.claimId === claimId)
+      .sort((a, b) => (a.addedAt < b.addedAt ? -1 : a.addedAt > b.addedAt ? 1 : a.id < b.id ? -1 : 1))
+      .map((a) => structuredClone(a));
   }
 
   async getRevisions(claimId: string): Promise<ClaimRevision[]> {

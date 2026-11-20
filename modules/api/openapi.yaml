@@ -577,6 +577,69 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/claims/{claimId}/attachments:
+    get:
+      tags: [claims]
+      operationId: listClaimAttachments
+      x-permission: claims:read
+      summary: The claim's attachments
+      description: Requires the permission `claims:read`. Oldest first, also those a later one replaced.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: One page of attachments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ClaimAttachment' } }
+                  nextCursor: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    post:
+      tags: [claims]
+      operationId: addClaimAttachment
+      x-permission: claims:register
+      summary: Add a document to the claim, as a reference to the archive
+      description: |
+        Requires the permission `claims:register`.
+
+        Petvold keeps the address in the insurer's archive and the checksum,
+        never the file (ADR 0036). An attachment never changes; a new one may
+        replace it (`replaces`). Every decision keeps the attachments in force
+        when it was made, by id and checksum, in its explanation's `basis`. They
+        are not input to the rules, so earlier decisions recalculate as before.
+        Not on a closed claim.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttachmentInput' }
+            examples:
+              invoice:
+                $ref: '#/components/examples/AttachmentInvoice'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClaimAttachment' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/claims/{claimId}/revisions:
     get:
       tags: [claims]
@@ -4092,6 +4155,14 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
 
   examples:
+    AttachmentInvoice:
+      summary: The clinic's specified invoice in the insurer's archive
+      value:
+        kind: invoice
+        mediaType: application/pdf
+        size: 184320
+        sha256: 9f2c4e1a7b3d5f6e8a0c2b4d6f8e1a3c5b7d9f0e2a4c6b8d0f1e3a5c7b9d1f3e
+        url: https://archive.example.test/docs/7c1f9e2a
     CorrectDiagnosis:
       summary: The diagnosis code was registered wrong
       value: { diagnosisCode: ORA-OTIT, reason: 'The record says otitis, not a cruciate ligament.', expectedRevision: 1 }
@@ -4637,6 +4708,36 @@ components:
         duplicateOf: { type: string }
         closedBy: { type: string }
         closedAt: { $ref: '#/components/schemas/DateTime' }
+
+    AttachmentInput:
+      type: object
+      additionalProperties: false
+      required: [kind, mediaType, size, sha256, url]
+      properties:
+        kind: { type: string, enum: [invoice, medical-record, referral, photo, other] }
+        mediaType: { type: string, pattern: '^[A-Za-z]+/[A-Za-z0-9.+-]+$', description: 'e.g. application/pdf' }
+        size: { type: integer, minimum: 1, description: In bytes. }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        url: { type: string, maxLength: 2000, description: "Where the file is in the insurer's archive: an https address or a URN. Petvold never stores the file." }
+        informationRequestId: { type: string, pattern: '^inf_[A-Za-z0-9]+$', description: The request for information it answers. }
+        replaces: { type: string, description: The attachment it replaces, which then no longer counts. An attachment is replaced once. }
+
+    ClaimAttachment:
+      type: object
+      additionalProperties: false
+      required: [id, claimId, kind, mediaType, size, sha256, url, addedBy, addedAt]
+      properties:
+        id: { type: string }
+        claimId: { type: string }
+        kind: { type: string, enum: [invoice, medical-record, referral, photo, other] }
+        mediaType: { type: string }
+        size: { type: integer }
+        sha256: { type: string }
+        url: { type: string }
+        informationRequestId: { type: string }
+        replaces: { type: string }
+        addedBy: { type: string }
+        addedAt: { $ref: '#/components/schemas/DateTime' }
 
     CorrectClaimRequest:
       type: object
@@ -6832,6 +6933,16 @@ components:
             inputHash: { type: string }
             calculationModel: { type: [string, 'null'], description: null for decisions made before evidence was stored. }
             engineVersion: { type: [string, 'null'] }
+            attachments:
+              type: array
+              description: The claim's attachments in force when the decision was made, by id and checksum (ADR 0036). Not input to the rules. Omitted for decisions made before attachments were kept.
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, sha256]
+                properties:
+                  id: { type: string }
+                  sha256: { type: string }
 
     ReviewRequestInput:
       type: object

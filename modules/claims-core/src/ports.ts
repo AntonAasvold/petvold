@@ -20,6 +20,7 @@ import type {
   ClaimCorrection,
   ClaimData,
   ClaimRevision,
+  ClaimAttachment,
   MarketCode,
 } from './types.ts';
 import type { LimitKey } from './ledger.ts';
@@ -170,6 +171,14 @@ export interface ClaimsStore {
   correctClaim(correction: ClaimCorrection, data: ClaimData, events: ClaimsEvent[]): Promise<void>;
   /** Every revision of the claim, oldest first: revision 1 as registered, then each correction. Empty for an unknown claim. */
   getRevisions(claimId: string): Promise<ClaimRevision[]>;
+  /**
+   * Stores an attachment (ADR 0036) and writes `events` in the same
+   * transaction. Throws StoreConflictError('claim_closed') if the claim is
+   * closed, and ('attachment_replaced') if the one it replaces is replaced already.
+   */
+  saveAttachment(attachment: ClaimAttachment, events: ClaimsEvent[]): Promise<void>;
+  /** The claim's attachments, oldest first, also the replaced ones. */
+  getAttachments(claimId: string): Promise<ClaimAttachment[]>;
   /** The claim's closure, or null while it is open. */
   getClosure(claimId: string): Promise<ClaimClosure | null>;
   /** The claim's proposals, oldest first. */
@@ -199,7 +208,8 @@ export class StoreConflictError extends Error {
       | 'claim_decided'
       | 'information_open'
       | 'information_closed'
-      | 'revision_changed',
+      | 'revision_changed'
+      | 'attachment_replaced',
     message: string,
   ) {
     super(message);
@@ -247,6 +257,7 @@ export type ClaimsEvent =
   | { type: 'claim.payout_ordered'; occurredAt: Timestamp; order: PayoutOrder }
   | { type: 'claim.withdrawn' | 'claim.dismissed'; occurredAt: Timestamp; closure: ClaimClosure }
   | { type: 'claim.corrected'; occurredAt: Timestamp; correction: ClaimCorrection }
+  | { type: 'claim.attachment_added'; occurredAt: Timestamp; attachment: ClaimAttachment }
   | {
       type: 'claim.information_requested' | 'claim.information_reminded' | 'claim.information_received' | 'claim.information_expired' | 'claim.information_cancelled';
       occurredAt: Timestamp;
@@ -272,6 +283,8 @@ export function eventClaimId(e: ClaimsEvent): string {
       return e.closure.claimId;
     case 'claim.corrected':
       return e.correction.claimId;
+    case 'claim.attachment_added':
+      return e.attachment.claimId;
     case 'claim.information_requested':
     case 'claim.information_reminded':
     case 'claim.information_received':

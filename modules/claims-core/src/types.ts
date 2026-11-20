@@ -516,6 +516,46 @@ export interface DecisionEvidence {
   calculationModel: string;
   /** Petvold's version and commit, e.g. '0.1.0+abc1234'. */
   engineVersion: string;
+  /**
+   * The claim's attachments in force when the decision was made, by id and
+   * checksum (ADR 0036). Not input to the rules, so not in inputHash. Omitted
+   * for decisions made before attachments were kept.
+   */
+  attachments?: AttachmentRef[];
+}
+
+export const ATTACHMENT_KINDS = ['invoice', 'medical-record', 'referral', 'photo', 'other'] as const;
+export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
+
+/**
+ * A document on a claim, as a reference to the insurer's archive (ADR 0036):
+ * Petvold keeps the address and the checksum, never the file. An attachment
+ * never changes; a new one may replace it.
+ */
+export interface ClaimAttachment {
+  id: string;
+  claimId: string;
+  kind: AttachmentKind;
+  /** e.g. application/pdf. */
+  mediaType: string;
+  /** In bytes. */
+  size: number;
+  /** sha256 of the file, lowercase hex. */
+  sha256: string;
+  /** Where the file is in the archive: an https address or a URN. */
+  url: string;
+  /** The request for information it answers, if any. */
+  informationRequestId?: string;
+  /** The attachment it replaces, e.g. a better scan of the same invoice. */
+  replaces?: string;
+  addedBy: string;
+  addedAt: Timestamp;
+}
+
+/** An attachment as a decision's evidence names it. */
+export interface AttachmentRef {
+  id: string;
+  sha256: string;
 }
 
 // ---------------------------------------------------------------------------

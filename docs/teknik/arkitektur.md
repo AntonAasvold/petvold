@@ -86,6 +86,10 @@ En ny lagring är klar när den klarar modulens gemensamma testsvit i `test-suit
   - beslut, bokföring, policyversioner, ansökningar och meddelanden kan inte ändras eller raderas
   - två aktiva policyer för samma djur samma dag går inte (exclusion constraint)
 - **Avslut utan beslut** (ADR 0036) finns i `claims.claim_closure` (migration 0037), en rad per ärende som aldrig ändras. Två triggrar håller reglerna: ett ärende med beslut kan inte stängas (felkod `PVC02`) och ett stängt ärende kan inte beslutas (`PVC01`). Lagringen gör koderna till `StoreConflictError`. En reservjournal får peka på avslutet, eftersom avslutet löser upp reserven. Läget räknas fortfarande fram ur det som är sparat, och avslutet står först.
+- **Bilagor** (ADR 0036) finns i `claims.claim_attachment` (migration 0044), en rad per bilaga som aldrig ändras.
+  - **Ersättning:** `replaces` är unik, så en bilaga ersätts en gång.
+  - **Trigger:** en ersatt bilaga och en begäran om komplettering måste höra till samma ärende, och ett stängt ärende får inga bilagor (`PVC01`).
+  - **Beviset:** `decision_evidence.attachments` sparar de bilagor som gällde vid beslutet, med id och kontrollsumma. `commit` hämtar dem med `attachmentsInForce`, och förklaringen visar dem i `basis.attachments`.
 - **Rättelse** (ADR 0036) finns i `claims.claim_correction` (migration 0043), en rad per revision från 2 med uppgifterna som jsonb. `claims.claim` och `claims.claim_line` är fortfarande revision 1 och ändras aldrig.
   - **Läsningen:** `getClaim` lägger den senaste rättelsen över ärendet. Listan och gallringen tar behandlingsdag, diagnos och kanal från den senaste revisionen med en `lateral join`.
   - **Trigger:** revisionerna kommer utan lucka, och ett stängt ärende rättas inte (`PVC01`).

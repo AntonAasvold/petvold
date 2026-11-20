@@ -909,3 +909,17 @@ test('a claim is corrected to a new revision; the revisions are listed, and an o
   revisions.items.forEach((r: unknown) => assertSchema('ClaimRevision', r));
   assert.deepEqual(revisions.items.map((r: any) => r.revision), [1, 2]);
 });
+
+test('attachments are added as references and listed; the clinic may add one to its claim (ADR 0036)', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { key: 'key-att-1', body: input(cruciateClaim()), token: 'clinic' });
+  const id = 'clm_048213';
+  const body = { kind: 'invoice', mediaType: 'application/pdf', size: 1024, sha256: 'd'.repeat(64), url: 'https://archive.example.test/docs/9' };
+  assert.equal((await call('POST', `/v1/claims/${id}/attachments`, { key: 'key-att-2', body: { ...body, sha256: 'xyz' } })).status, 422);
+  const res = await call('POST', `/v1/claims/${id}/attachments`, { key: 'key-att-3', body, token: 'clinic' });
+  assert.equal(res.status, 201);
+  const added = (await res.json()) as any;
+  assertSchema('ClaimAttachment', added);
+  const list = (await (await call('GET', `/v1/claims/${id}/attachments`)).json()) as any;
+  assert.deepEqual(list.items.map((a: any) => a.id), [added.id]);
+});

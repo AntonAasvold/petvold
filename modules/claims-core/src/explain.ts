@@ -63,6 +63,8 @@ export interface DecisionExplanation {
     inputHash: string;
     calculationModel: string | null;
     engineVersion: string | null;
+    /** The attachments the decision was made with (ADR 0036). Omitted for decisions made before they were kept. */
+    attachments?: { id: string; sha256: string }[];
   };
 }
 
@@ -106,6 +108,7 @@ export function explainDecision(decision: ClaimDecision, ctx: ExplainContext): D
       inputHash: a.inputHash,
       calculationModel: ctx.evidence?.calculationModel ?? null,
       engineVersion: ctx.evidence?.engineVersion ?? null,
+      ...(ctx.evidence?.attachments ? { attachments: ctx.evidence.attachments } : {}),
     },
   };
 }

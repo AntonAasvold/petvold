@@ -109,7 +109,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Lägen, återkallelse och avvisning
 - [x] Komplettering från kund eller klinik, med påminnelse, utgång och `basisCompleteAt` (FAL 7 kap. 1 §)
 - [x] Rättelse med revisioner
-- [ ] Bilagor som referenser till bolagets arkiv
+- [x] Bilagor som referenser till bolagets arkiv
 - [ ] Skadebesked och meddelanden om komplettering (ADR 0032)
 - Utbetalningen kommer med betalningsmodulen i M5.
 

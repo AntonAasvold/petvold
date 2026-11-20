@@ -353,6 +353,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/claims/{claimId}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The claim's attachments
+         * @description Requires the permission `claims:read`. Oldest first, also those a later one replaced.
+         */
+        get: operations["listClaimAttachments"];
+        put?: never;
+        /**
+         * Add a document to the claim, as a reference to the archive
+         * @description Requires the permission `claims:register`.
+         *
+         *     Petvold keeps the address in the insurer's archive and the checksum,
+         *     never the file (ADR 0036). An attachment never changes; a new one may
+         *     replace it (`replaces`). Every decision keeps the attachments in force
+         *     when it was made, by id and checksum, in its explanation's `basis`. They
+         *     are not input to the rules, so earlier decisions recalculate as before.
+         *     Not on a closed claim.
+         */
+        post: operations["addClaimAttachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/claims/{claimId}/revisions": {
         parameters: {
             query?: never;
@@ -3025,6 +3056,35 @@ export interface components {
             closedBy: string;
             closedAt: components["schemas"]["DateTime"];
         };
+        AttachmentInput: {
+            /** @enum {string} */
+            kind: "invoice" | "medical-record" | "referral" | "photo" | "other";
+            /** @description e.g. application/pdf */
+            mediaType: string;
+            /** @description In bytes. */
+            size: number;
+            sha256: string;
+            /** @description Where the file is in the insurer's archive: an https address or a URN. Petvold never stores the file. */
+            url: string;
+            /** @description The request for information it answers. */
+            informationRequestId?: string;
+            /** @description The attachment it replaces */
+            replaces?: string;
+        };
+        ClaimAttachment: {
+            id: string;
+            claimId: string;
+            /** @enum {string} */
+            kind: "invoice" | "medical-record" | "referral" | "photo" | "other";
+            mediaType: string;
+            size: number;
+            sha256: string;
+            url: string;
+            informationRequestId?: string;
+            replaces?: string;
+            addedBy: string;
+            addedAt: components["schemas"]["DateTime"];
+        };
         /** @description The new details. Fields left out keep their value. Policy, animal, market and currency cannot be corrected. */
         CorrectClaimRequest: {
             /** @enum {string} */
@@ -4793,6 +4853,11 @@ export interface components {
                 /** @description null for decisions made before evidence was stored. */
                 calculationModel: string | null;
                 engineVersion: string | null;
+                /** @description The claim's attachments in force when the decision was made, by id and checksum (ADR 0036). Not input to the rules. Omitted for decisions made before attachments were kept. */
+                attachments?: {
+                    id: string;
+                    sha256: string;
+                }[];
             };
         };
         ReviewRequestInput: {
@@ -5419,6 +5484,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CorrectionResult"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listClaimAttachments: {
+        parameters: {
+            query?: {
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                claimId: components["parameters"]["ClaimId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of attachments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ClaimAttachment"][];
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    addClaimAttachment: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                claimId: components["parameters"]["ClaimId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachmentInput"];
+            };
+        };
+        responses: {
+            /** @description Added */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimAttachment"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

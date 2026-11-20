@@ -62,7 +62,7 @@ test('the migrations have been applied', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
   assert.deepEqual(
     rows.map((r) => r.version),
-    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0022', '0023', '0024', '0025', '0026', '0027', '0028', '0029', '0030', '0031', '0032', '0033', '0034', '0035', '0036', '0037', '0038', '0039', '0040', '0041', '0042', '0043'],
+    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0022', '0023', '0024', '0025', '0026', '0027', '0028', '0029', '0030', '0031', '0032', '0033', '0034', '0035', '0036', '0037', '0038', '0039', '0040', '0041', '0042', '0043', '0044'],
   );
 });
 
@@ -351,5 +351,25 @@ test('corrections follow each other without gaps, are never changed, and a close
     );
     await db.query(`insert into claims.claim_closure (claim_id, id, kind, reason, closed_by, closed_at) values ('clm_t2', 'cls_t2', 'withdrawn', 'x', 'h', now())`);
     await rejects(insert, ['clm_t2', 2, 'cor_t3'], 'PVC01');
+  });
+});
+
+test('an attachment is never changed, replaces one on its own claim once, and a closed claim gets none (ADR 0036)', async () => {
+  await inTx(async () => {
+    await db.query('set local role claims_service');
+    await seedDecision();
+    const insert = `insert into claims.claim_attachment (id, claim_id, kind, media_type, size_bytes, sha256, url, replaces, added_by, added_at)
+                    values ($1, $2, 'invoice', 'application/pdf', 10, repeat('a', 64), 'https://archive.example.test/x', $3, 'h', now())`;
+    await db.query(insert, ['att_1', 'clm_t1', null]);
+    await db.query(insert, ['att_2', 'clm_t1', 'att_1']);
+    await rejects(insert, ['att_3', 'clm_t1', 'att_1'], '23505');
+    await rejects(`update claims.claim_attachment set url = 'https://elsewhere.test/x' where id = 'att_1'`, [], PERMISSION_DENIED);
+    await db.query(
+      `insert into claims.claim (id, claim_no, policy_id, animal_id, market, currency, channel, treatment_from, treatment_to, diagnosis_code)
+       values ('clm_t2', 'T-2', 'pol_t', 'ani_t', 'SE', 'SEK', 'customer', '2026-10-01', '2026-10-01', 'ORA-OTIT')`,
+    );
+    await rejects(insert, ['att_4', 'clm_t2', 'att_2'], RAISE_EXCEPTION);
+    await db.query(`insert into claims.claim_closure (claim_id, id, kind, reason, closed_by, closed_at) values ('clm_t2', 'cls_t2', 'withdrawn', 'x', 'h', now())`);
+    await rejects(insert, ['att_5', 'clm_t2', null], 'PVC01');
   });
 });
