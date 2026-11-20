@@ -110,3 +110,13 @@ test("a start date beyond the product's maxStartAheadDays is stopped, 90 days by
   assert.deepEqual(issueProblems({ ...f, startDate: next }, priced, today, now), ['policy.startTooFar']);
   assert.equal(latestStart({ ...priced, content: { ...priced.content, policy: { maxStartAheadDays: 0 } } }, today), today);
 });
+
+test('an animal insured on the start date: the policy, and the first day a new one may start', async () => {
+  const { insuredFrom } = await import('../src/policy-form.ts');
+  const policy = (id: string, validFrom: string, validTo: string, status = 'active', sysTo?: string) => ({ id, versions: [{ validFrom, validTo, status, ...(sysTo ? { sysTo } : {}) }] });
+  assert.equal(insuredFrom([], '2026-11-20'), null);
+  assert.deepEqual(insuredFrom([policy('pol_a', '2026-03-03', '2027-03-03')], '2026-11-20'), { policyId: 'pol_a', freeFrom: '2027-03-03' });
+  assert.equal(insuredFrom([policy('pol_a', '2026-03-03', '2027-03-03')], '2027-03-03'), null, 'free from the day it ends');
+  assert.equal(insuredFrom([policy('pol_a', '2026-03-03', '2027-03-03', 'cancelled')], '2026-11-20'), null);
+  assert.equal(insuredFrom([policy('pol_a', '2026-03-03', '2027-03-03', 'active', '2026-05-01T00:00:00Z')], '2026-11-20'), null, 'a superseded version does not count');
+});

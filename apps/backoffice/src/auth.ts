@@ -18,6 +18,8 @@ export interface Session {
 /** The dev server's tokens (modules/api/src/dev-server.ts). */
 export const DEV_TOKENS = [
   'dev-handler',
+  'dev-all',
+  'dev-all-2',
   'dev-approver',
   'dev-underwriter',
   'dev-seller',

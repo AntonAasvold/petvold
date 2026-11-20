@@ -332,6 +332,11 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Back office:** kortet "Bilagor" med länk till arkivet och formuläret för en ny bilaga.
   - 135 operationer, 520 tester, 152 databastester, 71 enhetstester och 37 flöden i back office.
 
+- dev-all och djur som redan är försäkrade, PR #112:
+  - **`dev-all` och `dev-all-2`** i dev-servern har alla roller i back office. Det är två personer, så att fyra ögon går att prova.
+  - **Formuläret för att teckna** visar när djuret redan är försäkrat, och från vilken dag en ny policy kan börja.
+  - 72 enhetstester och 38 flöden i back office.
+
 **Nästa steg**
 1. Skadeprocessen, steg 6: bilagor som referenser, skadebesked och meddelanden om komplettering, där påminnelsen blir ett meddelande till kunden.
 3. ADR om premier och betalningar (M5).

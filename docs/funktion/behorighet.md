@@ -215,6 +215,7 @@ Dev-servern har de här tokens:
 | Token | Roll | Omfång |
 | --- | --- | --- |
 | `dev-handler` | handläggare, beslutar ensam upp till 25 000 kr | alla marknader |
+| `dev-all`, `dev-all-2` | alla roller som används i back office, för att prova allt lokalt. Två personer, så att fyra ögon går att prova. Jobben, kliniken och kundkanalen ingår inte, eftersom de binder anroparen till egna ärenden. Finns bara i dev-servern, aldrig i standardrollerna. | alla marknader |
 | `dev-approver` | attestant | alla marknader |
 | `dev-admin` | administratör för roller och gränser | inga ärenden |
 | `dev-author` | skriver regelutkast | inga ärenden |

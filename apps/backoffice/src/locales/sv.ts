@@ -897,4 +897,6 @@ export const templates: Record<string, string> = {
   'attachment.badMediaType': 'Mediatypen är till exempel application/pdf.',
   'attachment.badSize': 'Storleken är ett antal byte.',
   'history.attachment': 'Bilaga',
+  'policy.insuredBy': 'Djuret är redan försäkrat genom',
+  'policy.freeFrom': 'En ny policy kan börja',
 };

@@ -64,6 +64,7 @@ En anonymiserad part kan inte ändras.
   - **sidan Policyer**, med ett tomt formulär
 
   Formuläret:
+  - **ett djur som redan är försäkrat** på startdagen ger en rad med policyn och den dag en ny policy kan börja, så att `409` inte blir en överraskning
   - välj en produktversion som säljs för djurets art på startdagen, med årsbelopp, självrisk och kampanjkod
   - **prisindikation** från tariffen (`POST /v1/quotes`): grundpris, premie per år och för termen. En produkt utan tariff får premien för en term angiven för hand.
   - **kundens godkännande:** kanal, tid, referens och, för en produkt med dokument, vilka dokument kunden fick se. Villkor och förköpsinformation krävs (ADR 0031, 0032).

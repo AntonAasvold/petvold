@@ -60,6 +60,11 @@ test("a policy is started from the customer's page, choosing among the customer'
   await expect(form.getByRole('textbox', { name: 'Animal id' })).toHaveValue('ani_sixten');
   await expect(form.getByRole('combobox', { name: 'Product version on sale' })).toBeVisible();
 
+  // An animal that is insured already says so, with the day a new policy may start.
+  await form.getByRole('textbox', { name: 'Animal id' }).fill('ani_bella');
+  await form.getByRole('textbox', { name: 'Animal id' }).press('Tab');
+  await expect(form.getByRole('status').filter({ hasText: 'The animal is insured already by' })).toContainText('pol_bella');
+
   // The policies page has the same way in.
   await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Policies' }).click();
   await page.getByRole('button', { name: 'Issue a policy' }).click();
