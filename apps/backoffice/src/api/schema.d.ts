@@ -384,6 +384,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/claims/{claimId}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a file to the claim's archive
+         * @description Requires the permission `claims:register`.
+         *
+         *     The file is kept in Petvold's archive (ADR 0038): at most 25 MB, a PDF,
+         *     JPEG, PNG or HEIC whose content matches the media type. Petvold
+         *     computes the checksum itself. The document belongs to the claim and
+         *     concerns the policyholder, so it is in the customer's list of
+         *     documents. It never changes. Open it with a link (`…/links`).
+         */
+        post: operations["uploadClaimDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/claims/{claimId}/revisions": {
         parameters: {
             query?: never;
@@ -529,6 +555,102 @@ export interface paths {
          *     and a new decision can be made on the claim.
          */
         post: operations["returnProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Documents of a customer, a claim or a policy
+         * @description Requires the permission `documents:read`, and for each document the right
+         *     to what it belongs to: `claims:read` for a claim, `policies:read` for a
+         *     policy and `notices:read` for a notice, within the caller's scope. A
+         *     customer's list (`partyId`) also needs `parties:read`. Newest first.
+         *     Give one of partyId, claimId and policyId.
+         */
+        get: operations["listDocuments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/documents/{documentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A document's record
+         * @description Requires the permission `documents:read` and the right to what the document belongs to. The file is opened with a link.
+         */
+        get: operations["getDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/documents/{documentId}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The document's links, and when each was opened
+         * @description Requires the permission `documents:read` and the right to what the document belongs to. Newest first. Who has seen the document (GDPR art. 15).
+         */
+        get: operations["listDocumentLinks"];
+        put?: never;
+        /**
+         * A link to the document that expires
+         * @description Requires the permission `documents:read` and the right to what the
+         *     document belongs to. A link for the customer (`audience: customer`) also
+         *     needs `documents:share`.
+         *
+         *     The address is `{base}/d/{token}`: a random id and a signature, naming
+         *     neither the document nor the customer (ADR 0038). It works until
+         *     `expiresAt`: for a person here 15 minutes, for the customer 60 seconds
+         *     to 7 days (default 15 minutes). Every opening is logged, and a link can
+         *     be revoked. An erased document gets no links (410).
+         */
+        post: operations["createDocumentLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/documents/{documentId}/links/{linkId}/revocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke a link
+         * @description Requires the permission `documents:share` and the right to what the document belongs to. The link stops working at once.
+         */
+        post: operations["revokeDocumentLink"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3056,6 +3178,65 @@ export interface components {
             closedBy: string;
             closedAt: components["schemas"]["DateTime"];
         };
+        /** @description No fields. */
+        Empty: Record<string, never>;
+        DocumentUpload: {
+            /**
+             * Format: binary
+             * @description The file, at most 25 MB: application/pdf, image/jpeg, image/png or image/heic. Its own content type in the part.
+             */
+            file: string;
+        };
+        /** @description A file in Petvold's archive (ADR 0038). The record; the file is opened with a link. */
+        Document: {
+            id: string;
+            /** @enum {string} */
+            kind: "uploaded" | "generated";
+            mediaType: string;
+            size: number;
+            sha256: string;
+            filename?: string;
+            /** @description What it belongs to. Access to the document follows it. */
+            owner: {
+                claimId?: string;
+                policyId?: string;
+                noticeId?: string;
+            };
+            /** @description The parties it concerns */
+            partyIds: string[];
+            market: components["schemas"]["Market"];
+            createdBy: string;
+            createdAt: components["schemas"]["DateTime"];
+            /** @description The file was removed by retention; the record stays. */
+            erasedAt?: components["schemas"]["DateTime"];
+        };
+        DocumentLinkRequest: {
+            /**
+             * @description internal: a person here, 15 minutes. customer: given to the customer, needs documents:share.
+             * @enum {string}
+             */
+            audience: "internal" | "customer";
+            /** @description How long it works. Omitted: 15 minutes. A link for a person here works 15 minutes at most. */
+            seconds?: number;
+        };
+        DocumentLink: {
+            id: string;
+            documentId: string;
+            /** @enum {string} */
+            audience: "internal" | "customer";
+            createdBy: string;
+            createdAt: components["schemas"]["DateTime"];
+            expiresAt: components["schemas"]["DateTime"];
+            revokedBy?: string;
+            revokedAt?: components["schemas"]["DateTime"];
+            /** @description When it was opened */
+            accesses: components["schemas"]["DateTime"][];
+        };
+        DocumentLinkCreated: {
+            link: components["schemas"]["DocumentLink"];
+            /** @description The address to open, {base}/d/{token}. Not stored by Petvold: create a new link when it is needed again. */
+            url: string;
+        };
         AttachmentInput: {
             /** @enum {string} */
             kind: "invoice" | "medical-record" | "referral" | "photo" | "other";
@@ -4925,6 +5106,15 @@ export interface components {
         };
     };
     responses: {
+        /** @description It is no longer there, e.g. an erased document */
+        Gone: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description No valid token */
         Unauthenticated: {
             headers: {
@@ -5001,6 +5191,8 @@ export interface components {
         /** @description The decision's sequence number on the claim, 1 for the first. */
         Seq: number;
         InformationRequestId: string;
+        DocumentId: string;
+        DocumentLinkId: string;
         IdempotencyKey: string;
     };
     requestBodies: never;
@@ -5567,6 +5759,39 @@ export interface operations {
             422: components["responses"]["Unprocessable"];
         };
     };
+    uploadClaimDocument: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                claimId: components["parameters"]["ClaimId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["DocumentUpload"];
+            };
+        };
+        responses: {
+            /** @description Stored */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Document"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
     listClaimRevisions: {
         parameters: {
             query?: {
@@ -5801,6 +6026,165 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["Unprocessable"];
+        };
+    };
+    listDocuments: {
+        parameters: {
+            query?: {
+                partyId?: string;
+                claimId?: string;
+                policyId?: string;
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of documents */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Document"][];
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: components["parameters"]["DocumentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Document"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listDocumentLinks: {
+        parameters: {
+            query?: {
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                documentId: components["parameters"]["DocumentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of links */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["DocumentLink"][];
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    createDocumentLink: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                documentId: components["parameters"]["DocumentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The link */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentLinkCreated"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            410: components["responses"]["Gone"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    revokeDocumentLink: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                documentId: components["parameters"]["DocumentId"];
+                linkId: components["parameters"]["DocumentLinkId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Empty"];
+            };
+        };
+        responses: {
+            /** @description Revoked */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentLink"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getMe: {

@@ -4,7 +4,8 @@
  * server.ts there.
  *
  * Storage: each module in Postgres when its database URL is in .env (after
- * `npm run dev:up`), else in memory.
+ * `npm run dev:up`), else in memory. Documents' files in SeaweedFS when
+ * PETVOLD_DOCUMENTS_BUCKET is set (ADR 0038), else in memory.
  *
  * Tokens: 'dev-handler' (claims handler), 'dev-approver' (approver), 'dev-admin'
  * (roles and limits), 'dev-author' and 'dev-publisher' (rule sets), 'dev-catalog' and 'dev-catalog-publisher' (reference data and products), 'dev-registrar' (animals and parties), 'dev-privacy' and 'dev-privacy-2' (erasure), 'dev-retention-job' (retention run), 'dev-seller' (policies), 'dev-underwriter' (manual prices), 'dev-documents' (the document system), 'dev-communications' (notice settings), 'dev-integration' (webhooks), 'dev-operations' and 'dev-operations-2' (runs, four eyes), 'dev-all' and 'dev-all-2' (every role in the back office, two people for four eyes), 'dev-renewal-job' (renewal run), 'dev-clinic'
@@ -14,7 +15,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { serve } from '@hono/node-server';
-import { compose, databasesFromEnv, webhooksFromEnv } from './composition.ts';
+import { compose, databasesFromEnv, documentsFromEnv, webhooksFromEnv } from './composition.ts';
 import { seedSampleData, SAMPLE_RULE_SERIES } from './seed.ts';
 import { corsOriginsFromEnv, createApp, type Principal } from './index.ts';
 import { docsPage } from './docs.ts';
@@ -39,15 +40,19 @@ const clock = { now: () => new Date().toISOString() };
 // A fixed key for development only, so stored webhook secrets survive a restart. Never use it in production.
 const DEV_WEBHOOK_KEY = Buffer.alloc(32, 'petvold-dev').toString('base64');
 const webhookEnv = webhooksFromEnv(process.env);
+// The same for the documents' links: a link made before a restart still opens.
+const DEV_DOCUMENT_KEY = Buffer.alloc(32, 'petvold-dev-documents').toString('base64');
+const documentEnv = documentsFromEnv(process.env);
 const inst = await compose({
   databases: databasesFromEnv(process.env),
   engineVersion: engineVersion(),
   clock,
   log: (l) => console.log(l),
   webhooks: { key: webhookEnv.key ?? DEV_WEBHOOK_KEY, allowHosts: webhookEnv.allowHosts.length ? webhookEnv.allowHosts : ['localhost', '127.0.0.1'] },
+  documents: { ...documentEnv, key: documentEnv.key ?? DEV_DOCUMENT_KEY, publicBaseUrl: documentEnv.publicBaseUrl ?? `http://localhost:${process.env.PORT ?? 8787}` },
 });
 await inst.ping().catch((err: Error) => {
-  console.error(`Cannot reach Postgres (${err.message}). Run npm run dev:up, or remove the database URLs from .env to run in memory.`);
+  console.error(`Cannot reach Postgres or the document archive (${err.message}). Run npm run dev:up, or remove the database URLs and PETVOLD_DOCUMENTS_BUCKET from .env to run in memory.`);
   process.exit(1);
 });
 await seedSampleData(inst, clock);

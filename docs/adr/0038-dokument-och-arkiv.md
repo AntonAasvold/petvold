@@ -41,7 +41,7 @@ Det behövs alltså ett sätt att göra PDF:er från Petvolds egna mallar, och e
    - Mallarna finns i repot och versionsnumreras med Petvold. Bolagets egna mallar kan läggas till senare med samma livscykel som produkter och regler (utkast, granskning med fyra ögon, publicering).
 
 4. **Ett arkiv med objektlagring.**
-   - **Lagringen talar S3.** I drift är det bolagets lagring, till exempel en S3-tjänst i EU eller Ceph i egen drift. Lokalt och i CI är det [MinIO](https://min.io) i docker compose. MinIO har licensen AGPL v3 och används bara som en separat tjänst i utvecklingsmiljön, aldrig ihop med Petvolds kod.
+   - **Lagringen talar S3.** I drift är det bolagets lagring, till exempel en S3-tjänst i EU eller Ceph i egen drift. Lokalt och i CI är det [SeaweedFS](https://github.com/seaweedfs/seaweedfs) (Apache 2.0) i docker compose. MinIO var först föreslaget, men ger inte längre ut färdiga images för den fria versionen och har licensen AGPL v3.
    - **Bakom en port** (`DocumentStore`), med lagring i minnet för tester.
    - **Petvold sparar om varje dokument** i schemat `documents`:
      - id (`doc_…`), typ (genererat eller uppladdat), mediatyp, storlek och sha256
@@ -93,7 +93,7 @@ Det behövs alltså ett sätt att göra PDF:er från Petvolds egna mallar, och e
    - I kundens lista syns ett gallrat dokument med typ och datum, men det går inte att öppna.
 
 10. **Ordning,** med kontraktet först och en PR per steg:
-    1. modulen `documents` med arkivet: porten, MinIO i docker compose, lagringen i minnet, uppladdning med kopplingen till kunden, och länkar med logg och spärr
+    1. modulen `documents` med arkivet: porten, SeaweedFS i docker compose, lagringen i minnet, uppladdning med kopplingen till kunden, och länkar med logg och spärr
     2. uppladdning av bilagor från back office med `urn:petvold:doc:`, och kortet "Dokument" på kundens sida, med meddelanden och bilagor i bolagets arkiv
     3. Gotenberg i docker compose, porten `PdfRenderer` och de första mallarna: skadebesked och försäkringsbrev
     4. meddelanden som PDF med inställningen `petvold` eller `insurer`
@@ -121,7 +121,7 @@ Det behövs alltså ett sätt att göra PDF:er från Petvolds egna mallar, och e
 
 - [Gotenberg](https://gotenberg.dev): dokumentation och licens (MIT), med Chromium och LibreOffice.
 - [W3C TAG: Good Practices for Capability URLs](https://w3ctag.github.io/capability-urls/): risker med hemliga adresser och råd om att de ska sluta gälla.
-- [Amazon S3: presigned URLs](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html), och [MinIO](https://min.io) (AGPL v3) som S3-kompatibel lagring för utveckling.
+- [Amazon S3: presigned URLs](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html), och [SeaweedFS](https://github.com/seaweedfs/seaweedfs) (Apache 2.0) som S3-kompatibel lagring för utveckling.
 - ISO 19005 (PDF/A) och ISO 14289 (PDF/UA).
 - [OWASP: Server Side Request Forgery Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).
 - [Dataskyddsförordningen (EU) 2016/679](https://eur-lex.europa.eu/eli/reg/2016/679/oj), artikel 5.1 e (lagringsminimering), 15 (rätt till tillgång) och 32 (säkerhet).

@@ -16,7 +16,7 @@ test('missing default roles and permissions are added; nothing is removed and li
   assert.equal(sync.roles.clinic!.bindsTo, 'clinic');
   assert.deepEqual(sync.roles.handler!.permissions.slice(0, 2), ['claims:read', 'claims:decide']);
   assert.ok(DEFAULT_ROLES.handler!.permissions.every((p) => sync.roles.handler!.permissions.includes(p)));
-  assert.deepEqual(sync.addedPermissions.find((a) => a.role === 'clinic')?.permissions, ['claims:read', 'claims:preview', 'catalog:read', 'animals:lookup']);
+  assert.deepEqual(sync.addedPermissions.find((a) => a.role === 'clinic')?.permissions, ['claims:read', 'claims:preview', 'catalog:read', 'animals:lookup', 'documents:read']);
   assert.ok(sync.addedRoles.includes('privacy-officer'));
   assert.ok(!sync.addedRoles.includes('handler'));
   assert.deepEqual(stored.handler!.permissions, ['claims:read', 'claims:decide']); // input untouched

@@ -1,0 +1,17 @@
+{
+  "name": "@petvold/documents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./postgres": "./src/postgres.ts",
+    "./s3": "./src/s3.ts",
+    "./test-suites/document-store": "./test-suites/document-store.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1162.0",
+    "@petvold/common": "^0.1.0",
+    "pg": "^8.23.1"
+  }
+}

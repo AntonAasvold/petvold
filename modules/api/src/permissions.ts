@@ -94,6 +94,13 @@ export const PERMISSIONS = [
   'access:read',
   /** Change the role settings, except roles the caller holds (ADR 0020). */
   'access:manage',
+  /**
+   * Read documents and open them through a short link (ADR 0038). Each document
+   * also needs the right to what it belongs to: a claim, a policy or a notice.
+   */
+  'documents:read',
+  /** Give the customer a link to a document, and revoke a link (ADR 0038). */
+  'documents:share',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -147,6 +154,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
       'claims:request-information',
       'claims:preview',
       'limits:read',
+      'documents:read',
       'catalog:read',
       'animals:read',
       'parties:read',
@@ -156,8 +164,8 @@ export const DEFAULT_ROLES: RoleDefinitions = {
     // SEK 25,000 and EUR 2,500 alone; above that, someone with claims:approve approves.
     decisionLimits: { SEK: 2_500_000, EUR: 250_000 },
   },
-  approver: { permissions: ['claims:read', 'claims:approve', 'limits:read', 'catalog:read', 'animals:read', 'parties:read', 'policies:read'] },
-  clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview', 'catalog:read', 'animals:lookup'], bindsTo: 'clinic' },
+  approver: { permissions: ['claims:read', 'claims:approve', 'limits:read', 'catalog:read', 'animals:read', 'parties:read', 'policies:read', 'documents:read'] },
+  clinic: { permissions: ['claims:register', 'claims:read', 'claims:preview', 'catalog:read', 'animals:lookup', 'documents:read'], bindsTo: 'clinic' },
   'reassessment-job': { permissions: ['claims:read', 'claims:reassess'] },
   /** Writes rule set drafts and submits them for review. */
   'rules-author': { permissions: ['rules:read', 'rules:write', 'rules:simulate', 'catalog:read'] },
@@ -168,24 +176,24 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Registers persons and organizations and keeps their details up to date, e.g. customer service. */
   'party-registrar': { permissions: ['parties:read', 'parties:write'] },
   /** Issues policies, e.g. the insurer's sales channel or customer service (ADR 0029). */
-  'policy-registrar': { permissions: ['policies:read', 'policies:write', 'policies:quote', 'animals:read', 'parties:read', 'catalog:read', 'notices:read'] },
+  'policy-registrar': { permissions: ['policies:read', 'policies:write', 'policies:quote', 'animals:read', 'parties:read', 'catalog:read', 'notices:read', 'documents:read'] },
   /** The scheduled renewal run and expiry of transfers not accepted in time. */
   'renewal-job': { permissions: ['policies:renew'] },
   /** Decides on applications and prices that need a person, e.g. a manual premium (ADR 0030). */
   underwriter: {
-    permissions: ['policies:read', 'policies:write', 'policies:quote', 'policies:price-override', 'policies:underwrite', 'animals:read', 'parties:read', 'catalog:read', 'notices:read'],
+    permissions: ['policies:read', 'policies:write', 'policies:quote', 'policies:price-override', 'policies:underwrite', 'animals:read', 'parties:read', 'catalog:read', 'notices:read', 'documents:read'],
   },
   /**
    * The insurer's document system (ADR 0032): reads the notices due, makes and sends
    * the documents with the recipient's name and address, and reports each delivery.
    */
-  'document-service': { permissions: ['notices:read', 'notices:deliver', 'parties:read', 'policies:read', 'catalog:read'] },
+  'document-service': { permissions: ['notices:read', 'notices:deliver', 'parties:read', 'policies:read', 'catalog:read', 'documents:read', 'documents:share'] },
   /** Connects the insurer's systems to Petvold's events with webhooks (ADR 0033). */
   'integration-admin': { permissions: ['webhooks:read', 'webhooks:manage'] },
   /** Writes the insurer's texts in notices and their settings, e.g. compliance or customer communications. */
   'communications-manager': { permissions: ['notices:read', 'notices:configure'] },
   /** Handles erasure and restriction of personal data (ADR 0028). Two people are needed to anonymize. */
-  'privacy-officer': { permissions: ['parties:read', 'parties:privacy', 'parties:erase', 'parties:retention'] },
+  'privacy-officer': { permissions: ['parties:read', 'parties:privacy', 'parties:erase', 'parties:retention', 'documents:read'] },
   /** The scheduled retention run. Only asks; a privacy officer approves each request. */
   'retention-job': { permissions: ['parties:retention'] },
   /** Maintains reference data and writes product drafts. */
@@ -197,7 +205,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Watches and steers Petvold's runs and the relay (ADR 0037), e.g. the operations team. */
   operations: { permissions: ['jobs:read', 'jobs:operate', 'jobs:configure', 'webhooks:read'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */
-  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read'], bindsTo: 'policies' },
+  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read', 'documents:read', 'documents:share'], bindsTo: 'policies' },
 };
 
 export function isPermission(value: unknown): value is Permission {

@@ -15,6 +15,11 @@ npm start            # node --import tsx modules/api/src/server.ts
 | Variabel | Krävs | Betyder |
 | --- | --- | --- |
 | `CLAIMS_DATABASE_URL`, `ACCESS_DATABASE_URL`, `DECISIONING_DATABASE_URL`, `CATALOG_DATABASE_URL`, `ANIMALS_DATABASE_URL`, `PARTIES_DATABASE_URL`, `POLICIES_DATABASE_URL`, `COMMUNICATIONS_DATABASE_URL`, `WEBHOOKS_DATABASE_URL`, `SCHEDULING_DATABASE_URL` | Ja, alla | En databasadress per modul, med modulens egen tjänsteroll (ADR 0001) |
+| `DOCUMENTS_DATABASE_URL` | Ja | Dokumentens uppgifter och länkar, med rollen `documents_service` (ADR 0038) |
+| `PETVOLD_DOCUMENT_KEY` | Ja | Minst 32 slumpade byte i base64, till exempel från `openssl rand -base64 32`. Signerar dokumentens länkar. Byts den slutar alla länkar att fungera, men dokumenten finns kvar. |
+| `PETVOLD_PUBLIC_URL` | Ja | Var länkarna öppnas, till exempel `https://petvold.bolaget.se`. Länken blir `{adress}/d/{token}`. |
+| `PETVOLD_DOCUMENTS_BUCKET` | Ja | Arkivets hink i bolagets S3-lagring. Kryptering i vila och versionshantering ställs in i lagringen. |
+| `PETVOLD_DOCUMENTS_S3_ENDPOINT`, `PETVOLD_DOCUMENTS_S3_REGION`, `PETVOLD_DOCUMENTS_S3_ACCESS_KEY`, `PETVOLD_DOCUMENTS_S3_SECRET_KEY` | Nej | Adressen till en S3-kompatibel lagring som inte är AWS, regionen (förval `eu-north-1`) och nycklarna. Utan nycklar används AWS SDK:s vanliga sätt, till exempel en roll. |
 | `PETVOLD_VERSION` | Ja | Versionen som sparas med varje beslut (ADR 0018) |
 | `PETVOLD_CLAIM_NUMBER_PREFIX` | Nej | Skadenumrets prefix per marknad, till exempel `SE=S,NO=N` (ADR 0036). Förval `S`. Ett prefix är versaler och siffror, högst åtta tecken. Ett felaktigt värde stoppar starten. |
 | `PETVOLD_AUTH_ISSUER` | Ja | Utfärdaren av tokens, till exempel bolagets identitetstjänst |
@@ -69,7 +74,7 @@ Varje modul skriver sina händelser i en egen outbox i samma transaktion som än
   - `{"status":"degraded"}` när det finns döda bokstäver
   - `relay` är `leading` på den server som är reläet och `standby` på de andra
   - `jobs` listar körningar som misslyckats, är mer än en timme sena eller är pausade, och de gör också `status` till `degraded` (ADR 0037)
-  - `503` när en databas inte svarar
+  - `503` när en databas eller dokumentarkivet inte svarar
 - **SIGTERM och SIGINT:** servern slutar ta emot anrop, stoppar reläet efter pågående runda och stänger databasanslutningarna.
 
 ## Schemalagda körningar

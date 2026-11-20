@@ -25,5 +25,23 @@ services:
       timeout: 3s
       retries: 30
 
+  # The document archive (ADR 0038): S3 on port 8333. SeaweedFS (Apache 2.0),
+  # for development and CI only; in production the insurer's S3-compatible storage.
+  # The bucket is made at start, and the access keys are in dev/seaweedfs/s3.json.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.52
+    command: mini -dir=/data -s3.config=/etc/seaweedfs/s3.json -bucket=petvold-documents
+    ports:
+      - "127.0.0.1:${PETVOLD_S3_PORT:-8333}:8333"
+    volumes:
+      - s3data:/data
+      - ./dev/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/healthz || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
 volumes:
   pgdata:
+  s3data:
