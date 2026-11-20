@@ -232,6 +232,11 @@ export async function claimsEventForWebhooks(
       const k = e.closure;
       return { ...base, data: { closureId: k.id, ...(k.reasonCode ? { reasonCode: k.reasonCode } : {}), ...(k.duplicateOf ? { duplicateOf: k.duplicateOf } : {}) } };
     }
+    case 'claim.corrected': {
+      // Which fields changed, not the new values or the reason: they stay inside Petvold.
+      const k = e.correction;
+      return { ...base, data: { correctionId: k.id, revision: k.revision, fields: k.fields, reopens: k.reopens } };
+    }
     case 'claim.information_requested':
     case 'claim.information_reminded':
     case 'claim.information_received':

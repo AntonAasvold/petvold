@@ -62,7 +62,7 @@ test('the migrations have been applied', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
   assert.deepEqual(
     rows.map((r) => r.version),
-    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0022', '0023', '0024', '0025', '0026', '0027', '0028', '0029', '0030', '0031', '0032', '0033', '0034', '0035', '0036', '0037', '0038', '0039', '0040', '0041', '0042'],
+    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0022', '0023', '0024', '0025', '0026', '0027', '0028', '0029', '0030', '0031', '0032', '0033', '0034', '0035', '0036', '0037', '0038', '0039', '0040', '0041', '0042', '0043'],
   );
 });
 
@@ -330,5 +330,26 @@ test('a request for information keeps what was asked, moves only forward, and is
     );
     await db.query(`insert into claims.claim_closure (claim_id, id, kind, reason, closed_by, closed_at) values ('clm_t2', 'cls_t2', 'withdrawn', 'x', 'h', now())`);
     await rejects(insert.replace(`'clm_t1'`, `'clm_t2'`), ['inf_t2', ['other'], null], 'PVC01');
+  });
+});
+
+test('corrections follow each other without gaps, are never changed, and a closed claim is not corrected (ADR 0036)', async () => {
+  await inTx(async () => {
+    await db.query('set local role claims_service');
+    await seedDecision();
+    const insert = `insert into claims.claim_correction (claim_id, revision, id, data, fields, reason, corrected_by, corrected_at, reopens)
+                    values ($1, $2, $3, '{}', array['lines'], 'Wrong amount', 'h', now(), false)`;
+    await rejects(insert, ['clm_t1', 3, 'cor_gap'], RAISE_EXCEPTION);
+    await rejects(insert, ['clm_t1', 1, 'cor_one'], CHECK_VIOLATION);
+    await db.query(insert, ['clm_t1', 2, 'cor_t1']);
+    await db.query(insert, ['clm_t1', 3, 'cor_t2']);
+    await rejects(`update claims.claim_correction set reason = 'x' where id = 'cor_t1'`, [], PERMISSION_DENIED);
+    await rejects(`delete from claims.claim_correction where id = 'cor_t1'`, [], PERMISSION_DENIED);
+    await db.query(
+      `insert into claims.claim (id, claim_no, policy_id, animal_id, market, currency, channel, treatment_from, treatment_to, diagnosis_code)
+       values ('clm_t2', 'T-2', 'pol_t', 'ani_t', 'SE', 'SEK', 'customer', '2026-10-01', '2026-10-01', 'ORA-OTIT')`,
+    );
+    await db.query(`insert into claims.claim_closure (claim_id, id, kind, reason, closed_by, closed_at) values ('clm_t2', 'cls_t2', 'withdrawn', 'x', 'h', now())`);
+    await rejects(insert, ['clm_t2', 2, 'cor_t3'], 'PVC01');
   });
 });

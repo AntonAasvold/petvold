@@ -21,7 +21,7 @@ import { getLocale } from '../i18n.ts';
 import { navigate } from '../router.ts';
 import { partyName, versionOn } from '../policy-logic.ts';
 import { pvComponents } from '../styles/pv-components.ts';
-import { channelLabel, claimStatusLabel, dismissalLabel, informationItemLabel, outcomeLabel, recipientLabel, ruleStatusLabel, statusVariant } from './labels.ts';
+import { channelLabel, claimStatusLabel, correctionFieldLabel, dismissalLabel, informationItemLabel, outcomeLabel, recipientLabel, ruleStatusLabel, statusVariant } from './labels.ts';
 import '../components/claim-actions.ts';
 import '../components/claim-information.ts';
 import { daysLeftToPay, decidedLate } from '../information-logic.ts';
@@ -30,7 +30,7 @@ import '../components/event-log.ts';
 import type { LogEntry } from '../components/event-log.ts';
 import { claimHistory, type HistoryEvent } from '../history.ts';
 import '../components/explanation-dialog.ts';
-import { claimStatus } from '../decide.ts';
+import { claimStatus, mayCorrect } from '../decide.ts';
 import type { Me } from '../permissions.ts';
 
 type Claim = components['schemas']['Claim'];
@@ -42,6 +42,7 @@ type RuleResult = components['schemas']['RuleResult'];
 type Proposal = components['schemas']['DecisionProposal'];
 type ReviewRequest = components['schemas']['ReviewRequest'];
 type InformationRequest = components['schemas']['InformationRequest'];
+type ClaimRevision = components['schemas']['ClaimRevision'];
 
 @customElement('pv-claim-detail')
 export class ClaimDetail extends LitElement {
@@ -51,6 +52,7 @@ export class ClaimDetail extends LitElement {
   @state() private proposals: Proposal[] = [];
   @state() private reviews: ReviewRequest[] = [];
   @state() private information: InformationRequest[] = [];
+  @state() private revisions: ClaimRevision[] = [];
   @state() private claim: Claim | null = null;
   @state() private assessment: Assessment | null = null;
   @state() private decisions: Decision[] = [];
@@ -178,13 +180,14 @@ export class ClaimDetail extends LitElement {
     this.problem = null;
     const path = { params: { path: { claimId: this.claimId } } };
     try {
-      const [claim, assessment, decisions, proposals, reviews, information] = await Promise.all([
+      const [claim, assessment, decisions, proposals, reviews, information, revisions] = await Promise.all([
         unwrap(this.api.GET('/v1/claims/{claimId}', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/assessment', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/decisions', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/proposals', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/review-requests', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/information-requests', path)),
+        unwrap(this.api.GET('/v1/claims/{claimId}/revisions', path)),
       ]);
       this.claim = claim;
       this.assessment = assessment;
@@ -192,6 +195,7 @@ export class ClaimDetail extends LitElement {
       this.proposals = proposals.items;
       this.reviews = reviews.items;
       this.information = information.items;
+      this.revisions = revisions.items;
     } catch (e) {
       this.problem = e as Problem;
       return;
@@ -243,6 +247,7 @@ export class ClaimDetail extends LitElement {
       openInformation: this.information.filter((r) => r.status === 'open').length,
       openReviews: this.reviews.filter((r) => !r.closedAt).length,
       decisions: this.decisions.length,
+      reopened: !!c.reopened,
     });
     const holder = partyName(this.holder);
     return html`
@@ -254,6 +259,12 @@ export class ClaimDetail extends LitElement {
         </button>
         <span class="sr" role="status">${this.copied ? msg('Copied', { id: 'common.copied' }) : ''}</span>
         <span class="pv-badge ${status === 'decided' || c.closure ? 'pv-badge--solid' : 'pv-badge--pending'}">${claimStatusLabel(status)}</span>
+        ${c.revision > 1 ? html`<span class="pv-badge pv-badge--id">${msg('Revision', { id: 'correct.revision' })} ${c.revision}</span>` : nothing}
+        ${mayCorrect(this.me, status)
+          ? html`<wa-button class="correct" size="small" appearance="outlined" @click=${() => navigate(`/claims/${encodeURIComponent(c.id)}/correct`)}
+              ><wa-icon slot="start" name="pen"></wa-icon>${msg('Correct', { id: 'correct.crumb' })}</wa-button
+            >`
+          : nothing}
       </div>
       <ul class="facts">
         <li>${msg('Animal', { id: 'claim.animal' })}: <strong>${this.animal ? `${this.animal.name}` : c.animalId}</strong></li>
@@ -304,6 +315,9 @@ export class ClaimDetail extends LitElement {
           </section>
         </div>
         <div class="side">
+          ${c.reopened
+            ? html`<p class="pv-note">${msg('The claim was corrected after the decision and waits for a new decision by a person.', { id: 'correct.reopened' })}</p>`
+            : nothing}
           <pv-claim-actions
             .api=${this.api}
             .me=${this.me}
@@ -336,6 +350,7 @@ export class ClaimDetail extends LitElement {
               proposals: this.proposals,
               reviews: this.reviews,
               information: this.information,
+              corrections: this.revisions.flatMap((r) => (r.correction ? [r.correction] : [])),
               ...(c.closure ? { closure: c.closure } : {}),
             }).map((e) => this.logEntry(e))}
           ></pv-event-log>
@@ -386,7 +401,7 @@ export class ClaimDetail extends LitElement {
           state: 'solid',
           badge: `${msg('Decision', { id: 'decide.action' })} #${e.seq}`,
           line: `${outcomeLabel(e.outcome)} · ${money(e.payout)}${e.reason ? ` · ${e.reason}` : ''}`,
-          status: `${e.type} · ${e.automated ? msg('Automatic', { id: 'claim.automated' }) : e.by}${decidedLate(e.at, this.claim!.basisCompleteAt) ? ` · ${msg('More than 30 days after the basis was complete', { id: 'claim.decidedLate' })}` : ''}`,
+          status: `${e.type} · ${e.automated ? msg('Automatic', { id: 'claim.automated' }) : e.by}${e.revision > 1 ? ` · ${msg('Revision', { id: 'correct.revision' })} ${e.revision}` : ''}${decidedLate(e.at, this.claim!.basisCompleteAt) ? ` · ${msg('More than 30 days after the basis was complete', { id: 'claim.decidedLate' })}` : ''}`,
           action: html`<button type="button" aria-label=${`${msg('Why?', { id: 'claim.why' })} #${e.seq}`} @click=${() => this.explain(e.seq)}>${msg('Why?', { id: 'claim.why' })}</button>`,
         };
       case 'proposal.created':
@@ -408,6 +423,15 @@ export class ClaimDetail extends LitElement {
           state: 'solid',
           badge: claimStatusLabel(e.type === 'claim.withdrawn' ? 'withdrawn' : 'dismissed'),
           line: `${e.reasonCode ? `${dismissalLabel(e.reasonCode)}${e.duplicateOf ? ` (${e.duplicateOf})` : ''} · ` : ''}${e.reason}`,
+          status: `${e.type} · ${e.by}`,
+        };
+      case 'claim.corrected':
+        return {
+          key: `${e.type}:${e.id}`,
+          at: e.at,
+          state: 'solid',
+          badge: `${msg('Corrected', { id: 'history.corrected' })} · ${msg('Revision', { id: 'correct.revision' })} ${e.revision}`,
+          line: `${e.fields.map((f) => correctionFieldLabel(f)).join(', ')} · ${e.reason}${e.reopens ? ` · ${msg('Reopened', { id: 'history.reopened' })}` : ''}`,
           status: `${e.type} · ${e.by}`,
         };
       case 'claim.information_requested':

@@ -1,5 +1,7 @@
 /**
  * <pv-claim-register>: a claims handler registers a claim (POST /v1/claims),
+ * or with `claim-id` corrects one (POST /v1/claims/{id}/corrections, ADR 0036):
+ * the same form, filled in from the claim, with the policy fixed and a reason.
  * for example one the customer sent on paper. The policy gives market,
  * currency and animal. A preview (POST /v1/claim-previews) shows the
  * assessment before anything is stored; it sits beside the form, as the
@@ -14,10 +16,11 @@ import '@awesome.me/webawesome/dist/components/input/input.js';
 import '@awesome.me/webawesome/dist/components/select/select.js';
 import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
+import '@awesome.me/webawesome/dist/components/textarea/textarea.js';
 import type { Api } from '../api/client.ts';
 import type { components } from '../api/schema';
 import { act, type Notice } from '../actions.ts';
-import { LINE_CATEGORIES, claimFormProblems, emptyLine, linesTotal, toClaimInput, type ClaimForm, type LineForm, type PolicyFacts } from '../claim-form.ts';
+import { LINE_CATEGORIES, claimFormProblems, correctionBody, emptyLine, formFromClaim, linesTotal, newLineId, toClaimInput, type ClaimForm, type LineForm, type PolicyFacts } from '../claim-form.ts';
 import { IdempotencyKeys } from '../decide.ts';
 import { formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
@@ -34,8 +37,14 @@ const today = () => new Date().toISOString().slice(0, 10);
 @customElement('pv-claim-register')
 export class ClaimRegister extends LitElement {
   @property({ attribute: false }) api!: Api;
+  /** Set to correct this claim instead of registering a new one. */
+  @property({ attribute: 'claim-id' }) claimId = '';
 
   @state() private policyId = '';
+  /** In a correction: the claim's number and revision, and why it is corrected. */
+  @state() private claimNo = '';
+  @state() private revision = 0;
+  @state() private reason = '';
   @state() private policy: (PolicyFacts & { status?: string; animalName?: string; product?: string }) | null = null;
   @state() private policyError = '';
   @state() private form: ClaimForm = {
@@ -157,12 +166,32 @@ export class ClaimRegister extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    if (this.claimId) {
+      void this.loadClaim();
+      return;
+    }
     // From a policy's page: /claims/new?policy=pol_…
     const id = new URLSearchParams(location.search).get('policy');
     if (id) {
       this.policyId = id;
       void this.loadPolicy();
     }
+  }
+
+  /** A correction: the form from the claim as it stands, with its policy fixed. */
+  private async loadClaim() {
+    const { data } = await this.api.GET('/v1/claims/{claimId}', { params: { path: { claimId: this.claimId } } }).catch(() => ({ data: undefined }));
+    if (!data) {
+      this.policyError = msg('Does not exist, or lies outside what you may see.', { id: 'common.notFound' });
+      return;
+    }
+    this.claimNo = data.claimNo;
+    this.revision = data.revision;
+    this.form = formFromClaim(data);
+    this.policyId = data.policyId;
+    await this.loadPolicy();
+    // The claim's currency, whatever the policy's current term says.
+    this.policy = { ...(this.policy ?? { id: data.policyId, market: data.market, animalId: data.animalId }), currency: data.currency };
   }
 
   private async loadPolicy() {
@@ -205,7 +234,27 @@ export class ClaimRegister extends LitElement {
 
   private check(): boolean {
     this.shown = claimFormProblems(this.form, this.policy, today());
+    if (this.claimId && !this.reason.trim()) this.shown = [...this.shown, 'decide.needReason'];
     return !this.shown.length;
+  }
+
+  private async correct() {
+    this.busy = 'register';
+    const { ok, notice } = await act(
+      () =>
+        this.api.POST('/v1/claims/{claimId}/corrections', {
+          params: { path: { claimId: this.claimId }, header: { 'Idempotency-Key': this.keys.for('register') } },
+          body: correctionBody(this.form, this.policy!, this.reason, this.revision) as never,
+        }),
+      () => ({ variant: 'success', text: msg('The claim is corrected.', { id: 'correct.done' }) }),
+    );
+    this.busy = '';
+    if (ok) {
+      this.keys.done('register');
+      navigate(`/claims/${encodeURIComponent(this.claimId)}`);
+      return;
+    }
+    this.notice = { ...notice, reload: false };
   }
 
   private async runPreview() {
@@ -224,6 +273,7 @@ export class ClaimRegister extends LitElement {
   private async register(e: Event) {
     e.preventDefault();
     if (!this.check()) return;
+    if (this.claimId) return this.correct();
     this.busy = 'register';
     let created: { id: string } | undefined;
     const { ok, notice } = await act(
@@ -252,13 +302,19 @@ export class ClaimRegister extends LitElement {
     const currency = this.policy?.currency ?? 'SEK';
     const money = (m: number) => formatMoney(m, currency, lang);
     const total = linesTotal(this.form.lines, currency);
+    const correcting = !!this.claimId;
+    const title = correcting ? `${msg('Correct claim', { id: 'correct.title' })} ${this.claimNo}` : msg('Register a claim', { id: 'register.title' });
     return html`
       <nav class="crumbs" aria-label=${msg('Breadcrumb', { id: 'common.breadcrumb' })}>
         <a href="/claims" @click=${(e: Event) => (e.preventDefault(), navigate('/claims'))}>${msg('Claims', { id: 'nav.claims' })}</a>
         <span aria-hidden="true">/</span>
-        <span aria-current="page">${msg('Register a claim', { id: 'register.title' })}</span>
+        ${correcting
+          ? html`<a href=${`/claims/${this.claimId}`} @click=${(e: Event) => (e.preventDefault(), navigate(`/claims/${encodeURIComponent(this.claimId)}`))}>${this.claimNo || this.claimId}</a>
+              <span aria-hidden="true">/</span>`
+          : nothing}
+        <span aria-current="page">${correcting ? msg('Correct', { id: 'correct.crumb' }) : msg('Register a claim', { id: 'register.title' })}</span>
       </nav>
-      <h1>${msg('Register a claim', { id: 'register.title' })}</h1>
+      <h1>${title}</h1>
       <form class="cols" @submit=${this.register} novalidate>
         <div class="basis">
           <section class="pv-card" aria-labelledby="policy">
@@ -267,12 +323,13 @@ export class ClaimRegister extends LitElement {
               <wa-input
                 class="policy"
                 label=${msg('Policy id', { id: 'register.policyId' })}
-                hint=${msg('For example pol_bella. Search in Policies if you do not know it.', { id: 'register.policyHint' })}
                 .value=${this.policyId}
+                ?disabled=${correcting}
+                hint=${correcting ? msg('The policy cannot be corrected: dismiss the claim and register it anew.', { id: 'correct.policyFixed' }) : msg('For example pol_bella. Search in Policies if you do not know it.', { id: 'register.policyHint' })}
                 @input=${(e: Event) => (this.policyId = (e.target as HTMLInputElement).value)}
                 @keydown=${(e: KeyboardEvent) => e.key === 'Enter' && (e.preventDefault(), void this.loadPolicy())}
               >
-                <wa-button slot="end" size="small" appearance="plain" @click=${() => this.loadPolicy()}>${msg('Fetch the policy', { id: 'register.fetchPolicy' })}</wa-button>
+                ${correcting ? nothing : html`<wa-button slot="end" size="small" appearance="plain" @click=${() => this.loadPolicy()}>${msg('Fetch the policy', { id: 'register.fetchPolicy' })}</wa-button>`}
               </wa-input>
               ${this.policyError ? html`<wa-callout variant="neutral" role="alert">${this.policyError}</wa-callout>` : nothing}
               ${this.policy
@@ -330,7 +387,9 @@ export class ClaimRegister extends LitElement {
                 </div>`,
               )}
               <div class="row">
-                <wa-button appearance="outlined" @click=${() => this.set('lines', [...this.form.lines, emptyLine()])}
+                <wa-button
+                  appearance="outlined"
+                  @click=${() => this.set('lines', [...this.form.lines, correcting ? { ...emptyLine(), id: newLineId(this.form.lines) } : emptyLine()])}
                   ><wa-icon slot="start" name="plus"></wa-icon>${msg('Add a line', { id: 'register.addLine' })}</wa-button
                 >
               </div>
@@ -341,14 +400,26 @@ export class ClaimRegister extends LitElement {
 
         <div class="side">
           <section class="pv-card pv-card--strong" aria-labelledby="register">
-            <div class="pv-card__head"><h2 class="pv-card__title" id="register">${msg('Preview and register', { id: 'register.side' })}</h2></div>
+            <div class="pv-card__head">
+              <h2 class="pv-card__title" id="register">${correcting ? msg('Preview and correct', { id: 'correct.side' }) : msg('Preview and register', { id: 'register.side' })}</h2>
+              ${correcting ? html`<span class="pv-card__meta pv-mono">${msg('Revision', { id: 'correct.revision' })} ${this.revision}</span>` : nothing}
+            </div>
             <div class="pv-card__body">
-              <p class="pv-note">${msg('The preview assesses the claim without storing it. On registering, the claim gets its claim number, is assessed again and may be decided at once.', { id: 'register.how' })}</p>
+              <p class="pv-note">
+                ${correcting
+                  ? msg('The claim gets a new revision and the old one is kept. A decision by a person reopens the claim for a new decision. An automated one stands if the outcome is the same, and is otherwise made anew or sent to a handler.', { id: 'correct.how' })
+                  : msg('The preview assesses the claim without storing it. On registering, the claim gets its claim number, is assessed again and may be decided at once.', { id: 'register.how' })}
+              </p>
+              ${correcting
+                ? html`<wa-textarea label=${msg('Why it is corrected', { id: 'correct.reason' })} rows="2" .value=${this.reason} @input=${(e: Event) => (this.reason = (e.target as HTMLTextAreaElement).value)}></wa-textarea>`
+                : nothing}
               <wa-button class="wide" appearance="outlined" ?loading=${this.busy === 'preview'} @click=${() => this.runPreview()}>${msg('Preview the assessment', { id: 'register.preview' })}</wa-button>
               ${this.preview ? this.previewView(this.preview, money) : nothing}
               ${this.shown.length ? html`<wa-callout variant="danger" role="alert">${this.shown.map((p) => html`<div>${problemLabel(p)}</div>`)}</wa-callout>` : nothing}
               ${this.notice ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'danger' ? 'alert' : 'status'}>${this.notice.text}</wa-callout>` : nothing}
-              <wa-button class="wide" type="submit" variant="brand" ?loading=${this.busy === 'register'}>${msg('Register the claim', { id: 'register.submit' })} · ${money(total)}</wa-button>
+              <wa-button class="wide" type="submit" variant="brand" ?loading=${this.busy === 'register'}
+                >${correcting ? msg('Save the correction', { id: 'correct.submit' }) : msg('Register the claim', { id: 'register.submit' })} · ${money(total)}</wa-button
+              >
             </div>
           </section>
         </div>

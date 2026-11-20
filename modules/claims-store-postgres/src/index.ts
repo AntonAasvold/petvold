@@ -15,6 +15,9 @@ import {
   informationMissing,
   type InformationRequest,
   type InformationRequestStatus,
+  type ClaimCorrection,
+  type ClaimData,
+  type ClaimRevision,
   type LimitKey,
   type ClaimFilter,
   type ClaimSummary,
@@ -94,7 +97,7 @@ async function insertJournals(db: pg.PoolClient, journals: LedgerJournal[]): Pro
 }
 
 const DECISION_COLUMNS = `d.id, d.claim_id, d.seq, d.outcome, d.payout_minor, d.assessment, d.decided_by, d.decided_at, d.reason,
-  d.deviates_from_proposal, d.reason_code, d.automated, d.review_request_id, d.approved_by, d.proposal_id`;
+  d.deviates_from_proposal, d.reason_code, d.automated, d.review_request_id, d.approved_by, d.proposal_id, d.claim_revision`;
 
 function toDecision(d: Record<string, any>): ClaimDecision {
   return {
@@ -112,6 +115,7 @@ function toDecision(d: Record<string, any>): ClaimDecision {
     automated: d.automated,
     ...(d.review_request_id !== null ? { reviewRequestId: d.review_request_id } : {}),
     ...(d.approved_by !== null ? { approvedBy: d.approved_by, proposalId: d.proposal_id } : {}),
+    ...(d.claim_revision > 1 ? { claimRevision: d.claim_revision } : {}),
   };
 }
 
@@ -224,7 +228,13 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
        from claims.claim_line where claim_id = $1 order by line_no`,
       [claimId],
     );
-    return {
+    // The latest correction's details, if any (ADR 0036).
+    const corrected = await this.pool.query<{ revision: number; data: ClaimData }>(
+      `select revision, data from claims.claim_correction where claim_id = $1 order by revision desc limit 1`,
+      [claimId],
+    );
+    const last = corrected.rows[0];
+    const registered: Claim = {
       id: c.id,
       claimNo: c.claim_no,
       policyId: c.policy_id,
@@ -237,6 +247,72 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       treatmentTo: c.treatment_to,
       diagnosisCode: c.diagnosis_code,
       receivedAt: c.received_at,
+      lines: lines.rows.map((l) => ({
+        id: l.line_id,
+        description: l.description,
+        category: l.category,
+        ...(l.diagnosis_code !== null ? { diagnosisCode: l.diagnosis_code } : {}),
+        amount: l.amount_minor,
+        ...(l.vat_minor !== null ? { vat: l.vat_minor } : {}),
+      })),
+    };
+    return last ? { ...registered, ...last.data, revision: last.revision } : registered;
+  }
+
+  async correctClaim(correction: ClaimCorrection, data: ClaimData, events: ClaimsEvent[]): Promise<void> {
+    await this.tx(async (db) => {
+      // The revision before must be the latest: the primary key stops two corrections of the same revision.
+      const { rows } = await db.query<{ latest: number }>(
+        `select coalesce(max(revision), 1) as latest from claims.claim_correction where claim_id = $1`,
+        [correction.claimId],
+      );
+      if (rows[0]!.latest !== correction.revision - 1) throw new StoreConflictError('revision_changed', `Claim ${correction.claimId} is at revision ${rows[0]!.latest}`);
+      await db.query(
+        `insert into claims.claim_correction (claim_id, revision, id, data, fields, reason, corrected_by, corrected_at, reopens)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [correction.claimId, correction.revision, correction.id, JSON.stringify(data), correction.fields, correction.reason, correction.correctedBy, correction.correctedAt, correction.reopens],
+      );
+      await insertEvents(db, events);
+    }).catch((e: PgError) => {
+      if (e.code === UNIQUE_VIOLATION && e.constraint === 'claim_correction_pkey') {
+        throw new StoreConflictError('revision_changed', `Claim ${correction.claimId} already has revision ${correction.revision}`);
+      }
+      if (e.code === CLAIM_CLOSED) throw new StoreConflictError('claim_closed', `Claim ${correction.claimId} is closed`);
+      throw e;
+    });
+  }
+
+  async getRevisions(claimId: string): Promise<ClaimRevision[]> {
+    const claim = await this.pool.query(`select 1 from claims.claim where id = $1`, [claimId]);
+    if (!claim.rows.length) return [];
+    const { rows } = await this.pool.query(
+      `select revision, id, data, fields, reason, corrected_by, corrected_at, reopens from claims.claim_correction where claim_id = $1 order by revision`,
+      [claimId],
+    );
+    // Revision 1 is the claim as registered; read it without the corrections.
+    const all = rows.map((r) => r.data as ClaimData);
+    const registered = await this.registeredData(claimId);
+    return [
+      { revision: 1, data: registered },
+      ...rows.map((r, i) => ({
+        revision: r.revision,
+        data: all[i]!,
+        correction: { id: r.id, claimId, revision: r.revision, fields: r.fields, reason: r.reason, correctedBy: r.corrected_by, correctedAt: r.corrected_at, reopens: r.reopens },
+      })),
+    ];
+  }
+
+  private async registeredData(claimId: string): Promise<ClaimData> {
+    const c = (await this.pool.query(`select channel, treatment_from, treatment_to, diagnosis_code from claims.claim where id = $1`, [claimId])).rows[0];
+    const lines = await this.pool.query(
+      `select line_id, description, category, diagnosis_code, amount_minor, vat_minor from claims.claim_line where claim_id = $1 order by line_no`,
+      [claimId],
+    );
+    return {
+      channel: c.channel,
+      treatmentFrom: c.treatment_from,
+      treatmentTo: c.treatment_to,
+      diagnosisCode: c.diagnosis_code,
       lines: lines.rows.map((l) => ({
         id: l.line_id,
         description: l.description,
@@ -318,19 +394,21 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
   async listClaims(filter: ClaimFilter): Promise<ClaimSummary[]> {
     const { rows } = await this.pool.query(
       `select * from (
-         select c.id, c.claim_no, c.policy_id, c.animal_id, c.market, c.currency, c.channel, c.clinic_id,
-                c.treatment_from::text as treatment_from, c.diagnosis_code, c.received_at,
+         select c.id, c.claim_no, c.policy_id, c.animal_id, c.market, c.currency, coalesce(v.data->>'channel', c.channel) as channel, c.clinic_id,
+                coalesce(v.data->>'treatmentFrom', c.treatment_from::text) as treatment_from, coalesce(v.data->>'diagnosisCode', c.diagnosis_code) as diagnosis_code, c.received_at,
                 d.seq, d.outcome, d.payout_minor, d.decided_at,
                 case
                   when k.kind is not null then k.kind
                   when exists (select 1 from claims.decision_proposal p where p.claim_id = c.id and p.status = 'open') then 'awaiting-approval'
                   when exists (select 1 from claims.information_request i where i.claim_id = c.id and i.status = 'open') then 'awaiting-information'
                   when exists (select 1 from claims.review_request r where r.claim_id = c.id and r.closed_at is null) then 'review-requested'
-                  when d.seq is not null then 'decided'
+                  when d.seq is not null and not exists (
+                    select 1 from claims.claim_correction r where r.claim_id = c.id and r.revision > d.claim_revision and r.reopens) then 'decided'
                   else 'awaiting-decision'
                 end as state
          from claims.claim c
-         left join lateral (select seq, outcome, payout_minor, decided_at from claims.decision x where x.claim_id = c.id order by seq desc limit 1) d on true
+         left join lateral (select seq, outcome, payout_minor, decided_at, claim_revision from claims.decision x where x.claim_id = c.id order by seq desc limit 1) d on true
+         left join lateral (select data from claims.claim_correction r where r.claim_id = c.id order by revision desc limit 1) v on true
          left join claims.claim_closure k on k.claim_id = c.id
          where ($1::text is null or c.market = $1)
            and ($2::text is null or c.policy_id = $2)
@@ -373,12 +451,17 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
              not exists (select 1 from claims.decision d where d.claim_id = c.id)
              or exists (select 1 from claims.review_request r where r.claim_id = c.id and r.closed_at is null)
              or exists (select 1 from claims.decision_proposal p where p.claim_id = c.id and p.status = 'open')
-             or exists (select 1 from claims.information_request i where i.claim_id = c.id and i.status = 'open'))
+             or exists (select 1 from claims.information_request i where i.claim_id = c.id and i.status = 'open')
+             or exists (
+               select 1 from claims.claim_correction r
+               where r.claim_id = c.id and r.reopens
+                 and r.revision > (select claim_revision from claims.decision d where d.claim_id = c.id order by seq desc limit 1)))
          ), false) as open,
          max(greatest(c.received_at, (select max(decided_at) from claims.decision d where d.claim_id = c.id), k.closed_at)) as last_at
        from claims.claim c
        left join claims.claim_closure k on k.claim_id = c.id
-       where c.policy_id = $1 and c.treatment_from >= $2 and c.treatment_from < $3`,
+       left join lateral (select data from claims.claim_correction r where r.claim_id = c.id order by revision desc limit 1) v on true
+       where c.policy_id = $1 and coalesce((v.data->>'treatmentFrom')::date, c.treatment_from) >= $2 and coalesce((v.data->>'treatmentFrom')::date, c.treatment_from) < $3`,
       [policyId, from, to],
     );
     const r = rows[0];
@@ -414,8 +497,8 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       await db.query(
         `insert into claims.decision (id, claim_id, seq, outcome, payout_minor, currency, assessment, input_hash,
                                       rules_version, product_version, policy_version_id, decided_by, decided_at, reason,
-                                      deviates_from_proposal, reason_code, automated, review_request_id, approved_by, proposal_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+                                      deviates_from_proposal, reason_code, automated, review_request_id, approved_by, proposal_id, claim_revision)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
         [
           d.id,
           d.claimId,
@@ -437,6 +520,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
           d.reviewRequestId ?? null,
           d.approvedBy ?? null,
           d.proposalId ?? null,
+          d.claimRevision ?? 1,
         ],
       );
       if (closesProposalId) {

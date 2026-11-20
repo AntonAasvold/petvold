@@ -319,6 +319,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/claims/{claimId}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correct the claim's details
+         * @description Requires the permission `claims:register`.
+         *
+         *     The claim gets a new revision; earlier ones are kept (`GET …/revisions`),
+         *     and each decision names the revision it was made on (ADR 0036). Treatment
+         *     dates, diagnosis, invoice lines and channel can be corrected. A claim on
+         *     the wrong policy, animal, market or currency is dismissed and registered
+         *     anew. Not on a closed claim or one with an open decision proposal.
+         *
+         *     After a decision:
+         *     - **made by a person:** the claim is reopened (`reopened`) and waits for a
+         *       new decision by a person. The machine never replaces a person's judgement.
+         *     - **automated:** it is assessed again. With the same outcome and payout the
+         *       decision stands. With another outcome that may still be settled
+         *       automatically, a new automated decision books the difference
+         *       (`decision`). Otherwise the claim is reopened for a handler.
+         */
+        post: operations["correctClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/claims/{claimId}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The claim's revisions
+         * @description Requires the permission `claims:read`. Oldest first, revision 1 as registered and then each correction.
+         */
+        get: operations["listClaimRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/claims/{claimId}/information-requests": {
         parameters: {
             query?: never;
@@ -2800,6 +2854,10 @@ export interface components {
         /** @description What the client sends. receivedAt is set by the server. */
         ClaimInput: components["schemas"]["ClaimFields"];
         Claim: components["schemas"]["ClaimFields"] & {
+            /** @description 1 as registered, one more for each correction (ADR 0036). Give it as expectedRevision when correcting. */
+            revision: number;
+            /** @description A correction after the latest decision reopened the claim; it waits for a new decision by a person. Omitted when false. */
+            reopened?: boolean;
             /** @description Always set on a stored claim. */
             id: string;
             /** @description Always set on a stored claim. */
@@ -2898,6 +2956,8 @@ export interface components {
             assessment: components["schemas"]["Assessment"];
             decidedBy: string;
             decidedAt: components["schemas"]["DateTime"];
+            /** @description The claim's revision the decision was made on (ADR 0036). Omitted */
+            claimRevision?: number;
             reason?: string;
             /** @description True if the handler decided against the assessment's proposal. Then `reasonCode` and `reason` are always set. */
             deviatesFromProposal: boolean;
@@ -2964,6 +3024,49 @@ export interface components {
             duplicateOf?: string;
             closedBy: string;
             closedAt: components["schemas"]["DateTime"];
+        };
+        /** @description The new details. Fields left out keep their value. Policy, animal, market and currency cannot be corrected. */
+        CorrectClaimRequest: {
+            /** @enum {string} */
+            channel?: "clinic_direct" | "customer";
+            treatmentFrom?: components["schemas"]["Date"];
+            treatmentTo?: components["schemas"]["Date"];
+            diagnosisCode?: string;
+            lines?: components["schemas"]["ClaimLine"][];
+            reason: string;
+            /** @description The revision corrected. Another revision in between gives 409. */
+            expectedRevision: number;
+        };
+        ClaimCorrection: {
+            id: string;
+            claimId: string;
+            /** @description The revision the correction made. */
+            revision: number;
+            fields: ("channel" | "treatmentFrom" | "treatmentTo" | "diagnosisCode" | "lines")[];
+            reason: string;
+            correctedBy: string;
+            correctedAt: components["schemas"]["DateTime"];
+            /** @description The claim waits for a new decision by a person. */
+            reopens: boolean;
+        };
+        ClaimRevision: {
+            revision: number;
+            data: {
+                /** @enum {string} */
+                channel: "clinic_direct" | "customer";
+                treatmentFrom: components["schemas"]["Date"];
+                treatmentTo: components["schemas"]["Date"];
+                diagnosisCode: string;
+                lines: components["schemas"]["ClaimLine"][];
+            };
+            /** @description Omitted for revision 1. */
+            correction?: components["schemas"]["ClaimCorrection"];
+        };
+        CorrectionResult: {
+            correction: components["schemas"]["ClaimCorrection"];
+            claim: components["schemas"]["Claim"];
+            /** @description A new automated decision, when the latest decision was automated and the outcome changed. */
+            decision?: components["schemas"]["Decision"] | null;
         };
         /** @enum {string} */
         InformationItem: "itemised-invoice" | "medical-record" | "referral" | "other";
@@ -5289,6 +5392,73 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    correctClaim: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                claimId: components["parameters"]["ClaimId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Corrected */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionResult"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listClaimRevisions: {
+        parameters: {
+            query?: {
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                claimId: components["parameters"]["ClaimId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of revisions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ClaimRevision"][];
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["Unprocessable"];
         };
     };

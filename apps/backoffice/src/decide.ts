@@ -36,6 +36,10 @@ export function decisionProblems(f: DecisionForm, proposed: Outcome, me: Me | nu
   return out;
 }
 
+/** A claim may be corrected while it is open and no proposal waits (ADR 0036), by someone with claims:register. */
+export const mayCorrect = (me: Me | null, status: string): boolean =>
+  !!me?.permissions.includes('claims:register') && !['withdrawn', 'dismissed', 'awaiting-approval'].includes(status);
+
 /** A claim may be decided when it waits for a decision or a review, by someone with claims:decide. */
 export const mayDecide = (me: Me | null, status: string): boolean =>
   !!me?.permissions.includes('claims:decide') && (status === 'awaiting-decision' || status === 'review-requested');
@@ -72,12 +76,14 @@ export function claimStatus(o: {
   openInformation?: number;
   openReviews: number;
   decisions: number;
+  /** A correction reopened the decided claim for a person (ADR 0036). */
+  reopened?: boolean;
 }): 'withdrawn' | 'dismissed' | 'awaiting-approval' | 'awaiting-information' | 'review-requested' | 'decided' | 'awaiting-decision' {
   if (o.closed) return o.closed;
   if (o.openProposals) return 'awaiting-approval';
   if (o.openInformation) return 'awaiting-information';
   if (o.openReviews) return 'review-requested';
-  return o.decisions ? 'decided' : 'awaiting-decision';
+  return o.decisions && !o.reopened ? 'decided' : 'awaiting-decision';
 }
 
 /** A reason the claim went to a claims handler, with the rule's own text when a rule sent it there. */

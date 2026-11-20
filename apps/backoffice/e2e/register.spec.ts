@@ -131,3 +131,42 @@ test('a handler asks the clinic for information; the claim waits, and the answer
   await expect(page.locator('.facts')).toContainText('Basis complete');
   await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').first()).toContainText('claim.information_received');
 });
+
+test("a handler corrects a decided claim; the person's decision is reopened and the history shows the revision (ADR 0036)", async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Register a claim' }).click();
+  const form = page.locator('pv-claim-register');
+  await form.getByRole('textbox', { name: 'Policy id' }).fill('pol_bella');
+  await form.getByRole('button', { name: 'Fetch the policy' }).click();
+  await expect(form.getByText('SE, SEK')).toBeVisible();
+  await form.getByLabel('First day of treatment').fill('2026-11-14');
+  await form.getByLabel('Last day of treatment').fill('2026-11-14');
+  await form.getByRole('textbox', { name: 'Diagnosis' }).fill('ORT-KORSBAND-V');
+  await form.getByRole('group', { name: 'Line 1' }).getByRole('textbox', { name: 'Description' }).fill('Examination');
+  await form.getByRole('group', { name: 'Line 1' }).getByRole('textbox', { name: 'Amount', exact: true }).fill('600');
+  await form.getByRole('button', { name: /^Register the claim/ }).click();
+  await expect(page.getByRole('heading', { level: 1, name: /^Claim S-/ })).toBeVisible();
+
+  // Decide as proposed, whatever the proposal is.
+  const actions = page.locator('pv-claim-actions');
+  const decide = actions.getByRole('region', { name: 'Decision', exact: true });
+  if (await decide.getByRole('textbox', { name: 'Reason' }).count()) await decide.getByRole('textbox', { name: 'Reason' }).fill('As assessed.');
+  await decide.getByRole('button', { name: /^(Approve payout|Reject the claim)/ }).click();
+  await expect(page.locator('.title').getByText('Decided')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Correct' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: /^Correct claim S-/ })).toBeVisible();
+  await expect(form.getByRole('textbox', { name: 'Policy id' })).toBeDisabled();
+  await form.getByRole('group', { name: 'Line 1' }).getByRole('textbox', { name: 'Amount', exact: true }).fill('650');
+  await form.getByRole('button', { name: /^Save the correction/ }).click();
+  await expect(form.getByRole('alert')).toContainText('Write a reason.');
+  await form.getByRole('textbox', { name: 'Why it is corrected' }).fill('The invoice said 650.');
+  await form.getByRole('button', { name: /^Save the correction/ }).click();
+
+  await expect(page.locator('.title').getByText('Revision 2')).toBeVisible();
+  await expect(page.locator('.title').getByText('Awaiting decision')).toBeVisible();
+  await expect(page.getByText('The claim was corrected after the decision')).toBeVisible();
+  await expect(actions.getByRole('heading', { name: 'Decision', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').first()).toContainText('claim.corrected');
+});

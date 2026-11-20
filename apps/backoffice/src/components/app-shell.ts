@@ -253,6 +253,7 @@ export class AppShell extends LitElement {
     return [
       { pattern: /^\/claims$/, render: () => html`<pv-claims-queue .api=${this.api} .me=${this.me}></pv-claims-queue>` },
       { pattern: /^\/claims\/new$/, render: () => html`<pv-claim-register .api=${this.api}></pv-claim-register>` },
+      { pattern: /^\/claims\/(?<id>[^/]+)\/correct$/, render: (p) => html`<pv-claim-register .api=${this.api} claim-id=${p.id!}></pv-claim-register>` },
       { pattern: /^\/claims\/(?<id>[^/]+)$/, render: (p) => html`<pv-claim-detail .api=${this.api} .me=${this.me} claim-id=${p.id!}></pv-claim-detail>` },
       { pattern: /^\/policies$/, render: () => html`<pv-policies-search .api=${this.api}></pv-policies-search>` },
       { pattern: /^\/policies\/new$/, render: () => html`<pv-policy-issue .api=${this.api}></pv-policy-issue>` },

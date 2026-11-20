@@ -7,10 +7,12 @@
 
 export interface HistoryInput {
   claim: { receivedAt: string; channel: string };
-  decisions: { seq: number; outcome: string; payout: number; decidedBy: string; decidedAt: string; automated: boolean; reason?: string }[];
+  decisions: { seq: number; outcome: string; payout: number; decidedBy: string; decidedAt: string; automated: boolean; reason?: string; claimRevision?: number }[];
   proposals: { id: string; outcome: string; payout: number; proposedBy: string; proposedAt: string; status: string; closedBy?: string; closedAt?: string; returnReason?: string }[];
   reviews: { id: string; decisionSeq: number; requestedAt: string; closedAt?: string }[];
   closure?: { id: string; kind: 'withdrawn' | 'dismissed'; reasonCode?: string; reason: string; duplicateOf?: string; closedBy: string; closedAt: string };
+  /** Corrections (ADR 0036): the claim's revisions after the first. */
+  corrections?: { id: string; revision: number; fields: string[]; reason: string; correctedBy: string; correctedAt: string; reopens: boolean }[];
   /** Requests for information (ADR 0036). */
   information?: {
     id: string;
@@ -32,17 +34,18 @@ export type InformationEventType = 'claim.information_requested' | 'claim.inform
 
 export type HistoryEvent =
   | { type: 'claim.received'; at: string; channel: string }
-  | { type: 'claim.decided'; at: string; seq: number; outcome: string; payout: number; by: string; automated: boolean; reason?: string }
+  | { type: 'claim.decided'; at: string; seq: number; outcome: string; payout: number; by: string; automated: boolean; reason?: string; revision: number }
   | { type: 'proposal.created'; at: string; id: string; outcome: string; payout: number; by: string; open: boolean }
   | { type: 'proposal.returned'; at: string; id: string; by: string; reason?: string }
   | { type: 'review.requested'; at: string; id: string; seq: number; open: boolean }
   | { type: 'claim.withdrawn' | 'claim.dismissed'; at: string; id: string; by: string; reason: string; reasonCode?: string; duplicateOf?: string }
+  | { type: 'claim.corrected'; at: string; id: string; by: string; revision: number; fields: string[]; reason: string; reopens: boolean }
   | { type: InformationEventType; at: string; id: string; by: string; recipient: string; items: string[]; open: boolean; note?: string };
 
 export function claimHistory(i: HistoryInput): HistoryEvent[] {
   const out: HistoryEvent[] = [{ type: 'claim.received', at: i.claim.receivedAt, channel: i.claim.channel }];
   for (const d of i.decisions) {
-    out.push({ type: 'claim.decided', at: d.decidedAt, seq: d.seq, outcome: d.outcome, payout: d.payout, by: d.decidedBy, automated: d.automated, ...(d.reason ? { reason: d.reason } : {}) });
+    out.push({ type: 'claim.decided', at: d.decidedAt, seq: d.seq, outcome: d.outcome, payout: d.payout, by: d.decidedBy, automated: d.automated, ...(d.reason ? { reason: d.reason } : {}), revision: d.claimRevision ?? 1 });
   }
   for (const p of i.proposals) {
     out.push({ type: 'proposal.created', at: p.proposedAt, id: p.id, outcome: p.outcome, payout: p.payout, by: p.proposedBy, open: p.status === 'open' });
@@ -61,6 +64,9 @@ export function claimHistory(i: HistoryInput): HistoryEvent[] {
       ...(k.duplicateOf ? { duplicateOf: k.duplicateOf } : {}),
     });
   }
+  for (const k of i.corrections ?? []) {
+    out.push({ type: 'claim.corrected', at: k.correctedAt, id: k.id, by: k.correctedBy, revision: k.revision, fields: k.fields, reason: k.reason, reopens: k.reopens });
+  }
   for (const r of i.information ?? []) {
     const base = { id: r.id, recipient: r.recipient, items: r.items };
     out.push({ type: 'claim.information_requested', at: r.requestedAt, by: r.requestedBy, ...base, open: r.status === 'open' });
@@ -78,6 +84,7 @@ export function claimHistory(i: HistoryInput): HistoryEvent[] {
     'claim.information_expired',
     'claim.information_received',
     'claim.information_cancelled',
+    'claim.corrected',
     'proposal.created',
     'review.requested',
     'proposal.returned',

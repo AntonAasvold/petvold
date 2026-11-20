@@ -407,6 +407,16 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await d.service.dismiss(c.req.param('claimId'), r.body, p.subject) }));
   });
 
+  // Corrections (ADR 0036): a new revision of the claim's details.
+  app.post('/v1/claims/:claimId/corrections', async (c) => {
+    const p = c.get('principal');
+    const r = await readJson(c, 'CorrectClaimRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await d.service.correctClaim(c.req.param('claimId'), r.body, p.subject) }));
+  });
+
+  app.get('/v1/claims/:claimId/revisions', async (c) => sendPage(c, await d.service.getRevisions(c.req.param('claimId'))));
+
   // Requests for information (ADR 0036): the claim waits for the customer or the clinic.
   app.get('/v1/claims/:claimId/information-requests', async (c) => sendPage(c, await d.service.getInformationRequests(c.req.param('claimId'))));
 

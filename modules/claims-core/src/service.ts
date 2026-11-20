@@ -29,8 +29,13 @@ import type {
   InformationItem,
   InformationRecipient,
   InformationRequest,
+  ClaimCorrection,
+  ClaimData,
+  ClaimRevision,
+  CorrectableField,
 } from './types.ts';
-import { INFORMATION_ITEMS } from './types.ts';
+import { CORRECTABLE_FIELDS, INFORMATION_ITEMS } from './types.ts';
+import { canonicalJson } from './util.ts';
 import { addDays, assertDate, marketDate } from '@petvold/common';
 import { MAX_INFORMATION_DAYS, basisCompleteAt, daysBetween, dueAction, informationDates, informationMissing } from './information.ts';
 import { accounts, type LimitKey } from './ledger.ts';
@@ -109,6 +114,20 @@ export interface InformationRequestCommand {
   dueDate?: ISODate;
 }
 
+/** New details for a claim (ADR 0036). Fields left out keep their value. */
+export interface CorrectionCommand extends Partial<ClaimData> {
+  reason: string;
+  /** The revision the person corrected. Another revision in between gives 'conflict'. */
+  expectedRevision: number;
+}
+
+export interface CorrectionResult {
+  correction: ClaimCorrection;
+  claim: Claim;
+  /** A new automated decision, when the latest was automated and the outcome changed. */
+  decision: ClaimDecision | null;
+}
+
 export interface InformationAnswerCommand {
   /** When the information came in. Omitted: now. Never in the future or before the request. */
   receivedAt?: Timestamp;
@@ -129,6 +148,9 @@ export interface InformationRunResult {
  * FAL 7 kap. 1 § (ADR 0036). daysSinceBasisComplete counts to now.
  */
 export type ClaimView = Claim & {
+  revision: number;
+  /** A correction reopened the decided claim: it waits for a new decision by a person. */
+  reopened?: boolean;
   closure?: ClaimClosure;
   basisCompleteAt?: Timestamp;
   daysSinceBasisComplete?: number;
@@ -249,7 +271,7 @@ export class ClaimsService {
             automated: true,
           })
         : null;
-    return { claim, assessment, decision };
+    return { claim: { ...claim, revision: 1 }, assessment, decision };
   }
 
   /**
@@ -421,6 +443,8 @@ export class ClaimsService {
     const claim = await this.requireClaim(claimId);
     const prev = await this.latestDecision(claimId);
     if (!prev) throw new DomainError('conflict', 'The claim has no decision to reassess');
+    // A corrected claim waiting for a person is not decided by the machine meanwhile.
+    if (await this.isReopened(claimId)) return null;
     const assessed = await this.assessInternal(claim, undefined, claim.id);
     if (assessed.assessment.inputHash === prev.assessment.inputHash) return null;
     const action = assessed.assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept';
@@ -460,12 +484,96 @@ export class ClaimsService {
     const closure = await this.d.store.getClosure(claimId);
     const requests = await this.d.store.getInformationRequests(claimId);
     const complete = basisCompleteAt(claim.receivedAt, requests);
+    const reopened = await this.isReopened(claimId);
     return {
       ...claim,
+      revision: claim.revision ?? 1,
+      ...(reopened ? { reopened: true } : {}),
       ...(closure ? { closure } : {}),
       ...(complete ? { basisCompleteAt: complete, daysSinceBasisComplete: daysBetween(complete, this.d.clock.now()) } : {}),
       ...(informationMissing(requests) ? { informationMissing: true } : {}),
     };
+  }
+
+  /**
+   * Corrects the claim's details (ADR 0036): the claim gets a new revision, and
+   * earlier ones are kept. Policy, animal, market and currency cannot change.
+   * After a decision:
+   * - by a person: the claim is reopened and waits for a new decision by a person
+   * - automated: it is assessed again. Same outcome and payout: the decision
+   *   stands. Another outcome within the rules for automatic settlement: a new
+   *   automated decision books the difference. Otherwise it is reopened.
+   * Not on a closed claim or one with an open proposal.
+   */
+  async correctClaim(claimId: string, cmd: CorrectionCommand, by: string): Promise<CorrectionResult> {
+    const claim = await this.requireClaim(claimId);
+    const reason = (cmd.reason ?? '').trim();
+    if (!reason) throw new DomainError('validation', 'A reason is required');
+    if (!Number.isInteger(cmd.expectedRevision) || cmd.expectedRevision < 1) throw new DomainError('validation', 'expectedRevision is the revision corrected');
+    for (const k of Object.keys(cmd)) {
+      if (k !== 'reason' && k !== 'expectedRevision' && !CORRECTABLE_FIELDS.includes(k as CorrectableField)) {
+        throw new DomainError('validation', `${k} cannot be corrected: dismiss the claim and register it anew`);
+      }
+    }
+    if (await this.d.store.getClosure(claimId)) throw new DomainError('conflict', `Claim ${claimId} is closed`);
+    await this.assertNoOpenProposal(claimId);
+    const current = claim.revision ?? 1;
+    if (cmd.expectedRevision !== current) throw new DomainError('conflict', `The claim is at revision ${current}, not ${cmd.expectedRevision}. Fetch it and try again.`);
+
+    const data: ClaimData = {
+      channel: cmd.channel ?? claim.channel,
+      treatmentFrom: cmd.treatmentFrom ?? claim.treatmentFrom,
+      treatmentTo: cmd.treatmentTo ?? claim.treatmentTo,
+      diagnosisCode: cmd.diagnosisCode ?? claim.diagnosisCode,
+      lines: cmd.lines ?? claim.lines,
+    };
+    const fields = CORRECTABLE_FIELDS.filter((f) => canonicalJson(data[f]) !== canonicalJson(claim[f]));
+    if (!fields.length) throw new DomainError('validation', 'The correction changes nothing');
+    const next: Claim = { ...claim, ...data, revision: current + 1 };
+    try {
+      validateClaim(next);
+    } catch (e) {
+      throw new DomainError('validation', (e as Error).message);
+    }
+
+    // What happens to the decision. A new automated one is made right after the
+    // correction is stored. Should that fail, a reassessment makes it later.
+    const latest = await this.latestDecision(claimId);
+    let reopens = false;
+    let redecide: Assessed | null = null;
+    if (latest && !latest.automated) reopens = true;
+    else if (latest) {
+      const assessed = await this.assessInternal(next, undefined, claim.id);
+      const action = assessed.assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept';
+      const { outcome, payout } = decisionAmounts(assessed.assessment, action);
+      if (assessed.assessment.mode === 'manual') reopens = true;
+      else if (outcome !== latest.outcome || payout !== latest.payout) redecide = assessed;
+    }
+    const now = this.d.clock.now();
+    const correction: ClaimCorrection = { id: this.d.ids.next('cor'), claimId, revision: current + 1, fields, reason, correctedBy: by, correctedAt: now, reopens };
+    await asConflict(this.d.store.correctClaim(correction, data, [{ type: 'claim.corrected', occurredAt: now, correction }]));
+    const decision = redecide
+      ? await this.commit(next, redecide, redecide.assessment.proposedOutcome === 'rejected' ? 'reject' : 'accept', 'auto', {
+          reason,
+          deviatesFromProposal: false,
+          automated: true,
+        })
+      : null;
+    return { correction, claim: next, decision };
+  }
+
+  /** The claim's revisions, oldest first (ADR 0036). */
+  async getRevisions(claimId: string): Promise<ClaimRevision[]> {
+    await this.requireClaim(claimId);
+    return this.d.store.getRevisions(claimId);
+  }
+
+  /** A correction after the latest decision reopened the claim for a person (ADR 0036). */
+  private async isReopened(claimId: string): Promise<boolean> {
+    const latest = await this.latestDecision(claimId);
+    if (!latest) return false;
+    const decidedOn = latest.claimRevision ?? 1;
+    return (await this.d.store.getRevisions(claimId)).some((r) => r.revision > decidedOn && r.correction?.reopens);
   }
 
   /**
@@ -800,7 +908,9 @@ export class ClaimsService {
     const consumedBefore = policy
       ? await this.d.store.getConsumed(limitKey(claim.animalId, policy), ownClaimId)
       : 0;
-    const input: AssessmentInput = { claim, policy, rules, openDeductiblePeriod, consumedBefore };
+    // The revision is not something the rules read: leaving it out keeps the inputHash of an unchanged basis.
+    const { revision: _revision, ...assessed } = claim;
+    const input: AssessmentInput = { claim: assessed, policy, rules, openDeductiblePeriod, consumedBefore };
     return { assessment: assess(input), input };
   }
 
@@ -831,6 +941,7 @@ export class ClaimsService {
       ...(motivation.reviewRequestId ? { reviewRequestId: motivation.reviewRequestId } : {}),
       ...(motivation.approvedBy ? { approvedBy: motivation.approvedBy } : {}),
       ...(motivation.proposalId ? { proposalId: motivation.proposalId } : {}),
+      ...((claim.revision ?? 1) > 1 ? { claimRevision: claim.revision } : {}),
     };
     const evidence: DecisionEvidence = {
       decisionId: decision.id,

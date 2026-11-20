@@ -86,6 +86,13 @@ En ny lagring är klar när den klarar modulens gemensamma testsvit i `test-suit
   - beslut, bokföring, policyversioner, ansökningar och meddelanden kan inte ändras eller raderas
   - två aktiva policyer för samma djur samma dag går inte (exclusion constraint)
 - **Avslut utan beslut** (ADR 0036) finns i `claims.claim_closure` (migration 0037), en rad per ärende som aldrig ändras. Två triggrar håller reglerna: ett ärende med beslut kan inte stängas (felkod `PVC02`) och ett stängt ärende kan inte beslutas (`PVC01`). Lagringen gör koderna till `StoreConflictError`. En reservjournal får peka på avslutet, eftersom avslutet löser upp reserven. Läget räknas fortfarande fram ur det som är sparat, och avslutet står först.
+- **Rättelse** (ADR 0036) finns i `claims.claim_correction` (migration 0043), en rad per revision från 2 med uppgifterna som jsonb. `claims.claim` och `claims.claim_line` är fortfarande revision 1 och ändras aldrig.
+  - **Läsningen:** `getClaim` lägger den senaste rättelsen över ärendet. Listan och gallringen tar behandlingsdag, diagnos och kanal från den senaste revisionen med en `lateral join`.
+  - **Trigger:** revisionerna kommer utan lucka, och ett stängt ärende rättas inte (`PVC01`).
+  - **Samtidiga rättelser:** primärnyckeln `(claim_id, revision)` gör att bara en av två samtidiga rättelser av samma revision går igenom.
+  - **Beslutet:** `decision.claim_revision` sparar revisionen.
+  - **Läget:** ett ärende är `decided` bara om ingen rättelse med `reopens` har kommit efter det senaste beslutets revision.
+  - **Bedömningen:** `revision` tas bort ur ärendet innan det bedöms, så att `inputHash` för ett oförändrat underlag är densamma som före rättelsen.
 - **Komplettering** (ADR 0036) finns i `claims.information_request` (migration 0042). Ett unikt index tillåter en öppen begäran per ärende och mottagare. En trigger håller reglerna:
   - en begäran görs bara på ett ärende som inte är stängt (`PVC01`)
   - det som begärdes ändras aldrig

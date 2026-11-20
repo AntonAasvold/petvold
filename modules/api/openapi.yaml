@@ -532,6 +532,78 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/claims/{claimId}/corrections:
+    post:
+      tags: [claims]
+      operationId: correctClaim
+      x-permission: claims:register
+      summary: Correct the claim's details
+      description: |
+        Requires the permission `claims:register`.
+
+        The claim gets a new revision; earlier ones are kept (`GET …/revisions`),
+        and each decision names the revision it was made on (ADR 0036). Treatment
+        dates, diagnosis, invoice lines and channel can be corrected. A claim on
+        the wrong policy, animal, market or currency is dismissed and registered
+        anew. Not on a closed claim or one with an open decision proposal.
+
+        After a decision:
+        - **made by a person:** the claim is reopened (`reopened`) and waits for a
+          new decision by a person. The machine never replaces a person's judgement.
+        - **automated:** it is assessed again. With the same outcome and payout the
+          decision stands. With another outcome that may still be settled
+          automatically, a new automated decision books the difference
+          (`decision`). Otherwise the claim is reopened for a handler.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CorrectClaimRequest' }
+            examples:
+              diagnosis:
+                $ref: '#/components/examples/CorrectDiagnosis'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Corrected
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CorrectionResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}/revisions:
+    get:
+      tags: [claims]
+      operationId: listClaimRevisions
+      x-permission: claims:read
+      summary: The claim's revisions
+      description: Requires the permission `claims:read`. Oldest first, revision 1 as registered and then each correction.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: One page of revisions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ClaimRevision' } }
+                  nextCursor: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/claims/{claimId}/information-requests:
     get:
       tags: [claims]
@@ -4020,6 +4092,9 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
 
   examples:
+    CorrectDiagnosis:
+      summary: The diagnosis code was registered wrong
+      value: { diagnosisCode: ORA-OTIT, reason: 'The record says otitis, not a cruciate ligament.', expectedRevision: 1 }
     InformationRequestClinic:
       summary: The clinic sends the specified invoice and the record
       value: { recipient: clinic, items: [itemised-invoice, medical-record], note: 'Specified invoice and the record from the first visit.' }
@@ -4316,8 +4391,15 @@ components:
       allOf:
         - $ref: '#/components/schemas/ClaimFields'
         - type: object
-          required: [id, claimNo, receivedAt]
+          required: [id, claimNo, receivedAt, revision]
           properties:
+            revision:
+              type: integer
+              minimum: 1
+              description: 1 as registered, one more for each correction (ADR 0036). Give it as expectedRevision when correcting.
+            reopened:
+              type: boolean
+              description: A correction after the latest decision reopened the claim; it waits for a new decision by a person. Omitted when false.
             id: { type: string, description: Always set on a stored claim. }
             claimNo: { type: string, description: Always set on a stored claim. }
             receivedAt: { $ref: '#/components/schemas/DateTime' }
@@ -4466,6 +4548,7 @@ components:
         assessment: { $ref: '#/components/schemas/Assessment' }
         decidedBy: { type: string }
         decidedAt: { $ref: '#/components/schemas/DateTime' }
+        claimRevision: { type: integer, minimum: 2, description: The claim's revision the decision was made on (ADR 0036). Omitted, revision 1. }
         reason: { type: string }
         deviatesFromProposal:
           type: boolean
@@ -4554,6 +4637,69 @@ components:
         duplicateOf: { type: string }
         closedBy: { type: string }
         closedAt: { $ref: '#/components/schemas/DateTime' }
+
+    CorrectClaimRequest:
+      type: object
+      additionalProperties: false
+      required: [reason, expectedRevision]
+      description: The new details. Fields left out keep their value. Policy, animal, market and currency cannot be corrected.
+      properties:
+        channel: { type: string, enum: [clinic_direct, customer] }
+        treatmentFrom: { $ref: '#/components/schemas/Date' }
+        treatmentTo: { $ref: '#/components/schemas/Date' }
+        diagnosisCode: { type: string, minLength: 1 }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/ClaimLine' }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        expectedRevision: { type: integer, minimum: 1, description: The revision corrected. Another revision in between gives 409. }
+
+    ClaimCorrection:
+      type: object
+      additionalProperties: false
+      required: [id, claimId, revision, fields, reason, correctedBy, correctedAt, reopens]
+      properties:
+        id: { type: string }
+        claimId: { type: string }
+        revision: { type: integer, minimum: 2, description: The revision the correction made. }
+        fields:
+          type: array
+          items: { type: string, enum: [channel, treatmentFrom, treatmentTo, diagnosisCode, lines] }
+        reason: { type: string }
+        correctedBy: { type: string }
+        correctedAt: { $ref: '#/components/schemas/DateTime' }
+        reopens: { type: boolean, description: The claim waits for a new decision by a person. }
+
+    ClaimRevision:
+      type: object
+      additionalProperties: false
+      required: [revision, data]
+      properties:
+        revision: { type: integer, minimum: 1 }
+        data:
+          type: object
+          required: [channel, treatmentFrom, treatmentTo, diagnosisCode, lines]
+          properties:
+            channel: { type: string, enum: [clinic_direct, customer] }
+            treatmentFrom: { $ref: '#/components/schemas/Date' }
+            treatmentTo: { $ref: '#/components/schemas/Date' }
+            diagnosisCode: { type: string }
+            lines: { type: array, items: { $ref: '#/components/schemas/ClaimLine' } }
+        correction: { $ref: '#/components/schemas/ClaimCorrection', description: Omitted for revision 1. }
+
+    CorrectionResult:
+      type: object
+      additionalProperties: false
+      required: [correction, claim]
+      properties:
+        correction: { $ref: '#/components/schemas/ClaimCorrection' }
+        claim: { $ref: '#/components/schemas/Claim' }
+        decision:
+          oneOf:
+            - $ref: '#/components/schemas/Decision'
+            - type: 'null'
+          description: A new automated decision, when the latest decision was automated and the outcome changed.
 
     InformationItem:
       type: string
