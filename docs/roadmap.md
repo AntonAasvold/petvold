@@ -139,10 +139,12 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [ ] **Översikt:** en startsida med köerna, körningarna och det som fastnat
 
 **Dokument**
-- [ ] ADR om dokument: skapande och ett enkelt arkiv
-- [ ] Dokumentskapande med [Gotenberg](https://gotenberg.dev) (MIT) i en egen container, bakom en port. Mallarna är HTML/CSS med designsystemets tokens, versionerade per marknad och språk med kontrollsumma, och ger PDF/A och PDF/UA. Gotenberg har LibreOffice inbyggt, så Word-mallar (till exempel med docxtemplater) kan läggas till senare utan att containern byts. Carbone valdes bort på grund av licensen (Carbone Community License).
-- [ ] Ett enkelt dokumentarkiv: lagring med kontrollsumma, visning via adresser som inte går att gissa och som slutar gälla, åtkomst efter rättighet och gallring enligt ADR 0028
-- [ ] Bilagor till skador laddas upp från back office till arkivet (ADR 0036)
+- [x] [ADR 0038](adr/0038-dokument-och-arkiv.md) om dokument, arkiv och länkar
+- [ ] Modulen `documents` med arkivet: S3-lagring (MinIO lokalt), uppladdning, och länkar som slutar gälla, med logg och spärr (steg 1)
+- [ ] Bilagor till skador laddas upp från back office till arkivet, och kundens sida visar alla kundens dokument, också de i bolagets arkiv (steg 2)
+- [ ] [Gotenberg](https://gotenberg.dev) (MIT) i en egen container utan nätåtkomst, och mallar i HTML/CSS med designsystemets tokens, versionerade med kontrollsumma, som ger PDF/A (steg 3). Carbone valdes bort på grund av licensen.
+- [ ] Meddelanden som PDF från Petvold eller från bolagets dokumentsystem, och dokumenten i back office (steg 4)
+- [ ] Gallring av dokument som en körning (steg 5)
 
 **M4 – Pris och teckning**
 - [x] ADR om tariffen (ADR 0030)
