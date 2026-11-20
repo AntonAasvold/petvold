@@ -195,7 +195,14 @@ export class PartyDetail extends LitElement {
           ${this.may('animals:read') ? this.animalsCard() : nothing}
           ${this.may('policies:read')
             ? html`<section class="pv-card" aria-labelledby="policies">
-            <div class="pv-card__head"><h2 class="pv-card__title" id="policies">${msg('Policies as policyholder', { id: 'party.policies' })}</h2></div>
+            <div class="pv-card__head">
+              <h2 class="pv-card__title" id="policies">${msg('Policies as policyholder', { id: 'party.policies' })}</h2>
+              ${this.may('policies:write') && !p.anonymized
+                ? html`<wa-button size="small" appearance="outlined" @click=${() => navigate(`/policies/new?holder=${encodeURIComponent(this.partyId)}`)}
+                    >${msg('Issue a policy', { id: 'policy.issue' })}</wa-button
+                  >`
+                : nothing}
+            </div>
             <pv-data-grid
               .columns=${this.policyColumns()}
               .rows=${this.policies}

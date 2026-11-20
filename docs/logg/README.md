@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-20 | [Teckna försäkring från kundens sida](2026-11-20-teckna-fran-kund.md) | #110 |
 | 2026-11-20 | [Formulär för produkter och skaderegler](2026-11-20-produktformular.md) | #109 |
 | 2026-11-20 | [Rättelse av skador med revisioner](2026-11-20-rattelse.md) | #108 |
 | 2026-11-20 | [Hur långt fram en policy får börja](2026-11-20-startdag-i-forvag.md) | #107 |

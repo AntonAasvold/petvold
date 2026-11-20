@@ -16,6 +16,7 @@ import { getLocale } from '../i18n.ts';
 import { parseSearch, versionOn } from '../policy-logic.ts';
 import { navigate } from '../router.ts';
 import { policyStatusLabel } from './labels.ts';
+import type { Me } from '../permissions.ts';
 
 type Policy = components['schemas']['PolicyRecord'];
 const today = () => new Date().toISOString().slice(0, 10);
@@ -23,6 +24,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 @customElement('pv-policies-search')
 export class PoliciesSearch extends LitElement {
   @property({ attribute: false }) api!: Api;
+  @property({ attribute: false }) me: Me | null = null;
   @state() private query = '';
   @state() private results: Policy[] | null = null;
   @state() private loading = false;
@@ -54,6 +56,13 @@ export class PoliciesSearch extends LitElement {
   };
 
   static styles = css`
+    .head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--wa-space-m);
+    }
     h2 {
       margin-top: 0;
     }
@@ -128,7 +137,12 @@ export class PoliciesSearch extends LitElement {
 
   render() {
     return html`
-      <h2>${msg('Policies', { id: 'policies.title' })}</h2>
+      <div class="head">
+        <h2>${msg('Policies', { id: 'policies.title' })}</h2>
+        ${this.me?.permissions.includes('policies:write')
+          ? html`<wa-button appearance="outlined" @click=${() => navigate('/policies/new')}><wa-icon slot="start" name="plus"></wa-icon>${msg('Issue a policy', { id: 'policy.issue' })}</wa-button>`
+          : nothing}
+      </div>
       <form @submit=${this.search} role="search">
         <wa-input
           label=${msg('Search', { id: 'policies.search' })}
