@@ -51,10 +51,12 @@ import {
   SIGNED_IN,
   permissionsOf,
   scopeOf,
+  type Permission,
   type RoleDefinitions,
   type Scope,
   type ScopeAttributes,
 } from './permissions.ts';
+import { DocumentError, DocumentService, InMemoryBlobStore, InMemoryDocumentStore, MAX_UPLOAD_BYTES, sha256, type StoredDocument } from '@petvold/documents';
 import { localizeDeep, localizeExplanation, pickLocale } from './messages.ts';
 
 /**
@@ -130,6 +132,8 @@ export interface AppDeps {
   communications?: CommunicationsService;
   /** Webhook subscriptions (ADR 0033). Omitted: kept in memory; nothing feeds or sends them without the installation's relay and worker. */
   webhooks?: WebhookService;
+  /** Documents (ADR 0038). Omitted: kept in memory, with a random signing key and links on http://localhost. */
+  documents?: DocumentService;
   /** Runs (ADR 0037). Omitted: the four jobs over these services, with history in memory. */
   scheduler?: Scheduler;
   /** The relay, to send a dead letter again (ADR 0037). Omitted: the dead letter is only removed from the store. */
@@ -169,7 +173,7 @@ type Env = { Variables: { principal: Principal; scope: Scope; roles: RoleDefinit
 
 const PROBLEM = 'application/problem+json';
 
-function problem(c: Context, status: 400 | 401 | 403 | 404 | 409 | 422 | 500, title: string, detail?: string, errors?: FieldError[]) {
+function problem(c: Context, status: 400 | 401 | 403 | 404 | 409 | 410 | 422 | 500, title: string, detail?: string, errors?: FieldError[]) {
   return c.body(
     JSON.stringify({ type: `https://errors.petvold.dev/${status}`, title, status, ...(detail ? { detail } : {}), ...(errors ? { errors } : {}) }),
     status,
@@ -1391,6 +1395,117 @@ export function createApp(d: AppDeps) {
     if (!isOperationPermission(contractPermissions.get(op))) throw new Error(`${op} has no valid x-permission in the contract`);
   }
 
+  // Documents (ADR 0038): files in the archive, opened through links that expire.
+  const documents =
+    d.documents ??
+    new DocumentService({
+      store: new InMemoryDocumentStore(),
+      blobs: new InMemoryBlobStore(),
+      clock: d.clock,
+      ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
+      signingKey: crypto.getRandomValues(new Uint8Array(32)),
+      publicBaseUrl: 'http://localhost',
+    });
+  const can = (c: Context<Env>, p: Permission) => permissionsOf(c.get('principal').roles, c.get('roles')).has(p);
+  /**
+   * Whether the caller may see a document: the right to what it belongs to,
+   * within the scope (ADR 0038 point 6). A claim's document follows the claim.
+   */
+  const seesDocument = async (c: Context<Env>, doc: StoredDocument): Promise<boolean> => {
+    const scope = c.get('scope');
+    if (doc.owner.claimId) {
+      if (!can(c, 'claims:read')) return false;
+      const claim = await d.service.getClaim(doc.owner.claimId).catch(() => null);
+      return !!claim && coversClaim(scope, claim);
+    }
+    if (doc.owner.noticeId) {
+      if (!can(c, 'notices:read')) return false;
+      const n = await communications.get(doc.owner.noticeId).catch(() => null);
+      return !!n && seesNotice(scope, n);
+    }
+    return !!doc.owner.policyId && can(c, 'policies:read') && !scope.clinicId && coversPolicy(scope, doc.market, doc.owner.policyId);
+  };
+  const visibleDocument = async (c: Context<Env>): Promise<StoredDocument> => {
+    const id = c.req.param('documentId') ?? '';
+    const doc = await documents.get(id).catch((e: unknown) => {
+      if (e instanceof DocumentError && e.code === 'not_found') return null;
+      throw e;
+    });
+    if (!doc || !(await seesDocument(c, doc))) throw new DocumentError('not_found', `Document ${id} does not exist`);
+    return doc;
+  };
+
+  app.post('/v1/claims/:claimId/documents', async (c) => {
+    const claim = await d.service.getClaim(c.req.param('claimId'));
+    const length = Number(c.req.header('content-length') ?? 0);
+    if (length > MAX_UPLOAD_BYTES + 64 * 1024) return problem(c, 422, `The file is larger than ${MAX_UPLOAD_BYTES / 1024 / 1024} MB`);
+    const form = await c.req.parseBody().catch(() => null);
+    const file = form?.file;
+    if (!(file instanceof File)) return problem(c, 422, 'The request is multipart/form-data with the file in the part file');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    // The policyholder on the first day of treatment: the customer the claim's documents concern.
+    const policy = await policies.get(claim.policyId).catch(() => null);
+    const known = policy?.versions.filter((v) => !v.sysTo) ?? [];
+    const holder = (known.find((v) => v.validFrom <= claim.treatmentFrom && claim.treatmentFrom < v.validTo) ?? known.at(-1))?.policyholderPartyId;
+    return idempotent(c, { sha256: sha256(bytes), name: file.name, type: file.type }, async () => ({
+      status: 201,
+      body: await documents.upload(
+        { bytes, mediaType: file.type, filename: file.name, owner: { claimId: claim.id, policyId: claim.policyId }, partyIds: holder ? [holder] : [], market: claim.market },
+        c.get('principal').subject,
+      ),
+    }));
+  });
+
+  app.get('/v1/documents', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const filter = { ...(q('partyId') ? { partyId: q('partyId')! } : {}), ...(q('claimId') ? { claimId: q('claimId')! } : {}), ...(q('policyId') ? { policyId: q('policyId')! } : {}) };
+    if (filter.partyId && !can(c, 'parties:read')) return problem(c, 403, 'Not permitted', 'A customer\'s documents need the permission parties:read');
+    const found = await documents.list(filter);
+    const visible: StoredDocument[] = [];
+    for (const doc of found) if (await seesDocument(c, doc)) visible.push(doc);
+    return sendPage(c, visible);
+  });
+
+  app.get('/v1/documents/:documentId', async (c) => send(c, await visibleDocument(c)));
+
+  app.get('/v1/documents/:documentId/links', async (c) => sendPage(c, await documents.links((await visibleDocument(c)).id)));
+
+  app.post('/v1/documents/:documentId/links', async (c) => {
+    const doc = await visibleDocument(c);
+    const r = await readJson(c, 'DocumentLinkRequest');
+    if (!r.ok) return r.res;
+    if (r.body.audience === 'customer' && !can(c, 'documents:share')) return problem(c, 403, 'Not permitted', 'A link for the customer needs the permission documents:share');
+    return idempotent(c, r.body, async () => ({ status: 201, body: await documents.createLink(doc.id, r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/documents/:documentId/links/:linkId/revocations', async (c) => {
+    const doc = await visibleDocument(c);
+    const r = await readJson(c, 'Empty');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await documents.revokeLink(doc.id, c.req.param('linkId'), c.get('principal').subject) }));
+  });
+
+  // A link opens the file without a token: the signed, expiring address is the
+  // permission (ADR 0038 point 5). Outside the contract, like /healthz.
+  app.get('/d/:token', async (c) => {
+    try {
+      const { document, bytes } = await documents.open(c.req.param('token'));
+      const ext = document.mediaType === 'application/pdf' ? 'pdf' : document.mediaType.split('/')[1];
+      return c.body(new Uint8Array(bytes), 200, {
+        'content-type': document.mediaType,
+        'content-length': String(bytes.length),
+        'content-disposition': `inline; filename="document.${ext}"`,
+        'cache-control': 'no-store',
+        'referrer-policy': 'no-referrer',
+        'x-content-type-options': 'nosniff',
+        'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox",
+      });
+    } catch (e) {
+      if (e instanceof DocumentError && e.code === 'gone') return problem(c, 410, 'The link does not work');
+      throw e;
+    }
+  });
+
   app.notFound((c) => problem(c, 404, 'The resource does not exist'));
 
   app.onError((err, c) => {
@@ -1425,6 +1540,9 @@ export function createApp(d: AppDeps) {
     }
     if (err instanceof JobError) {
       return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);
+    }
+    if (err instanceof DocumentError) {
+      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'gone' ? 410 : 422, err.message);
     }
     if (err instanceof DomainError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;

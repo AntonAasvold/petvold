@@ -46,9 +46,12 @@ import { underwritingCoverage } from '@petvold/underwriting-core';
 import { InMemoryIdempotencyStore, type AppDeps, type IdempotencyStore } from './app.ts';
 import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './permissions.ts';
 import { Relay, relaySource } from './relay.ts';
+import { DocumentService, InMemoryBlobStore, InMemoryDocumentStore, type BlobStore, type DocumentStore } from '@petvold/documents';
+import { PostgresDocumentStore } from '@petvold/documents/postgres';
+import { S3BlobStore, s3ConfigFromEnv, type S3Config } from '@petvold/documents/s3';
 import { animalPort, claimSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
 
-export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling'] as const;
+export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling', 'documents'] as const;
 export type DatabaseName = (typeof DATABASES)[number];
 
 export interface InstallationConfig {
@@ -67,6 +70,18 @@ export interface InstallationConfig {
     /** How deliveries are sent. Defaults to HTTP with fetch. */
     transport?: Transport;
   };
+  /**
+   * Documents (ADR 0038). The key is required when documents are stored in
+   * Postgres. Without s3 the files are kept in memory.
+   */
+  documents?: {
+    /** At least 32 bytes, base64: signs the links (PETVOLD_DOCUMENT_KEY). */
+    key?: string;
+    /** Where links are opened (PETVOLD_PUBLIC_URL). Default http://localhost:8787. */
+    publicBaseUrl?: string;
+    /** The archive (PETVOLD_DOCUMENTS_BUCKET and the rest). */
+    s3?: S3Config | null;
+  };
   /** The claim number's prefix per market, e.g. { SE: 'S', NO: 'N' } (PETVOLD_CLAIM_NUMBER_PREFIX). 'S' when a market has none. */
   claimNumberPrefix?: Record<string, string>;
 }
@@ -83,11 +98,21 @@ export const DATABASE_ENV: Record<DatabaseName, string> = {
   communications: 'COMMUNICATIONS_DATABASE_URL',
   webhooks: 'WEBHOOKS_DATABASE_URL',
   scheduling: 'SCHEDULING_DATABASE_URL',
+  documents: 'DOCUMENTS_DATABASE_URL',
 };
 
 /** The database URLs from the environment, skipping empty ones. */
 export function databasesFromEnv(env: Record<string, string | undefined>): Partial<Record<DatabaseName, string>> {
   return Object.fromEntries(DATABASES.flatMap((d) => (env[DATABASE_ENV[d]] ? [[d, env[DATABASE_ENV[d]]!]] : [])));
+}
+
+/** Document settings from PETVOLD_DOCUMENT_KEY, PETVOLD_PUBLIC_URL and the archive's variables (ADR 0038). */
+export function documentsFromEnv(env: Record<string, string | undefined>): NonNullable<InstallationConfig['documents']> {
+  return {
+    ...(env.PETVOLD_DOCUMENT_KEY ? { key: env.PETVOLD_DOCUMENT_KEY } : {}),
+    ...(env.PETVOLD_PUBLIC_URL ? { publicBaseUrl: env.PETVOLD_PUBLIC_URL } : {}),
+    s3: s3ConfigFromEnv(env),
+  };
 }
 
 /** Webhook settings from PETVOLD_WEBHOOK_KEY and PETVOLD_WEBHOOK_ALLOW_HOSTS (comma-separated). */
@@ -129,6 +154,7 @@ export interface Installation {
     notices: NoticeStore;
     webhooks: WebhookStore;
     scheduling: SchedulingStore;
+    documents: DocumentStore;
   };
   relay: Relay;
   /** Runs the daily jobs when they are due (ADR 0037). Start it next to the relay. */
@@ -359,8 +385,24 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     { clock, log, state: schedulingStore, holder: `${hostname()}:${process.pid}` },
   );
 
+  // Documents (ADR 0038): the records in their own schema, the files in the archive.
+  const documentsPool = pool('documents', 2);
+  const documentStore: DocumentStore = documentsPool ? new PostgresDocumentStore(documentsPool) : new InMemoryDocumentStore();
+  const s3 = config.documents?.s3 ? new S3BlobStore(config.documents.s3) : null;
+  const blobs: BlobStore = s3 ?? new InMemoryBlobStore();
+  const documentKey = config.documents?.key ? Buffer.from(config.documents.key, 'base64') : null;
+  if (documentsPool && (!documentKey || documentKey.length < 32)) throw new Error('PETVOLD_DOCUMENT_KEY must be at least 32 bytes in base64 when documents are stored in Postgres');
+  const documents = new DocumentService({
+    store: documentStore,
+    blobs,
+    clock,
+    ids,
+    signingKey: documentKey ?? randomBytes(32),
+    publicBaseUrl: config.documents?.publicBaseUrl ?? 'http://localhost:8787',
+  });
+
   return {
-    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks, scheduler, relay },
+    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks, scheduler, relay, documents },
     stores: {
       claims: claimsStore,
       roles: roleStore,
@@ -373,19 +415,21 @@ export async function compose(config: InstallationConfig): Promise<Installation>
       notices: noticeStore,
       webhooks: webhookStore,
       scheduling: schedulingStore,
+      documents: documentStore,
     },
     relay,
     scheduler,
     webhookWorker,
     storage: Object.fromEntries(DATABASES.map((d) => [d, config.databases[d] ? 'postgres' : 'memory'])) as Record<DatabaseName, 'postgres' | 'memory'>,
     async ping() {
-      await Promise.all(pools.map((p) => p.query('select 1')));
+      await Promise.all([...pools.map((p) => p.query('select 1')), s3?.ping()]);
     },
     async close() {
       await scheduler.stop();
       await relay.stop();
       await webhookWorker.stop();
       await Promise.all(pools.map((p) => p.end()));
+      s3?.destroy();
     },
   };
 }

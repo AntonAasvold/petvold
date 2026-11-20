@@ -18,6 +18,7 @@ För försäkringsbolag, produktägare och handläggare. Ingen kod krävs för a
 - [Meddelanden](funktion/meddelanden.md): besked som lagen kräver, och bolagets dokumentsystem
 - [Webhooks](funktion/webhooks.md): händelser till bolagets system, med signatur och omförsök
 - [Körningar](funktion/korningar.md): förnyelse, utgång och gallring varje dag, en server i taget, med historik
+- [Dokument](funktion/dokument.md): filer i Petvolds arkiv, kundens dokument och länkar som slutar gälla
 - [Back office](funktion/backoffice.md): gränssnittet för handläggare och back office
 - [Behörighet](funktion/behorighet.md): roller, rättigheter, omfång och hur en installation ställer in dem
 

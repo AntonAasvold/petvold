@@ -71,6 +71,8 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/settings/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
 | `claims:request-review` | Begära mänsklig prövning av ett automatiskt beslut för kundens räkning (ADR 0018) | `POST /v1/claims/{id}/decisions/{seq}/review-requests` |
+| `documents:read` | Läsa dokument och öppna dem med en länk som gäller i 15 minuter. Dessutom krävs rätten till det dokumentet hör till (ADR 0038). | `GET /v1/documents`, `GET /v1/documents/{id}`, `GET` och `POST …/links` |
+| `documents:share` | Ge kunden en länk som gäller upp till 7 dagar, och spärra en länk | `POST …/links` med `audience: customer`, `POST …/links/{linkId}/revocations` |
 | `claims:request-information` | Begära komplettering av kunden eller kliniken, och återkalla en begäran (ADR 0036). Svaret registreras med `claims:register`. | `POST /v1/claims/{id}/information-requests`, `POST …/information-requests/{requestId}/cancellations` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
 | `limits:read` | Se förbrukat och återstående försäkringsbelopp | `GET /v1/policies/{p}/limits` |

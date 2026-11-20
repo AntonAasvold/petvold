@@ -6,10 +6,14 @@
  * Configuration from the environment (never a .env file):
  * - CLAIMS_DATABASE_URL, ACCESS_DATABASE_URL, DECISIONING_DATABASE_URL,
  *   CATALOG_DATABASE_URL, ANIMALS_DATABASE_URL, PARTIES_DATABASE_URL,
- *   POLICIES_DATABASE_URL, COMMUNICATIONS_DATABASE_URL, WEBHOOKS_DATABASE_URL
- *   and SCHEDULING_DATABASE_URL:
+ *   POLICIES_DATABASE_URL, COMMUNICATIONS_DATABASE_URL, WEBHOOKS_DATABASE_URL,
+ *   SCHEDULING_DATABASE_URL and DOCUMENTS_DATABASE_URL:
  *   every one is required, each with the module's own role.
  * - PETVOLD_WEBHOOK_KEY: 32 bytes in base64 that seal the webhook secrets (ADR 0033). Required.
+ * - PETVOLD_DOCUMENT_KEY: at least 32 bytes in base64 that sign the documents' links (ADR 0038). Required.
+ * - PETVOLD_PUBLIC_URL: where the documents' links are opened, e.g. https://petvold.insurer.example. Required.
+ * - PETVOLD_DOCUMENTS_BUCKET: the archive's bucket. Required. With PETVOLD_DOCUMENTS_S3_ENDPOINT,
+ *   _S3_REGION, _S3_ACCESS_KEY and _S3_SECRET_KEY, else the AWS SDK's usual credentials.
  * - PETVOLD_WEBHOOK_ALLOW_HOSTS: hosts a webhook may name although local or http, comma-separated. Default none.
  * - PETVOLD_VERSION: stored with every decision (ADR 0018). Required.
  * - PETVOLD_CLAIM_NUMBER_PREFIX: the claim number's prefix per market, e.g. SE=S,NO=N (ADR 0036). Default S.
@@ -21,7 +25,7 @@
  * server's roles cannot change the schema.
  */
 import { serve } from '@hono/node-server';
-import { claimNumberPrefixFromEnv, compose, DATABASE_ENV, DATABASES, databasesFromEnv, webhooksFromEnv } from './composition.ts';
+import { claimNumberPrefixFromEnv, compose, DATABASE_ENV, DATABASES, databasesFromEnv, documentsFromEnv, webhooksFromEnv } from './composition.ts';
 import { authenticatorFromEnv } from './auth.ts';
 import { corsOriginsFromEnv, createApp } from './index.ts';
 
@@ -29,7 +33,7 @@ const log = (line: string) => console.log(line);
 
 const missing = [
   ...DATABASES.filter((d) => !process.env[DATABASE_ENV[d]]).map((d) => DATABASE_ENV[d]),
-  ...['PETVOLD_VERSION', 'PETVOLD_WEBHOOK_KEY'].filter((k) => !process.env[k]),
+  ...['PETVOLD_VERSION', 'PETVOLD_WEBHOOK_KEY', 'PETVOLD_DOCUMENT_KEY', 'PETVOLD_PUBLIC_URL', 'PETVOLD_DOCUMENTS_BUCKET'].filter((k) => !process.env[k]),
 ];
 if (missing.length) {
   console.error(`Missing configuration: ${missing.join(', ')}`);
@@ -47,7 +51,14 @@ try {
   console.error((err as Error).message);
   process.exit(1);
 }
-const inst = await compose({ databases: databasesFromEnv(process.env), engineVersion: process.env.PETVOLD_VERSION!, log, webhooks: webhooksFromEnv(process.env), claimNumberPrefix });
+const inst = await compose({
+  databases: databasesFromEnv(process.env),
+  engineVersion: process.env.PETVOLD_VERSION!,
+  log,
+  webhooks: webhooksFromEnv(process.env),
+  documents: documentsFromEnv(process.env),
+  claimNumberPrefix,
+});
 await inst.ping().catch((err: Error) => {
   console.error(`A database does not answer: ${err.message}`);
   process.exit(1);

@@ -30,6 +30,8 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - name: documents
+    description: Files in Petvold's archive, opened through links that expire (ADR 0038).
   - name: claims
     description: Claims for vet care, registered by a clinic or the customer, assessed against the policy and the product's rules.
   - name: decisions
@@ -640,6 +642,40 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/claims/{claimId}/documents:
+    post:
+      tags: [documents]
+      operationId: uploadClaimDocument
+      x-permission: claims:register
+      summary: Upload a file to the claim's archive
+      description: |
+        Requires the permission `claims:register`.
+
+        The file is kept in Petvold's archive (ADR 0038): at most 25 MB, a PDF,
+        JPEG, PNG or HEIC whose content matches the media type. Petvold
+        computes the checksum itself. The document belongs to the claim and
+        concerns the policyholder, so it is in the customer's list of
+        documents. It never changes. Open it with a link (`…/links`).
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/DocumentUpload' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Stored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Document' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/claims/{claimId}/revisions:
     get:
       tags: [claims]
@@ -864,6 +900,146 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/documents:
+    get:
+      tags: [documents]
+      operationId: listDocuments
+      x-permission: documents:read
+      summary: Documents of a customer, a claim or a policy
+      description: |
+        Requires the permission `documents:read`, and for each document the right
+        to what it belongs to: `claims:read` for a claim, `policies:read` for a
+        policy and `notices:read` for a notice, within the caller's scope. A
+        customer's list (`partyId`) also needs `parties:read`. Newest first.
+        Give one of partyId, claimId and policyId.
+      parameters:
+        - { name: partyId, in: query, schema: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' } }
+        - { name: claimId, in: query, schema: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' } }
+        - { name: policyId, in: query, schema: { type: string, pattern: '^pol_[A-Za-z0-9_]+$' } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: One page of documents
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Document' } }
+                  nextCursor: { type: string }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/documents/{documentId}:
+    get:
+      tags: [documents]
+      operationId: getDocument
+      x-permission: documents:read
+      summary: A document's record
+      description: Requires the permission `documents:read` and the right to what the document belongs to. The file is opened with a link.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The document
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Document' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/documents/{documentId}/links:
+    get:
+      tags: [documents]
+      operationId: listDocumentLinks
+      x-permission: documents:read
+      summary: The document's links, and when each was opened
+      description: Requires the permission `documents:read` and the right to what the document belongs to. Newest first. Who has seen the document (GDPR art. 15).
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: One page of links
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/DocumentLink' } }
+                  nextCursor: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    post:
+      tags: [documents]
+      operationId: createDocumentLink
+      x-permission: documents:read
+      summary: A link to the document that expires
+      description: |
+        Requires the permission `documents:read` and the right to what the
+        document belongs to. A link for the customer (`audience: customer`) also
+        needs `documents:share`.
+
+        The address is `{base}/d/{token}`: a random id and a signature, naming
+        neither the document nor the customer (ADR 0038). It works until
+        `expiresAt`: for a person here 15 minutes, for the customer 60 seconds
+        to 7 days (default 15 minutes). Every opening is logged, and a link can
+        be revoked. An erased document gets no links (410).
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentLinkRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: The link
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentLinkCreated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/documents/{documentId}/links/{linkId}/revocations:
+    post:
+      tags: [documents]
+      operationId: revokeDocumentLink
+      x-permission: documents:share
+      summary: Revoke a link
+      description: Requires the permission `documents:share` and the right to what the document belongs to. The link stops working at once.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+        - $ref: '#/components/parameters/DocumentLinkId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Empty' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Revoked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentLink' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /v1/me:
     get:
@@ -4121,6 +4297,16 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: '^inf_[A-Za-z0-9]+$' }
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^doc_[A-Za-z0-9_]+$' }
+    DocumentLinkId:
+      name: linkId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^lnk_[A-Za-z0-9_-]+$' }
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -4128,6 +4314,11 @@ components:
       schema: { type: string, minLength: 8, maxLength: 128 }
 
   responses:
+    Gone:
+      description: It is no longer there, e.g. an erased document
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     Unauthenticated:
       description: No valid token
       content:
@@ -4708,6 +4899,74 @@ components:
         duplicateOf: { type: string }
         closedBy: { type: string }
         closedAt: { $ref: '#/components/schemas/DateTime' }
+
+    Empty:
+      type: object
+      additionalProperties: false
+      description: No fields.
+
+    DocumentUpload:
+      type: object
+      required: [file]
+      properties:
+        file: { type: string, format: binary, description: 'The file, at most 25 MB: application/pdf, image/jpeg, image/png or image/heic. Its own content type in the part.' }
+
+    Document:
+      type: object
+      additionalProperties: false
+      required: [id, kind, mediaType, size, sha256, owner, partyIds, market, createdBy, createdAt]
+      description: A file in Petvold's archive (ADR 0038). The record; the file is opened with a link.
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [uploaded, generated] }
+        mediaType: { type: string }
+        size: { type: integer, minimum: 1 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        filename: { type: string }
+        owner:
+          type: object
+          additionalProperties: false
+          description: What it belongs to. Access to the document follows it.
+          properties:
+            claimId: { type: string }
+            policyId: { type: string }
+            noticeId: { type: string }
+        partyIds: { type: array, items: { type: string }, description: The parties it concerns, set when it was made. }
+        market: { $ref: '#/components/schemas/Market' }
+        createdBy: { type: string }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        erasedAt: { $ref: '#/components/schemas/DateTime', description: The file was removed by retention; the record stays. }
+
+    DocumentLinkRequest:
+      type: object
+      additionalProperties: false
+      required: [audience]
+      properties:
+        audience: { type: string, enum: [internal, customer], description: 'internal: a person here, 15 minutes. customer: given to the customer, needs documents:share.' }
+        seconds: { type: integer, minimum: 60, maximum: 604800, description: 'How long it works. Omitted: 15 minutes. A link for a person here works 15 minutes at most.' }
+
+    DocumentLink:
+      type: object
+      additionalProperties: false
+      required: [id, documentId, audience, createdBy, createdAt, expiresAt, accesses]
+      properties:
+        id: { type: string }
+        documentId: { type: string }
+        audience: { type: string, enum: [internal, customer] }
+        createdBy: { type: string }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        expiresAt: { $ref: '#/components/schemas/DateTime' }
+        revokedBy: { type: string }
+        revokedAt: { $ref: '#/components/schemas/DateTime' }
+        accesses: { type: array, items: { $ref: '#/components/schemas/DateTime' }, description: When it was opened, oldest first. }
+
+    DocumentLinkCreated:
+      type: object
+      additionalProperties: false
+      required: [link, url]
+      properties:
+        link: { $ref: '#/components/schemas/DocumentLink' }
+        url: { type: string, description: 'The address to open, {base}/d/{token}. Not stored by Petvold: create a new link when it is needed again.' }
 
     AttachmentInput:
       type: object

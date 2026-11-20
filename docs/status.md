@@ -352,8 +352,17 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Bolagets dokumentsystem finns kvar** som förval.
   - **Alla dokument för en kund** visas på kundens sida, också de i bolagets arkiv (`GET /v1/documents?partyId=`).
 
+- Dokument, steg 1 (ADR 0038), PR #115:
+  - **Modulen `documents`:** uppladdning till en skada (`POST /v1/claims/{id}/documents`), högst 25 MB och PDF, JPEG, PNG eller HEIC som stämmer med innehållet, med Petvolds egen sha256.
+  - **`GET /v1/documents?partyId=`** listar kundens dokument, bara det anroparen får se.
+  - **Länkar** som slutar gälla (15 minuter internt, högst 7 dagar för kunden), signerade, loggade och möjliga att spärra. `/d/{token}` svarar `410` när länken inte fungerar.
+  - **Arkivet:** S3 med `@aws-sdk/client-s3`, och SeaweedFS (Apache 2.0) i docker compose i stället för MinIO.
+  - **Rättigheterna** `documents:read` och `documents:share`.
+  - **Migration 0046:** schemat `documents`.
+  - 141 operationer, 536 tester och 156 databastester.
+
 **Nästa steg**
-1. ADR 0038, steg 1: modulen `documents` med arkivet och länkarna.
+1. ADR 0038, steg 2: uppladdning av bilagor från back office, och kundens dokument på kundens sida.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
 3. Back office: översikten på startsidan, omräkning av beslut och policyns sida enligt designsystemet.
 

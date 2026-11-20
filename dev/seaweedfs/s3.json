@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "petvold",
+      "credentials": [{ "accessKey": "petvold", "secretKey": "petvold-documents" }],
+      "actions": ["Read", "Write", "List", "Tagging", "Admin"]
+    }
+  ]
+}
