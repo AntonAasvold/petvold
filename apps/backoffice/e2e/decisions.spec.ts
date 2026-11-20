@@ -87,7 +87,8 @@ test('the explanation shows why a decision came out as it did', async ({ page })
   // The history is newest first, on the inverted panel, with the event names the API uses.
   const items = history(page).getByRole('listitem');
   await expect(items.last()).toContainText('claim.received');
-  await expect(items.first()).toContainText('claim.decided');
+  // The claims decision notice to the customer may come after the decision (ADR 0036).
+  await expect(items.filter({ hasText: 'claim.decided' }).first()).toBeVisible();
   await history(page).getByRole('button', { name: /^Why\? #/ }).first().click();
   await expect(page.getByRole('dialog', { name: 'Why this decision' })).toBeVisible();
   // The content is slotted into Web Awesome's dialog, so it is looked for on the page.

@@ -112,3 +112,24 @@ test("the scheduler runs the four jobs once per market and day, with counts and 
   assert.deepEqual(await inst.scheduler.tick(), [], 'once a day');
   await inst.close();
 });
+
+test('the relay turns claims decisions and requests to the customer into notices (ADR 0036)', async () => {
+  const clock = { now: () => '2026-11-15T10:00:00.000Z' };
+  const inst = await compose({ databases: {}, engineVersion: 'test', clock });
+  await seedSampleData(inst, clock);
+  while ((await inst.relay.tick()) > 0);
+  // Every claim on Bella with a decision, also one where a review is requested since.
+  const decided = (await inst.deps.service.listClaims({ policyId: 'pol_bella' })).filter((c) => c.latestDecision);
+  assert.ok(decided.length > 0, 'the sample data has a decided claim on Bella');
+  const notices = await inst.deps.communications!.list({ type: 'claim-decision', policyId: 'pol_bella' });
+  assert.deepEqual(new Set(notices.map((n) => n.content.claimId)), new Set(decided.map((c) => c.id)));
+  assert.ok(notices.every((n) => n.recipientPartyId === 'pty_owner001'));
+
+  const [waiting] = await inst.deps.service.listClaims({ state: 'awaiting-decision', market: 'SE' });
+  await inst.deps.service.requestInformation(waiting!.id, { recipient: 'customer', items: ['itemised-invoice'], note: 'The specified invoice' }, 'h');
+  await inst.deps.service.requestInformation(waiting!.id, { recipient: 'clinic', items: ['medical-record'], note: 'The record' }, 'h');
+  while ((await inst.relay.tick()) > 0);
+  const asked = await inst.deps.communications!.list({ type: 'claim-information-request' });
+  assert.deepEqual(asked.map((n) => [n.content.claimId, n.content.note]), [[waiting!.id, 'The specified invoice']], 'only the request to the customer');
+  await inst.close();
+});

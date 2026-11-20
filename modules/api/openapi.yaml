@@ -5500,7 +5500,7 @@ components:
 
     NoticeType:
       type: string
-      enum: [policy-confirmation, renewal-notice, insurer-termination, cancellation-confirmation, application-declined, transfer-offer]
+      enum: [policy-confirmation, renewal-notice, insurer-termination, cancellation-confirmation, application-declined, transfer-offer, claim-decision, claim-information-request, claim-information-reminder, claim-information-expired]
       description: |
         - policy-confirmation: the written confirmation after issue (SE: FAL 2 kap. 4 §), schema policy-confirmation.v1
         - renewal-notice: the new term and what changed (FAL 3 kap. 5 §), renewal-notice.v1
@@ -5508,6 +5508,10 @@ components:
         - cancellation-confirmation: the customer's cancellation confirmed (not required by law), cancellation-confirmation.v1
         - application-declined: the refusal with reasons (FAL 7 kap. 6 §), application-declined.v1
         - transfer-offer: the offer to the new owner of a sold animal to take over the policy (ADR 0029, not required by law), transfer-offer.v1
+        - claim-decision: the claims decision with the calculation and how it is reviewed (ADR 0036; SE: FAL 7 kap. 1 §, GDPR art. 22.3), claim-decision.v1
+        - claim-information-request: what the customer must send (FAL 7 kap. 1 §), claim-information-request.v1. Only for a request to the customer.
+        - claim-information-reminder: the reminder of an open request, claim-information-reminder.v1
+        - claim-information-expired: the request expired; a handler decides on what there is (not required by law), claim-information-expired.v1
 
     WebhookSubscriptionRequest:
       type: object
@@ -5675,6 +5679,9 @@ components:
             - insurer-termination.v1 and cancellation-confirmation.v1: policyId, animalId, reason, receivedOn, effectiveDate, refund; the insurer's grounds, and for unpaid premium voidIfPaidBefore.
             - application-declined.v1: applicationId, animalId, productVersion, reasons (codes) and decidedBy (rules or person), and review from the settings.
             - transfer-offer.v1: policyId, animalId, proposalId, fromPartyId, from, deadline, and the term as in the confirmation.
+            - claim-decision.v1: claimId, claimNo, policyId, animalId, decisionId, seq, outcome, payout, automated, mainReason and steps (keys and values, as the decision's explanation), deviation when a handler decided against the proposal, reviewAvailable, and review from the settings.
+            - claim-information-request.v1 and claim-information-reminder.v1: claimId, claimNo, policyId, animalId, requestId, items, note, dueDate.
+            - claim-information-expired.v1: the same without note, and decidedOnAvailableBasis.
             Every type gets sender from the settings when it is set.
         status: { type: string, enum: [pending, sent, failed], description: 'sent once any delivery was sent; failed if every delivery failed.' }
         late: { type: boolean, description: First sent after dueBy. }

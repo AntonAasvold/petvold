@@ -16,7 +16,18 @@ import { addDays, marketDate, marketLanguage } from '@petvold/common';
 export type ISODate = string;
 export type Timestamp = string;
 
-export const NOTICE_TYPES = ['policy-confirmation', 'renewal-notice', 'insurer-termination', 'cancellation-confirmation', 'application-declined', 'transfer-offer'] as const;
+export const NOTICE_TYPES = [
+  'policy-confirmation',
+  'renewal-notice',
+  'insurer-termination',
+  'cancellation-confirmation',
+  'application-declined',
+  'transfer-offer',
+  'claim-decision',
+  'claim-information-request',
+  'claim-information-reminder',
+  'claim-information-expired',
+] as const;
 export type NoticeType = (typeof NOTICE_TYPES)[number];
 
 /** The content schema of each type. A new legal requirement gives a new field or version. */
@@ -27,12 +38,18 @@ export const NOTICE_SCHEMAS: Record<NoticeType, string> = {
   'cancellation-confirmation': 'cancellation-confirmation.v1',
   'application-declined': 'application-declined.v1',
   'transfer-offer': 'transfer-offer.v1',
+  'claim-decision': 'claim-decision.v1',
+  'claim-information-request': 'claim-information-request.v1',
+  'claim-information-reminder': 'claim-information-reminder.v1',
+  'claim-information-expired': 'claim-information-expired.v1',
 };
 
 /** Fields an insurer's text fills, per type: a notice without them is incomplete and in the queue. */
 export const REQUIRED_TEXTS: Partial<Record<NoticeType, (keyof NoticeTexts)[]>> = {
   // Chapter 7 section 6: what the applicant must do to have the decision reviewed.
   'application-declined': ['review'],
+  // How the customer has a claims decision reviewed: the insurer's complaints function and the bodies outside it.
+  'claim-decision': ['review'],
 };
 
 /**
@@ -98,6 +115,28 @@ export const NOTICE_RULES: Record<string, MarketNoticeRules> = {
         due: 'promptly',
         legalBasis: ['Insurance Contracts Act chapter 7 section 6: a refusal states the reasons and what the applicant must do to have the decision reviewed'],
       },
+      // The claims decision (ADR 0036): the outcome, how it was reached and how it is reviewed.
+      'claim-decision': {
+        required: true,
+        due: 'promptly',
+        legalBasis: [
+          'Insurance Contracts Act chapter 7 section 1: the claim is settled promptly, and paid within a month of the basis being complete',
+          'General Data Protection Regulation (EU) 2016/679 article 22(3): an automated decision may be contested, with the right to human intervention',
+        ],
+      },
+      // What the customer must send for the month to start (ADR 0036).
+      'claim-information-request': {
+        required: true,
+        due: 'promptly',
+        legalBasis: ['Insurance Contracts Act chapter 7 section 1: payment is due a month after the claimant has presented the investigation that can reasonably be required'],
+      },
+      'claim-information-reminder': {
+        required: true,
+        due: 'promptly',
+        legalBasis: ['Insurance Contracts Act chapter 7 section 1: payment is due a month after the claimant has presented the investigation that can reasonably be required'],
+      },
+      // Not required by law: the insurer may turn it off (ADR 0036).
+      'claim-information-expired': { required: false, due: 'promptly', legalBasis: [] },
     },
   },
 };
@@ -265,6 +304,50 @@ export interface PolicySource {
   proposal(proposalId: string): Promise<ProposalView | null>;
 }
 
+/** A claims decision as the notice needs it, read from the claims engine (ADR 0036). No other claim data. */
+export interface ClaimDecisionView {
+  claimId: string;
+  claimNo: string;
+  policyId: string;
+  animalId: string;
+  market: string;
+  treatmentFrom: ISODate;
+  decisionId: string;
+  seq: number;
+  outcome: string;
+  payout: { amount: number; currency: string };
+  automated: boolean;
+  /** The reason that best explains the outcome, as a key and its values. */
+  mainReason: { reason: string; params: Record<string, string | number> };
+  /** The calculation step by step. */
+  steps: { step: string; amount: number; reason: string; params: Record<string, string | number> }[];
+  /** A handler who decided against the proposal: the reason code and the motivation. */
+  deviation?: { reasonCode: string; reason: string };
+  /** The customer may ask for a person to review the decision now. */
+  reviewAvailable: boolean;
+}
+
+/** A request for information as the notice needs it (ADR 0036). */
+export interface InformationRequestView {
+  claimId: string;
+  claimNo: string;
+  policyId: string;
+  animalId: string;
+  market: string;
+  treatmentFrom: ISODate;
+  requestId: string;
+  recipient: 'customer' | 'clinic';
+  items: string[];
+  note: string;
+  dueDate: ISODate;
+}
+
+/** What the module reads from the claims engine. Implemented by the composition root. */
+export interface ClaimSource {
+  decision(claimId: string, seq: number): Promise<ClaimDecisionView | null>;
+  informationRequest(claimId: string, requestId: string): Promise<InformationRequestView | null>;
+}
+
 /** What the module reads from the parties module. */
 export interface PartySource {
   /** The party's preferred language, if any. */
@@ -339,6 +422,8 @@ export interface CommunicationsDeps {
   ids: { next(prefix: string): string };
   /** The insurer's versioned settings. */
   settings: NoticeSettingsStore;
+  /** The claims engine, for claims decisions and requests for information. Omitted: claims events give no notices. */
+  claims?: ClaimSource;
   /** Defaults to NOTICE_RULES. */
   rules?: Record<string, MarketNoticeRules>;
   /** Version 1 of the settings. Defaults to an empty setting per market with rules. */
@@ -370,7 +455,82 @@ export class CommunicationsService {
    * notice, or null.
    */
   async handlePolicyEvent(e: SourceEvent): Promise<Notice | null> {
-    const planned = await this.plan(e);
+    return this.make(e, await this.plan(e));
+  }
+
+  /**
+   * Makes the notice a claims event calls for (ADR 0036): the claims decision,
+   * and a request for information to the customer, its reminder and expiry.
+   * A request to the clinic gives no notice: the clinic is not the customer.
+   * Repeats give nothing new.
+   */
+  async handleClaimEvent(e: SourceEvent & { claimId: string }): Promise<Notice | null> {
+    return this.make(e, await this.planClaim(e));
+  }
+
+  private async planClaim(e: SourceEvent & { claimId: string }): Promise<Planned | null> {
+    const claims = this.d.claims;
+    if (!claims) return null;
+    const recipientOf = async (policyId: string, onDate: ISODate) => {
+      const p = await this.d.policies.policy(policyId);
+      if (!p) throw new Error(`The policy ${policyId} of event ${e.id} does not exist`);
+      return holderOn(p, onDate);
+    };
+    if (e.type === 'claim.decided') {
+      const d = await claims.decision(e.claimId, Number(e.data.seq));
+      if (!d) throw new Error(`The decision ${e.claimId}#${e.data.seq} of event ${e.id} does not exist`);
+      return {
+        type: 'claim-decision',
+        market: d.market,
+        recipientPartyId: await recipientOf(d.policyId, d.treatmentFrom),
+        policyId: d.policyId,
+        content: {
+          claimId: d.claimId,
+          claimNo: d.claimNo,
+          policyId: d.policyId,
+          animalId: d.animalId,
+          decisionId: d.decisionId,
+          seq: d.seq,
+          outcome: d.outcome,
+          payout: { ...d.payout },
+          automated: d.automated,
+          mainReason: structuredClone(d.mainReason),
+          steps: structuredClone(d.steps),
+          ...(d.deviation ? { deviation: { ...d.deviation } } : {}),
+          reviewAvailable: d.reviewAvailable,
+        },
+      };
+    }
+    const types: Record<string, NoticeType> = {
+      'claim.information_requested': 'claim-information-request',
+      'claim.information_reminded': 'claim-information-reminder',
+      'claim.information_expired': 'claim-information-expired',
+    };
+    const type = types[e.type];
+    if (!type) return null;
+    const r = await claims.informationRequest(e.claimId, String(e.data.requestId ?? ''));
+    if (!r) throw new Error(`The request ${e.data.requestId} of event ${e.id} does not exist`);
+    if (r.recipient !== 'customer') return null;
+    return {
+      type,
+      market: r.market,
+      recipientPartyId: await recipientOf(r.policyId, r.treatmentFrom),
+      policyId: r.policyId,
+      content: {
+        claimId: r.claimId,
+        claimNo: r.claimNo,
+        policyId: r.policyId,
+        animalId: r.animalId,
+        requestId: r.requestId,
+        items: [...r.items],
+        dueDate: r.dueDate,
+        // The customer is told what is missing; after expiry, that a handler decides on what there is.
+        ...(type === 'claim-information-expired' ? { decidedOnAvailableBasis: true } : { note: r.note }),
+      },
+    };
+  }
+
+  private async make(e: SourceEvent, planned: Planned | null): Promise<Notice | null> {
     if (!planned) return null;
     const rules = this.rulesFor(planned.market);
     if (!rules) return null;
@@ -423,19 +583,7 @@ export class CommunicationsService {
   }
 
   /** What notice an event calls for, read through the ports. */
-  private async plan(e: SourceEvent): Promise<
-    | {
-        type: NoticeType;
-        market: string;
-        recipientPartyId: string;
-        policyId?: string;
-        applicationId?: string;
-        content: Record<string, unknown>;
-        termStart?: ISODate;
-        sentOn?: ISODate;
-      }
-    | null
-  > {
+  private async plan(e: SourceEvent): Promise<Planned | null> {
     if (e.type === 'application.declined') {
       const a = await this.d.policies.application(e.applicationId ?? '');
       if (!a) throw new Error(`The application ${e.applicationId} of event ${e.id} does not exist`);
@@ -676,6 +824,18 @@ export class CommunicationsService {
     });
     return this.get(noticeId);
   }
+}
+
+/** A notice an event calls for, before the rules and settings are applied. */
+interface Planned {
+  type: NoticeType;
+  market: string;
+  recipientPartyId: string;
+  policyId?: string;
+  applicationId?: string;
+  content: Record<string, unknown>;
+  termStart?: ISODate;
+  sentOn?: ISODate;
 }
 
 /** The policyholder on a date: the version that covers it, else the nearest one. */

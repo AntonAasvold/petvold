@@ -337,11 +337,18 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Formuläret för att teckna** visar när djuret redan är försäkrat, och från vilken dag en ny policy kan börja.
   - 72 enhetstester och 38 flöden i back office.
 
+- Skadebesked och meddelanden om komplettering (ADR 0036, steg 6), PR #113:
+  - **Varje beslut** blir ett skadebesked (`claim-decision`) till försäkringstagaren, med utfall, belopp, beräkningen, avvikelsen och bolagets text om prövning.
+  - **En begäran till kunden** ger `claim-information-request`, och påminnelsen och utgången ger var sitt meddelande. Utgången går att stänga av.
+  - **Meddelandemodulen** läser skademotorn genom porten `ClaimSource`, och reläet skickar skadornas händelser dit.
+  - **Migration 0045:** meddelandets typer.
+  - **Back office:** ärendets historik visar meddelandena till kunden.
+  - ADR 0036 är byggd. 524 tester, 152 databastester och 39 flöden.
+
 **Nästa steg**
-1. Skadeprocessen, steg 6: bilagor som referenser, skadebesked och meddelanden om komplettering, där påminnelsen blir ett meddelande till kunden.
-3. ADR om premier och betalningar (M5).
-3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
-4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.
+1. ADR om dokument: Gotenberg för PDF och ett enkelt arkiv, och uppladdning av bilagor.
+2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
+3. Back office: översikten på startsidan, omräkning av beslut och policyns sida enligt designsystemet.
 
 **Öppet**
 - Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.

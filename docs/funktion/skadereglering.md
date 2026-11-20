@@ -50,6 +50,7 @@ En handläggare kan begära underlag som saknas av kunden eller kliniken (ADR 00
 - **En utgången begäran avslår inte ärendet.** Ärendet går tillbaka till kön med markeringen att underlaget inte kom in (`informationMissing`). Bara en person får avslå på den grunden, och lagen tillåter bara nedsättning om försummelsen har skadat bolaget (FAL 7 kap. 2 §).
 - **Ett sent svar** registreras ändå. Det stänger även en utgången begäran, och markeringen försvinner.
 - **Ett stängt ärende** återkallar sina öppna begäranden med samma skäl.
+- **Kunden får ett meddelande** när en begäran till kunden görs, påminns och går ut: `claim-information-request`, `claim-information-reminder` och `claim-information-expired`. Bolaget kan stänga av det sista i inställningarna. En begäran till kliniken ger inget meddelande. Se [Meddelanden](meddelanden.md).
 
 **Klockan för FAL 7 kap. 1 §.** Ersättningen ska betalas senast en månad efter att utredningen som skäligen kan begäras har lagts fram. Ärendet visar därför `basisCompleteAt`, som räknas fram så här:
 - Utgångspunkten är när ärendet togs emot.
@@ -332,6 +333,17 @@ Om skadan kommer inom en öppen självriskperiod ersätts raden för fast själv
 `GET /v1/claims/{id}/review-requests` visar ärendets begäranden, öppna och stängda.
 
 *Inte byggt än:* tidsgräns för när prövningen ska vara klar, påminnelser och kö för handläggare. De kommer med ärendehanteringen i M6.
+
+## Skadebesked
+
+Varje beslut, också en omprövning, blir ett skadebesked till försäkringstagaren (`claim-decision`, ADR 0036). Beskedet innehåller:
+- utfall och belopp
+- huvudskälet och beräkningen steg för steg, med samma nycklar som beslutets förklaring
+- handläggarens motivering när beslutet gick mot förslaget
+- om beslutet var automatiskt, och om kunden kan begära att en person prövar det
+- bolagets text om hur beslutet prövas
+
+Meddelandemodulen läser beslutet genom en port till skademotorn, aldrig dess tabeller. Bolagets dokumentsystem gör brevet. Se [Meddelanden](meddelanden.md).
 
 ## Händelser
 

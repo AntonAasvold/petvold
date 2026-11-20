@@ -46,7 +46,7 @@ import { underwritingCoverage } from '@petvold/underwriting-core';
 import { InMemoryIdempotencyStore, type AppDeps, type IdempotencyStore } from './app.ts';
 import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './permissions.ts';
 import { Relay, relaySource } from './relay.ts';
-import { animalPort, claimsActivity, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
+import { animalPort, claimSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
 
 export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling'] as const;
 export type DatabaseName = (typeof DATABASES)[number];
@@ -221,6 +221,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     settings: communicationsPool ? new PostgresNoticeSettingsStore(communicationsPool) : new InMemoryNoticeSettingsStore(),
     policies: policySource(policies),
     parties: partySource(parties),
+    // The claims engine is made below; the port reads it when an event comes.
+    claims: { decision: (id, seq) => claimSource(service).decision(id, seq), informationRequest: (id, r) => claimSource(service).informationRequest(id, r) },
     clock,
     ids,
   });
@@ -296,8 +298,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     },
   });
 
-  // The outboxes' relays (ADR 0008). Claims events have no receiver inside
-  // Petvold yet and are logged; the others drive the policy module and the claims engine.
+  // The outboxes' relays (ADR 0008). Claims events give notices to the customer
+  // (ADR 0036); the others drive the policy module, the notices and the claims engine.
   const relay = new Relay(
     [
       relaySource({
@@ -306,6 +308,9 @@ export async function compose(config: InstallationConfig): Promise<Installation>
         deliver: async (entry) => {
           const e = entry.event;
           log(`[event] ${e.type} ${e.type === 'claim.decided' ? `${e.decision.claimId}#${e.decision.seq}` : eventClaimId(e)}`);
+          const forNotices = claimsEventForNotices(entry);
+          const notice = forNotices ? await communications.handleClaimEvent(forNotices) : null;
+          if (notice) log(`[notice] ${notice.type} ${notice.id} due ${notice.dueBy}`);
           const queued = await webhooks.enqueue(await claimsEventForWebhooks(entry, (claimId) => service.getClaim(claimId)));
           if (queued) log(`[webhook] ${e.type} ${entry.id} queued for ${queued} subscription(s)`);
         },

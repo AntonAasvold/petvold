@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-20 | [Skadebesked och meddelanden om komplettering](2026-11-20-skadebesked.md) | #113 |
 | 2026-11-20 | [dev-all, och djur som redan är försäkrade](2026-11-20-dev-all.md) | #112 |
 | 2026-11-20 | [Bilagor som referenser till bolagets arkiv](2026-11-20-bilagor.md) | #111 |
 | 2026-11-20 | [Teckna försäkring från kundens sida](2026-11-20-teckna-fran-kund.md) | #110 |

@@ -24,13 +24,17 @@ Samma händelse ger aldrig två meddelanden av samma typ, även om den levereras
 | `cancellation-confirmation` | Kunden säger upp, ångrar sig eller behovet faller bort | Tre dagar efter uppsägningen | Ingen lag |
 | `application-declined` | En ansökan avslås, av reglerna eller av en person | Tre dagar efter avslaget | FAL 7 kap. 6 § |
 | `transfer-offer` | Djuret har sålts, och den nya ägaren erbjuds att ta över policyn (förslaget `transfer`) | Tre dagar efter förslaget | Ingen lag (ADR 0029) |
+| `claim-decision` | Ett beslut fattas i ett skadeärende, också vid omprövning | Tre dagar efter beslutet | FAL 7 kap. 1 §, och för ett automatiskt beslut dataskyddsförordningen artikel 22.3 |
+| `claim-information-request` | En handläggare begär komplettering av kunden | Tre dagar efter begäran | FAL 7 kap. 1 § |
+| `claim-information-reminder` | En öppen begäran till kunden når sin påminnelsedag | Tre dagar efter påminnelsedagen | FAL 7 kap. 1 § |
+| `claim-information-expired` | En begäran till kunden går ut utan svar | Tre dagar efter utgången | Ingen lag (ADR 0036) |
 
 - **Tre dagar** är Petvolds tolkning av "snarast", eftersom lagen inte anger något antal dagar. Bolaget kan ändra det i [inställningarna](#bolagets-inställningar).
-- **Mottagaren** är försäkringstagaren när beskedet gäller, vid en uppsägning den sista dagen policyn gällde. Vid ett avslag är det den sökande, och vid ett erbjudande den nya ägaren.
+- **Mottagaren** är försäkringstagaren när beskedet gäller, vid en uppsägning den sista dagen policyn gällde. Vid ett avslag är det den sökande, och vid ett erbjudande den nya ägaren. För en skada är det försäkringstagaren på den första behandlingsdagen.
+- **En begäran om komplettering till kliniken** ger inget meddelande. Kliniken är inte kund, och bolaget når den på annat sätt.
 - **Språket** är partens språk, annars marknadens, i Sverige svenska.
-- **Typer som lagen inte kräver** (`cancellation-confirmation` och `transfer-offer`) kan stängas av i inställningarna.
-
-*Inte byggt än:* skadebesked.
+- **Typer som lagen inte kräver** (`cancellation-confirmation`, `transfer-offer` och `claim-information-expired`) kan stängas av i inställningarna.
+- **Skadornas händelser** ger meddelanden från den dag funktionen finns. Beslut och begäranden från tidigare ger inga meddelanden i efterhand.
 
 ## Innehållet
 
@@ -44,6 +48,9 @@ Innehållet är fält, inte text. Varje typ har ett schema med versionsnummer, t
 | `cancellation-confirmation.v1` | `policyId`, `animalId`, `reason`, `receivedOn`, `effectiveDate` och `refund` |
 | `application-declined.v1` | `applicationId`, `animalId`, `productVersion`, `reasons` (skälskoderna), `decidedBy` (`rules` eller `person`) och `review`, bolagets text om hur beslutet prövas |
 | `transfer-offer.v1` | `policyId`, `animalId`, `proposalId`, `fromPartyId` (den förra ägaren), `from` (dagen den nya ägaren tog över djuret), `deadline` (sista dagen att godkänna) och termens fält som i försäkringsbrevet |
+| `claim-decision.v1` | `claimId`, `claimNo`, `policyId`, `animalId`, `decisionId`, `seq`, `outcome`, `payout`, `automated`, `mainReason` och `steps` (nycklar och värden, som i beslutets förklaring), `deviation` när handläggaren gick mot förslaget, `reviewAvailable` (kunden kan begära att en person prövar beslutet) och `review`, bolagets text om hur beslutet prövas |
+| `claim-information-request.v1`, `claim-information-reminder.v1` | `claimId`, `claimNo`, `policyId`, `animalId`, `requestId`, `items` (vad som saknas), `note` (handläggarens beskrivning) och `dueDate` (sista dagen att svara) |
+| `claim-information-expired.v1` | Samma fält utan `note`, och `decidedOnAvailableBasis`: en handläggare beslutar på det underlag som finns |
 
 Varje typ får också `sender` från inställningarna när bolaget har angett en avsändare. Meddelandet anger vilken version av inställningarna det skapades med (`settingsVersion`).
 
@@ -141,6 +148,7 @@ POST /v1/settings/notices/versions
 
 - **Version 1 är tom.** Petvolds lagregler gäller, och bolaget skriver sina egna texter. Petvold skriver inga texter åt bolaget.
 - **Utan `review`** blir ett avslag `incomplete` och hamnar i kön. Lagen kräver att avslaget anger hur sökanden får beslutet prövat (FAL 7 kap. 6 §).
+- **Skadebeskedet** kräver också `review`. Kunden ska veta hur ett beslut om ersättning prövas, och för ett automatiskt beslut att en person kan pröva det (dataskyddsförordningen artikel 22.3).
 - **`basedOnVersion`** måste vara versionen som gäller, annars `409`. Två samtidiga ändringar ger en vinnare.
 - **Läsa:** `GET /v1/settings/notices` och `.../versions` med `notices:read`. **Ändra:** `notices:configure`, till exempel rollen `communications-manager`.
 

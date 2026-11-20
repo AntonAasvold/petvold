@@ -196,3 +196,27 @@ test('an attachment is added as a reference to the archive, and a better scan re
   await expect(card.getByText('Replaced', { exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').first()).toContainText('claim.attachment_added');
 });
+
+test('a request to the customer becomes a notice to the customer, shown in the claim history (ADR 0036)', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('grid', { name: 'Claims' }).getByRole('row').nth(1).click();
+  const info = page.locator('pv-claim-information');
+  await info.getByRole('button', { name: 'Ask for information' }).click();
+  await info.getByRole('radio', { name: 'The customer' }).check();
+  await info.locator('wa-checkbox', { hasText: 'Specified invoice' }).click();
+  await info.getByRole('textbox', { name: 'What is missing' }).fill('The invoice line by line.');
+  await info.getByRole('region', { name: 'Ask for information' }).getByRole('button', { name: 'Ask for information' }).click();
+  await expect(info.getByRole('heading', { name: 'Awaiting information' })).toBeVisible();
+  // The relay makes the notice within a second or two; the claim shows it when opened again.
+  const history = page.getByRole('region', { name: 'History' });
+  const claimNo = (await page.getByRole('heading', { level: 1 }).textContent())!.replace('Claim ', '').trim();
+  await expect(async () => {
+    await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Claims' }).click();
+    await page.getByRole('tab', { name: 'Awaiting information' }).click();
+    await page.getByRole('grid', { name: 'Claims' }).getByRole('gridcell', { name: claimNo }).click();
+    await expect(history).toContainText('Request for information', { timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
+  await history.getByRole('button', { name: 'Open' }).first().click();
+  await expect(page).toHaveURL(/\/notices\/ntc_/);
+});
