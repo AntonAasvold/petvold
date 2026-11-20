@@ -74,7 +74,8 @@ test('a registered claim is dismissed as a duplicate, and the queue shows it clo
   await actions.getByRole('button', { name: 'Dismiss the claim' }).click();
   await expect(actions.getByRole('alert')).toContainText('Give the id of the claim it duplicates');
   await actions.getByRole('textbox', { name: 'Duplicate of' }).fill('clm_048213');
-  await actions.getByRole('textbox', { name: 'Reason' }).fill('The customer sent the same invoice twice.');
+  // The decision form may also ask for a reason, depending on the proposal: fill the closing card's.
+  await actions.getByRole('region', { name: 'Close without a decision' }).getByRole('textbox', { name: 'Reason' }).fill('The customer sent the same invoice twice.');
   await actions.getByRole('button', { name: 'Dismiss the claim' }).click();
 
   await expect(actions.getByRole('heading', { name: 'Dismissed' })).toBeVisible();
@@ -84,4 +85,49 @@ test('a registered claim is dismissed as a duplicate, and the queue shows it clo
   await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Claims' }).click();
   await page.getByRole('tab', { name: 'Dismissed' }).click();
   await expect(page.getByRole('grid', { name: 'Claims' }).getByRole('gridcell', { name: claimNo })).toBeVisible();
+});
+
+test('a handler asks the clinic for information; the claim waits, and the answer brings it back to a decision (ADR 0036)', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Register a claim' }).click();
+  const form = page.locator('pv-claim-register');
+  await form.getByRole('textbox', { name: 'Policy id' }).fill('pol_bella');
+  await form.getByRole('button', { name: 'Fetch the policy' }).click();
+  await expect(form.getByText('SE, SEK')).toBeVisible();
+  await form.getByLabel('First day of treatment').fill('2026-11-12');
+  await form.getByLabel('Last day of treatment').fill('2026-11-12');
+  await form.getByRole('textbox', { name: 'Diagnosis' }).fill('ORT-KORSBAND-V');
+  const line = form.getByRole('group', { name: 'Line 1' });
+  await line.getByRole('textbox', { name: 'Description' }).fill('Surgery');
+  await line.getByRole('textbox', { name: 'Amount', exact: true }).fill('800');
+  await form.getByRole('button', { name: /^Register the claim/ }).click();
+  const heading = page.getByRole('heading', { level: 1, name: /^Claim S-/ });
+  await expect(heading).toBeVisible();
+  const claimNo = (await heading.textContent())!.replace('Claim ', '').trim();
+
+  const info = page.locator('pv-claim-information');
+  // The form opens on request, and nothing is sent before it says what is missing.
+  await info.getByRole('button', { name: 'Ask for information' }).click();
+  await info.getByRole('region', { name: 'Ask for information' }).getByRole('button', { name: 'Ask for information' }).click();
+  await expect(info.getByRole('alert')).toContainText('Choose what is missing.');
+  await info.getByRole('radio', { name: 'The clinic' }).check();
+  await info.locator('wa-checkbox', { hasText: 'Medical record' }).click();
+  await info.getByRole('textbox', { name: 'What is missing' }).fill('The record from the first visit.');
+  await info.getByRole('region', { name: 'Ask for information' }).getByRole('button', { name: 'Ask for information' }).click();
+
+  await expect(page.locator('.title').getByText('Awaiting information')).toBeVisible();
+  await expect(info.getByRole('heading', { name: 'Awaiting information' })).toBeVisible();
+  await expect(page.locator('pv-claim-actions').getByRole('heading', { name: 'Decision', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').first()).toContainText('claim.information_requested');
+
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Claims' }).click();
+  await page.getByRole('tab', { name: 'Awaiting information' }).click();
+  await page.getByRole('grid', { name: 'Claims' }).getByRole('gridcell', { name: claimNo }).click();
+
+  await info.getByRole('button', { name: 'The information came in' }).click();
+  await expect(info.getByRole('status')).toContainText('The claim is back in the queue.');
+  await expect(page.locator('pv-claim-actions').getByRole('heading', { name: 'Decision', exact: true })).toBeVisible();
+  await expect(page.locator('.facts')).toContainText('Basis complete');
+  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').first()).toContainText('claim.information_received');
 });

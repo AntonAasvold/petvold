@@ -19,6 +19,7 @@ export interface paths {
          *
          *     - `awaiting-decision`: no decision yet, e.g. sent to a handler
          *     - `awaiting-approval`: a decision proposal waits for an approver (ADR 0019)
+         *     - `awaiting-information`: a request for information waits for the customer or the clinic (ADR 0036)
          *     - `review-requested`: the customer asked for a person to review an automated decision (ADR 0018)
          *     - `decided`
          */
@@ -312,6 +313,88 @@ export interface paths {
          *     released. Nothing of the limit is consumed. Cannot be undone.
          */
         post: operations["withdrawClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/claims/{claimId}/information-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The claim's requests for information
+         * @description Requires the permission `claims:read`. Oldest first.
+         */
+        get: operations["listInformationRequests"];
+        put?: never;
+        /**
+         * Ask the customer or the clinic for more information
+         * @description Requires the permission `claims:request-information`.
+         *
+         *     The claim waits in `awaiting-information` until the request is answered,
+         *     cancelled or expires (ADR 0036). The days to the reminder and the due
+         *     date come from the product's claims rules (`informationRequest`, 14 and
+         *     30 days if not set), unless `dueDate` is given. A daily run reminds and
+         *     expires requests (job `claims.information-requests`). An expired request
+         *     never rejects the claim: it goes back to a claims handler.
+         *
+         *     Not on a closed claim or one with an open decision proposal, and one open
+         *     request per recipient. A decision waits until no request is open.
+         */
+        post: operations["requestInformation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/claims/{claimId}/information-requests/{requestId}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register that the information came in
+         * @description Requires the permission `claims:register`.
+         *
+         *     Closes the request as answered, also after it expired, and the claim
+         *     goes back to the queue. `receivedAt` sets when the basis was complete
+         *     (`basisCompleteAt`, FAL 7 kap. 1 §).
+         */
+        post: operations["answerInformationRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/claims/{claimId}/information-requests/{requestId}/cancellations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an open request for information
+         * @description Requires the permission `claims:request-information`.
+         *
+         *     The request is no longer needed, e.g. the handler got the information
+         *     another way. It does not move `basisCompleteAt`. Closing the claim
+         *     cancels its open requests too.
+         */
+        post: operations["cancelInformationRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2724,6 +2807,16 @@ export interface components {
             receivedAt: components["schemas"]["DateTime"];
             /** @description Set when the claim was withdrawn or dismissed. */
             closure?: components["schemas"]["ClaimClosure"];
+            /**
+             * @description When the basis was complete, for FAL 7 kap. 1 § (ADR 0036): when the
+             *     claim was received, or later, when a request for information was
+             *     answered or expired. Omitted while a request is open.
+             */
+            basisCompleteAt?: components["schemas"]["DateTime"];
+            /** @description The latest request for information expired without an answer. Omitted when false. */
+            informationMissing?: boolean;
+            /** @description Whole days from basisCompleteAt to now. The insurer pays within a month of it (FAL 7 kap. 1 §). */
+            daysSinceBasisComplete?: number;
             /** @description The clinic that submitted the claim, taken from the caller's token. Never set by the client. */
             clinicId?: string;
         };
@@ -2872,13 +2965,61 @@ export interface components {
             closedBy: string;
             closedAt: components["schemas"]["DateTime"];
         };
+        /** @enum {string} */
+        InformationItem: "itemised-invoice" | "medical-record" | "referral" | "other";
+        InformationRequestInput: {
+            /** @enum {string} */
+            recipient: "customer" | "clinic";
+            items: components["schemas"]["InformationItem"][];
+            /** @description What is missing, in the handler's words. Stays inside Petvold. */
+            note: string;
+            /** @description The last day to answer, after today and at most 365 days ahead. Omitted, from the product's claims rules. */
+            dueDate?: components["schemas"]["Date"];
+        };
+        InformationAnswerInput: {
+            /** @description When the information came in. Omitted, now. Not in the future or before the request. */
+            receivedAt?: components["schemas"]["DateTime"];
+            note?: string;
+        };
+        CancelInformationRequestInput: {
+            reason: string;
+        };
+        /** @description A request for more information before the claim can be decided (ADR 0036). */
+        InformationRequest: {
+            id: string;
+            claimId: string;
+            /** @enum {string} */
+            recipient: "customer" | "clinic";
+            items: components["schemas"]["InformationItem"][];
+            note: string;
+            /** @description The last day to answer */
+            dueDate: components["schemas"]["Date"];
+            /** @description The day a reminder is due while it is open. Omitted */
+            remindOn?: components["schemas"]["Date"];
+            /** @description The claims rules the days came from, or 'default'. */
+            rulesVersion: string;
+            requestedBy: string;
+            requestedAt: components["schemas"]["DateTime"];
+            /**
+             * @description An expired request never rejects the claim; a claims handler decides on what there is.
+             * @enum {string}
+             */
+            status: "open" | "answered" | "expired" | "cancelled";
+            remindedAt?: components["schemas"]["DateTime"];
+            /** @description When the information came in. Set when answered. */
+            receivedAt?: components["schemas"]["DateTime"];
+            closedBy?: string;
+            closedAt?: components["schemas"]["DateTime"];
+            closingNote?: string;
+        };
         /**
          * @description Where the claim is in its handling. withdrawn and dismissed are closed
-         *     without a decision (ADR 0036). New states may be added: a client shows
+         *     without a decision, and awaiting-information has an open request for
+         *     information (ADR 0036). New states may be added: a client shows
          *     an unknown state as it is, rather than failing.
          * @enum {string}
          */
-        ClaimStatus: "awaiting-decision" | "awaiting-approval" | "review-requested" | "decided" | "withdrawn" | "dismissed";
+        ClaimStatus: "awaiting-decision" | "awaiting-approval" | "awaiting-information" | "review-requested" | "decided" | "withdrawn" | "dismissed";
         ReturnProposalRequest: {
             reason: string;
         };
@@ -3068,6 +3209,11 @@ export interface components {
             };
             /** @description Highest payout settled without a claims handler. */
             autoSettleMax: components["schemas"]["NonNegativeMoney"];
+            /** @description Days to the reminder and the due date of a request for information (ADR 0036). Omitted, 14 and 30. */
+            informationRequest?: {
+                reminderAfterDays: number;
+                expiresAfterDays: number;
+            };
         };
         RuleSetDraft: {
             content: components["schemas"]["RuleSetContent"];
@@ -4052,6 +4198,14 @@ export interface components {
                 payout: components["schemas"]["NonNegativeMoney"];
                 decidedAt: components["schemas"]["DateTime"];
             };
+            /**
+             * @description When the basis was complete, for FAL 7 kap. 1 § (ADR 0036): when the
+             *     claim was received, or later, when a request for information was
+             *     answered or expired. Omitted while a request is open.
+             */
+            basisCompleteAt?: components["schemas"]["DateTime"];
+            /** @description The latest request for information expired without an answer. Omitted when false. */
+            informationMissing?: boolean;
         };
         ChangePolicyRequest: {
             from: components["schemas"]["Date"];
@@ -4666,6 +4820,7 @@ export interface components {
         ProposalId: string;
         /** @description The decision's sequence number on the claim, 1 for the first. */
         Seq: number;
+        InformationRequestId: string;
         IdempotencyKey: string;
     };
     requestBodies: never;
@@ -5123,6 +5278,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClaimClosure"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listInformationRequests: {
+        parameters: {
+            query?: {
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                claimId: components["parameters"]["ClaimId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of requests */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["InformationRequest"][];
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    requestInformation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                claimId: components["parameters"]["ClaimId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InformationRequestInput"];
+            };
+        };
+        responses: {
+            /** @description Requested */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InformationRequest"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    answerInformationRequest: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                claimId: components["parameters"]["ClaimId"];
+                requestId: components["parameters"]["InformationRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InformationAnswerInput"];
+            };
+        };
+        responses: {
+            /** @description Answered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InformationRequest"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    cancelInformationRequest: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                claimId: components["parameters"]["ClaimId"];
+                requestId: components["parameters"]["InformationRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelInformationRequestInput"];
+            };
+        };
+        responses: {
+            /** @description Cancelled */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InformationRequest"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

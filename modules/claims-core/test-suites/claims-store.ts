@@ -12,7 +12,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StoreConflictError, type ClaimsEvent, type ClaimsOutbox, type ClaimsStore, type DecisionCommit } from '../src/ports.ts';
-import type { Assessment, Claim, ClaimClosure, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot, ReviewRequest, DecisionProposal } from '../src/types.ts';
+import type { Assessment, Claim, ClaimClosure, ClaimDecision, ClaimsRules, CurrencyCode, DecisionEvidence, DeductiblePeriod, LedgerJournal, PolicySnapshot, ReviewRequest, DecisionProposal, InformationRequest } from '../src/types.ts';
 import { accounts, type LimitKey } from '../src/ledger.ts';
 
 /** A store that also exposes its outbox, as every implementation must. */
@@ -691,6 +691,113 @@ export function claimsStoreSuite(name: string, factory: StoreFactory): void {
       await store.commitDecision(commit(decision('clm_b', 1, 0)));
       await assert.rejects(store.closeClaim(closure('clm_b'), [], []), isConflict('claim_decided'));
       assert.equal(await store.getClosure('clm_b'), null);
+    });
+
+    // Requests for information (ADR 0036) --------------------------------------
+
+    const infoRequest = (claimId: string, overrides: Partial<InformationRequest> = {}): InformationRequest => ({
+      id: `inf_${claimId}`,
+      claimId,
+      recipient: 'clinic',
+      items: ['itemised-invoice', 'medical-record'],
+      note: 'The specified invoice and the record',
+      dueDate: '2026-11-03',
+      remindOn: '2026-10-18',
+      rulesVersion: 'SE-HUND-VV@1',
+      requestedBy: 'handlaggare@example.test',
+      requestedAt: '2026-10-04T08:00:00.000Z',
+      status: 'open',
+      ...overrides,
+    });
+    const requested = (r: InformationRequest): ClaimsEvent[] => [{ type: 'claim.information_requested', occurredAt: r.requestedAt, request: r }];
+
+    it('a request for information is read back, writes its event and makes the claim await information', async (store) => {
+      await save(store, claim('clm_a'));
+      const r = infoRequest('clm_a');
+      await store.saveInformationRequest(r, requested(r));
+      assert.deepEqual(await store.getInformationRequests('clm_a'), [r]);
+      assert.deepEqual(await store.getInformationRequests('clm_unknown'), []);
+      const [listed] = await store.listClaims({ state: 'awaiting-information' });
+      assert.equal(listed!.id, 'clm_a');
+      assert.equal(Object.hasOwn(listed!, 'basisCompleteAt'), false);
+      assert.deepEqual(await store.claimActivity('pol_suite', '2026-01-01', '2027-01-01'), { open: true, lastAt: claim('clm_a').receivedAt });
+      assert.deepEqual(await pendingTypes(store), ['claim.registered', 'claim.information_requested']);
+    });
+
+    it('one open request per recipient, none on a closed claim, and nothing is stored on conflict', async (store) => {
+      await save(store, claim('clm_a'));
+      await store.saveInformationRequest(infoRequest('clm_a'), []);
+      await assert.rejects(store.saveInformationRequest(infoRequest('clm_a', { id: 'inf_second' }), requested(infoRequest('clm_a'))), isConflict('information_open'));
+      await store.saveInformationRequest(infoRequest('clm_a', { id: 'inf_customer', recipient: 'customer' }), []);
+      assert.equal((await store.getInformationRequests('clm_a')).length, 2);
+
+      await save(store, claim('clm_b', { claimNo: 'S-b' }));
+      await store.closeClaim(closure('clm_b'), [], []);
+      await assert.rejects(store.saveInformationRequest(infoRequest('clm_b'), []), isConflict('claim_closed'));
+      assert.deepEqual(await store.getInformationRequests('clm_b'), []);
+      assert.deepEqual(await pendingTypes(store), ['claim.registered', 'claim.registered']);
+    });
+
+    it('an answer closes the request and sets when the basis was complete; it moves only from the states given', async (store) => {
+      await save(store, claim('clm_a'));
+      const r = infoRequest('clm_a');
+      await store.saveInformationRequest(r, []);
+      const reminded = { ...r, remindedAt: '2026-10-18T05:00:00.000Z' };
+      await store.updateInformationRequest(reminded, { statuses: ['open'], notReminded: true }, []);
+      await assert.rejects(store.updateInformationRequest(reminded, { statuses: ['open'], notReminded: true }, []), isConflict('information_closed'));
+      const answered: InformationRequest = {
+        ...reminded,
+        status: 'answered',
+        receivedAt: '2026-10-20T07:00:00.000Z',
+        closedBy: 'handlaggare@example.test',
+        closedAt: '2026-10-21T09:00:00.000Z',
+        closingNote: 'Came by mail',
+      };
+      await store.updateInformationRequest(answered, { statuses: ['open', 'expired'] }, [{ type: 'claim.information_received', occurredAt: answered.closedAt!, request: answered }]);
+      assert.deepEqual(await store.getInformationRequests('clm_a'), [answered]);
+      await assert.rejects(store.updateInformationRequest({ ...answered, status: 'cancelled' }, { statuses: ['open'] }, []), isConflict('information_closed'));
+      const [listed] = await store.listClaims({});
+      assert.deepEqual([listed!.state, listed!.basisCompleteAt, Object.hasOwn(listed!, 'informationMissing')], ['awaiting-decision', answered.receivedAt, false]);
+      assert.deepEqual(await pendingTypes(store), ['claim.registered', 'claim.information_received']);
+    });
+
+    it('an expired request marks the information as missing until a late answer', async (store) => {
+      await save(store, claim('clm_a'));
+      const r = infoRequest('clm_a');
+      await store.saveInformationRequest(r, []);
+      const expired: InformationRequest = { ...r, status: 'expired', closedBy: 'scheduler', closedAt: '2026-11-04T05:00:00.000Z' };
+      await store.updateInformationRequest(expired, { statuses: ['open'] }, []);
+      let [listed] = await store.listClaims({});
+      assert.deepEqual([listed!.state, listed!.basisCompleteAt, listed!.informationMissing], ['awaiting-decision', expired.closedAt, true]);
+      const late: InformationRequest = { ...expired, status: 'answered', receivedAt: '2026-11-05T08:00:00.000Z', closedBy: 'h', closedAt: '2026-11-05T09:00:00.000Z' };
+      await store.updateInformationRequest(late, { statuses: ['open', 'expired'] }, []);
+      [listed] = await store.listClaims({});
+      assert.deepEqual([listed!.basisCompleteAt, Object.hasOwn(listed!, 'informationMissing')], [late.receivedAt, false]);
+    });
+
+    it('the daily run finds open requests due for a reminder or past their due date, in the market', async (store) => {
+      await save(store, claim('clm_a'));
+      await save(store, claim('clm_b', { claimNo: 'S-b' }));
+      await save(store, claim('clm_n', { claimNo: 'S-n', market: 'NO', currency: 'NOK' }));
+      await store.saveInformationRequest(infoRequest('clm_a'), []);
+      await store.saveInformationRequest(infoRequest('clm_b', { remindOn: '2026-10-25', requestedAt: '2026-10-05T08:00:00.000Z' }), []);
+      await store.saveInformationRequest(infoRequest('clm_n'), []);
+      const ids = async (onDate: string) => (await store.informationRequestsDue('SE', onDate)).map((r) => r.id);
+      assert.deepEqual(await ids('2026-10-17'), []);
+      assert.deepEqual(await ids('2026-10-18'), ['inf_clm_a']);
+      await store.updateInformationRequest({ ...infoRequest('clm_a'), remindedAt: '2026-10-18T05:00:00.000Z' }, { statuses: ['open'], notReminded: true }, []);
+      assert.deepEqual(await ids('2026-10-25'), ['inf_clm_b']);
+      assert.deepEqual(await ids('2026-11-03'), ['inf_clm_b']);
+      assert.deepEqual(await ids('2026-11-04'), ['inf_clm_a', 'inf_clm_b']);
+    });
+
+    it('closing a claim cancels its open requests', async (store) => {
+      await save(store, claim('clm_a'));
+      await store.saveInformationRequest(infoRequest('clm_a'), []);
+      const k = closure('clm_a');
+      await store.closeClaim(k, closed(k), []);
+      const [r] = await store.getInformationRequests('clm_a');
+      assert.deepEqual([r!.status, r!.closedBy, r!.closedAt, r!.closingNote], ['cancelled', k.closedBy, k.closedAt, k.reason]);
     });
 
     // Decision proposals (ADR 0019) ----------------------------------------------

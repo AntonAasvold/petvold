@@ -10,6 +10,7 @@ Petvold har arbete som ska ske varje dag utan att någon trycker på en knapp: f
 | `policies.proposal-expiry` | En överlåtelse som inte accepterats i tid avslutar policyn från försäljningsdagen (ADR 0029) | 01:15 |
 | `policies.renewal` | Policyer vars term slutar inom produktens framförhållning förnyas. Det som inte kan förnyas hamnar under "behöver beslut" (ADR 0029). | 02:00 |
 | `parties.retention` | Parter vars lagringstid har gått ut får en begäran om anonymisering, som en dataskyddsansvarig beslutar om (ADR 0028) | 03:00 |
+| `claims.information-requests` | Öppna begäranden om komplettering får sin påminnelse på påminnelsedagen och går ut dagen efter svarsdatumet. Ärendet går då tillbaka till en handläggare (ADR 0036, se [Komplettering](skadereglering.md#komplettering)). | 06:00 |
 
 - **En gång per dag och marknad.** Varje körning går en gång per marknad som installationen har, alltså marknader med en produkt eller en regel för gallring. Tiden räknas i marknadens tidszon, och en körning i en marknad påverkar aldrig en annan.
 - **En server i taget.** Körs Petvold på flera servrar tar en av dem ett lån för körningen och marknaden. De andra hoppar över den. En server som stannar mitt i släpper lånet när det går ut efter tio minuter.
@@ -35,6 +36,7 @@ Resultatet har bara antal och id:n, aldrig personuppgifter. En ansökans svar om
 | `policies.proposal-expiry` | `expired`, `proposalIds` |
 | `policies.renewal` | `checked`, `renewed`, `cancelled`, `notYet`, `needsDecision` (policy och skäl), `renewedPolicyIds` |
 | `parties.retention` | `settingsVersion`, `checked`, `due`, `ongoing`, `withinRetention`, `pendingRequest`, `requestIds` |
+| `claims.information-requests` | `reminded`, `expired`, `remindedRequestIds`, `expiredRequestIds` |
 
 ## Se och styra
 
@@ -94,8 +96,6 @@ En händelse som inte går att leverera efter tio försök blir en död post. De
 
 ## Det som kommer
 
-Steg 1–4 i ADR 0037 är byggda. Det som återstår:
-
-- **Steg 5:** påminnelser och utgång för komplettering av skador.
+Alla fem stegen i ADR 0037 är byggda. Påminnelsen blir ett meddelande till kunden först med steg 6 i ADR 0036. Till dess syns den som händelsen `claim.information_reminded`.
 
 Kö och eftersläpning för reläet och webhook-arbetaren ska också synas i back office.

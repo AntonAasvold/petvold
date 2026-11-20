@@ -62,7 +62,7 @@ test('the migrations have been applied', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
   assert.deepEqual(
     rows.map((r) => r.version),
-    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0022', '0023', '0024', '0025', '0026', '0027', '0028', '0029', '0030', '0031', '0032', '0033', '0034', '0035', '0036', '0037', '0038', '0039', '0040', '0041'],
+    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0022', '0023', '0024', '0025', '0026', '0027', '0028', '0029', '0030', '0031', '0032', '0033', '0034', '0035', '0036', '0037', '0038', '0039', '0040', '0041', '0042'],
   );
 });
 
@@ -305,5 +305,30 @@ test('a closure is never changed or removed, a decided claim cannot be closed, a
     );
     await rejects(`update claims.claim_closure set reason = 'changed' where id = 'cls_t2'`, [], PERMISSION_DENIED);
     await rejects(`delete from claims.claim_closure where id = 'cls_t2'`, [], PERMISSION_DENIED);
+  });
+});
+
+test('a request for information keeps what was asked, moves only forward, and is never made on a closed claim (ADR 0036)', async () => {
+  await inTx(async () => {
+    await db.query('set local role claims_service');
+    await seedDecision();
+    const insert = `insert into claims.information_request (id, claim_id, recipient, items, note, due_date, remind_on, rules_version, requested_by, requested_at, status)
+                    values ($1, 'clm_t1', 'clinic', $2, 'The record', '2026-11-03', $3, 'default', 'h', now(), 'open')`;
+    await rejects(insert, ['inf_bad', ['x-ray'], null], CHECK_VIOLATION);
+    await rejects(insert, ['inf_bad', ['other'], '2026-11-03'], CHECK_VIOLATION);
+    await db.query(insert, ['inf_t1', ['medical-record'], '2026-10-18']);
+    await rejects(`update claims.information_request set note = 'changed' where id = 'inf_t1'`, [], PERMISSION_DENIED);
+    await rejects(`update claims.information_request set status = 'answered', closed_by = 'h', closed_at = now() where id = 'inf_t1'`, [], CHECK_VIOLATION);
+    await db.query(`update claims.information_request set status = 'expired', closed_by = 'scheduler', closed_at = now() where id = 'inf_t1'`);
+    await rejects(`update claims.information_request set status = 'cancelled', closing_note = 'x' where id = 'inf_t1'`, [], RAISE_EXCEPTION);
+    await db.query(`update claims.information_request set status = 'answered', received_at = now(), closed_by = 'h' where id = 'inf_t1'`);
+    await rejects(`delete from claims.information_request where id = 'inf_t1'`, [], PERMISSION_DENIED);
+
+    await db.query(
+      `insert into claims.claim (id, claim_no, policy_id, animal_id, market, currency, channel, treatment_from, treatment_to, diagnosis_code)
+       values ('clm_t2', 'T-2', 'pol_t', 'ani_t', 'SE', 'SEK', 'customer', '2026-10-01', '2026-10-01', 'ORA-OTIT')`,
+    );
+    await db.query(`insert into claims.claim_closure (claim_id, id, kind, reason, closed_by, closed_at) values ('clm_t2', 'cls_t2', 'withdrawn', 'x', 'h', now())`);
+    await rejects(insert.replace(`'clm_t1'`, `'clm_t2'`), ['inf_t2', ['other'], null], 'PVC01');
   });
 });

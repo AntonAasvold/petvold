@@ -284,18 +284,27 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Inloggningen** erbjuder nu `dev-privacy-2`.
   - **Tester:** 58 enhetstester och 33 flöden.
 
+- Komplettering av skador (ADR 0036, steg 3, och ADR 0037, steg 5), PR #106:
+  - **`POST /v1/claims/{id}/information-requests`** till kunden eller kliniken, med vad som saknas och ett valfritt svarsdatum. Svar (`…/answers`) och återkallelse (`…/cancellations`). Den nya rättigheten `claims:request-information` ingår i rollen `handler`.
+  - **Läget `awaiting-information`.** Ärendet kan inte beslutas medan en begäran är öppen.
+  - **Körningen `claims.information-requests`** klockan 06:00 påminner och låter begäranden gå ut. Dagarna kommer från skadereglernas `informationRequest`, förval 14 och 30. En utgången begäran avslår inte ärendet. Ärendet får `informationMissing`.
+  - **`basisCompleteAt` och `daysSinceBasisComplete`** för fristen i FAL 7 kap. 1 §, på ärendet och i kön.
+  - **Händelser:** `claim.information_requested`, `_reminded`, `_received`, `_expired` och `_cancelled`, till webhooks utan fritexten.
+  - **Migration 0042:** `claims.information_request` med trigger för reglerna. En befintlig rollinställning behöver `npm run roles:sync -- --apply`.
+  - **Back office:** kortet för komplettering, fliken "Väntar på komplettering", kolumnen "Underlaget komplett" och dagar kvar att betala.
+  - **E2E-testet för avvisning** var beroende av dagens datum: förslaget i testet blev ett avslag den 20 november. Testet är rättat.
+  - 131 operationer i kontraktet.
+- 504 tester, 145 databastester, 62 enhetstester och 35 flöden i back office.
+
 **Nästa steg**
-1. Skadeprocessen, steg 3: komplettering, med påminnelse och utgång som en körning.
-3. Skadeprocessen, steg 3: komplettering.
-2. Skadeprocessen, steg 3: komplettering, som en körning bland de andra.
-2. Skadeprocessen, steg 3: komplettering.
-2. ADR om premier och betalningar (M5).
+1. Skadeprocessen, steg 4: rättelse med revisioner.
+2. Skadeprocessen, steg 5 och 6: bilagor som referenser, skadebesked och meddelanden om komplettering, där påminnelsen blir ett meddelande till kunden.
+3. ADR om premier och betalningar (M5).
 3. Livförsäkring som moment, eller ett nytt namn på exempelprodukten (F4).
 4. Inloggning mot en riktig identitetstjänst, till exempel Keycloak lokalt, för back office.
 
 **Öppet**
 - Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.
-- Flera instanser av servern kör var sitt relä. Ett relä med lås per outbox behövs före drift med flera instanser. Webhooks klarar redan flera instanser (`skip locked`), men reläet som fyller kön gör det inte.
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).
 - Gallringen känner till djur, policyer, ansökningar och skador. Innan den körs skarpt hos ett försäkringsbolag behöver bolaget bekräfta lagringstiderna och att inga andra system har relationer som Petvold inte känner till, till exempel betalningar (M5).
 - Det sparas inte vem som slagit upp ett djur.

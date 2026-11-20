@@ -35,7 +35,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 
 | Rättighet | Ger rätt att | Anrop |
 | --- | --- | --- |
-| `claims:register` | Anmäla en skada, och återkalla den före ett beslut (ADR 0036) | `POST /v1/claims`, `POST /v1/claims/{id}/withdrawals` |
+| `claims:register` | Anmäla en skada, återkalla den före ett beslut, och registrera att begärt underlag har kommit in (ADR 0036) | `POST /v1/claims`, `POST /v1/claims/{id}/withdrawals`, `POST …/information-requests/{requestId}/answers` |
 | `claims:read` | Läsa ett ärende, dess bedömning, beslut, förklaringar och begäranden om prövning, och räkna om ett beslut | `GET /v1/claims/{id}`, `.../assessment`, `.../decisions`, `.../decisions/{seq}/explanation`, `.../review-requests`, `POST .../decisions/{seq}/replays` |
 | `claims:decide` | Fatta beslut i ett ärende, och avvisa det före ett beslut (ADR 0036) | `POST /v1/claims/{id}/decisions`, `POST /v1/claims/{id}/dismissals` |
 | `claims:override` | Besluta mot bedömningens förslag, med skälkod och motivering (ADR 0018) | Kontrolleras inom `POST /v1/claims/{id}/decisions` |
@@ -71,6 +71,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `access:manage` | Ändra rollinställningen, utom roller man själv har | `POST /v1/settings/roles/versions` |
 | `claims:approve` | Attestera eller skicka tillbaka en annan handläggares beslutsförslag (ADR 0019) | `POST /v1/claims/{id}/proposals/{p}/approvals`, `.../returns` |
 | `claims:request-review` | Begära mänsklig prövning av ett automatiskt beslut för kundens räkning (ADR 0018) | `POST /v1/claims/{id}/decisions/{seq}/review-requests` |
+| `claims:request-information` | Begära komplettering av kunden eller kliniken, och återkalla en begäran (ADR 0036). Svaret registreras med `claims:register`. | `POST /v1/claims/{id}/information-requests`, `POST …/information-requests/{requestId}/cancellations` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
 | `limits:read` | Se förbrukat och återstående försäkringsbelopp | `GET /v1/policies/{p}/limits` |
 

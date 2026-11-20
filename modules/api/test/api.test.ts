@@ -850,3 +850,42 @@ test('a claim is withdrawn or dismissed before a decision, and the queue shows i
   assert.equal(w.status, 201);
   assert.equal(((await w.json()) as any).kind, 'withdrawn');
 });
+
+test('a request for information: the claim waits, the clinic answers, and the queue shows when the basis was complete (ADR 0036)', async () => {
+  const { call } = setup();
+  await call('POST', '/v1/claims', { key: 'key-info-1', body: input(cruciateClaim()), token: 'clinic' });
+  const id = 'clm_048213';
+  const body = { recipient: 'clinic', items: ['itemised-invoice'], note: 'The specified invoice' };
+  // The clinic may answer but not ask.
+  assert.equal((await call('POST', `/v1/claims/${id}/information-requests`, { key: 'key-info-2', body, token: 'clinic' })).status, 403);
+  assert.equal((await call('POST', `/v1/claims/${id}/information-requests`, { key: 'key-info-3', body: { ...body, items: [] } })).status, 422);
+  const res = await call('POST', `/v1/claims/${id}/information-requests`, { key: 'key-info-4', body });
+  assert.equal(res.status, 201);
+  const request = (await res.json()) as any;
+  assertSchema('InformationRequest', request);
+  assert.equal(request.requestedBy, 'handlaggare@example.test');
+
+  const waiting = (await (await call('GET', '/v1/claims?status=awaiting-information')).json()) as any;
+  assert.deepEqual(waiting.items.map((c: any) => c.id), [id]);
+  assert.equal(waiting.items[0].basisCompleteAt, undefined);
+  assert.equal((await call('POST', `/v1/claims/${id}/decisions`, { key: 'key-info-5', body: { action: 'accept' } })).status, 409);
+  assert.equal((await call('POST', `/v1/claims/${id}/information-requests`, { key: 'key-info-6', body })).status, 409);
+
+  const answer = await call('POST', `/v1/claims/${id}/information-requests/${request.id}/answers`, { key: 'key-info-7', body: {}, token: 'clinic' });
+  assert.equal(answer.status, 201);
+  assert.equal(((await answer.json()) as any).status, 'answered');
+  const list = (await (await call('GET', `/v1/claims/${id}/information-requests`)).json()) as any;
+  assert.deepEqual(list.items.map((r: any) => r.status), ['answered']);
+  const claim = (await (await call('GET', `/v1/claims/${id}`)).json()) as any;
+  assertSchema('Claim', claim);
+  assert.equal(typeof claim.basisCompleteAt, 'string');
+  assert.equal(claim.daysSinceBasisComplete, 0);
+  const queue = (await (await call('GET', '/v1/claims?status=awaiting-decision')).json()) as any;
+  assert.equal(queue.items.find((c: any) => c.id === id).basisCompleteAt, claim.basisCompleteAt);
+
+  const again = await call('POST', `/v1/claims/${id}/information-requests`, { key: 'key-info-8', body: { ...body, recipient: 'customer' } });
+  const second = (await again.json()) as any;
+  const cancel = await call('POST', `/v1/claims/${id}/information-requests/${second.id}/cancellations`, { key: 'key-info-9', body: { reason: 'Not needed' } });
+  assert.equal(((await cancel.json()) as any).status, 'cancelled');
+  assert.equal((await call('POST', `/v1/claims/${id}/information-requests/inf_none/answers`, { key: 'key-info-10', body: {} })).status, 404);
+});

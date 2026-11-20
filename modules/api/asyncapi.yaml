@@ -34,6 +34,11 @@ channels:
       claimReviewRequested: { $ref: '#/components/messages/claimReviewRequested' }
       claimWithdrawn: { $ref: '#/components/messages/claimWithdrawn' }
       claimDismissed: { $ref: '#/components/messages/claimDismissed' }
+      claimInformationRequested: { $ref: '#/components/messages/claimInformationRequested' }
+      claimInformationReminded: { $ref: '#/components/messages/claimInformationReminded' }
+      claimInformationReceived: { $ref: '#/components/messages/claimInformationReceived' }
+      claimInformationExpired: { $ref: '#/components/messages/claimInformationExpired' }
+      claimInformationCancelled: { $ref: '#/components/messages/claimInformationCancelled' }
       jobFailed: { $ref: '#/components/messages/jobFailed' }
       animalOwnershipChanged: { $ref: '#/components/messages/animalOwnershipChanged' }
       animalDied: { $ref: '#/components/messages/animalDied' }
@@ -68,6 +73,11 @@ operations:
       - { $ref: '#/channels/subscription/messages/claimReviewRequested' }
       - { $ref: '#/channels/subscription/messages/claimWithdrawn' }
       - { $ref: '#/channels/subscription/messages/claimDismissed' }
+      - { $ref: '#/channels/subscription/messages/claimInformationRequested' }
+      - { $ref: '#/channels/subscription/messages/claimInformationReminded' }
+      - { $ref: '#/channels/subscription/messages/claimInformationReceived' }
+      - { $ref: '#/channels/subscription/messages/claimInformationExpired' }
+      - { $ref: '#/channels/subscription/messages/claimInformationCancelled' }
       - { $ref: '#/channels/subscription/messages/jobFailed' }
       - { $ref: '#/channels/subscription/messages/animalOwnershipChanged' }
       - { $ref: '#/channels/subscription/messages/animalDied' }
@@ -196,6 +206,66 @@ components:
             properties:
               type: { const: petvold.claim.dismissed.v1 }
               data: { $ref: '#/components/schemas/ClaimDismissedData' }
+    claimInformationRequested:
+      name: petvold.claim.information_requested.v1
+      title: claim.information_requested
+      summary: 'The claims handler asked the customer or the clinic for more information (ADR 0036). The note stays inside Petvold.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.information_requested.v1 }
+              data: { $ref: '#/components/schemas/ClaimInformationRequestData' }
+    claimInformationReminded:
+      name: petvold.claim.information_reminded.v1
+      title: claim.information_reminded
+      summary: 'The request was still open on its reminder day, and a reminder is due (ADR 0036).'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.information_reminded.v1 }
+              data: { $ref: '#/components/schemas/ClaimInformationRequestData' }
+    claimInformationReceived:
+      name: petvold.claim.information_received.v1
+      title: claim.information_received
+      summary: 'The information came in and the request is answered, also after the due date (ADR 0036).'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.information_received.v1 }
+              data: { $ref: '#/components/schemas/ClaimInformationRequestData' }
+    claimInformationExpired:
+      name: petvold.claim.information_expired.v1
+      title: claim.information_expired
+      summary: 'The due date passed without an answer. The claim goes back to a claims handler; it is not rejected (ADR 0036).'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.information_expired.v1 }
+              data: { $ref: '#/components/schemas/ClaimInformationRequestData' }
+    claimInformationCancelled:
+      name: petvold.claim.information_cancelled.v1
+      title: claim.information_cancelled
+      summary: 'The request is no longer needed, or the claim was closed (ADR 0036).'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.information_cancelled.v1 }
+              data: { $ref: '#/components/schemas/ClaimInformationRequestData' }
     jobFailed:
       name: petvold.job.failed.v1
       title: job.failed
@@ -536,6 +606,20 @@ components:
         closureId: { type: string }
         reasonCode: { type: string, enum: [duplicate, registered-in-error, not-a-claim] }
         duplicateOf: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+    ClaimInformationRequestData:
+      type: object
+      additionalProperties: false
+      required: [claimId, requestId, recipient, items, dueDate, status]
+      properties:
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        requestId: { type: string, pattern: '^inf_[A-Za-z0-9_]+$' }
+        recipient: { type: string, enum: [customer, clinic] }
+        items:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [itemised-invoice, medical-record, referral, other] }
+        dueDate: { type: string, format: date, description: 'The last day to answer, in the claim''s market.' }
+        status: { type: string, enum: [open, answered, expired, cancelled] }
     JobFailedData:
       type: object
       additionalProperties: false

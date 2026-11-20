@@ -6,11 +6,12 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 
 | Del | Gör | Kräver |
 | --- | --- | --- |
-| Skador | Arbetsköerna: väntar på beslut, väntar på attest, prövning begärd och beslutade. Ett ärende med uppgifter, beräkning, bedömning regel för regel, beslut och förklaring. | `claims:read` |
+| Skador | Arbetsköerna: väntar på beslut, väntar på komplettering, väntar på attest, prövning begärd och beslutade. Ett ärende med uppgifter, beräkning, bedömning regel för regel, beslut och förklaring. | `claims:read` |
 | Besluta | Godkänn eller avslå. Mot förslaget krävs skälkod och motivering. Över gränsen blir beslutet ett förslag. | `claims:decide`, och `claims:override` mot förslaget |
 | Attestera | Attestera eller skicka tillbaka någon annans förslag | `claims:approve` |
 | Pröva | Begär prövning av ett automatiskt beslut för kundens räkning, med kundens synpunkt. En begäran besvaras av ett nytt beslut. | `claims:request-review`, `claims:decide` |
 | Ompröva | Bedöm ärendet igen med det som är känt nu | `claims:reassess` |
+| Komplettera | Begär underlag av kunden eller kliniken, registrera att det kommit in, eller återkalla begäran | `claims:request-information`, och `claims:register` för att registrera svaret |
 | Policyer | Sök på policy-, djur- eller part-id, personnummer eller chipnummer. Policyn med termer, förbehåll, versioner över tid och historik. | `policies:read`, och `parties:read` eller `animals:read` för personnummer och chip |
 | Ansökningar | Kön för manuell prövning, och godkända och avslagna ansökningar. Ansökan med svar och reglernas kontroller. Godkänn eller avslå med motivering, eller återkalla. | `policies:read`, `policies:underwrite` för att pröva, `policies:write` för att återkalla |
 | Förslag | Förslag som väntar på svar: överlåtelse till ny ägare och avslut när djuret dött. Godkänns eller avböjs från policyn. | `policies:read`, `policies:write` för att svara |
@@ -136,6 +137,27 @@ En skada som inte har beslutats kan stängas i kortet "Stäng utan beslut" (ADR 
 - **Avvisa** (rätten `claims:decide`), med skälet dubblett, registrerad av misstag eller inte en skada. Vid dubblett anges den andra skadans id.
 
 Båda kräver en motivering. Ett stängt ärende visar avslutet i stället för beslutskortet, och märket i huvudet är helfyllt. Skadornas kö har flikarna Återkallade och Avvisade.
+
+## Komplettering
+
+Den som har rätten `claims:request-information` kan begära underlag som saknas (ADR 0036). Knappen "Begär komplettering" öppnar formuläret:
+
+1. **Till:** kunden eller kliniken.
+2. **Saknas:** specificerad faktura, journal, remiss eller annat. Minst en.
+3. **Vad som saknas,** med egna ord.
+4. **Svar senast** är valfritt. Lämnas det tomt gäller produktens skaderegler, normalt 30 dagar med påminnelse efter 14.
+
+Ärendet får läget "Väntar på komplettering", och kortet för kompletteringen hamnar först i högerspalten. Beslutskortet visas inte förrän begäran är stängd. Kortet visar mottagaren, vad som saknas, svarsdatumet och påminnelsen. Där finns två knappar:
+- **"Underlaget har kommit in"** (rätten `claims:register`). Ärendet går tillbaka till kön.
+- **"Återkalla begäran"**, med en anteckning om varför.
+
+Går svarsdatumet ut utan svar står det i kortet att underlaget inte kom in. Kön visar då märket "Underlag saknas". Ett sent svar kan registreras ändå.
+
+**Fristen i FAL 7 kap. 1 §:**
+- Raden under rubriken visar när underlaget blev komplett, och för ett obeslutat ärende hur många av de 30 dagarna som är kvar.
+- Efter 30 dagar blir märket helfyllt.
+- Kön har kolumnen "Underlaget komplett", som går att sortera bland de ärenden som är hämtade.
+- Ett beslut som fattats mer än 30 dagar efter att underlaget var komplett märks i historiken.
 
 ## Skadeärendet
 

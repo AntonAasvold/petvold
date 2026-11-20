@@ -21,8 +21,10 @@ import { getLocale } from '../i18n.ts';
 import { navigate } from '../router.ts';
 import { partyName, versionOn } from '../policy-logic.ts';
 import { pvComponents } from '../styles/pv-components.ts';
-import { channelLabel, claimStatusLabel, dismissalLabel, outcomeLabel, ruleStatusLabel, statusVariant } from './labels.ts';
+import { channelLabel, claimStatusLabel, dismissalLabel, informationItemLabel, outcomeLabel, recipientLabel, ruleStatusLabel, statusVariant } from './labels.ts';
 import '../components/claim-actions.ts';
+import '../components/claim-information.ts';
+import { daysLeftToPay, decidedLate } from '../information-logic.ts';
 import '../components/waterfall.ts';
 import '../components/event-log.ts';
 import type { LogEntry } from '../components/event-log.ts';
@@ -39,6 +41,7 @@ type Decision = components['schemas']['Decision'];
 type RuleResult = components['schemas']['RuleResult'];
 type Proposal = components['schemas']['DecisionProposal'];
 type ReviewRequest = components['schemas']['ReviewRequest'];
+type InformationRequest = components['schemas']['InformationRequest'];
 
 @customElement('pv-claim-detail')
 export class ClaimDetail extends LitElement {
@@ -47,6 +50,7 @@ export class ClaimDetail extends LitElement {
   @property({ attribute: 'claim-id' }) claimId = '';
   @state() private proposals: Proposal[] = [];
   @state() private reviews: ReviewRequest[] = [];
+  @state() private information: InformationRequest[] = [];
   @state() private claim: Claim | null = null;
   @state() private assessment: Assessment | null = null;
   @state() private decisions: Decision[] = [];
@@ -139,6 +143,10 @@ export class ClaimDetail extends LitElement {
       .pv-dl__row dd {
         font-variant-numeric: tabular-nums;
       }
+      /* While the claim awaits information, that is what the handler acts on (ADR 0036). */
+      .side .first {
+        order: -1;
+      }
       .proposal {
         display: flex;
         flex-wrap: wrap;
@@ -170,18 +178,20 @@ export class ClaimDetail extends LitElement {
     this.problem = null;
     const path = { params: { path: { claimId: this.claimId } } };
     try {
-      const [claim, assessment, decisions, proposals, reviews] = await Promise.all([
+      const [claim, assessment, decisions, proposals, reviews, information] = await Promise.all([
         unwrap(this.api.GET('/v1/claims/{claimId}', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/assessment', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/decisions', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/proposals', path)),
         unwrap(this.api.GET('/v1/claims/{claimId}/review-requests', path)),
+        unwrap(this.api.GET('/v1/claims/{claimId}/information-requests', path)),
       ]);
       this.claim = claim;
       this.assessment = assessment;
       this.decisions = decisions.items;
       this.proposals = proposals.items;
       this.reviews = reviews.items;
+      this.information = information.items;
     } catch (e) {
       this.problem = e as Problem;
       return;
@@ -230,6 +240,7 @@ export class ClaimDetail extends LitElement {
     const status = claimStatus({
       ...(c.closure ? { closed: c.closure.kind } : {}),
       openProposals: this.proposals.filter((p) => p.status === 'open').length,
+      openInformation: this.information.filter((r) => r.status === 'open').length,
       openReviews: this.reviews.filter((r) => !r.closedAt).length,
       decisions: this.decisions.length,
     });
@@ -252,6 +263,7 @@ export class ClaimDetail extends LitElement {
           <a href=${`/policies/${c.policyId}`} @click=${(e: Event) => (e.preventDefault(), navigate(`/policies/${encodeURIComponent(c.policyId)}`))}><strong class="pv-mono">${c.policyId}</strong></a>
         </li>
         <li>${msg('Received', { id: 'claims.col.received' })}: <strong>${channelLabel(c.channel)}, ${formatDateTime(c.receivedAt, lang)}</strong></li>
+        ${this.basisFact(c, status)}
       </ul>
       <div class="cols">
         <div class="basis">
@@ -305,15 +317,50 @@ export class ClaimDetail extends LitElement {
             .closure=${c.closure ?? null}
             @pv-changed=${() => this.load()}
           ></pv-claim-actions>
+          <pv-claim-information
+            class=${status === 'awaiting-information' ? 'first' : ''}
+            .api=${this.api}
+            .me=${this.me}
+            claim-id=${c.id}
+            status=${status}
+            .requests=${this.information}
+            ?information-missing=${!!c.informationMissing}
+            @pv-changed=${() => this.load()}
+          ></pv-claim-information>
           <pv-event-log
             heading=${msg('History', { id: 'claim.history' })}
             empty=${msg('No decisions yet.', { id: 'claim.noDecisions' })}
-            .entries=${claimHistory({ claim: c, decisions: this.decisions, proposals: this.proposals, reviews: this.reviews, ...(c.closure ? { closure: c.closure } : {}) }).map((e) => this.logEntry(e))}
+            .entries=${claimHistory({
+              claim: c,
+              decisions: this.decisions,
+              proposals: this.proposals,
+              reviews: this.reviews,
+              information: this.information,
+              ...(c.closure ? { closure: c.closure } : {}),
+            }).map((e) => this.logEntry(e))}
           ></pv-event-log>
         </div>
       </div>
       <pv-explanation-dialog .api=${this.api}></pv-explanation-dialog>
     `;
+  }
+
+  /**
+   * When the basis was complete, and for an undecided claim the days left of
+   * the month in FAL 7 kap. 1 § (ADR 0036). Nothing while information is awaited.
+   */
+  private basisFact(c: Claim, status: string) {
+    if (!c.basisCompleteAt || c.closure) return nothing;
+    const lang = getLocale();
+    const left = status === 'decided' ? null : daysLeftToPay(c.basisCompleteAt, new Date().toISOString());
+    return html`<li>
+      ${msg('Basis complete', { id: 'claim.basisComplete' })}: <strong>${formatDate(c.basisCompleteAt.slice(0, 10), lang)}</strong>
+      ${left === null
+        ? nothing
+        : left < 0
+          ? html`<span class="pv-badge pv-badge--solid">${msg('More than 30 days', { id: 'claim.overdue' })}</span>`
+          : html`<span class="pv-badge pv-badge--pending">${left} ${msg('days left to pay', { id: 'claim.daysLeft' })}</span>`}
+    </li>`;
   }
 
   private ruleColumns(): Column<RuleResult>[] {
@@ -339,7 +386,7 @@ export class ClaimDetail extends LitElement {
           state: 'solid',
           badge: `${msg('Decision', { id: 'decide.action' })} #${e.seq}`,
           line: `${outcomeLabel(e.outcome)} · ${money(e.payout)}${e.reason ? ` · ${e.reason}` : ''}`,
-          status: `${e.type} · ${e.automated ? msg('Automatic', { id: 'claim.automated' }) : e.by}`,
+          status: `${e.type} · ${e.automated ? msg('Automatic', { id: 'claim.automated' }) : e.by}${decidedLate(e.at, this.claim!.basisCompleteAt) ? ` · ${msg('More than 30 days after the basis was complete', { id: 'claim.decidedLate' })}` : ''}`,
           action: html`<button type="button" aria-label=${`${msg('Why?', { id: 'claim.why' })} #${e.seq}`} @click=${() => this.explain(e.seq)}>${msg('Why?', { id: 'claim.why' })}</button>`,
         };
       case 'proposal.created':
@@ -363,6 +410,19 @@ export class ClaimDetail extends LitElement {
           line: `${e.reasonCode ? `${dismissalLabel(e.reasonCode)}${e.duplicateOf ? ` (${e.duplicateOf})` : ''} · ` : ''}${e.reason}`,
           status: `${e.type} · ${e.by}`,
         };
+      case 'claim.information_requested':
+      case 'claim.information_reminded':
+      case 'claim.information_received':
+      case 'claim.information_expired':
+      case 'claim.information_cancelled':
+        return {
+          key: `${e.type}:${e.id}`,
+          at: e.at,
+          state: e.open ? 'pending' : 'solid',
+          badge: this.informationBadge(e.type),
+          line: `${recipientLabel(e.recipient)} · ${e.items.map((i) => informationItemLabel(i)).join(', ')}${e.note ? ` · ${e.note}` : ''}`,
+          status: `${e.type} · ${e.by}`,
+        };
       case 'review.requested':
         return {
           key,
@@ -372,6 +432,21 @@ export class ClaimDetail extends LitElement {
           line: `${msg('Decision', { id: 'decide.action' })} #${e.seq}`,
           status: e.type,
         };
+    }
+  }
+
+  private informationBadge(type: string): string {
+    switch (type) {
+      case 'claim.information_requested':
+        return msg('Information requested', { id: 'history.infoRequested' });
+      case 'claim.information_reminded':
+        return msg('Reminder', { id: 'info.reminder' });
+      case 'claim.information_received':
+        return msg('Information received', { id: 'history.infoReceived' });
+      case 'claim.information_expired':
+        return msg('Expired', { id: 'info.expired' });
+      default:
+        return msg('Request cancelled', { id: 'history.infoCancelled' });
     }
   }
 

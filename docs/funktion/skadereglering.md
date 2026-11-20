@@ -20,14 +20,57 @@ Hur skademotorn bedömer, räknar ut och beslutar ett ärende. Exemplen bygger p
 | --- | --- | --- |
 | `awaiting-decision` | Inget beslut än, eller ett förslag som skickats tillbaka | Handläggare |
 | `awaiting-approval` | Ett förslag över gränsen väntar på attest | Attestant |
+| `awaiting-information` | En begäran om komplettering väntar på kunden eller kliniken | – |
 | `review-requested` | Kunden har begärt mänsklig prövning | Handläggare |
 | `decided` | Beslutat och inget öppet | – |
 | `withdrawn` | Kunden har återkallat anmälan, utan beslut | – |
 | `dismissed` | Avvisat utan beslut, till exempel som dubblett | – |
 
-Om flera stämmer gäller den som står först av `withdrawn` eller `dismissed`, `awaiting-approval`, `review-requested`, `decided` och `awaiting-decision`. Fler lägen kan tillkomma (ADR 0036), så en klient ska visa ett okänt läge i stället för att fallera. Listan filtreras med `status`, `market`, `policyId` och `animalId`. En klinik ser bara sina egna ärenden och kundkanalen bara ärenden på sina försäkringar.
+Om flera stämmer gäller den som står först av `withdrawn` eller `dismissed`, `awaiting-approval`, `awaiting-information`, `review-requested`, `decided` och `awaiting-decision`. Fler lägen kan tillkomma (ADR 0036), så en klient ska visa ett okänt läge i stället för att fallera. Listan filtreras med `status`, `market`, `policyId` och `animalId`. En klinik ser bara sina egna ärenden och kundkanalen bara ärenden på sina försäkringar.
+
+Varje rad har också `basisCompleteAt`, alltså när underlaget blev komplett (se [Komplettering](#komplettering)). En rad har `informationMissing` när den senaste begäran gick ut utan svar.
 
 **Exempel:** `GET /v1/claims?status=awaiting-decision&market=SE&limit=20` ger handläggarens kö i Sverige, 20 åt gången.
+
+## Komplettering
+
+En handläggare kan begära underlag som saknas av kunden eller kliniken (ADR 0036). Ärendet väntar då i `awaiting-information` och kan inte beslutas förrän begäran är besvarad, återkallad eller har gått ut.
+
+| Anrop | Rättighet | Gör |
+| --- | --- | --- |
+| `POST /v1/claims/{id}/information-requests` | `claims:request-information` | Begär komplettering med `recipient` (`customer` eller `clinic`), `items`, `note` och ett valfritt `dueDate` |
+| `GET /v1/claims/{id}/information-requests` | `claims:read` | Ärendets begäranden, äldst först |
+| `POST …/information-requests/{requestId}/answers` | `claims:register` | Underlaget har kommit in, med ett valfritt `receivedAt` och `note` |
+| `POST …/information-requests/{requestId}/cancellations` | `claims:request-information` | Begäran behövs inte längre, med `reason` |
+
+- **Vad som saknas** anges som koder: `itemised-invoice` (specificerad faktura), `medical-record` (journal), `referral` (remiss) och `other`. Fritexten i `note` säger resten. Den stannar i Petvold.
+- **Påminnelse och svarsdatum** kommer från produktens skaderegler, `informationRequest.reminderAfterDays` (standard 14) och `expiresAfterDays` (standard 30), räknat från dagen för begäran i marknadens tid. Handläggaren kan välja ett eget svarsdatum, efter i dag och högst ett år fram. En påminnelse som skulle infalla på eller efter svarsdatumet utelämnas. Begäran sparar vilka regler dagarna kom från (`rulesVersion`).
+- **En begäran per mottagare.** Kunden och kliniken kan ha var sin öppen begäran samtidigt. Det går inte att begära komplettering på ett stängt ärende eller när ett förslag väntar på attest.
+- **Körningen `claims.information-requests`** går varje morgon klockan 06:00 i varje marknad (se [Körningar](korningar.md)). Den markerar påminnelsen på påminnelsedagen och låter begäran gå ut dagen efter svarsdatumet. Svarsdatumet är alltså den sista dagen att svara.
+- **En utgången begäran avslår inte ärendet.** Ärendet går tillbaka till kön med markeringen att underlaget inte kom in (`informationMissing`). Bara en person får avslå på den grunden, och lagen tillåter bara nedsättning om försummelsen har skadat bolaget (FAL 7 kap. 2 §).
+- **Ett sent svar** registreras ändå. Det stänger även en utgången begäran, och markeringen försvinner.
+- **Ett stängt ärende** återkallar sina öppna begäranden med samma skäl.
+
+**Klockan för FAL 7 kap. 1 §.** Ersättningen ska betalas senast en månad efter att utredningen som skäligen kan begäras har lagts fram. Ärendet visar därför `basisCompleteAt`, som räknas fram så här:
+- Utgångspunkten är när ärendet togs emot.
+- Ett svar flyttar tiden till när underlaget kom in (`receivedAt`).
+- En begäran som gått ut flyttar tiden till utgången, eftersom handläggaren sedan beslutar på det som finns.
+- En återkallad begäran behövdes inte och flyttar inte tiden.
+- Medan en begäran är öppen saknas `basisCompleteAt`.
+
+`GET /v1/claims/{id}` visar också `daysSinceBasisComplete`. Back office visar hur många dagar som är kvar av de 30. Ett beslut som fattas mer än 30 dagar efter att underlaget var komplett märks i historiken.
+
+**Exempel:**
+
+```
+POST /v1/claims/clm_048213/information-requests
+Idempotency-Key: 6f1c…
+{ "recipient": "clinic", "items": ["itemised-invoice", "medical-record"],
+  "note": "Specificerad faktura och journalen från första besöket." }
+
+201 { "id": "inf_…", "status": "open", "dueDate": "2026-12-20", "remindOn": "2026-12-04",
+      "rulesVersion": "SE-HUND-VV@1", … }
+```
 
 ## Reglerna
 
@@ -73,7 +116,7 @@ Ett ärende som inte ska prövas kan stängas innan det beslutas (ADR 0036). Det
 | `POST /v1/claims/{id}/dismissals` med `reasonCode`, `reason` och vid dubblett `duplicateOf` | `claims:decide` | `duplicate`, `registered-in-error` eller `not-a-claim` |
 
 - **Bara före ett beslut.** Ett beslutat ärende rättas eller omprövas i stället, och beslut tas aldrig bort. Ett stängt ärende kan inte beslutas. Båda reglerna finns också i databasen.
-- **Vid avslutet** skickas ett öppet förslag tillbaka med skälet, och reserven löses upp. Inget av försäkringsbeloppet förbrukas, och ingen självriskperiod öppnas.
+- **Vid avslutet** skickas ett öppet förslag tillbaka och öppna begäranden om komplettering återkallas, båda med skälet. Reserven löses upp. Inget av försäkringsbeloppet förbrukas, och ingen självriskperiod öppnas.
 - **En avvisning är inte ett avslag.** Kunden får inget beslut, ingen förklaring och ingen rätt till prövning. En dubblett ska inte ge kunden ett avslag.
 - **Ärendet visar avslutet** i `closure`: typ, skälkod, motivering, dubblettens ärende, vem och när.
 - **Händelserna** `claim.withdrawn` och `claim.dismissed` går till webhooks utan motiveringen, som kan innehålla personuppgifter.
@@ -242,4 +285,12 @@ Händelser skrivs i samma transaktion som ändringen:
 | `claim.decision_proposed` | Ett beslut över gränsen blir ett förslag |
 | `claim.proposal_returned` | Ett förslag skickas tillbaka |
 | `claim.payout_ordered` | Ett beslut höjer ersättningen |
-| `claim.review_requested` | Kunden begär mänsklig prövning | Händelserna levereras minst en gång, i ordning. Bolagets system får dem med [webhooks](webhooks.md), utan den sökandes ord eller vem som beslutade (ADR 0033).
+| `claim.review_requested` | Kunden begär mänsklig prövning |
+| `claim.information_requested` | En handläggare begär komplettering |
+| `claim.information_reminded` | En öppen begäran når sin påminnelsedag |
+| `claim.information_received` | Underlaget har kommit in |
+| `claim.information_expired` | Svarsdatumet har passerat utan svar |
+| `claim.information_cancelled` | En begäran återkallas, eller ärendet stängs |
+| `claim.withdrawn`, `claim.dismissed` | Ärendet stängs utan beslut |
+
+Händelserna levereras minst en gång, i ordning. Bolagets system får dem med [webhooks](webhooks.md), utan den sökandes ord eller vem som beslutade (ADR 0033).

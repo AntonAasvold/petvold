@@ -11,10 +11,12 @@
 import type { JobContext, JobDefinition, JobResult, Schedule } from '@petvold/scheduling';
 import type { Application, PolicyService, Proposal, RenewalRunResult } from '@petvold/policies';
 import type { RetentionRunResult, RetentionService } from '@petvold/parties';
+import type { ClaimsService, InformationRunResult } from '@petvold/claims-core';
 
 export interface JobServices {
   policies: Pick<PolicyService, 'renewalRun' | 'expireApplications' | 'expireProposals'>;
   retention: Pick<RetentionService, 'run'>;
+  claims: Pick<ClaimsService, 'informationRequestRun'>;
 }
 
 /** A job with its full result, for the API, and the summary the history keeps. */
@@ -29,7 +31,7 @@ export interface JobRunner<T> {
 
 const sum = <T>(xs: T[], f: (x: T) => number) => xs.reduce((s, x) => s + f(x), 0);
 
-/** The four jobs, by the names the history and the API use. */
+/** The jobs, by the names the history and the API use. */
 export function jobRunners(s: JobServices) {
   const applicationExpiry: JobRunner<Application[]> = {
     name: 'policies.application-expiry',
@@ -92,7 +94,16 @@ export function jobRunners(s: JobServices) {
       marketsWithoutRule: [...new Set(fulls.flatMap((r) => r.marketsWithoutRule))].sort(),
     }),
   };
-  return { applicationExpiry, proposalExpiry, renewal, retention };
+  // Reminders and expiry of requests for information (ADR 0036). In the morning,
+  // so that a reminder goes out on its day.
+  const informationRequests: JobRunner<InformationRunResult> = {
+    name: 'claims.information-requests',
+    schedule: { kind: 'daily', at: '06:00' },
+    execute: ({ market, onDate, by, dryRun }) => s.claims.informationRequestRun({ market, onDate, dryRun }, by),
+    summarize: (r) => ({ reminded: r.reminded.length, expired: r.expired.length, remindedRequestIds: r.reminded, expiredRequestIds: r.expired }),
+    join: (fulls) => fulls,
+  };
+  return { applicationExpiry, proposalExpiry, renewal, retention, informationRequests };
 }
 
 /** The jobs for the scheduler, with their default schedules in each market's time zone. */

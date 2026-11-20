@@ -282,7 +282,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   const scheduler = new Scheduler({
     store: schedulingStore,
     clock,
-    jobs: defaultJobs({ policies, retention }),
+    jobs: defaultJobs({ policies, retention, claims: service }),
     markets: async () => {
       const fromProducts = (await products.allProducts()).flatMap((p) => p.versions.map((v) => v.content.market));
       const fromRetention = Object.keys((await retention.current()).markets);
