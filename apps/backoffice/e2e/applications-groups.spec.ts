@@ -19,7 +19,7 @@ test('an application answers the health questions and opens with the outcome', a
   await open(page, 'ani_sixten');
   await page.getByRole('button', { name: 'Issue a policy' }).click();
   const form = page.locator('pv-policy-issue');
-  await expect(form.getByText('Sixten')).toBeVisible();
+  await expect(form.locator('.who')).toContainText('Sixten');
   await form.getByRole('combobox', { name: 'Product version on sale' }).click();
   await page.getByRole('option', { name: /SE-HUND-PLUS/ }).click();
   const health = form.getByRole('region', { name: 'Health questions' });
