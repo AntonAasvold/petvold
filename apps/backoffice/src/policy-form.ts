@@ -229,3 +229,22 @@ export function answersBody(answers: AnswerForm[]) {
 export function applicationBody(f: IssueForm, p: ProductLike, answers: AnswerForm[]) {
   return { ...issueBody(f, p), answers: answersBody(answers) };
 }
+
+/**
+ * Whether the animal is insured on or after the start date: the policy, and
+ * the first day a new one may start (the day the insured period ends). An
+ * animal is insured once at a time (ADR 0029). null: free from the start date.
+ */
+export function insuredFrom(
+  policies: { id: string; versions: { validFrom: string; validTo: string; status: string; sysTo?: string }[] }[],
+  startDate: string,
+): { policyId: string; freeFrom: string } | null {
+  let out: { policyId: string; freeFrom: string } | null = null;
+  for (const p of policies) {
+    for (const v of p.versions) {
+      if (v.sysTo || v.status !== 'active' || v.validTo <= startDate) continue;
+      if (!out || v.validTo > out.freeFrom) out = { policyId: p.id, freeFrom: v.validTo };
+    }
+  }
+  return out;
+}

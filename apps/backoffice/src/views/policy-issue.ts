@@ -17,10 +17,10 @@ import type { Api } from '../api/client.ts';
 import type { components } from '../api/schema';
 import { act, type Notice } from '../actions.ts';
 import { IdempotencyKeys } from '../decide.ts';
-import { formatMoney } from '../format.ts';
+import { formatDate, formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import { displayName } from '../party-logic.ts';
-import { CHANNELS, answerProblems, answersBody, answersFor, applicationBody, emptyIssue, issueBody, issueProblems, latestStart, needsApplication, quoteBody, withProductDefaults, type AnswerForm, type IssueForm, type ProductLike } from '../policy-form.ts';
+import { CHANNELS, answerProblems, answersBody, answersFor, applicationBody, emptyIssue, issueBody, insuredFrom, issueProblems, latestStart, needsApplication, quoteBody, withProductDefaults, type AnswerForm, type IssueForm, type ProductLike } from '../policy-form.ts';
 import { navigate } from '../router.ts';
 import { pvComponents } from '../styles/pv-components.ts';
 import { channelLabelFor, documentLabel, problemLabel, underwritingLabel } from './labels.ts';
@@ -49,6 +49,8 @@ export class PolicyIssue extends LitElement {
   /** The policyholder's animals today, to choose from instead of typing an id. */
   @state() private holderAnimals: { id: string; name: string }[] = [];
   @state() private holderName = '';
+  /** The animal's policies, to say when it is insured already. */
+  @state() private animalPolicies: { id: string; versions: { validFrom: string; validTo: string; status: string; sysTo?: string }[] }[] = [];
   @state() private quote: Quote | null = null;
   /** The underwriting questions, for a product with health questions (ADR 0031). */
   @state() private questions: Question[] = [];
@@ -155,11 +157,25 @@ export class PolicyIssue extends LitElement {
     return (this.products.find((p) => p.id === this.form.productVersion) as unknown as ProductLike | undefined) ?? null;
   }
 
+  /** The animal is insured already on the start date: by which policy, and from when a new one may start. */
+  private insuredNote() {
+    const insured = this.animal ? insuredFrom(this.animalPolicies, this.form.startDate) : null;
+    if (!insured) return nothing;
+    return html`<p class="pv-note" role="status">
+      ${msg('The animal is insured already by', { id: 'policy.insuredBy' })}
+      <a href=${`/policies/${insured.policyId}`} @click=${(e: Event) => (e.preventDefault(), navigate(`/policies/${encodeURIComponent(insured.policyId)}`))} class="pv-mono">${insured.policyId}</a>.
+      ${msg('A new policy may start on', { id: 'policy.freeFrom' })} ${formatDate(insured.freeFrom, getLocale())}.
+    </p>`;
+  }
+
   /** The animal's name and species, and the policyholder's name, so the person sees who it is for. */
   private async loadWho() {
     const f = this.form;
     const animal = /^ani_/.test(f.animalId) ? await this.api.GET('/v1/animals/{animalId}', { params: { path: { animalId: f.animalId.trim() } } }).then((r) => r.data ?? null, () => null) : null;
     this.animal = animal ? { name: animal.name, species: animal.species, market: animal.market } : null;
+    this.animalPolicies = animal
+      ? await this.api.GET('/v1/policies', { params: { query: { animalId: animal.id } } }).then((r) => (r.data?.items ?? []) as typeof this.animalPolicies, () => [])
+      : [];
     const holder = /^pty_/.test(f.policyholderPartyId) ? await this.api.GET('/v1/parties/{partyId}', { params: { path: { partyId: f.policyholderPartyId.trim() } } }).then((r) => r.data ?? null, () => null) : null;
     this.holderName = displayName(holder);
     this.holderAnimals = holder
@@ -242,6 +258,7 @@ export class PolicyIssue extends LitElement {
                 ></wa-input>
               </div>
               <p class="who">${this.animal ? `${this.animal.name}` : '–'} · ${this.holderName || '–'}</p>
+              ${this.insuredNote()}
             </div>
           </section>
 
