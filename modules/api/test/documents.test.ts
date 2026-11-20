@@ -12,6 +12,7 @@ const tokens: Record<string, Principal> = {
   clinic: { subject: 'klinik-002', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_002' },
   customer: { subject: 'customer-portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
   registrar: { subject: 'registrar@example.test', roles: ['party-registrar'], markets: ['SE'] },
+  docs: { subject: 'document-service', roles: ['document-service'], markets: ['SE'] },
 };
 
 async function setup() {
@@ -33,7 +34,7 @@ async function setup() {
     f.append('file', new File([text], name, { type }));
     return f;
   };
-  return { app, call, file, at: (iso: string) => (now = iso) };
+  return { app, call, file, inst, at: (iso: string) => (now = iso) };
 }
 
 const valid = (schema: string, body: unknown) => assert.ok(validatorFor(schema)(body), `${schema}: ${JSON.stringify(validatorFor(schema).errors)}`);
@@ -87,4 +88,34 @@ test('a document outside the caller\'s scope does not exist for it', async () =>
   assert.equal((await call('GET', `/v1/documents/${up.body.id}`, 'customer')).status, 200, 'the customer\'s own policy');
   assert.equal((await call('GET', '/v1/documents/doc_none')).status, 404);
   assert.equal((await call('GET', '/v1/documents')).status, 422, 'never every document at once');
+});
+
+test('an uploaded file becomes an attachment with urn:petvold:doc:, and must match the document (ADR 0038)', async () => {
+  const { call, file } = await setup();
+  const up = (await call('POST', '/v1/claims/clm_021877/documents', 'handler', undefined, file('%PDF-1.7 the record'))).body;
+  const attach = (o: Record<string, unknown>) => call('POST', '/v1/claims/clm_021877/attachments', 'handler', { kind: 'medical-record', mediaType: up.mediaType, size: up.size, sha256: up.sha256, url: `urn:petvold:doc:${up.id}`, ...o });
+  assert.equal((await attach({ sha256: 'f'.repeat(64) })).status, 422, 'another checksum');
+  assert.equal((await call('POST', '/v1/claims/clm_033410/attachments', 'handler', { kind: 'invoice', mediaType: up.mediaType, size: up.size, sha256: up.sha256, url: `urn:petvold:doc:${up.id}` })).status, 422, 'another claim');
+  assert.equal((await attach({})).status, 201);
+});
+
+test("the customer's list has Petvold's documents, notices the insurer sent and attachments in the insurer's archive", async () => {
+  const { call, file, inst } = await setup();
+  while ((await inst.relay.tick()) > 0);
+  const up = (await call('POST', '/v1/claims/clm_021877/documents', 'handler', undefined, file('%PDF-1.7 the invoice'))).body;
+  await call('POST', '/v1/claims/clm_021877/attachments', 'handler', { kind: 'invoice', mediaType: up.mediaType, size: up.size, sha256: up.sha256, url: `urn:petvold:doc:${up.id}` });
+  await call('POST', '/v1/claims/clm_021877/attachments', 'handler', { kind: 'photo', mediaType: 'image/jpeg', size: 2048, sha256: 'b'.repeat(64), url: 'https://archive.example.test/photo-1' });
+  // The insurer's document system sends a claims decision about Bella and reports it.
+  const [confirmation] = (await call('GET', '/v1/notices?policyId=pol_bella&type=claim-decision', 'docs')).body.items;
+  await call('POST', `/v1/notices/${confirmation.id}/deliveries`, 'docs', { outcome: 'sent', channel: 'digital-mailbox', sentAt: '2026-11-20T10:02:00Z', documentId: 'arch-2026-000777', sha256: 'c'.repeat(64) });
+  const list = await call('GET', '/v1/parties/pty_owner001/documents');
+  assert.equal(list.status, 200);
+  list.body.items.forEach((x: unknown) => valid('CustomerDocument', x));
+  const rows = list.body.items.map((x: any) => [x.source, x.type, x.kind ?? x.noticeType]);
+  assert.ok(rows.some((r: string[]) => r[0] === 'petvold' && r[2] === 'invoice'), 'the uploaded file, with the attachment\'s kind');
+  assert.ok(rows.some((r: string[]) => r[0] === 'insurer' && r[2] === 'photo'), 'the attachment in the insurer\'s archive');
+  assert.equal(rows.filter((r: string[]) => r[0] === 'petvold').length, 1, 'the archived attachment is listed once');
+  const letter = list.body.items.find((x: any) => x.type === 'notice');
+  assert.deepEqual([letter.source, letter.noticeType, letter.archiveId, letter.channel], ['insurer', 'claim-decision', 'arch-2026-000777', 'digital-mailbox']);
+  assert.equal((await call('GET', '/v1/parties/pty_owner001/documents', 'clinic')).status, 403, 'a clinic has no parties:read');
 });

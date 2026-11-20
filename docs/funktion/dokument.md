@@ -33,7 +33,21 @@ Listan visar bara det anroparen får se:
 
 Ett dokument som anroparen inte får se finns inte för anroparen, och svaret blir `404`.
 
-*Kommer i steg 2:* kortet "Dokument" på kundens sida i back office. Det kortet visar också meddelanden och bilagor i bolagets eget arkiv.
+### En lista för kunden, var dokumentet än finns
+
+`GET /v1/parties/{id}/documents` (rättighet `parties:read`) samlar allt om kunden i en lista, nyast först:
+
+| `source` | `type` | Vad | Öppnas |
+| --- | --- | --- | --- |
+| `petvold` | `attachment` | En fil i Petvolds arkiv, med bilagans typ när den är en bilaga | Med en länk (`documentId`) |
+| `insurer` | `attachment` | En bilaga i bolagets arkiv | På adressen (`url`) |
+| `insurer` | `notice` | Ett brev som bolagets dokumentsystem skickade, med kanal, kontrollsumma och id i bolagets arkiv (`archiveId`) | I bolagets arkiv |
+
+Varje rad kräver rätten till det den gäller: `documents:read` för Petvolds arkiv, `claims:read` för bilagor och `notices:read` för brev. Back office visar listan på kundens sida.
+
+## Bilagor från arkivet
+
+En uppladdad fil blir en bilaga med adressen `urn:petvold:doc:{id}` (ADR 0036, 0038). `POST /v1/claims/{id}/attachments` kontrollerar att dokumentet hör till samma ärende, och att kontrollsumma, storlek och mediatyp är dokumentets. Back office gör båda stegen när en fil laddas upp.
 
 ## Länkar
 
@@ -64,8 +78,7 @@ En sparad rollinställning behöver `npm run roles:sync -- --apply` för att få
 
 ## Det som kommer
 
-ADR 0038 byggs i fem steg. Det här är steg 1.
-2. Uppladdning av bilagor från back office, och kundens dokument på kundens sida.
+ADR 0038 byggs i fem steg. Steg 1 och 2 är byggda.
 3. Gotenberg och mallarna: skadebesked och försäkringsbrev som PDF.
 4. Meddelanden som PDF från Petvold eller från bolagets dokumentsystem.
 5. Gallring av dokument som en körning.

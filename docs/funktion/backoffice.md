@@ -49,6 +49,7 @@ Avsnittet Parter (rätten `parties:read`) gäller personer och organisationer (A
 - **Partens sida:**
   - uppgifterna och numren, där personnummer visas maskade
   - policyerna där parten är försäkringstagare, för den som får läsa policyer
+  - **dokumenten** (ADR 0038): alla dokument om kunden i en lista, nyast först, med typ, vad de gäller och var de finns. Det gäller filer i Petvolds arkiv, brev som bolagets dokumentsystem har skickat och bilagor i bolagets arkiv. "Öppna" ger en länk som gäller i 15 minuter för en fil i Petvolds arkiv, och går till adressen för en fil i bolagets arkiv. Ett brev från bolaget visar sitt id i bolagets arkiv. Listan visar bara det man får se.
   - historiken med varje revision
 - **Ändra uppgifterna** (rätten `parties:write`): formuläret börjar på de nuvarande uppgifterna och kräver ett skäl. Varje ändring blir en ny revision.
 - **Lägg till ett nummer** (rätten `parties:write`).
@@ -151,9 +152,13 @@ Båda kräver en motivering. Ett stängt ärende visar avslutet i stället för 
 Kortet "Bilagor" under detaljerna listar ärendets bilagor (ADR 0036):
 - typ, mediatyp, storlek, vem och när
 - kontrollsumman
-- länken "Öppna i arkivet", som går till bolagets arkiv. Arkivet avgör vem som får se filen.
+- "Öppna": en fil i Petvolds arkiv öppnas med en länk som gäller i 15 minuter, och en fil i bolagets arkiv öppnas där. Arkivet avgör vem som får se filen.
 
-En ersatt bilaga är överstruken och märkt "Ersatt". "Lägg till bilaga" öppnar formuläret: typ, adress i arkivet, kontrollsumma, mediatyp, storlek och valfritt vilken bilaga den ersätter. Filen måste först finnas i arkivet, eftersom Petvold inte tar emot filer än.
+En ersatt bilaga är överstruken och märkt "Ersatt". "Lägg till bilaga" öppnar formuläret med två val (ADR 0038):
+- **Ladda upp till Petvolds arkiv** (förval): välj typ och fil, PDF, JPEG, PNG eller HEIC, högst 25 MB. Filen sparas i arkivet och blir en bilaga med adressen `urn:petvold:doc:{id}`. Kontrollsumma, storlek och mediatyp kommer från arkivet.
+- **I bolagets arkiv:** adress, kontrollsumma, mediatyp och storlek anges för hand, som förut.
+
+Båda valen kan ersätta en tidigare bilaga.
 
 ## Rätta en skada
 

@@ -17,6 +17,7 @@ import type { components } from '../api/schema';
 import { act, type Notice } from '../actions.ts';
 import { ATTACHMENT_KINDS, attachmentBody, attachmentProblems, emptyAttachment, formatSize, mayAddAttachment, replacedIds, type AttachmentForm, type AttachmentKind } from '../attachment-logic.ts';
 import { IdempotencyKeys } from '../decide.ts';
+import { archiveUrl, archivedDocumentId, uploadProblems } from '../document-logic.ts';
 import { formatDateTime } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import type { Me } from '../permissions.ts';
@@ -37,6 +38,9 @@ export class ClaimAttachments extends LitElement {
   @state() private shown: string[] = [];
   @state() private notice: Notice | null = null;
   @state() private busy = false;
+  /** Upload a file to Petvold's archive, or give an address in the insurer's (ADR 0038). */
+  @state() private source: 'upload' | 'address' = 'upload';
+  @state() private file: File | null = null;
   private keys = new IdempotencyKeys();
 
   constructor() {
@@ -99,6 +103,36 @@ export class ClaimAttachments extends LitElement {
       .mono::part(input) {
         font-family: var(--font-mono);
       }
+      fieldset {
+        display: grid;
+        gap: var(--space-2);
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+      legend,
+      .file > span {
+        padding: 0 0 var(--space-2);
+        font: 500 13px/1.4 var(--font-sans);
+        color: var(--text-secondary);
+      }
+      .file {
+        display: grid;
+      }
+      .file input {
+        font: inherit;
+        padding: var(--space-2);
+        border: var(--border-hairline) solid var(--line-control, var(--line));
+      }
+      button.link {
+        background: none;
+        border: 0;
+        padding: 0;
+        font: inherit;
+        color: var(--ink);
+        text-decoration: underline;
+        cursor: pointer;
+      }
     `,
   ];
 
@@ -109,7 +143,7 @@ export class ClaimAttachments extends LitElement {
     return html`<section class="pv-card" aria-labelledby="attachments">
       <div class="pv-card__head">
         <h2 class="pv-card__title" id="attachments">${msg('Attachments', { id: 'attachment.title' })}</h2>
-        <span class="pv-card__meta">${msg("In the insurer's archive", { id: 'attachment.archive' })}</span>
+        <span class="pv-card__meta">${msg("Petvold's and the insurer's archive", { id: 'document.meta' })}</span>
       </div>
       <div class="pv-card__body">
         ${this.attachments.length
@@ -120,9 +154,11 @@ export class ClaimAttachments extends LitElement {
                   <span class="meta">${a.mediaType} · ${formatSize(a.size)} · ${a.addedBy}, ${formatDateTime(a.addedAt, lang)}</span>
                   ${replaced.has(a.id) ? html`<span class="pv-badge pv-badge--pending">${msg('Replaced', { id: 'attachment.replaced' })}</span>` : nothing}
                   ${a.replaces ? html`<span class="meta">${msg('Replaces', { id: 'attachment.replaces' })} ${a.replaces}</span>` : nothing}
-                  ${/^https:/i.test(a.url)
-                    ? html`<a class="open" href=${a.url} target="_blank" rel="noopener noreferrer">${msg('Open in the archive', { id: 'attachment.open' })}</a>`
-                    : html`<span class="open pv-mono">${a.url}</span>`}
+                  ${archivedDocumentId(a.url)
+                    ? html`<button class="open link" type="button" @click=${() => this.openArchived(archivedDocumentId(a.url)!)}>${msg('Open', { id: 'history.open' })}</button>`
+                    : /^https:/i.test(a.url)
+                      ? html`<a class="open" href=${a.url} target="_blank" rel="noopener noreferrer">${msg('Open in the archive', { id: 'attachment.open' })}</a>`
+                      : html`<span class="open pv-mono">${a.url}</span>`}
                   <span class="sha" title="sha256">${a.sha256}</span>
                 </li>`,
               )}
@@ -146,7 +182,17 @@ export class ClaimAttachments extends LitElement {
     const value = (e: Event) => (e.target as HTMLInputElement).value;
     const replaceable = this.attachments.filter((a) => !replaced.has(a.id));
     return html`<form @submit=${this.add} novalidate>
-      <p class="pv-note">${msg("Petvold keeps the address and the checksum, not the file. Upload the file to the insurer's archive first.", { id: 'attachment.how' })}</p>
+      <fieldset>
+        <legend>${msg('The file', { id: 'attachment.source' })}</legend>
+        <label class="pv-choice">
+          <input type="radio" name="source" .checked=${this.source === 'upload'} @change=${() => (this.source = 'upload')} />
+          <span><span class="pv-choice__title">${msg("Upload to Petvold's archive", { id: 'attachment.upload' })}</span><span class="pv-choice__desc">${msg('PDF, JPEG, PNG or HEIC, at most 25 MB.', { id: 'attachment.uploadDesc' })}</span></span>
+        </label>
+        <label class="pv-choice">
+          <input type="radio" name="source" .checked=${this.source === 'address'} @change=${() => (this.source = 'address')} />
+          <span><span class="pv-choice__title">${msg("In the insurer's archive", { id: 'attachment.archive' })}</span><span class="pv-choice__desc">${msg("Petvold keeps the address and the checksum, not the file.", { id: 'attachment.addressDesc' })}</span></span>
+        </label>
+      </fieldset>
       <div class="row">
         <wa-select label=${msg('Kind', { id: 'catalog.kind' })} value=${f.kind} @change=${(e: Event) => set({ kind: value(e) as AttachmentKind })}>
           ${ATTACHMENT_KINDS.map((k) => html`<wa-option value=${k}>${attachmentKindLabel(k)}</wa-option>`)}
@@ -158,12 +204,17 @@ export class ClaimAttachments extends LitElement {
             </wa-select>`
           : nothing}
       </div>
-      <wa-input class="mono" label=${msg('Address in the archive', { id: 'attachment.url' })} hint=${msg('https://… or urn:…', { id: 'attachment.urlHint' })} .value=${f.url} @input=${(e: Event) => set({ url: value(e) })}></wa-input>
-      <wa-input class="mono" label=${msg('Checksum (sha256)', { id: 'attachment.sha' })} .value=${f.sha256} @input=${(e: Event) => set({ sha256: value(e) })}></wa-input>
-      <div class="row">
-        <wa-input class="mono" label=${msg('Media type', { id: 'attachment.mediaType' })} .value=${f.mediaType} @input=${(e: Event) => set({ mediaType: value(e) })}></wa-input>
-        <wa-input label=${msg('Size in bytes', { id: 'attachment.size' })} inputmode="numeric" .value=${f.size} @input=${(e: Event) => set({ size: value(e) })}></wa-input>
-      </div>
+      ${this.source === 'upload'
+        ? html`<label class="file">
+            <span>${msg('File', { id: 'attachment.file' })}</span>
+            <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic" @change=${(e: Event) => ((this.file = (e.target as HTMLInputElement).files?.[0] ?? null), this.keys.done('add'))} />
+          </label>`
+        : html`<wa-input class="mono" label=${msg('Address in the archive', { id: 'attachment.url' })} hint=${msg('https://… or urn:…', { id: 'attachment.urlHint' })} .value=${f.url} @input=${(e: Event) => set({ url: value(e) })}></wa-input>
+            <wa-input class="mono" label=${msg('Checksum (sha256)', { id: 'attachment.sha' })} .value=${f.sha256} @input=${(e: Event) => set({ sha256: value(e) })}></wa-input>
+            <div class="row">
+              <wa-input class="mono" label=${msg('Media type', { id: 'attachment.mediaType' })} .value=${f.mediaType} @input=${(e: Event) => set({ mediaType: value(e) })}></wa-input>
+              <wa-input label=${msg('Size in bytes', { id: 'attachment.size' })} inputmode="numeric" .value=${f.size} @input=${(e: Event) => set({ size: value(e) })}></wa-input>
+            </div>`}
       ${this.shown.length ? html`<wa-callout variant="danger" role="alert">${this.shown.map((p) => html`<div>${problemLabel(p)}</div>`)}</wa-callout>` : nothing}
       <div class="row">
         <wa-button type="submit" variant="brand" ?loading=${this.busy}>${msg('Add the attachment', { id: 'attachment.submit' })}</wa-button>
@@ -172,16 +223,51 @@ export class ClaimAttachments extends LitElement {
     </form>`;
   }
 
+  /** Opens a file in Petvold's archive through a link that works 15 minutes (ADR 0038). */
+  private async openArchived(documentId: string) {
+    const { data, error } = await this.api.POST('/v1/documents/{documentId}/links', {
+      params: { path: { documentId }, header: { 'Idempotency-Key': crypto.randomUUID() } },
+      body: { audience: 'internal' },
+    });
+    if (data) window.open(data.url, '_blank', 'noopener');
+    else this.notice = { variant: 'danger', text: (error as { title?: string } | undefined)?.title ?? msg('Something went wrong.', { id: 'common.error' }) };
+  }
+
+  /** The file to Petvold's archive first; its checksum, size and type become the attachment's. */
+  private async uploaded(): Promise<{ url: string; sha256: string; size: number; mediaType: string } | null> {
+    const form = new FormData();
+    form.append('file', this.file!);
+    const { data, error } = await this.api.POST('/v1/claims/{claimId}/documents', {
+      params: { path: { claimId: this.claimId }, header: { 'Idempotency-Key': this.keys.for('upload') } },
+      body: form as never,
+      bodySerializer: (b: unknown) => b as FormData,
+    });
+    if (!data) {
+      const p = (error ?? {}) as { title?: string; detail?: string };
+      this.notice = { variant: 'danger', text: p.detail ?? p.title ?? msg('Something went wrong.', { id: 'common.error' }) };
+      return null;
+    }
+    this.keys.done('upload');
+    return { url: archiveUrl(data.id), sha256: data.sha256, size: data.size, mediaType: data.mediaType };
+  }
+
   private async add(e: Event) {
     e.preventDefault();
-    this.shown = attachmentProblems(this.form);
+    this.shown = this.source === 'upload' ? uploadProblems(this.file) : attachmentProblems(this.form);
     if (this.shown.length) return;
     this.busy = true;
+    this.notice = null;
+    const stored = this.source === 'upload' ? await this.uploaded() : null;
+    if (this.source === 'upload' && !stored) {
+      this.busy = false;
+      return;
+    }
+    const body = stored ? { kind: this.form.kind, ...stored, ...(this.form.replaces ? { replaces: this.form.replaces } : {}) } : attachmentBody(this.form);
     const { ok, notice } = await act(
       () =>
         this.api.POST('/v1/claims/{claimId}/attachments', {
           params: { path: { claimId: this.claimId }, header: { 'Idempotency-Key': this.keys.for('add') } },
-          body: attachmentBody(this.form),
+          body,
         }),
       () => ({ variant: 'success', text: msg('The attachment is added.', { id: 'attachment.added' }) }),
     );
@@ -190,6 +276,7 @@ export class ClaimAttachments extends LitElement {
     if (ok) {
       this.keys.done('add');
       this.form = emptyAttachment();
+      this.file = null;
       this.adding = false;
       this.dispatchEvent(new CustomEvent('pv-changed', { bubbles: true, composed: true }));
     }

@@ -901,6 +901,39 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/parties/{partyId}/documents:
+    get:
+      tags: [documents]
+      operationId: listPartyDocuments
+      x-permission: parties:read
+      summary: Every document about a customer, wherever it is kept
+      description: |
+        Requires the permission `parties:read`. One list, newest first (ADR 0038 point 8):
+        - `source: petvold`: files in Petvold's archive (needs `documents:read`). Open one with `POST /v1/documents/{id}/links`.
+        - `source: insurer`, `type: notice`: notices the insurer's document system sent, with its archive id and checksum (needs `notices:read`).
+        - `source: insurer`, `type: attachment`: claim attachments in the insurer's archive, with their address (needs `claims:read`).
+
+        Each entry is only there if the caller may see what it belongs to, within the scope.
+      parameters:
+        - $ref: '#/components/parameters/PartyId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: One page of documents
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CustomerDocument' } }
+                  nextCursor: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/documents:
     get:
       tags: [documents]
@@ -4936,6 +4969,31 @@ components:
         createdBy: { type: string }
         createdAt: { $ref: '#/components/schemas/DateTime' }
         erasedAt: { $ref: '#/components/schemas/DateTime', description: The file was removed by retention; the record stays. }
+
+    CustomerDocument:
+      type: object
+      additionalProperties: false
+      required: [source, type, at]
+      description: A document about a customer, in Petvold's archive or the insurer's.
+      properties:
+        source: { type: string, enum: [petvold, insurer], description: 'Where the file is: petvold opens with a link; insurer opens in the insurer''s archive.' }
+        type: { type: string, enum: [attachment, notice] }
+        at: { $ref: '#/components/schemas/DateTime', description: 'Added, made or sent.' }
+        documentId: { type: string, description: 'source petvold: the document.' }
+        kind: { type: string, enum: [invoice, medical-record, referral, photo, other], description: An attachment's kind. }
+        filename: { type: string }
+        mediaType: { type: string }
+        size: { type: integer }
+        sha256: { type: string }
+        url: { type: string, description: 'source insurer, type attachment: the address in the insurer''s archive.' }
+        archiveId: { type: string, description: 'source insurer, type notice: the document''s id in the insurer''s archive.' }
+        channel: { type: string, description: 'type notice: how it was sent.' }
+        noticeType: { $ref: '#/components/schemas/NoticeType' }
+        noticeId: { type: string }
+        attachmentId: { type: string }
+        claimId: { type: string }
+        policyId: { type: string }
+        erased: { type: boolean, description: The file was removed by retention; it cannot be opened. }
 
     DocumentLinkRequest:
       type: object

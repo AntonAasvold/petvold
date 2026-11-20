@@ -361,8 +361,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Migration 0046:** schemat `documents`.
   - 141 operationer, 536 tester och 156 databastester.
 
+- Dokument, steg 2 (ADR 0038), PR #116:
+  - **Uppladdning från back office:** kortet "Bilagor" laddar upp en fil till arkivet och skapar bilagan `urn:petvold:doc:{id}`. API:t prövar att dokumentet hör till ärendet och stämmer.
+  - **Kundens dokument:** `GET /v1/parties/{id}/documents` samlar Petvolds arkiv, brev som bolagets dokumentsystem skickat och bilagor i bolagets arkiv. Kortet "Dokument" finns på kundens sida.
+  - 142 operationer, 74 enhetstester och 40 flöden i back office.
+
 **Nästa steg**
-1. ADR 0038, steg 2: uppladdning av bilagor från back office, och kundens dokument på kundens sida.
+1. ADR 0038, steg 3: Gotenberg och mallarna, med skadebesked och försäkringsbrev som PDF.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
 3. Back office: översikten på startsidan, omräkning av beslut och policyns sida enligt designsystemet.
 
