@@ -15,6 +15,9 @@ import type {
   Timestamp,
   Claim,
   ClaimClosure,
+  InformationRequest,
+  InformationRequestStatus,
+  MarketCode,
 } from './types.ts';
 import type { LimitKey } from './ledger.ts';
 
@@ -124,12 +127,35 @@ export interface ClaimsStore {
   saveProposal(proposal: DecisionProposal, events: ClaimsEvent[]): Promise<void>;
   /**
    * Closes a claim without a decision (ADR 0036), in one transaction: stores
-   * the closure, returns the claim's open proposals with the closure's reason,
+   * the closure, returns the claim's open proposals and cancels its open
+   * requests for information with the closure's reason,
    * books `journals` (the released reserve) and writes `events`. Throws
    * StoreConflictError('claim_closed') if the claim is closed already, and
    * ('claim_decided') if it has a decision.
    */
   closeClaim(closure: ClaimClosure, events: ClaimsEvent[], journals: LedgerJournal[]): Promise<void>;
+  /**
+   * Stores a request for information (ADR 0036) and writes `events` in the same
+   * transaction. Throws StoreConflictError('information_open') if the claim
+   * already has an open request to the same recipient, and ('claim_closed') if
+   * the claim is closed.
+   */
+  saveInformationRequest(request: InformationRequest, events: ClaimsEvent[]): Promise<void>;
+  /** The claim's requests for information, oldest first. */
+  getInformationRequests(claimId: string): Promise<InformationRequest[]>;
+  /**
+   * Replaces a request with `next` (same id) if it is still in one of the
+   * `from` states, and for a reminder, not reminded yet. Writes `events` in the
+   * same transaction. Throws StoreConflictError('information_closed') otherwise,
+   * so that two servers never remind or expire the same request twice.
+   */
+  updateInformationRequest(next: InformationRequest, from: { statuses: InformationRequestStatus[]; notReminded?: boolean }, events: ClaimsEvent[]): Promise<void>;
+  /**
+   * For the daily run: open requests on claims in the market that are due for a
+   * reminder (remindOn <= onDate, not reminded) or that have expired
+   * (dueDate < onDate). Oldest first.
+   */
+  informationRequestsDue(market: MarketCode, onDate: ISODate): Promise<InformationRequest[]>;
   /** The claim's closure, or null while it is open. */
   getClosure(claimId: string): Promise<ClaimClosure | null>;
   /** The claim's proposals, oldest first. */
@@ -148,7 +174,17 @@ export interface ClaimsStore {
  */
 export class StoreConflictError extends Error {
   constructor(
-    public readonly reason: 'claim_exists' | 'decision_exists' | 'period_overlaps' | 'review_open' | 'proposal_open' | 'proposal_closed' | 'claim_closed' | 'claim_decided',
+    public readonly reason:
+      | 'claim_exists'
+      | 'decision_exists'
+      | 'period_overlaps'
+      | 'review_open'
+      | 'proposal_open'
+      | 'proposal_closed'
+      | 'claim_closed'
+      | 'claim_decided'
+      | 'information_open'
+      | 'information_closed',
     message: string,
   ) {
     super(message);
@@ -194,7 +230,12 @@ export type ClaimsEvent =
   | { type: 'claim.decision_proposed'; occurredAt: Timestamp; proposal: DecisionProposal }
   | { type: 'claim.proposal_returned'; occurredAt: Timestamp; proposal: DecisionProposal }
   | { type: 'claim.payout_ordered'; occurredAt: Timestamp; order: PayoutOrder }
-  | { type: 'claim.withdrawn' | 'claim.dismissed'; occurredAt: Timestamp; closure: ClaimClosure };
+  | { type: 'claim.withdrawn' | 'claim.dismissed'; occurredAt: Timestamp; closure: ClaimClosure }
+  | {
+      type: 'claim.information_requested' | 'claim.information_reminded' | 'claim.information_received' | 'claim.information_expired' | 'claim.information_cancelled';
+      occurredAt: Timestamp;
+      request: InformationRequest;
+    };
 
 /** The claim an event concerns: the aggregate it belongs to in the outbox. */
 export function eventClaimId(e: ClaimsEvent): string {
@@ -213,6 +254,12 @@ export function eventClaimId(e: ClaimsEvent): string {
     case 'claim.withdrawn':
     case 'claim.dismissed':
       return e.closure.claimId;
+    case 'claim.information_requested':
+    case 'claim.information_reminded':
+    case 'claim.information_received':
+    case 'claim.information_expired':
+    case 'claim.information_cancelled':
+      return e.request.claimId;
   }
 }
 

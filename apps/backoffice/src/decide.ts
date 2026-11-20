@@ -65,15 +65,17 @@ export class IdempotencyKeys {
   }
 }
 
-/** The claim's status as the queue shows it, from what the claim view has loaded (the API's order: closed, approval, review, decided). */
+/** The claim's status as the queue shows it, from what the claim view has loaded (the API's order: closed, approval, information, review, decided). */
 export function claimStatus(o: {
   closed?: 'withdrawn' | 'dismissed';
   openProposals: number;
+  openInformation?: number;
   openReviews: number;
   decisions: number;
-}): 'withdrawn' | 'dismissed' | 'awaiting-approval' | 'review-requested' | 'decided' | 'awaiting-decision' {
+}): 'withdrawn' | 'dismissed' | 'awaiting-approval' | 'awaiting-information' | 'review-requested' | 'decided' | 'awaiting-decision' {
   if (o.closed) return o.closed;
   if (o.openProposals) return 'awaiting-approval';
+  if (o.openInformation) return 'awaiting-information';
   if (o.openReviews) return 'review-requested';
   return o.decisions ? 'decided' : 'awaiting-decision';
 }

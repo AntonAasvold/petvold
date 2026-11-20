@@ -20,7 +20,7 @@ import type { Me } from '../permissions.ts';
 
 type ClaimSummary = components['schemas']['ClaimSummary'];
 type Status = ClaimSummary['status'];
-const QUEUES: (Status | 'all')[] = ['awaiting-decision', 'awaiting-approval', 'review-requested', 'decided', 'withdrawn', 'dismissed', 'all'];
+const QUEUES: (Status | 'all')[] = ['awaiting-decision', 'awaiting-information', 'awaiting-approval', 'review-requested', 'decided', 'withdrawn', 'dismissed', 'all'];
 
 @customElement('pv-claims-queue')
 export class ClaimsQueue extends LitElement {
@@ -30,6 +30,8 @@ export class ClaimsQueue extends LitElement {
   @state() private pager: Pager<ClaimSummary> = emptyPager();
   @state() private loading = false;
   @state() private error = '';
+  /** Sorting on when the basis was complete (FAL 7 kap. 1 §), among the claims loaded. */
+  @state() private sort: { key: string; direction: 'ascending' | 'descending' } | null = null;
   /** Ignores answers to a queue no longer shown. */
   private request = 0;
 
@@ -93,9 +95,32 @@ export class ClaimsQueue extends LitElement {
       { key: 'treatmentFrom', header: msg('Treatment from', { id: 'claims.col.treatment' }), value: (c) => formatDate(c.treatmentFrom, lang) },
       { key: 'diagnosisCode', header: msg('Diagnosis', { id: 'claims.col.diagnosis' }), value: (c) => c.diagnosisCode },
       { key: 'policyId', header: msg('Policy', { id: 'claims.col.policy' }), value: (c) => c.policyId },
-      { key: 'status', header: msg('Status', { id: 'claims.col.status' }), value: (c) => html`<wa-badge variant=${statusVariant(c.status)}>${claimStatusLabel(c.status)}</wa-badge>` },
+      {
+        key: 'status',
+        header: msg('Status', { id: 'claims.col.status' }),
+        value: (c) =>
+          html`<wa-badge variant=${statusVariant(c.status)}>${claimStatusLabel(c.status)}</wa-badge>${c.informationMissing
+              ? html` <wa-badge variant="neutral" appearance="outlined">${msg('Information missing', { id: 'claims.informationMissing' })}</wa-badge>`
+              : nothing}`,
+      },
+      {
+        key: 'basisCompleteAt',
+        header: msg('Basis complete', { id: 'claim.basisComplete' }),
+        sortable: true,
+        value: (c) => (c.basisCompleteAt ? formatDate(c.basisCompleteAt.slice(0, 10), lang) : '–'),
+      },
       { key: 'payout', header: msg('Payout', { id: 'claims.col.payout' }), align: 'end', value: (c) => (c.latestDecision ? formatMoney(c.latestDecision.payout, c.currency, lang) : '–') },
     ];
+  }
+
+  /** The loaded claims, sorted on when the basis was complete if chosen; claims still waiting for information last. */
+  private rows(): ClaimSummary[] {
+    if (this.sort?.key !== 'basisCompleteAt') return this.pager.items;
+    const dir = this.sort.direction === 'ascending' ? 1 : -1;
+    return [...this.pager.items].sort((a, b) => {
+      if (!a.basisCompleteAt || !b.basisCompleteAt) return (a.basisCompleteAt ? 0 : 1) - (b.basisCompleteAt ? 0 : 1);
+      return dir * a.basisCompleteAt.localeCompare(b.basisCompleteAt);
+    });
   }
 
   render() {
@@ -111,7 +136,9 @@ export class ClaimsQueue extends LitElement {
       </wa-tab-group>
       <pv-data-grid
         .columns=${this.columns()}
-        .rows=${this.pager.items}
+        .rows=${this.rows()}
+        .sort=${this.sort}
+        @pv-sort=${(e: CustomEvent<{ key: string; direction: 'ascending' | 'descending' }>) => (this.sort = e.detail)}
         label=${msg('Claims', { id: 'claims.title' })}
         ?loading=${this.loading}
         ?has-more=${hasMore(this.pager) && this.pager.loaded}

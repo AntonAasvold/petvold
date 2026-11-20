@@ -27,7 +27,7 @@ after(async () => {
 beforeEach(async () => {
   await owner.query(
     `truncate claims.journal_line, claims.journal, claims.deductible_period, claims.decision_evidence, claims.review_request, claims.decision_proposal, claims.decision,
-              claims.claim_closure, claims.claim_line, claims.claim, claims.outbox, claims.idempotency`,
+              claims.information_request, claims.claim_closure, claims.claim_line, claims.claim, claims.outbox, claims.idempotency`,
   );
 });
 

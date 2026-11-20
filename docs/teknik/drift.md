@@ -82,5 +82,6 @@ Servern kör dem själv varje dag per marknad, en server i taget, och sparar his
 | Överlåtelser som löpt ut | 01:15 | `POST /v1/policy-proposal-expiry-runs` |
 | Förnyelse | 02:00 | `POST /v1/renewal-runs` |
 | Gallring | 03:00 | `POST /v1/retention-runs` |
+| Påminnelse och utgång av kompletteringar | 06:00 | – (bara "Kör nu" under `/v1/jobs`) |
 
 Anropen finns kvar för den som vill starta en körning utifrån, med en token för rollen `renewal-job` eller `retention-job`.

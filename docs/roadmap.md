@@ -107,7 +107,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] [ADR 0036](adr/0036-skadeprocessen.md) om skadeprocessen
 - [x] Skadenummer och id från servern
 - [x] Lägen, återkallelse och avvisning
-- [ ] Komplettering från kund eller klinik, med påminnelse, utgång och `basisCompleteAt` (FAL 7 kap. 1 §)
+- [x] Komplettering från kund eller klinik, med påminnelse, utgång och `basisCompleteAt` (FAL 7 kap. 1 §)
 - [ ] Rättelse med revisioner
 - [ ] Bilagor som referenser till bolagets arkiv
 - [ ] Skadebesked och meddelanden om komplettering (ADR 0032)
@@ -122,7 +122,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [x] API och back office: lista över körningar med nästa och senaste körning, historik, "Kör nu", paus med spår, och reläets döda poster med "Skicka igen" (steg 3)
 - [x] Schema som går att ändra med fyra ögon, `job.failed` och larm i `/healthz` (steg 4)
 - [ ] Back office: reläets och webhook-arbetarens kö och eftersläpning
-- [ ] Påminnelser och utgång för komplettering (skadeprocessen, steg 3) som en körning bland de andra
+- [x] Påminnelser och utgång för komplettering (skadeprocessen, steg 3) som en körning bland de andra
 
 **Back office: det som saknas** (inventering 2026-11-18: back office använder 68 av API:ets 115 operationer)
 - [x] **Policy:** teckna med prisindikation och kundens godkännande, ändra, säga upp, ångra en uppsägning och förnya för hand

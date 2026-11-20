@@ -22,6 +22,8 @@ export const PERMISSIONS = [
   'claims:approve',
   /** Ask for a human review of an automated decision on the customer's behalf (ADR 0018). */
   'claims:request-review',
+  /** Ask the customer or the clinic for more information, and cancel such a request (ADR 0036). */
+  'claims:request-information',
   'claims:preview',
   'limits:read',
   /** Read rule sets (ADR 0021). */
@@ -142,6 +144,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
       'claims:override',
       'claims:reassess',
       'claims:request-review',
+      'claims:request-information',
       'claims:preview',
       'limits:read',
       'catalog:read',

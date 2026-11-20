@@ -231,5 +231,14 @@ export async function claimsEventForWebhooks(
       const k = e.closure;
       return { ...base, data: { closureId: k.id, ...(k.reasonCode ? { reasonCode: k.reasonCode } : {}), ...(k.duplicateOf ? { duplicateOf: k.duplicateOf } : {}) } };
     }
+    case 'claim.information_requested':
+    case 'claim.information_reminded':
+    case 'claim.information_received':
+    case 'claim.information_expired':
+    case 'claim.information_cancelled': {
+      // The notes are free text and may name a person, so they stay inside Petvold.
+      const r = e.request;
+      return { ...base, data: { requestId: r.id, recipient: r.recipient, items: r.items, dueDate: r.dueDate, status: r.status } };
+    }
   }
 }

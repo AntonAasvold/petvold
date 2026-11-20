@@ -19,6 +19,9 @@ export type Timestamp = string;
  */
 export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId';
 
+/** A request for information (ADR 0036): what was asked for and when it is due, never the note. */
+const INFORMATION_FIELDS = ['requestId', 'recipient', 'items', 'dueDate', 'status'];
+
 export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectField; fields: string[] }> = {
   'claim.registered': { source: 'claims', subject: 'claimId', fields: ['claimNo', 'policyId', 'animalId', 'channel', 'clinicId', 'treatmentFrom', 'treatmentTo', 'diagnosisCode', 'currency'] },
   'claim.decision_proposed': { source: 'claims', subject: 'claimId', fields: ['proposalId', 'action', 'outcome', 'payout', 'currency', 'deviatesFromProposal', 'reasonCode'] },
@@ -28,6 +31,11 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'claim.review_requested': { source: 'claims', subject: 'claimId', fields: ['reviewRequestId', 'decisionId', 'decisionSeq'] },
   'claim.withdrawn': { source: 'claims', subject: 'claimId', fields: ['closureId'] },
   'claim.dismissed': { source: 'claims', subject: 'claimId', fields: ['closureId', 'reasonCode', 'duplicateOf'] },
+  'claim.information_requested': { source: 'claims', subject: 'claimId', fields: INFORMATION_FIELDS },
+  'claim.information_reminded': { source: 'claims', subject: 'claimId', fields: INFORMATION_FIELDS },
+  'claim.information_received': { source: 'claims', subject: 'claimId', fields: INFORMATION_FIELDS },
+  'claim.information_expired': { source: 'claims', subject: 'claimId', fields: INFORMATION_FIELDS },
+  'claim.information_cancelled': { source: 'claims', subject: 'claimId', fields: INFORMATION_FIELDS },
   'animal.ownership_changed': { source: 'animals', subject: 'animalId', fields: ['fromPartyId', 'toPartyId', 'from'] },
   'animal.died': { source: 'animals', subject: 'animalId', fields: ['deceasedOn'] },
   'notice.created': { source: 'communications', subject: 'noticeId', fields: ['noticeType', 'schema', 'recipientPartyId', 'language', 'policyId', 'applicationId', 'dueBy'] },

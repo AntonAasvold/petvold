@@ -7,6 +7,8 @@ export function claimStatusLabel(s: string): string {
       return msg('Awaiting decision', { id: 'claims.status.awaiting-decision' });
     case 'awaiting-approval':
       return msg('Awaiting approval', { id: 'claims.status.awaiting-approval' });
+    case 'awaiting-information':
+      return msg('Awaiting information', { id: 'claims.status.awaiting-information' });
     case 'review-requested':
       return msg('Review requested', { id: 'claims.status.review-requested' });
     case 'decided':
@@ -87,8 +89,33 @@ export function deviationLabel(c: string): string {
 }
 
 /** The texts for what stops a decision (decide.ts). */
+export function informationItemLabel(i: string): string {
+  switch (i) {
+    case 'itemised-invoice':
+      return msg('Specified invoice', { id: 'info.item.itemised-invoice' });
+    case 'medical-record':
+      return msg('Medical record', { id: 'info.item.medical-record' });
+    case 'referral':
+      return msg('Referral', { id: 'info.item.referral' });
+    case 'other':
+      return msg('Other', { id: 'info.item.other' });
+    default:
+      return i;
+  }
+}
+
+export function recipientLabel(r: string): string {
+  return r === 'clinic' ? msg('The clinic', { id: 'info.recipient.clinic' }) : r === 'customer' ? msg('The customer', { id: 'info.recipient.customer' }) : r;
+}
+
 export function problemLabel(id: string): string {
   switch (id) {
+    case 'info.needItems':
+      return msg('Choose what is missing.', { id: 'info.needItems' });
+    case 'info.needNote':
+      return msg('Say what is missing.', { id: 'info.needNote' });
+    case 'info.dueAfterToday':
+      return msg('The due date is after today.', { id: 'info.dueAfterToday' });
     case 'decide.noOverride':
       return msg('You may not decide against the proposal (claims:override).', { id: 'decide.noOverride' });
     case 'decide.needCode':
@@ -337,6 +364,8 @@ export function jobLabel(name: string): string {
       return msg('Renewal', { id: 'job.renewal' });
     case 'parties.retention':
       return msg('Retention', { id: 'job.retention' });
+    case 'claims.information-requests':
+      return msg('Reminders and expiry of requests for information', { id: 'job.information-requests' });
     default:
       return name;
   }

@@ -11,6 +11,10 @@ import {
   StoreConflictError,
   accounts,
   eventClaimId,
+  basisCompleteAt,
+  informationMissing,
+  type InformationRequest,
+  type InformationRequestStatus,
   type LimitKey,
   type ClaimFilter,
   type ClaimSummary,
@@ -109,6 +113,35 @@ function toDecision(d: Record<string, any>): ClaimDecision {
     ...(d.review_request_id !== null ? { reviewRequestId: d.review_request_id } : {}),
     ...(d.approved_by !== null ? { approvedBy: d.approved_by, proposalId: d.proposal_id } : {}),
   };
+}
+
+const INFORMATION_SELECT = `select id, claim_id, recipient, items, note, due_date, remind_on, rules_version, requested_by, requested_at, status,
+  reminded_at, received_at, closed_by, closed_at, closing_note from claims.information_request`;
+
+function toInformationRequest(r: Record<string, any>): InformationRequest {
+  return {
+    id: r.id,
+    claimId: r.claim_id,
+    recipient: r.recipient,
+    items: r.items,
+    note: r.note,
+    dueDate: r.due_date,
+    ...(r.remind_on === null ? {} : { remindOn: r.remind_on }),
+    rulesVersion: r.rules_version,
+    requestedBy: r.requested_by,
+    requestedAt: r.requested_at,
+    status: r.status,
+    ...(r.reminded_at === null ? {} : { remindedAt: r.reminded_at }),
+    ...(r.received_at === null ? {} : { receivedAt: r.received_at }),
+    ...(r.closed_by === null ? {} : { closedBy: r.closed_by, closedAt: r.closed_at }),
+    ...(r.closing_note === null ? {} : { closingNote: r.closing_note }),
+  };
+}
+
+/** basisCompleteAt and informationMissing for a claim in a list (ADR 0036). */
+function withBasis(receivedAt: Timestamp, requests: InformationRequest[]): { basisCompleteAt?: Timestamp; informationMissing?: true } {
+  const complete = basisCompleteAt(receivedAt, requests);
+  return { ...(complete ? { basisCompleteAt: complete } : {}), ...(informationMissing(requests) ? { informationMissing: true } : {}) };
 }
 
 // Postgres error codes (SQLSTATE).
@@ -291,6 +324,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
                 case
                   when k.kind is not null then k.kind
                   when exists (select 1 from claims.decision_proposal p where p.claim_id = c.id and p.status = 'open') then 'awaiting-approval'
+                  when exists (select 1 from claims.information_request i where i.claim_id = c.id and i.status = 'open') then 'awaiting-information'
                   when exists (select 1 from claims.review_request r where r.claim_id = c.id and r.closed_at is null) then 'review-requested'
                   when d.seq is not null then 'decided'
                   else 'awaiting-decision'
@@ -307,6 +341,12 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
        order by q.received_at, q.id`,
       [filter.market ?? null, filter.policyId ?? null, filter.animalId ?? null, filter.clinicId ?? null, filter.state ?? null],
     );
+    // When the basis was complete comes from the requests, by the same rule as the memory store.
+    const requests = new Map<string, InformationRequest[]>();
+    if (rows.length) {
+      const found = await this.pool.query(`${INFORMATION_SELECT} where claim_id = any($1) order by requested_at, id`, [rows.map((r) => r.id)]);
+      for (const r of found.rows.map(toInformationRequest)) requests.set(r.claimId, [...(requests.get(r.claimId) ?? []), r]);
+    }
     return rows.map((r) => ({
       id: r.id,
       claimNo: r.claim_no,
@@ -321,6 +361,7 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       receivedAt: new Date(r.received_at).toISOString(),
       state: r.state,
       ...(r.seq === null ? {} : { latestDecision: { seq: r.seq, outcome: r.outcome, payout: Number(r.payout_minor), decidedAt: new Date(r.decided_at).toISOString() } }),
+      ...withBasis(new Date(r.received_at).toISOString(), requests.get(r.id) ?? []),
     }));
   }
 
@@ -331,7 +372,8 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
            k.claim_id is null and (
              not exists (select 1 from claims.decision d where d.claim_id = c.id)
              or exists (select 1 from claims.review_request r where r.claim_id = c.id and r.closed_at is null)
-             or exists (select 1 from claims.decision_proposal p where p.claim_id = c.id and p.status = 'open'))
+             or exists (select 1 from claims.decision_proposal p where p.claim_id = c.id and p.status = 'open')
+             or exists (select 1 from claims.information_request i where i.claim_id = c.id and i.status = 'open'))
          ), false) as open,
          max(greatest(c.received_at, (select max(decided_at) from claims.decision d where d.claim_id = c.id), k.closed_at)) as last_at
        from claims.claim c
@@ -527,6 +569,11 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
          where claim_id = $1 and status = 'open'`,
         [closure.claimId, closure.closedBy, closure.closedAt, closure.reason],
       );
+      await db.query(
+        `update claims.information_request set status = 'cancelled', closed_by = $2, closed_at = $3, closing_note = $4
+         where claim_id = $1 and status = 'open'`,
+        [closure.claimId, closure.closedBy, closure.closedAt, closure.reason],
+      );
       await insertJournals(db, journals);
       await insertEvents(db, events);
     }).catch((e: PgError) => {
@@ -534,6 +581,54 @@ export class PostgresClaimsStore implements ClaimsStore, ClaimsOutbox {
       if (e.code === CLAIM_DECIDED) throw new StoreConflictError('claim_decided', `Claim ${closure.claimId} has a decision`);
       throw e;
     });
+  }
+
+  async saveInformationRequest(r: InformationRequest, events: ClaimsEvent[]): Promise<void> {
+    await this.tx(async (db) => {
+      await db.query(
+        `insert into claims.information_request (id, claim_id, recipient, items, note, due_date, remind_on, rules_version, requested_by, requested_at, status)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [r.id, r.claimId, r.recipient, r.items, r.note, r.dueDate, r.remindOn ?? null, r.rulesVersion, r.requestedBy, r.requestedAt, r.status],
+      );
+      await insertEvents(db, events);
+    }).catch((e: PgError) => {
+      if (e.code === UNIQUE_VIOLATION && e.constraint === 'information_request_one_open') {
+        throw new StoreConflictError('information_open', `Claim ${r.claimId} already has an open request to the ${r.recipient}`);
+      }
+      if (e.code === CLAIM_CLOSED) throw new StoreConflictError('claim_closed', `Claim ${r.claimId} is closed`);
+      throw e;
+    });
+  }
+
+  async getInformationRequests(claimId: string): Promise<InformationRequest[]> {
+    const { rows } = await this.pool.query(`${INFORMATION_SELECT} where claim_id = $1 order by requested_at, id`, [claimId]);
+    return rows.map(toInformationRequest);
+  }
+
+  async updateInformationRequest(next: InformationRequest, from: { statuses: InformationRequestStatus[]; notReminded?: boolean }, events: ClaimsEvent[]): Promise<void> {
+    await this.tx(async (db) => {
+      // Only the state moves; the trigger in migration 0042 refuses anything else.
+      const updated = await db.query(
+        `update claims.information_request
+         set status = $3, reminded_at = $4, received_at = $5, closed_by = $6, closed_at = $7, closing_note = $8
+         where id = $1 and claim_id = $2 and status = any($9) and ($10::boolean is not true or reminded_at is null)`,
+        [next.id, next.claimId, next.status, next.remindedAt ?? null, next.receivedAt ?? null, next.closedBy ?? null, next.closedAt ?? null, next.closingNote ?? null, from.statuses, from.notReminded ?? false],
+      );
+      if (updated.rowCount !== 1) throw new StoreConflictError('information_closed', `Request ${next.id} is no longer ${from.statuses.join(' or ')}`);
+      await insertEvents(db, events);
+    });
+  }
+
+  async informationRequestsDue(market: string, onDate: ISODate): Promise<InformationRequest[]> {
+    const { rows } = await this.pool.query(
+      `${INFORMATION_SELECT}
+       where status = 'open'
+         and (due_date < $2::date or (remind_on <= $2::date and reminded_at is null))
+         and claim_id in (select id from claims.claim where market = $1)
+       order by requested_at, id`,
+      [market, onDate],
+    );
+    return rows.map(toInformationRequest);
   }
 
   async getClosure(claimId: string): Promise<ClaimClosure | null> {

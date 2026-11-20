@@ -1,4 +1,4 @@
-import { StoreConflictError, accounts } from '@petvold/claims-core';
+import { StoreConflictError, accounts, basisCompleteAt, informationMissing } from '@petvold/claims-core';
 import type {
   ClaimFilter,
   ClaimState,
@@ -24,6 +24,9 @@ import type {
   DecisionProposal,
   ClaimsRules,
   Clock,
+  InformationRequest,
+  InformationRequestStatus,
+  MarketCode,
   IdGenerator,
   Timestamp,
 } from '@petvold/claims-core';
@@ -43,6 +46,7 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
   private periods: DeductiblePeriod[] = [];
   private reviews: ReviewRequest[] = [];
   private proposals: DecisionProposal[] = [];
+  private information: InformationRequest[] = [];
   private outbox: Array<OutboxEntry & { publishedAt?: Timestamp }> = [];
   private outboxSeq = 0;
 
@@ -128,16 +132,20 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
       if (filter.clinicId && c.clinicId !== filter.clinicId) continue;
       const latest = this.decisions.filter((d) => d.claimId === c.id).sort((a, b) => b.seq - a.seq)[0];
       const closure = this.closures.get(c.id);
+      const requests = this.information.filter((r) => r.claimId === c.id);
       const state: ClaimState = closure
         ? closure.kind
         : this.proposals.some((p) => p.claimId === c.id && p.status === 'open')
         ? 'awaiting-approval'
+        : requests.some((r) => r.status === 'open')
+        ? 'awaiting-information'
         : this.reviews.some((r) => r.claimId === c.id && !r.closedAt)
           ? 'review-requested'
           : latest
             ? 'decided'
             : 'awaiting-decision';
       if (filter.state && state !== filter.state) continue;
+      const complete = basisCompleteAt(c.receivedAt, requests);
       out.push({
         id: c.id,
         claimNo: c.claimNo,
@@ -152,6 +160,8 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
         receivedAt: c.receivedAt,
         state,
         ...(latest ? { latestDecision: { seq: latest.seq, outcome: latest.outcome, payout: latest.payout, decidedAt: latest.decidedAt } } : {}),
+        ...(complete ? { basisCompleteAt: complete } : {}),
+        ...(informationMissing(requests) ? { informationMissing: true } : {}),
       });
     }
     return structuredClone(out.sort((a, b) => (a.receivedAt < b.receivedAt ? -1 : a.receivedAt > b.receivedAt ? 1 : a.id < b.id ? -1 : 1)));
@@ -164,7 +174,8 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
       if (c.policyId !== policyId || c.treatmentFrom < from || c.treatmentFrom >= to) continue;
       const decided = this.decisions.filter((d) => d.claimId === c.id);
       const closure = this.closures.get(c.id);
-      if (!closure && (!decided.length || this.reviews.some((r) => r.claimId === c.id && !r.closedAt) || this.proposals.some((p) => p.claimId === c.id && p.status === 'open'))) open = true;
+      const waiting = this.information.some((r) => r.claimId === c.id && r.status === 'open');
+      if (!closure && (!decided.length || waiting || this.reviews.some((r) => r.claimId === c.id && !r.closedAt) || this.proposals.some((p) => p.claimId === c.id && p.status === 'open'))) open = true;
       for (const t of [c.receivedAt, ...decided.map((d) => d.decidedAt), ...(closure ? [closure.closedAt] : [])]) if (!lastAt || t > lastAt) lastAt = t;
     }
     return { open, ...(lastAt ? { lastAt } : {}) };
@@ -270,8 +281,50 @@ export class InMemoryClaimsStore implements ClaimsStore, ClaimsOutbox {
     for (const p of this.proposals) {
       if (p.claimId === closure.claimId && p.status === 'open') Object.assign(p, { status: 'returned', closedBy: closure.closedBy, closedAt: closure.closedAt, returnReason: closure.reason });
     }
+    for (const r of this.information) {
+      if (r.claimId === closure.claimId && r.status === 'open') Object.assign(r, { status: 'cancelled', closedBy: closure.closedBy, closedAt: closure.closedAt, closingNote: closure.reason });
+    }
     this.journals.push(...structuredClone(journals));
     this.appendEvents(events);
+  }
+
+  async saveInformationRequest(request: InformationRequest, events: ClaimsEvent[]) {
+    if (!this.claims.has(request.claimId)) throw new Error(`Claim ${request.claimId} does not exist`);
+    if (request.status !== 'open') throw new Error('A request for information is stored open');
+    if (this.information.some((r) => r.id === request.id)) throw new Error(`Request ${request.id} already exists`);
+    if (this.closures.has(request.claimId)) throw new StoreConflictError('claim_closed', `Claim ${request.claimId} is closed`);
+    if (this.information.some((r) => r.claimId === request.claimId && r.recipient === request.recipient && r.status === 'open')) {
+      throw new StoreConflictError('information_open', `Claim ${request.claimId} already has an open request to the ${request.recipient}`);
+    }
+    this.information.push(structuredClone(request));
+    this.appendEvents(events);
+  }
+
+  async getInformationRequests(claimId: string) {
+    return this.information
+      .filter((r) => r.claimId === claimId)
+      .sort((a, b) => (a.requestedAt < b.requestedAt ? -1 : a.requestedAt > b.requestedAt ? 1 : a.id < b.id ? -1 : 1))
+      .map((r) => structuredClone(r));
+  }
+
+  async updateInformationRequest(next: InformationRequest, from: { statuses: InformationRequestStatus[]; notReminded?: boolean }, events: ClaimsEvent[]) {
+    const i = this.information.findIndex((r) => r.id === next.id);
+    const cur = this.information[i];
+    if (!cur) throw new Error(`Request ${next.id} does not exist`);
+    if (cur.claimId !== next.claimId) throw new Error(`Request ${next.id} belongs to claim ${cur.claimId}`);
+    if (!from.statuses.includes(cur.status) || (from.notReminded && cur.remindedAt)) {
+      throw new StoreConflictError('information_closed', `Request ${next.id} is ${cur.status}${cur.remindedAt ? ', reminded' : ''}`);
+    }
+    this.information[i] = structuredClone(next);
+    this.appendEvents(events);
+  }
+
+  async informationRequestsDue(market: MarketCode, onDate: ISODate) {
+    return this.information
+      .filter((r) => r.status === 'open' && this.claims.get(r.claimId)?.market === market)
+      .filter((r) => r.dueDate < onDate || (r.remindOn !== undefined && r.remindOn <= onDate && !r.remindedAt))
+      .sort((a, b) => (a.requestedAt < b.requestedAt ? -1 : a.requestedAt > b.requestedAt ? 1 : a.id < b.id ? -1 : 1))
+      .map((r) => structuredClone(r));
   }
 
   async getClosure(claimId: string) {

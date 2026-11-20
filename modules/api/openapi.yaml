@@ -86,6 +86,7 @@ paths:
 
         - `awaiting-decision`: no decision yet, e.g. sent to a handler
         - `awaiting-approval`: a decision proposal waits for an approver (ADR 0019)
+        - `awaiting-information`: a request for information waits for the customer or the clinic (ADR 0036)
         - `review-requested`: the customer asked for a person to review an automated decision (ADR 0018)
         - `decided`
       parameters:
@@ -527,6 +528,138 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ClaimClosure' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}/information-requests:
+    get:
+      tags: [claims]
+      operationId: listInformationRequests
+      x-permission: claims:read
+      summary: The claim's requests for information
+      description: Requires the permission `claims:read`. Oldest first.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: One page of requests
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/InformationRequest' } }
+                  nextCursor: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    post:
+      tags: [claims]
+      operationId: requestInformation
+      x-permission: claims:request-information
+      summary: Ask the customer or the clinic for more information
+      description: |
+        Requires the permission `claims:request-information`.
+
+        The claim waits in `awaiting-information` until the request is answered,
+        cancelled or expires (ADR 0036). The days to the reminder and the due
+        date come from the product's claims rules (`informationRequest`, 14 and
+        30 days if not set), unless `dueDate` is given. A daily run reminds and
+        expires requests (job `claims.information-requests`). An expired request
+        never rejects the claim: it goes back to a claims handler.
+
+        Not on a closed claim or one with an open decision proposal, and one open
+        request per recipient. A decision waits until no request is open.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InformationRequestInput' }
+            examples:
+              invoice:
+                $ref: '#/components/examples/InformationRequestClinic'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Requested
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InformationRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}/information-requests/{requestId}/answers:
+    post:
+      tags: [claims]
+      operationId: answerInformationRequest
+      x-permission: claims:register
+      summary: Register that the information came in
+      description: |
+        Requires the permission `claims:register`.
+
+        Closes the request as answered, also after it expired, and the claim
+        goes back to the queue. `receivedAt` sets when the basis was complete
+        (`basisCompleteAt`, FAL 7 kap. 1 §).
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/InformationRequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InformationAnswerInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Answered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InformationRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/claims/{claimId}/information-requests/{requestId}/cancellations:
+    post:
+      tags: [claims]
+      operationId: cancelInformationRequest
+      x-permission: claims:request-information
+      summary: Cancel an open request for information
+      description: |
+        Requires the permission `claims:request-information`.
+
+        The request is no longer needed, e.g. the handler got the information
+        another way. It does not move `basisCompleteAt`. Closing the claim
+        cancels its open requests too.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - $ref: '#/components/parameters/InformationRequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancelInformationRequestInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InformationRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
@@ -3848,6 +3981,11 @@ components:
       required: true
       description: The decision's sequence number on the claim, 1 for the first.
       schema: { type: integer, minimum: 1 }
+    InformationRequestId:
+      name: requestId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^inf_[A-Za-z0-9]+$' }
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -3882,6 +4020,9 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
 
   examples:
+    InformationRequestClinic:
+      summary: The clinic sends the specified invoice and the record
+      value: { recipient: clinic, items: [itemised-invoice, medical-record], note: 'Specified invoice and the record from the first visit.' }
     ClaimOtitAuto:
       summary: Ear infection – settled automatically
       description: |
@@ -4181,6 +4322,19 @@ components:
             claimNo: { type: string, description: Always set on a stored claim. }
             receivedAt: { $ref: '#/components/schemas/DateTime' }
             closure: { $ref: '#/components/schemas/ClaimClosure', description: Set when the claim was withdrawn or dismissed. }
+            basisCompleteAt:
+              $ref: '#/components/schemas/DateTime'
+              description: |
+                When the basis was complete, for FAL 7 kap. 1 § (ADR 0036): when the
+                claim was received, or later, when a request for information was
+                answered or expired. Omitted while a request is open.
+            informationMissing:
+              type: boolean
+              description: The latest request for information expired without an answer. Omitted when false.
+            daysSinceBasisComplete:
+              type: integer
+              minimum: 0
+              description: Whole days from basisCompleteAt to now. The insurer pays within a month of it (FAL 7 kap. 1 §).
             clinicId:
               type: string
               description: The clinic that submitted the claim, taken from the caller's token. Never set by the client.
@@ -4401,12 +4555,75 @@ components:
         closedBy: { type: string }
         closedAt: { $ref: '#/components/schemas/DateTime' }
 
+    InformationItem:
+      type: string
+      enum: [itemised-invoice, medical-record, referral, other]
+
+    InformationRequestInput:
+      type: object
+      additionalProperties: false
+      required: [recipient, items, note]
+      properties:
+        recipient: { type: string, enum: [customer, clinic] }
+        items:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/InformationItem' }
+        note: { type: string, minLength: 1, maxLength: 4000, description: 'What is missing, in the handler''s words. Stays inside Petvold.' }
+        dueDate:
+          $ref: '#/components/schemas/Date'
+          description: The last day to answer, after today and at most 365 days ahead. Omitted, from the product's claims rules.
+
+    InformationAnswerInput:
+      type: object
+      additionalProperties: false
+      properties:
+        receivedAt:
+          $ref: '#/components/schemas/DateTime'
+          description: When the information came in. Omitted, now. Not in the future or before the request.
+        note: { type: string, minLength: 1, maxLength: 4000 }
+
+    CancelInformationRequestInput:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 4000 }
+
+    InformationRequest:
+      type: object
+      additionalProperties: false
+      description: A request for more information before the claim can be decided (ADR 0036).
+      required: [id, claimId, recipient, items, note, dueDate, rulesVersion, requestedBy, requestedAt, status]
+      properties:
+        id: { type: string }
+        claimId: { type: string }
+        recipient: { type: string, enum: [customer, clinic] }
+        items: { type: array, items: { $ref: '#/components/schemas/InformationItem' } }
+        note: { type: string }
+        dueDate: { $ref: '#/components/schemas/Date', description: The last day to answer, in the claim's market. It expires the day after. }
+        remindOn: { $ref: '#/components/schemas/Date', description: The day a reminder is due while it is open. Omitted, no reminder. }
+        rulesVersion: { type: string, description: "The claims rules the days came from, or 'default'." }
+        requestedBy: { type: string }
+        requestedAt: { $ref: '#/components/schemas/DateTime' }
+        status:
+          type: string
+          enum: [open, answered, expired, cancelled]
+          description: An expired request never rejects the claim; a claims handler decides on what there is.
+        remindedAt: { $ref: '#/components/schemas/DateTime' }
+        receivedAt: { $ref: '#/components/schemas/DateTime', description: When the information came in. Set when answered. }
+        closedBy: { type: string }
+        closedAt: { $ref: '#/components/schemas/DateTime' }
+        closingNote: { type: string }
+
     ClaimStatus:
       type: string
-      enum: [awaiting-decision, awaiting-approval, review-requested, decided, withdrawn, dismissed]
+      enum: [awaiting-decision, awaiting-approval, awaiting-information, review-requested, decided, withdrawn, dismissed]
       description: |
         Where the claim is in its handling. withdrawn and dismissed are closed
-        without a decision (ADR 0036). New states may be added: a client shows
+        without a decision, and awaiting-information has an open request for
+        information (ADR 0036). New states may be added: a client shows
         an unknown state as it is, rather than failing.
 
     ReturnProposalRequest:
@@ -4662,6 +4879,14 @@ components:
         autoSettleMax:
           $ref: '#/components/schemas/NonNegativeMoney'
           description: Highest payout settled without a claims handler.
+        informationRequest:
+          type: object
+          additionalProperties: false
+          required: [reminderAfterDays, expiresAfterDays]
+          description: Days to the reminder and the due date of a request for information (ADR 0036). Omitted, 14 and 30.
+          properties:
+            reminderAfterDays: { type: integer, minimum: 1, maximum: 365 }
+            expiresAfterDays: { type: integer, minimum: 1, maximum: 365 }
 
     RuleSetDraft:
       type: object
@@ -5806,6 +6031,15 @@ components:
             outcome: { type: string, enum: [approved, partial, rejected] }
             payout: { $ref: '#/components/schemas/NonNegativeMoney' }
             decidedAt: { $ref: '#/components/schemas/DateTime' }
+        basisCompleteAt:
+          $ref: '#/components/schemas/DateTime'
+          description: |
+            When the basis was complete, for FAL 7 kap. 1 § (ADR 0036): when the
+            claim was received, or later, when a request for information was
+            answered or expired. Omitted while a request is open.
+        informationMissing:
+          type: boolean
+          description: The latest request for information expired without an answer. Omitted when false.
 
     ChangePolicyRequest:
       type: object

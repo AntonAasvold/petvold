@@ -26,8 +26,13 @@ import type {
   Outcome,
   PayoutOrder,
   Timestamp,
+  InformationItem,
+  InformationRecipient,
+  InformationRequest,
 } from './types.ts';
-import { assertDate, marketDate } from '@petvold/common';
+import { INFORMATION_ITEMS } from './types.ts';
+import { addDays, assertDate, marketDate } from '@petvold/common';
+import { MAX_INFORMATION_DAYS, basisCompleteAt, daysBetween, dueAction, informationDates, informationMissing } from './information.ts';
 import { accounts, type LimitKey } from './ledger.ts';
 import { replay, type ReplayResult } from './replay.ts';
 import { explainDecision, type DecisionExplanation } from './explain.ts';
@@ -94,6 +99,41 @@ export interface ReviewRequestCommand {
   /** The customer's view, in their own words. */
   statement?: string;
 }
+
+export interface InformationRequestCommand {
+  recipient: InformationRecipient;
+  items: InformationItem[];
+  /** What is missing, in the handler's words. */
+  note: string;
+  /** The last day to answer. Omitted: from the product's claims rules. */
+  dueDate?: ISODate;
+}
+
+export interface InformationAnswerCommand {
+  /** When the information came in. Omitted: now. Never in the future or before the request. */
+  receivedAt?: Timestamp;
+  note?: string;
+}
+
+/** What the daily run did in a market (ADR 0036, 0037). Ids only, no personal data. */
+export interface InformationRunResult {
+  market: MarketCode;
+  onDate: ISODate;
+  dryRun: boolean;
+  reminded: string[];
+  expired: string[];
+}
+
+/**
+ * A claim as the API shows it: with its closure, and where it stands against
+ * FAL 7 kap. 1 § (ADR 0036). daysSinceBasisComplete counts to now.
+ */
+export type ClaimView = Claim & {
+  closure?: ClaimClosure;
+  basisCompleteAt?: Timestamp;
+  daysSinceBasisComplete?: number;
+  informationMissing?: boolean;
+};
 
 export interface LimitsView {
   animalId: string;
@@ -282,6 +322,7 @@ export class ClaimsService {
       }
     }
     await this.assertNoOpenProposal(claimId);
+    await this.assertNoOpenInformationRequest(claimId);
     const motivation = {
       deviatesFromProposal: deviates,
       ...(cmd.reason ? { reason: cmd.reason } : {}),
@@ -410,11 +451,168 @@ export class ClaimsService {
     return this.d.store.listClaims(filter);
   }
 
-  /** The claim, with its closure when it was withdrawn or dismissed (ADR 0036). */
-  async getClaim(claimId: string): Promise<Claim & { closure?: ClaimClosure }> {
+  /**
+   * The claim, with its closure when it was withdrawn or dismissed, and when
+   * its basis was complete (ADR 0036).
+   */
+  async getClaim(claimId: string): Promise<ClaimView> {
     const claim = await this.requireClaim(claimId);
     const closure = await this.d.store.getClosure(claimId);
-    return closure ? { ...claim, closure } : claim;
+    const requests = await this.d.store.getInformationRequests(claimId);
+    const complete = basisCompleteAt(claim.receivedAt, requests);
+    return {
+      ...claim,
+      ...(closure ? { closure } : {}),
+      ...(complete ? { basisCompleteAt: complete, daysSinceBasisComplete: daysBetween(complete, this.d.clock.now()) } : {}),
+      ...(informationMissing(requests) ? { informationMissing: true } : {}),
+    };
+  }
+
+  /**
+   * Asks the customer or the clinic for more information (ADR 0036). The claim
+   * waits until it is answered, cancelled or expires. Not on a closed claim or
+   * one with an open proposal, and one open request per recipient.
+   */
+  async requestInformation(claimId: string, cmd: InformationRequestCommand, by: string): Promise<InformationRequest> {
+    const claim = await this.requireClaim(claimId);
+    const fail = (m: string): never => {
+      throw new DomainError('validation', m);
+    };
+    if (cmd.recipient !== 'customer' && cmd.recipient !== 'clinic') fail('recipient is customer or clinic');
+    const items = [...new Set(cmd.items ?? [])];
+    if (!items.length || items.some((i) => !INFORMATION_ITEMS.includes(i))) fail(`items lists one or more of ${INFORMATION_ITEMS.join(', ')}`);
+    const note = (cmd.note ?? '').trim();
+    if (!note) fail('A note says what is missing');
+    if (await this.d.store.getClosure(claimId)) throw new DomainError('conflict', `Claim ${claimId} is closed`);
+    await this.assertNoOpenProposal(claimId);
+    const now = this.d.clock.now();
+    const today = marketDate(claim.market, now);
+    if (cmd.dueDate !== undefined) {
+      try {
+        assertDate(cmd.dueDate, 'dueDate');
+      } catch (e) {
+        fail((e as Error).message);
+      }
+      if (cmd.dueDate <= today) fail('dueDate is after today');
+      if (cmd.dueDate > addDays(today, MAX_INFORMATION_DAYS)) fail(`dueDate is at most ${MAX_INFORMATION_DAYS} days ahead`);
+    }
+    const rules = await this.informationRules(claim);
+    const request: InformationRequest = {
+      id: this.d.ids.next('inf'),
+      claimId,
+      recipient: cmd.recipient,
+      items,
+      note,
+      ...informationDates(today, rules?.informationRequest, cmd.dueDate),
+      rulesVersion: rules?.rulesVersion ?? 'default',
+      requestedBy: by,
+      requestedAt: now,
+      status: 'open',
+    };
+    await this.d.store.saveInformationRequest(request, [{ type: 'claim.information_requested', occurredAt: now, request }]).catch((e: unknown) => {
+      if (e instanceof StoreConflictError) {
+        throw new DomainError('conflict', e.reason === 'information_open' ? `The claim already has an open request to the ${cmd.recipient}` : e.message);
+      }
+      throw e;
+    });
+    return request;
+  }
+
+  /**
+   * The information came in (ADR 0036): closes the request, and the claim goes
+   * back to the queue. Also after the due date, since a late answer still
+   * completes the basis.
+   */
+  async answerInformationRequest(claimId: string, requestId: string, cmd: InformationAnswerCommand, by: string): Promise<InformationRequest> {
+    const r = await this.requireInformationRequest(claimId, requestId);
+    if (r.status !== 'open' && r.status !== 'expired') throw new DomainError('conflict', `Request ${requestId} is ${r.status}`);
+    const now = this.d.clock.now();
+    if (cmd.receivedAt !== undefined && Number.isNaN(Date.parse(cmd.receivedAt))) throw new DomainError('validation', 'receivedAt is not a point in time');
+    const receivedAt = cmd.receivedAt === undefined ? now : new Date(cmd.receivedAt).toISOString();
+    if (receivedAt > now) throw new DomainError('validation', 'receivedAt is not in the future');
+    if (receivedAt < r.requestedAt) throw new DomainError('validation', 'receivedAt is not before the request');
+    const note = cmd.note?.trim();
+    const next: InformationRequest = { ...r, status: 'answered', receivedAt, closedBy: by, closedAt: now, ...(note ? { closingNote: note } : {}) };
+    return this.updateInformation(next, ['open', 'expired'], 'claim.information_received', now);
+  }
+
+  /** The request is no longer needed, e.g. the handler got the information another way. */
+  async cancelInformationRequest(claimId: string, requestId: string, cmd: { reason: string }, by: string): Promise<InformationRequest> {
+    const r = await this.requireInformationRequest(claimId, requestId);
+    const reason = (cmd.reason ?? '').trim();
+    if (!reason) throw new DomainError('validation', 'A reason is required');
+    if (r.status !== 'open') throw new DomainError('conflict', `Request ${requestId} is ${r.status}`);
+    const now = this.d.clock.now();
+    return this.updateInformation({ ...r, status: 'cancelled', closedBy: by, closedAt: now, closingNote: reason }, ['open'], 'claim.information_cancelled', now);
+  }
+
+  async getInformationRequests(claimId: string): Promise<InformationRequest[]> {
+    await this.requireClaim(claimId);
+    return this.d.store.getInformationRequests(claimId);
+  }
+
+  /**
+   * The daily run for a market (ADR 0036, 0037): reminds open requests on their
+   * reminder day, and lets those past their due date expire. An expired request
+   * never rejects the claim; it goes back to a handler. Safe to run twice: a
+   * request another server already handled is skipped.
+   */
+  async informationRequestRun(cmd: { market: MarketCode; onDate: ISODate; dryRun?: boolean }, by: string): Promise<InformationRunResult> {
+    const dryRun = cmd.dryRun ?? false;
+    const out: InformationRunResult = { market: cmd.market, onDate: cmd.onDate, dryRun, reminded: [], expired: [] };
+    for (const r of await this.d.store.informationRequestsDue(cmd.market, cmd.onDate)) {
+      const action = dueAction(r, cmd.onDate);
+      if (!action) continue;
+      if (dryRun) {
+        (action === 'remind' ? out.reminded : out.expired).push(r.id);
+        continue;
+      }
+      const now = this.d.clock.now();
+      try {
+        if (action === 'remind') {
+          await this.d.store.updateInformationRequest({ ...r, remindedAt: now }, { statuses: ['open'], notReminded: true }, [
+            { type: 'claim.information_reminded', occurredAt: now, request: { ...r, remindedAt: now } },
+          ]);
+          out.reminded.push(r.id);
+        } else {
+          const next: InformationRequest = { ...r, status: 'expired', closedBy: by, closedAt: now };
+          await this.d.store.updateInformationRequest(next, { statuses: ['open'] }, [{ type: 'claim.information_expired', occurredAt: now, request: next }]);
+          out.expired.push(r.id);
+        }
+      } catch (e) {
+        if (!(e instanceof StoreConflictError)) throw e;
+      }
+    }
+    return out;
+  }
+
+  private async updateInformation(
+    next: InformationRequest,
+    from: InformationRequest['status'][],
+    type: 'claim.information_received' | 'claim.information_cancelled',
+    now: Timestamp,
+  ): Promise<InformationRequest> {
+    await asConflict(this.d.store.updateInformationRequest(next, { statuses: from }, [{ type, occurredAt: now, request: next }]));
+    return next;
+  }
+
+  private async requireInformationRequest(claimId: string, requestId: string): Promise<InformationRequest> {
+    await this.requireClaim(claimId);
+    const r = (await this.d.store.getInformationRequests(claimId)).find((x) => x.id === requestId);
+    if (!r) throw new DomainError('not_found', `Request ${requestId} does not exist`);
+    return r;
+  }
+
+  /** The claims rules for the claim's policy, for the days of a request. null without a policy or rules: the defaults apply. */
+  private async informationRules(claim: Claim): Promise<ClaimsRules | null> {
+    const policy = await this.d.policies.getPolicyAt(claim.policyId, claim.treatmentFrom);
+    return policy ? this.d.rules.getRules(policy.productVersion, claim.treatmentFrom) : null;
+  }
+
+  private async assertNoOpenInformationRequest(claimId: string): Promise<void> {
+    if ((await this.d.store.getInformationRequests(claimId)).some((r) => r.status === 'open')) {
+      throw new DomainError('conflict', 'The claim awaits information: register the answer or cancel the request first');
+    }
   }
 
   /** The customer withdraws the claim before it is decided (ADR 0036). */
@@ -469,7 +667,10 @@ export class ClaimsService {
     const returned = (await this.d.store.getProposals(claimId))
       .filter((p) => p.status === 'open')
       .map((p): ClaimsEvent => ({ type: 'claim.proposal_returned', occurredAt: now, proposal: { ...p, status: 'returned', closedBy: by, closedAt: now, returnReason: reason } }));
-    await asConflict(this.d.store.closeClaim(closure, [...returned, { type: closure.kind === 'withdrawn' ? 'claim.withdrawn' : 'claim.dismissed', occurredAt: now, closure }], journals));
+    const cancelled = (await this.d.store.getInformationRequests(claimId))
+      .filter((r) => r.status === 'open')
+      .map((r): ClaimsEvent => ({ type: 'claim.information_cancelled', occurredAt: now, request: { ...r, status: 'cancelled', closedBy: by, closedAt: now, closingNote: reason } }));
+    await asConflict(this.d.store.closeClaim(closure, [...returned, ...cancelled, { type: closure.kind === 'withdrawn' ? 'claim.withdrawn' : 'claim.dismissed', occurredAt: now, closure }], journals));
     return closure;
   }
 

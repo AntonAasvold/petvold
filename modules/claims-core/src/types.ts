@@ -49,8 +49,12 @@ export interface Claim {
 /** A claim as registered: the server gives the id and the claim number when the client leaves them out (ADR 0036). */
 export type NewClaim = Omit<Claim, 'id' | 'claimNo'> & { id?: string; claimNo?: string };
 
-/** Where a claim is in its handling, for work queues. withdrawn and dismissed are closed without a decision (ADR 0036). */
-export const CLAIM_STATES = ['awaiting-decision', 'awaiting-approval', 'review-requested', 'decided', 'withdrawn', 'dismissed'] as const;
+/**
+ * Where a claim is in its handling, for work queues. withdrawn and dismissed are
+ * closed without a decision; awaiting-information has an open request for more
+ * information (ADR 0036).
+ */
+export const CLAIM_STATES = ['awaiting-decision', 'awaiting-approval', 'awaiting-information', 'review-requested', 'decided', 'withdrawn', 'dismissed'] as const;
 export type ClaimState = (typeof CLAIM_STATES)[number];
 
 export const DISMISSAL_REASONS = ['duplicate', 'registered-in-error', 'not-a-claim'] as const;
@@ -74,6 +78,58 @@ export interface ClaimClosure {
   closedAt: Timestamp;
 }
 
+export const INFORMATION_ITEMS = ['itemised-invoice', 'medical-record', 'referral', 'other'] as const;
+export type InformationItem = (typeof INFORMATION_ITEMS)[number];
+export type InformationRecipient = 'customer' | 'clinic';
+/**
+ * open: waiting for the recipient. answered: the information came in, also
+ * after the due date. expired: the due date passed without it. cancelled: no
+ * longer needed, or the claim was closed.
+ */
+export type InformationRequestStatus = 'open' | 'answered' | 'expired' | 'cancelled';
+
+/**
+ * A request for more information before the claim can be decided (ADR 0036).
+ * The days to the reminder and the due date come from the product's claims
+ * rules in force when the request was made, unless the handler chose a due date.
+ * An expired request never rejects the claim: it goes back to a handler.
+ */
+export interface InformationRequest {
+  id: string;
+  claimId: string;
+  recipient: InformationRecipient;
+  items: InformationItem[];
+  /** What is missing, in the handler's words. */
+  note: string;
+  /** The last day to answer, in the claim's market. The request expires the day after. */
+  dueDate: ISODate;
+  /** The day a reminder is sent if the request is still open. Omitted: no reminder, since it would fall on or after the due date. */
+  remindOn?: ISODate;
+  /** The rules the days came from, e.g. 'SE-HUND-VV@3', or 'default' without rules. */
+  rulesVersion: string;
+  requestedBy: string;
+  requestedAt: Timestamp;
+  status: InformationRequestStatus;
+  remindedAt?: Timestamp;
+  /** When the information came in, which may be before it was registered. Set when answered. */
+  receivedAt?: Timestamp;
+  /** Who closed it and when: the person who registered the answer or cancelled it, or 'system' on expiry. */
+  closedBy?: string;
+  closedAt?: Timestamp;
+  /** The answer's or the cancellation's note. */
+  closingNote?: string;
+}
+
+/** The days in the product's claims rules (ADR 0036). */
+export interface InformationRequestRules {
+  /** Days from the request to the reminder. Default 14. */
+  reminderAfterDays: number;
+  /** Days from the request to the due date. Default 30. */
+  expiresAfterDays: number;
+}
+
+export const DEFAULT_INFORMATION_REQUEST_RULES: InformationRequestRules = { reminderAfterDays: 14, expiresAfterDays: 30 };
+
 /** A claim in a list: the claim without its lines, its state and its latest decision. */
 export interface ClaimSummary {
   id: string;
@@ -87,9 +143,20 @@ export interface ClaimSummary {
   treatmentFrom: ISODate;
   diagnosisCode: string;
   receivedAt: Timestamp;
-  /** Closed (withdrawn, dismissed) wins over awaiting-approval (an open proposal), which wins over review-requested, then decided, then awaiting-decision. */
+  /**
+   * Closed (withdrawn, dismissed) wins over awaiting-approval (an open proposal),
+   * then awaiting-information (an open request), review-requested, decided and
+   * awaiting-decision.
+   */
   state: ClaimState;
   latestDecision?: { seq: number; outcome: Outcome; payout: MinorUnits; decidedAt: Timestamp };
+  /**
+   * When the basis was complete, for FAL 7 kap. 1 § (ADR 0036): received, or the
+   * latest answer or expiry of a request. Omitted while a request is open.
+   */
+  basisCompleteAt?: Timestamp;
+  /** The latest request expired without an answer: "the information never came in". */
+  informationMissing?: boolean;
 }
 
 export interface ClaimFilter {
@@ -197,6 +264,8 @@ export interface ClaimsRules {
   diagnosisGroups: Record<string, string>;
   /** Highest payout that may be settled without a claims handler. */
   autoSettleMax: MinorUnits;
+  /** Days to the reminder and the due date of a request for information (ADR 0036). Omitted: 14 and 30. */
+  informationRequest?: InformationRequestRules;
 }
 
 // ---------------------------------------------------------------------------

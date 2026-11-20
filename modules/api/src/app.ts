@@ -407,6 +407,36 @@ export function createApp(d: AppDeps) {
     return idempotent(c, r.body, async () => ({ status: 201, body: await d.service.dismiss(c.req.param('claimId'), r.body, p.subject) }));
   });
 
+  // Requests for information (ADR 0036): the claim waits for the customer or the clinic.
+  app.get('/v1/claims/:claimId/information-requests', async (c) => sendPage(c, await d.service.getInformationRequests(c.req.param('claimId'))));
+
+  app.post('/v1/claims/:claimId/information-requests', async (c) => {
+    const p = c.get('principal');
+    const r = await readJson(c, 'InformationRequestInput');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await d.service.requestInformation(c.req.param('claimId'), r.body, p.subject) }));
+  });
+
+  app.post('/v1/claims/:claimId/information-requests/:requestId/answers', async (c) => {
+    const p = c.get('principal');
+    const r = await readJson(c, 'InformationAnswerInput');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({
+      status: 201,
+      body: await d.service.answerInformationRequest(c.req.param('claimId'), c.req.param('requestId'), r.body, p.subject),
+    }));
+  });
+
+  app.post('/v1/claims/:claimId/information-requests/:requestId/cancellations', async (c) => {
+    const p = c.get('principal');
+    const r = await readJson(c, 'CancelInformationRequestInput');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({
+      status: 201,
+      body: await d.service.cancelInformationRequest(c.req.param('claimId'), c.req.param('requestId'), r.body, p.subject),
+    }));
+  });
+
   app.post('/v1/claims/:claimId/proposals/:proposalId/returns', async (c) => {
     const p = c.get('principal');
     const r = await readJson(c, 'ReturnProposalRequest');
@@ -1390,13 +1420,13 @@ export function createApp(d: AppDeps) {
     new Scheduler({
       store: new InMemorySchedulingStore(),
       clock: d.clock,
-      jobs: defaultJobs({ policies, retention }),
+      jobs: defaultJobs({ policies, retention, claims: d.service }),
       // As the installation does: markets with a product or a retention rule.
       markets: async () =>
         [...new Set([...(await products.allProducts()).flatMap((p) => p.versions.map((v) => v.content.market)), ...Object.keys((await retention.current()).markets)])].sort(),
       holder: 'api',
     });
-  const runners = jobRunners({ policies, retention }) as unknown as Record<string, JobRunner<unknown>>;
+  const runners = jobRunners({ policies, retention, claims: d.service }) as unknown as Record<string, JobRunner<unknown>>;
   const byName = new Map(Object.values(runners).map((r) => [r.name, r]));
   const controlId = () => `ctl_${crypto.randomUUID().replaceAll('-', '')}`;
   const scopedMarkets = async (c: Context<Env>) => {

@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-20 | [Komplettering av skador](2026-11-20-komplettering.md) | #106 |
 | 2026-11-19 | [Kön för radering i back office](2026-11-19-radering-i-backoffice.md) | #105 |
 | 2026-11-19 | [Ansökan och grupper i back office](2026-11-19-ansokan-och-grupper.md) | #104 |
 | 2026-11-19 | [Teckna och ändra policyer i back office](2026-11-19-policyer-i-backoffice.md) | #103 |

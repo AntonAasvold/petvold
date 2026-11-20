@@ -21,6 +21,7 @@ Versioneras med produkten, till exempel `SE-HUND-2026.2`. Ett beslut sparar vilk
 | `nonReimbursableCategories` | Fakturakategorier som aldrig ersätts | `food` |
 | `diagnosisGroups` | Diagnoskod → diagnosgrupp. Styr självriskperioder och hur undantag tolkas. | `ORA-OTIT` → `ora`, `ORT-KORSBAND-V` → `ortopedi-bakben` |
 | `autoSettleMax` | Högsta ersättning som beslutas utan handläggare | 1 000 000 (10 000 kr) |
+| `informationRequest` | Valfritt. Dagar från en begäran om komplettering till påminnelsen (`reminderAfterDays`) och till svarsdatumet (`expiresAfterDays`), 1–365 (ADR 0036). Utan fältet gäller 14 och 30. | `{ "reminderAfterDays": 10, "expiresAfterDays": 21 }` |
 
 **Diagnosgrupper** är det viktigaste valet. Två diagnoser i samma grupp delar självriskperiod, och ett undantag för en diagnos gör att andra diagnoser i samma grupp granskas. För breda grupper ger fler skador som granskas manuellt. För smala grupper ger kunden fler fasta självrisker.
 

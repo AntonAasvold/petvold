@@ -302,7 +302,15 @@ export class DecisioningService {
     for (const [code, group] of Object.entries(c.diagnosisGroups ?? {})) {
       if (!code || typeof group !== 'string' || !group) fail(`Diagnosis code '${code}' needs a group`);
     }
-    const known = new Set(['market', 'vatReimbursable', 'nonReimbursableCategories', 'diagnosisGroups', 'autoSettleMax']);
+    const ir = c.informationRequest;
+    if (ir !== undefined) {
+      const days = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 365;
+      if (typeof ir !== 'object' || ir === null || !days(ir.reminderAfterDays) || !days(ir.expiresAfterDays)) {
+        fail('informationRequest has reminderAfterDays and expiresAfterDays, whole days from 1 to 365');
+      }
+      for (const k of Object.keys(ir)) if (k !== 'reminderAfterDays' && k !== 'expiresAfterDays') fail(`Unknown field '${k}' in informationRequest`);
+    }
+    const known = new Set(['market', 'vatReimbursable', 'nonReimbursableCategories', 'diagnosisGroups', 'autoSettleMax', 'informationRequest']);
     for (const k of Object.keys(c)) if (!known.has(k)) fail(`Unknown field '${k}' in the rule set`);
   }
 }

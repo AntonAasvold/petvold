@@ -132,3 +132,20 @@ test('job.failed is a public event with the job, not the error', async () => {
   assert.deepEqual(e?.data, { runId: 'run_1', job: 'policies.renewal', trigger: 'schedule', startedAt: '2026-11-19T01:00:00Z' });
   assert.equal(e?.type, 'petvold.job.failed.v1');
 });
+
+test('reminders and expiry of requests for information run as a job, and expire a request past its due date (ADR 0036)', async () => {
+  const { inst, call } = await setup();
+  const [claim] = await inst.deps.service.listClaims({ state: 'awaiting-decision', market: 'SE' });
+  assert.ok(claim, 'the sample data has a claim waiting for a handler');
+  const request = await inst.deps.service.requestInformation(claim.id, { recipient: 'customer', items: ['medical-record'], note: 'The record', dueDate: '2026-11-20' }, 'handlaggare@example.test');
+  const job = (await call('GET', '/v1/jobs/claims.information-requests')).body;
+  assert.deepEqual(job.schedule, { kind: 'daily', at: '06:00', enabled: true, version: 0 });
+  // Run now on today's date: not yet due.
+  const run = await call('POST', '/v1/jobs/claims.information-requests/runs', 'ops', { market: 'SE' });
+  assert.equal(run.status, 201);
+  assert.deepEqual(run.body.result, { reminded: 0, expired: 0, remindedRequestIds: [], expiredRequestIds: [] });
+  // Two days later the due date has passed.
+  const later = await inst.deps.service.informationRequestRun({ market: 'SE', onDate: '2026-11-21' }, 'scheduler');
+  assert.deepEqual(later.expired, [request.id]);
+  assert.equal((await inst.deps.service.getClaim(claim.id)).informationMissing, true);
+});

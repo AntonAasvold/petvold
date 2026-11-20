@@ -11,6 +11,7 @@ export { simulate } from './simulate.ts';
 export type { SimulationResult, SimulatedDecision, SimulationTotals } from './simulate.ts';
 export type { DecisionExplanation, ExplanationStep, ExplanationStepCode, ExplainContext, Reason } from './explain.ts';
 export { accounts } from './ledger.ts';
+export { basisCompleteAt, informationMissing, informationDates, daysBetween, dueAction, MAX_INFORMATION_DAYS } from './information.ts';
 export type { LimitKey } from './ledger.ts';
-export type { DecideCommand, DecideResult, AmountLimits, ApproveCommand, ReturnProposalCommand, ReviewRequestCommand, LimitsView, ClaimsServiceDeps, DomainErrorCode } from './service.ts';
+export type { DecideCommand, DecideResult, AmountLimits, ApproveCommand, ReturnProposalCommand, ReviewRequestCommand, InformationRequestCommand, InformationAnswerCommand, InformationRunResult, ClaimView, LimitsView, ClaimsServiceDeps, DomainErrorCode } from './service.ts';
 export { sha256, canonicalJson } from './util.ts';
