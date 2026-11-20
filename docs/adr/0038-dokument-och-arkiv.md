@@ -45,6 +45,7 @@ Det behövs alltså ett sätt att göra PDF:er från Petvolds egna mallar, och e
    - **Petvold sparar om varje dokument** i schemat `documents`:
      - id (`doc_…`), typ (genererat eller uppladdat), mediatyp, storlek och sha256
      - vilket ärende, vilken policy eller vilket meddelande det hör till
+     - vilka parter det gäller: mottagaren av ett meddelande, och försäkringstagaren för en policy eller ett ärende när dokumentet skapades
      - för ett genererat dokument mall, version och data-hash
      - vem som skapade det och när
      - gallringsdatum
@@ -75,21 +76,32 @@ Det behövs alltså ett sätt att göra PDF:er från Petvolds egna mallar, och e
    - **Bilagor (ADR 0036):** en uppladdad fil blir en bilaga med adressen `urn:petvold:doc:{documentId}`. Det följer det format bilagan redan har, så skademotorn ändras inte. Bilagor med en adress i bolagets arkiv fungerar som förut.
    - **Back office** visar dokumentet genom en länk som skapas när någon klickar och gäller i 15 minuter.
 
-8. **Gallring (ADR 0028).**
+8. **Alla dokument för en kund.**
+   - **`GET /v1/documents?partyId=pty_…`** listar kundens dokument, nyast först, med typ, datum, vad det hör till och läge (`available` eller gallrat). Listan kan filtreras på typ, policy och ärende.
+   - **Kopplingen till kunden sparas när dokumentet skapas,** från det det hör till. En kund som byter, till exempel vid en överlåtelse, ser de dokument som gällde hen, inte den nya ägarens.
+   - **Dokument i bolagets arkiv tas med.** Ett meddelande som bolagets dokumentsystem gjorde (inställningen `insurer`) och en bilaga med en adress i bolagets arkiv får en rad med typ, datum, kontrollsumma och bolagets dokument-id eller adress. Filen öppnas då i bolagets arkiv och inte genom Petvold. Kunden får alltså en enda lista, var dokumentet än ligger.
+   - **Listan visar bara det anroparen får se:** dokument på ärenden kräver `claims:read`, meddelanden `notices:read` och policydokument `policies:read`, inom anroparens omfång (ADR 0016). Det krävs också `parties:read` för att lista per kund.
+   - **I back office** får kundens sida kortet "Dokument" med alla kundens dokument. Ett klick öppnar dokumentet genom en länk som gäller i 15 minuter. Ett dokument i bolagets arkiv öppnas där.
+   - **Vid en begäran om tillgång (GDPR artikel 15)** är listan, tillsammans med loggen över hämtningar, underlaget för vilka dokument Petvold har om personen och vem som har sett dem.
+   - **Vid anonymisering (ADR 0028)** tas kopplingen till parten bort med parten, och dokumenten gallras enligt punkt 9.
+
+9. **Gallring (ADR 0028).**
    - Ett dokument gallras med det det hör till: ett meddelande, ett ärende eller en policy. Gallringsdatumet räknas fram när dokumentet skapas och flyttas om det det hör till får längre tid.
    - **Gallring tar bort filen** ur lagringen och behåller raden med kontrollsumman, typen och datumen, så att det går att visa att dokumentet fanns och att det gallrats.
    - Gallringen är en körning bland de andra (ADR 0037), `documents.retention`.
+   - I kundens lista syns ett gallrat dokument med typ och datum, men det går inte att öppna.
 
-9. **Ordning,** med kontraktet först och en PR per steg:
-   1. modulen `documents` med arkivet: porten, MinIO i docker compose, lagringen i minnet, uppladdning, och länkar med logg och spärr
-   2. uppladdning av bilagor från back office, med `urn:petvold:doc:`
-   3. Gotenberg i docker compose, porten `PdfRenderer` och de första mallarna: skadebesked och försäkringsbrev
-   4. meddelanden som PDF med inställningen `petvold` eller `insurer`, och dokumenten i back office
-   5. gallring av dokument som en körning
+10. **Ordning,** med kontraktet först och en PR per steg:
+    1. modulen `documents` med arkivet: porten, MinIO i docker compose, lagringen i minnet, uppladdning med kopplingen till kunden, och länkar med logg och spärr
+    2. uppladdning av bilagor från back office med `urn:petvold:doc:`, och kortet "Dokument" på kundens sida, med meddelanden och bilagor i bolagets arkiv
+    3. Gotenberg i docker compose, porten `PdfRenderer` och de första mallarna: skadebesked och försäkringsbrev
+    4. meddelanden som PDF med inställningen `petvold` eller `insurer`
+    5. gallring av dokument som en körning
 
 ## Konsekvenser
 
 - **Ett bolag utan dokumentsystem kan använda Petvold.** Beslutsbrev, försäkringsbrev och avslag kommer som PDF med bevis.
+- **Handläggaren ser alla kundens dokument på ett ställe,** också de som ligger i bolagets arkiv, och det går att svara på en begäran om tillgång.
 - **Två tjänster till i drift:** Gotenberg och en S3-lagring. Gotenberg är tillståndslös och skalar som andra containrar. Lagringen är bolagets. Installationen får nya inställningar: lagringens adress, nyckel och hink, Gotenbergs adress, och nyckeln som signerar länkar.
 - **Petvold får ansvar för filer med personuppgifter.** Det kräver kryptering i vila i lagringen, åtkomstlogg och gallring, som punkt 4, 5 och 8 beskriver. Ett bolag som vill behålla det ansvaret själv kan fortsätta med sitt eget arkiv och sitt dokumentsystem.
 - **Mallarna blir en del av beviset.** En ändrad mall är en ny version. Ett gammalt dokument visas som det gjordes, inte som mallen ser ut i dag.

@@ -350,6 +350,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Modulen `documents`** med ett arkiv i S3-lagring (MinIO lokalt).
   - **Systemen sparar dokumentets id,** och länkar som slutar gälla skapas när de behövs, loggas och kan spärras. Ingen permanent hemlig adress.
   - **Bolagets dokumentsystem finns kvar** som förval.
+  - **Alla dokument för en kund** visas på kundens sida, också de i bolagets arkiv (`GET /v1/documents?partyId=`).
 
 **Nästa steg**
 1. Besluta ADR 0038, och bygg steg 1: modulen `documents` med arkivet och länkarna.
