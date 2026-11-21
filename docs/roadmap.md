@@ -131,7 +131,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [x] **Ansökans sida** enligt designsystemet
 - [x] **Meddelandets sida** enligt designsystemet
 - [x] **Webhookens sida** enligt designsystemet
-- [ ] **Detaljsidor enligt designsystemet:** produkt och regeluppsättning
+- [x] **Produktens och regeluppsättningens sidor** enligt designsystemet. Alla detaljsidor följer nu mönstret.
 - [x] **Ansökan:** registrera en ansökan med hälsofrågorna, och se vad svaren skulle ge
 - [x] **Djur:** sök, registrera och rätta djur, id-nummer, ägarbyte, historik och kullar
 - [x] **Parter:** sök, registrera och ändra personer och organisationer, id-nummer, historik och begäran om radering

@@ -8,7 +8,6 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { msg, updateWhenLocaleChanges } from '@lit/localize';
-import '@awesome.me/webawesome/dist/components/card/card.js';
 import '@awesome.me/webawesome/dist/components/badge/badge.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/callout/callout.js';
@@ -95,55 +94,102 @@ export class VersionsPanel extends LitElement {
     updateWhenLocaleChanges(this);
   }
 
-  static styles = [pvComponents, css`
-    wa-card {
-      margin-top: var(--wa-space-l);
-    }
-    form {
-      display: grid;
-      gap: var(--wa-space-m);
-    }
-    .row {
-      display: flex;
-      gap: var(--wa-space-s);
-      flex-wrap: wrap;
-      align-items: end;
-    }
-    .row > wa-input {
-      flex: 1;
-      min-width: 10rem;
-    }
-    pre,
-    wa-textarea::part(textarea) {
-      font-family: var(--wa-font-family-code);
-      font-size: var(--wa-font-size-s);
-    }
-    pre {
-      max-height: 28rem;
-      overflow: auto;
-      margin: 0;
-    }
-    dl {
-      display: grid;
-      grid-template-columns: max-content 1fr;
-      gap: var(--wa-space-2xs) var(--wa-space-m);
-    }
-    dt {
-      color: var(--wa-color-text-quiet);
-    }
-    dd {
-      margin: 0;
-    }
-    .modes {
-      display: flex;
-      gap: var(--space-2);
-    }
-    details summary {
-      cursor: pointer;
-      font: 500 13px/1.4 var(--font-sans);
-      color: var(--text-secondary);
-    }
-  `];
+  static styles = [
+    pvComponents,
+    css`
+      :host {
+        display: block;
+      }
+      .facts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2) var(--space-6);
+        margin: 0 0 var(--space-8);
+        padding: 0;
+        list-style: none;
+        font-size: 14px;
+        color: var(--text-secondary);
+      }
+      .facts strong {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .cols {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: var(--space-6);
+      }
+      .basis {
+        flex: 999 1 520px;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-6);
+      }
+      .side {
+        flex: 1 1 340px;
+        max-width: 420px;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-6);
+      }
+      wa-callout {
+        margin-bottom: var(--space-6);
+      }
+      form {
+        display: grid;
+        gap: var(--space-4);
+      }
+      .row {
+        display: flex;
+        gap: var(--space-3);
+        flex-wrap: wrap;
+        align-items: end;
+      }
+      .row > wa-input {
+        flex: 1;
+        min-width: 10rem;
+      }
+      .buttons {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-3);
+      }
+      .pv-card__body p {
+        margin: 0;
+      }
+      pre,
+      wa-textarea::part(textarea) {
+        font-family: var(--font-mono);
+        font-size: 12px;
+      }
+      pre {
+        max-height: 28rem;
+        overflow: auto;
+        margin: var(--space-3) 0 0;
+      }
+      .modes {
+        display: flex;
+        gap: var(--space-2);
+      }
+      details {
+        margin-top: var(--space-4);
+      }
+      details summary {
+        cursor: pointer;
+        font: 500 13px/1.4 var(--font-sans);
+        color: var(--text-secondary);
+      }
+      @media (max-width: 900px) {
+        .side {
+          max-width: none;
+        }
+      }
+    `,
+  ];
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -190,59 +236,91 @@ export class VersionsPanel extends LitElement {
     const v = this.selected;
     const actions = v ? lifecycleActions(this.adapter.kind, v, this.me) : [];
     const lang = getLocale();
+    const inForce = [...this.rows].reverse().find((r) => r.status === 'published');
+    const drafts = this.rows.filter((r) => r.status === 'draft' || r.status === 'in_review').length;
+    const row = (dt: string, dd: unknown) => html`<div class="pv-dl__row"><dt>${dt}</dt><dd>${dd}</dd></div>`;
     return html`
+      <ul class="facts">
+        <li>${msg('Published', { id: 'catalog.status.published' })}: <strong class="pv-mono">${inForce ? `${inForce.label}, ${formatDate(inForce.from, lang)}` : '–'}</strong></li>
+        <li>${msg('Drafts and in review', { id: 'catalog.openVersions' })}: <strong>${drafts}</strong></li>
+        <li>${msg('Versions', { id: 'settings.versions' })}: <strong>${this.rows.length}</strong></li>
+      </ul>
       ${this.notice
         ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'danger' ? 'alert' : 'status'}
             >${this.notice.text}
             ${this.notice.reload ? html`<wa-button size="small" appearance="outlined" @click=${() => this.load()}>${msg('Reload', { id: 'common.reload' })}</wa-button>` : nothing}</wa-callout
           >`
         : nothing}
-      <pv-data-grid
-        .columns=${this.columns()}
-        .rows=${this.rows}
-        label=${msg('Versions', { id: 'settings.versions' })}
-        @pv-row-activate=${(e: CustomEvent<{ row: VersionRow }>) => ((this.selected = e.detail.row), (this.editing = null))}
-      ></pv-data-grid>
-      ${v && !this.editing
-        ? html`<wa-card>
-            <h3 slot="header">${msg('Version', { id: 'settings.version' })} ${v.label} · ${this.statusLabel(v.status)}</h3>
-            <dl>
-              ${v.model ? html`<dt>${msg('Calculation model', { id: 'catalog.model' })}</dt><dd>${v.model}</dd>` : nothing}
-              <dt>${msg('Created', { id: 'catalog.created' })}</dt>
-              <dd>${v.createdBy}, ${formatDateTime(v.createdAt, lang)}</dd>
-              ${v.submittedBy ? html`<dt>${msg('Submitted by', { id: 'catalog.submittedBy' })}</dt><dd>${v.submittedBy}</dd>` : nothing}
-              ${v.note ? html`<dt>${msg('Note', { id: 'policy.note' })}</dt><dd>${v.note}</dd>` : nothing}
-            </dl>
-            <div class="row">
-              ${actions.includes('edit') ? html`<wa-button appearance="outlined" @click=${() => this.startEdit('edit')}><wa-icon slot="start" name="pen"></wa-icon>${msg('Edit', { id: 'catalog.edit' })}</wa-button>` : nothing}
-              ${actions.includes('submit') ? this.button('submit', msg('Submit for review', { id: 'catalog.submit' }), 'brand', () => this.adapter.submit(v)) : nothing}
-              ${actions.includes('publish') ? this.button('publish', msg('Publish', { id: 'catalog.publish' }), 'success', () => this.adapter.publish(v)) : nothing}
-              ${v.status === 'in_review' && v.submittedBy === this.me?.subject ? html`<span>${msg('Someone else must publish what you submitted.', { id: 'catalog.fourEyes' })}</span>` : nothing}
-              ${actions.includes('copy') ? html`<wa-button appearance="outlined" @click=${() => this.startEdit('new')}><wa-icon slot="start" name="plus"></wa-icon>${msg('New draft from this', { id: 'catalog.copy' })}</wa-button>` : nothing}
-            </div>
-            ${actions.includes('return') || actions.includes('end')
-              ? html`<form @submit=${(e: Event) => e.preventDefault()}>
-                  <wa-input label=${msg('Reason', { id: 'claim.reason' })} .value=${this.reason} @input=${(e: Event) => (this.reason = (e.target as HTMLInputElement).value)}></wa-input>
-                  ${actions.includes('end') && this.adapter.kind === 'product'
-                    ? html`<wa-input type="date" label=${msg('Last day of sales is the day before', { id: 'catalog.salesTo' })} .value=${this.endDate} @input=${(e: Event) => (this.endDate = (e.target as HTMLInputElement).value)}></wa-input>`
-                    : nothing}
-                  <div class="row">
-                    ${actions.includes('return') ? this.button('return', msg('Return to draft', { id: 'catalog.return' }), 'neutral', () => this.adapter.return(v, this.reason.trim()), true) : nothing}
-                    ${actions.includes('end')
-                      ? this.button('end', this.adapter.kind === 'product' ? msg('End sales', { id: 'catalog.endSales' }) : msg('Retire', { id: 'catalog.retire' }), 'danger', () => this.adapter.end(v, this.reason.trim(), this.endDate), true)
-                      : nothing}
+      <div class="cols">
+        <div class="basis">
+          <section class="pv-card" aria-labelledby="versions">
+            <div class="pv-card__head"><h2 class="pv-card__title" id="versions">${msg('Versions', { id: 'settings.versions' })}</h2></div>
+            <pv-data-grid
+              .columns=${this.columns()}
+              .rows=${this.rows}
+              label=${msg('Versions', { id: 'settings.versions' })}
+              @pv-row-activate=${(e: CustomEvent<{ row: VersionRow }>) => ((this.selected = e.detail.row), (this.editing = null))}
+            ></pv-data-grid>
+          </section>
+          ${this.editing
+            ? this.editor()
+            : v
+              ? html`<section class="pv-card" aria-labelledby="content">
+                  <div class="pv-card__head">
+                    <h2 class="pv-card__title" id="content">${msg('Content', { id: 'notice.content' })}</h2>
+                    <span class="pv-card__meta pv-mono">${v.label}</span>
                   </div>
-                </form>`
+                  <div class="pv-card__body">
+                    ${this.summary(v.content)}
+                    <details ?open=${!this.hasForm(v.content)}>
+                      <summary>${msg('The content as JSON', { id: 'catalog.asJson' })}</summary>
+                      <pre>${JSON.stringify(v.content, null, 2)}</pre>
+                    </details>
+                  </div>
+                </section>`
               : nothing}
-            <h4>${msg('Content', { id: 'notice.content' })}</h4>
-            ${this.summary(v.content)}
-            <details ?open=${!this.hasForm(v.content)}>
-              <summary>${msg('The content as JSON', { id: 'catalog.asJson' })}</summary>
-              <pre>${JSON.stringify(v.content, null, 2)}</pre>
-            </details>
-          </wa-card>`
-        : nothing}
-      ${this.editing ? this.editor() : nothing}
+        </div>
+        <div class="side">
+          ${v && !this.editing
+            ? html`<section class="pv-card ${actions.length ? 'pv-card--strong' : ''}" aria-labelledby="version">
+                <div class="pv-card__head">
+                  <h2 class="pv-card__title" id="version">${msg('Version', { id: 'settings.version' })} ${v.label}</h2>
+                  <span class="pv-badge ${v.status === 'published' || v.status === 'retired' ? 'pv-badge--solid' : 'pv-badge--pending'}">${this.statusLabel(v.status)}</span>
+                </div>
+                <div class="pv-card__body">
+                  <dl>
+                    ${v.model ? row(msg('Calculation model', { id: 'catalog.model' }), v.model) : nothing}
+                    ${row(msg('Created', { id: 'catalog.created' }), `${v.createdBy}, ${formatDateTime(v.createdAt, lang)}`)}
+                    ${v.submittedBy ? row(msg('Submitted by', { id: 'catalog.submittedBy' }), v.submittedBy) : nothing}
+                    ${v.publishedBy ? row(msg('Published by', { id: 'catalog.publishedBy' }), v.publishedBy) : nothing}
+                    ${v.note ? row(msg('Note', { id: 'policy.note' }), v.note) : nothing}
+                  </dl>
+                  <div class="buttons">
+                    ${actions.includes('submit') ? this.button('submit', msg('Submit for review', { id: 'catalog.submit' }), 'brand', () => this.adapter.submit(v)) : nothing}
+                    ${actions.includes('publish') ? this.button('publish', msg('Publish', { id: 'catalog.publish' }), 'brand', () => this.adapter.publish(v)) : nothing}
+                    ${v.status === 'in_review' && v.submittedBy === this.me?.subject ? html`<p class="pv-note">${msg('Someone else must publish what you submitted.', { id: 'catalog.fourEyes' })}</p>` : nothing}
+                    ${actions.includes('edit') ? html`<wa-button appearance="outlined" @click=${() => this.startEdit('edit')}><wa-icon slot="start" name="pen"></wa-icon>${msg('Edit', { id: 'catalog.edit' })}</wa-button>` : nothing}
+                    ${actions.includes('copy') ? html`<wa-button appearance="outlined" @click=${() => this.startEdit('new')}><wa-icon slot="start" name="plus"></wa-icon>${msg('New draft from this', { id: 'catalog.copy' })}</wa-button>` : nothing}
+                  </div>
+                  ${actions.includes('return') || actions.includes('end')
+                    ? html`<form @submit=${(e: Event) => e.preventDefault()}>
+                        <wa-input label=${msg('Reason', { id: 'claim.reason' })} .value=${this.reason} @input=${(e: Event) => (this.reason = (e.target as HTMLInputElement).value)}></wa-input>
+                        ${actions.includes('end') && this.adapter.kind === 'product'
+                          ? html`<wa-input type="date" label=${msg('Last day of sales is the day before', { id: 'catalog.salesTo' })} .value=${this.endDate} @input=${(e: Event) => (this.endDate = (e.target as HTMLInputElement).value)}></wa-input>`
+                          : nothing}
+                        <div class="buttons">
+                          ${actions.includes('return') ? this.button('return', msg('Return to draft', { id: 'catalog.return' }), 'neutral', () => this.adapter.return(v, this.reason.trim()), true) : nothing}
+                          ${actions.includes('end')
+                            ? this.button('end', this.adapter.kind === 'product' ? msg('End sales', { id: 'catalog.endSales' }) : msg('Retire', { id: 'catalog.retire' }), 'neutral', () => this.adapter.end(v, this.reason.trim(), this.endDate), true)
+                            : nothing}
+                        </div>
+                      </form>`
+                    : nothing}
+                </div>
+              </section>`
+            : nothing}
+        </div>
+      </div>
     `;
   }
 
@@ -334,9 +412,11 @@ export class VersionsPanel extends LitElement {
   private editor() {
     const isNew = this.editing === 'new';
     const set = (k: keyof VersionsPanel['form']) => (e: Event) => (this.form = { ...this.form, [k]: (e.target as HTMLInputElement).value });
-    return html`<wa-card>
-      <h3 slot="header">${isNew ? msg('New draft', { id: 'catalog.newDraft' }) : msg('Edit the draft', { id: 'catalog.editDraft' })}</h3>
-      <form @submit=${this.save}>
+    return html`<section class="pv-card pv-card--strong" aria-labelledby="editor">
+      <div class="pv-card__head">
+        <h2 class="pv-card__title" id="editor">${isNew ? msg('New draft', { id: 'catalog.newDraft' }) : msg('Edit the draft', { id: 'catalog.editDraft' })}</h2>
+      </div>
+      <form class="pv-card__body" @submit=${this.save}>
         <div class="row">
           ${this.adapter.kind === 'product'
             ? html`<wa-input label=${msg('Version', { id: 'settings.version' })} ?disabled=${!isNew} .value=${this.form.version} @input=${set('version')}></wa-input>`
@@ -362,7 +442,7 @@ export class VersionsPanel extends LitElement {
           <wa-button appearance="outlined" @click=${() => (this.editing = null)}>${msg('Cancel', { id: 'catalog.cancel' })}</wa-button>
         </div>
       </form>
-    </wa-card>`;
+    </section>`;
   }
 
   private async save(e: Event) {

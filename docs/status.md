@@ -399,6 +399,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 
 - Webhookens sida enligt designsystemet (PR #125): utskicken per flik och uppgifterna till vänster, och åtgärderna till höger.
 
+- Produktens och regeluppsättningens sidor enligt designsystemet (PR #126). Alla detaljsidor i back office följer nu mönstret.
+
 **Nästa steg**
 1. ADR 0038, steg 5: gallring av dokument som en körning.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.

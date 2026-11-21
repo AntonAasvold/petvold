@@ -34,7 +34,7 @@ test('a product version: draft, review and publication with four eyes', async ({
   await expect(status(page)).toContainText('Done.');
   const versions = page.getByRole('grid', { name: 'Versions' });
   await versions.getByRole('gridcell', { name: version, exact: true }).click();
-  await expect(page.locator('pv-versions-panel').locator('.pv-dl')).toContainText('45');
+  await expect(page.locator('pv-versions-panel').getByRole('region', { name: 'Content' })).toContainText('45');
   await page.getByRole('button', { name: 'Submit for review' }).click();
   await expect(status(page)).toContainText('Done.');
   await expect(page.getByText('Someone else must publish what you submitted.')).toBeVisible();

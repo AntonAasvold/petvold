@@ -20,7 +20,6 @@ export const templates: Record<string, string> = {
   'common.notFound': 'Finns inte, eller ligger utanför det du får se.',
   'common.forbidden': 'Du saknar behörighet för det här.',
   'common.retry': 'Försök igen',
-  'common.back': 'Tillbaka',
   'claims.title': 'Skador',
   'claims.all': 'Alla',
   'claims.status.awaiting-decision': 'Väntar på beslut',
@@ -992,4 +991,5 @@ export const templates: Record<string, string> = {
   'notice.failedDesc': 'Det gick inte att skicka, till exempel för att adress saknas. Meddelandet ligger kvar i kön.',
   'webhooks.actions': 'Åtgärder för prenumerationen',
   'webhooks.rotateHow': 'En ny hemlighet visas en gång. Den förra signerar också i 24 timmar, så att mottagaren hinner byta utan att förlora händelser.',
+  'catalog.openVersions': 'Utkast och under granskning',
 };
