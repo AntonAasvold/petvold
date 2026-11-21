@@ -4569,7 +4569,7 @@ export interface components {
             replaces?: string;
             adjustment?: {
                 /** @enum {string} */
-                kind: "change" | "cancellation" | "transfer-from" | "transfer-to";
+                kind: "change" | "cancellation" | "reinstatement" | "transfer-from" | "transfer-to";
                 transactionId: string;
                 /** Format: date */
                 from: string;

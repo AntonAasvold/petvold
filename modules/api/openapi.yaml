@@ -6582,7 +6582,7 @@ components:
           additionalProperties: false
           required: [kind, transactionId, from, premium, tax]
           properties:
-            kind: { type: string, enum: [change, cancellation, transfer-from, transfer-to] }
+            kind: { type: string, enum: [change, cancellation, reinstatement, transfer-from, transfer-to] }
             transactionId: { type: string }
             from: { type: string, format: date }
             premium: { type: integer, description: The premium added (positive) or taken off (negative) for the term. }

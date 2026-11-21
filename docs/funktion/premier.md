@@ -92,13 +92,14 @@ En plan ändras aldrig. En policyhändelse ger en **ny plan som ersätter** den 
 | `policy.changed`, högre premie | Höjningen läggs på delbetalningarna som inte fakturerats, lika mycket på var och en. Är allt fakturerat blir den en egen delbetalning från ändringsdagen. |
 | `policy.changed`, lägre premie | Sänkningen dras av från delbetalningarna som inte fakturerats, lika mycket på var och en och aldrig under noll. Det som de inte räcker till krediteras på det som är fakturerat, de senaste först (beslut 2026-11-21). |
 | `policy.cancelled` | Premien tillbaka (`refund`) delas på termerna efter hur många dagar de förlorar. Delbetalningar som inte fakturerats tas bort, och deras avgifter tas inte ut. Det som termen fortfarande kostar står kvar på fakturorna, de äldsta först, och resten krediteras. Räcker fakturorna inte blir resten en egen delbetalning. |
+| `policy.reinstated` | Avslutet återkallas. Delbetalningarna som avslutet tog bort kommer tillbaka, och det som krediterades faktureras igen som en egen delbetalning. Har avslutets egen delbetalning hunnit faktureras dras den från de återställda delbetalningarna. |
 | `policy.transferred` | Den förra ägaren avräknas som vid ett avslut från försäljningsdagen. Den nya ägaren får ett betalarkonto, om den inte har ett, och en plan från försäljningsdagen till termens slut med samma belopp och reglerna för en första premie. |
 
 **Kreditnotor** görs automatiskt, en per faktura, med nummer ur fakturornas serie. De har ingen attest, eftersom de följer av en policyhändelse och inte av en persons beslut. Händelsen `invoice.credited` går ut med webhooks, och kreditnotorna läses med `GET /v1/credit-notes` och `GET /v1/credit-notes/{id}`.
 
 **Exempel:** Bella betalar 400 kr i månaden från 1 december. December och januari är fakturerade. Hon dör, och policyn avslutas från 16 januari med 4 195,07 kr tillbaka (319 av 365 dagar). Termen kostar då 604,93 kr. December står kvar, 204,93 kr av januari står kvar, och 195,07 kr av januari krediteras. Februari till november tas bort.
 
-Ingen betalning tas emot än (steg 3), så inget blir ett tillgodohavande. Återkallelse av ett avslut kommer i nästa steg.
+Ingen betalning tas emot än (steg 3), så inget blir ett tillgodohavande. En återkallelse gäller bara när avslutets plan fortfarande är i kraft, alltså när ingen ändring gjorts efter avslutet.
 
 ## Fördelning av en betalning
 

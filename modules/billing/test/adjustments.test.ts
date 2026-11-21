@@ -118,3 +118,16 @@ test('a transfer: the former owner is settled from the sale day, the new one get
   assert.deepEqual([account.partyId, bo.plan.termStart, bo.plan.termEnd, bo.plan.termPremium, bo.plan.interval, bo.plan.installments.length], ['pty_bo', '2027-06-01', '2027-12-01', 240_658, 'month', 6]);
   assert.ok(bo.input.firstPremium);
 });
+
+test('a reinstatement: the months come back, and what was credited is charged again', async () => {
+  const s = await invoicedTwoMonths();
+  await s.service.handlePolicyEvent(event('pev_x', 'policy.cancelled', { reason: 'need-ceased', effectiveDate: '2027-01-16', refund: { amount: 419_507, currency: 'SEK' } }));
+  await s.service.handlePolicyEvent(event('pev_r', 'policy.reinstated', { transactionId: 'ptx_r', reverses: 'ptx_pev_x', refundReversed: { amount: 419_507, currency: 'SEK' } }, '2027-01-20T10:00:00.000Z'));
+  const [plan] = await current(s);
+  assert.equal(plan!.adjustment?.kind, 'reinstatement');
+  // February to November as before, and the 195,07 credited of January as a charge of its own.
+  assert.deepEqual(plan!.plan.installments.map((i) => [i.seq, i.amount]), [...[3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((seq) => [seq, 40_000]), [13, 19_507]]);
+  assert.equal(plan!.plan.termPremium, 480_000);
+  assert.equal(await s.service.handlePolicyEvent(event('pev_r', 'policy.reinstated', { transactionId: 'ptx_r', reverses: 'ptx_pev_x' })), null, 'the same event again');
+  assert.equal(await s.service.handlePolicyEvent(event('pev_r2', 'policy.reinstated', { transactionId: 'ptx_r2', reverses: 'ptx_other' })), null, 'another cancellation');
+});
