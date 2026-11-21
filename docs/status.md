@@ -397,6 +397,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 
 - Meddelandets sida enligt designsystemet (PR #124): innehåll, lagrum och utskick till vänster, och PDF, rapport om utskick och historik till höger.
 
+- Webhookens sida enligt designsystemet (PR #125): utskicken per flik och uppgifterna till vänster, och åtgärderna till höger.
+
 **Nästa steg**
 1. ADR 0038, steg 5: gallring av dokument som en körning.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
