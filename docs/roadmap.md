@@ -176,7 +176,8 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
     - [x] 2a: betalarkonton och premieplaner från `policy.issued` och `policy.renewed`, produktens inställningar för betalning, läsning i API:et
     - [x] 2b-1: fakturering som körning, nummerserie, betalningsreferens (OCR och RF) och `invoice.issued`
     - [x] 2b-2: fakturan som meddelande till kunden
-    - [ ] 2c: kundens val av intervall vid tecknandet, och ändring, avslut, återkallelse och överlåtelse mot planen
+    - [x] 2c-1: kundens val av intervall vid tecknandet
+    - [ ] 2c-2: ändring, avslut, återkallelse och överlåtelse mot planen och fakturorna
   - [ ] `payments` med `fake`-adapter: inbetalningar, koppling till faktura och utbetalningar
   - [ ] Obetald premie: påminnelse, uppsägning och avslut
   - [ ] Tillgodohavanden, återbetalningar och kreditnotor med attest

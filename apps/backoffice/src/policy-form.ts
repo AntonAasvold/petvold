@@ -17,6 +17,7 @@ export interface ProductLike {
     vetCare: { annualLimits: number[]; defaultAnnualLimit?: number; deductibles: { code: string; labels?: Record<string, string> }[]; defaultDeductible?: string };
     documents?: { type: 'terms' | 'pre-contract' | 'ipid'; language: string; sha256: string }[];
     policy?: { maxStartAheadDays?: number };
+    billing?: { paymentIntervals?: string[]; defaultPaymentInterval?: string };
   };
 }
 
@@ -29,6 +30,8 @@ export interface IssueForm {
   annualLimit: number | null;
   deductible: string;
   campaignCode: string;
+  /** How often the customer pays (ADR 0040). Empty: the product's default. */
+  paymentInterval: string;
   /** In major units as typed, only for a product without a tariff. */
   premium: string;
   channel: string;
@@ -50,6 +53,7 @@ export const emptyIssue = (today: string, now: string, o: { animalId?: string; h
   annualLimit: null,
   deductible: '',
   campaignCode: '',
+  paymentInterval: '',
   premium: '',
   channel: 'phone',
   reference: '',
@@ -65,9 +69,13 @@ export function withProductDefaults(f: IssueForm, p: ProductLike): IssueForm {
     productVersion: p.id,
     annualLimit: v.defaultAnnualLimit ?? v.annualLimits[0] ?? null,
     deductible: v.defaultDeductible ?? v.deductibles[0]?.code ?? '',
+    paymentInterval: p.content.billing?.defaultPaymentInterval ?? 'year',
     documents: [],
   };
 }
+
+/** The intervals the product lets the customer choose (ADR 0040). */
+export const paymentIntervalsOf = (p: ProductLike): string[] => p.content.billing?.paymentIntervals ?? ['year'];
 
 /** Whether the product needs an application with health questions instead of issuing directly. */
 export const needsApplication = (p: ProductLike | null): boolean => !!p?.content.underwritingSeries;
@@ -125,6 +133,7 @@ export function issueBody(f: IssueForm, p: ProductLike) {
     vetCare: { ...(f.annualLimit !== null ? { annualLimit: f.annualLimit } : {}), ...(f.deductible ? { deductible: f.deductible } : {}) },
     ...(premium !== null ? { premium: { amount: premium, currency: p.content.currency } } : {}),
     ...(f.campaignCode.trim() ? { campaignCode: f.campaignCode.trim().toUpperCase() } : {}),
+    ...(f.paymentInterval ? { paymentInterval: f.paymentInterval as 'year' | 'half-year' | 'quarter' | 'month' } : {}),
     acceptance: {
       channel: f.channel.trim(),
       ...(f.reference.trim() ? { reference: f.reference.trim() } : {}),

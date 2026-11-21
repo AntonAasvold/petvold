@@ -146,6 +146,12 @@ test('a policy is issued, found, and seen by the claims engine as of a date', as
   assert.deepEqual((await call('GET', '/v1/policies?policyholderPartyId=pty_anna', 'seller')).body.items.map((x: any) => x.id), [p.id]);
   const history = (await call('GET', `/v1/policies/${p.id}/history`, 'handler')).body;
   assert.deepEqual(history.transactions[0].steps.map((s: any) => s.step), ['draft', 'priced', 'underwritten', 'issued']);
+  assert.equal(history.transactions[0].issue.paymentInterval, 'year', "the product's default (ADR 0040)");
+  const month = await call('POST', '/v1/policies', 'seller', { ...issueBody, paymentInterval: 'month' });
+  assert.equal(month.status, 422);
+  assert.match(JSON.stringify(month.body), /payment intervals year/);
+  const week = await call('POST', '/v1/policies', 'seller', { ...issueBody, paymentInterval: 'week' });
+  assert.deepEqual([week.status, JSON.stringify(week.body).includes('paymentInterval')], [422, true], 'not in the contract');
 
   const snap = await call('GET', `/v1/policies/${p.id}/snapshot?date=2027-03-01`, 'handler');
   assert.equal(snap.status, 200);

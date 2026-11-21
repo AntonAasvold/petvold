@@ -140,3 +140,9 @@ test('a market without rules cannot be invoiced', async () => {
   const { service } = setup();
   await assert.rejects(service.invoicingRun({ market: 'DE', onDate: '2026-11-22', dryRun: true }, 'x'), (e: unknown) => e instanceof BillingError && e.code === 'validation');
 });
+
+test('policy.issued: the customer\'s interval when the product allows it, else the default', async () => {
+  const { service } = setup({ intervals: ['year', 'month'], defaultInterval: 'month' });
+  assert.equal((await service.handlePolicyEvent(issued({}, { paymentInterval: 'year' })))!.plan.interval, 'year');
+  assert.equal((await service.handlePolicyEvent(issued({ id: 'pev_2', policyId: 'pol_2' }, { paymentInterval: 'quarter' })))!.plan.interval, 'month');
+});

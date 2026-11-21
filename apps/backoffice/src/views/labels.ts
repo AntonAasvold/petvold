@@ -452,6 +452,21 @@ export function lineCategoryLabel(c: string): string {
   }
 }
 
+export function paymentIntervalLabel(i: string): string {
+  switch (i) {
+    case 'year':
+      return msg('Yearly', { id: 'interval.year' });
+    case 'half-year':
+      return msg('Every six months', { id: 'interval.half-year' });
+    case 'quarter':
+      return msg('Quarterly', { id: 'interval.quarter' });
+    case 'month':
+      return msg('Monthly', { id: 'interval.month' });
+    default:
+      return i;
+  }
+}
+
 export function jobLabel(name: string): string {
   switch (name) {
     case 'policies.application-expiry':

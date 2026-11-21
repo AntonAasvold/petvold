@@ -303,8 +303,8 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
       await assert.rejects(store.addApplication(referred, []), PolicyConflictError);
 
       const t = issued();
-      t.transaction.issue = { acceptance: referred.acceptance, applicationId: 'app_2' };
-      const accepted = app('app_2', { status: 'accepted', policyId: 'pol_t1', animalId: 'ani_bella', groupId: 'pgr_1', campaignCode: 'PUPPY' });
+      t.transaction.issue = { acceptance: referred.acceptance, applicationId: 'app_2', paymentInterval: 'month' };
+      const accepted = app('app_2', { status: 'accepted', policyId: 'pol_t1', animalId: 'ani_bella', groupId: 'pgr_1', campaignCode: 'PUPPY', paymentInterval: 'month' });
       const { vetCare: _v, ...noChoices } = app('app_3', { status: 'declined', policyholderPartyId: 'pty_bo', receivedAt: '2026-11-15T11:00:00.000Z' });
       await store.issue(t.policy, t.term, t.version, t.transaction, [{ id: 'pev_a2', type: 'policy.issued', policyId: 'pol_t1', occurredAt: at, data: { applicationId: 'app_2' } }], { application: accepted });
       await store.addApplication(noChoices, []);

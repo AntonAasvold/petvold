@@ -263,6 +263,8 @@ export class BillingService {
       startDate: ISODate;
       endDate: ISODate;
       premium: { amount: number; currency: string };
+      /** policy.issued: the customer's choice (ADR 0040). */
+      paymentInterval?: string;
     };
     const product = await this.d.products.billing(data.productVersion);
     if (!product) throw new Error(`The product version ${data.productVersion} of event ${e.id} does not exist`);
@@ -273,9 +275,10 @@ export class BillingService {
     const partyId = issued ? data.policyholderPartyId : await this.d.policies.policyholderOn(e.policyId, data.startDate);
     if (!partyId) throw new Error(`No policyholder for event ${e.id}`);
 
-    // The chosen interval is kept from term to term while the product allows it (ADR 0040, punkt 2).
+    // The customer's choice at issue, kept from term to term while the product allows it (ADR 0040, punkt 2).
     const previous = issued ? undefined : (await this.d.store.plans({ policyId: e.policyId })).filter((p) => p.termNo < termNo).at(-1);
-    const interval = previous && product.paymentIntervals.includes(previous.plan.interval) ? previous.plan.interval : product.defaultPaymentInterval;
+    const chosen = issued ? data.paymentInterval : previous?.plan.interval;
+    const interval = chosen && (product.paymentIntervals as string[]).includes(chosen) ? (chosen as PaymentInterval) : product.defaultPaymentInterval;
 
     const input: PlanInput = {
       currency: data.premium.currency,

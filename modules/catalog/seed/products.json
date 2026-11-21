@@ -51,6 +51,15 @@
         ],
         "defaultDeductible": "standard",
         "waitingPeriodDays": 30
+      },
+      "billing": {
+        "paymentIntervals": [
+          "year",
+          "quarter",
+          "month"
+        ],
+        "defaultPaymentInterval": "year",
+        "installmentFee": 0
       }
     }
   },
@@ -110,6 +119,15 @@
       },
       "policy": {
         "midTermCancellation": "immediate"
+      },
+      "billing": {
+        "paymentIntervals": [
+          "year",
+          "quarter",
+          "month"
+        ],
+        "defaultPaymentInterval": "year",
+        "installmentFee": 0
       }
     }
   },
@@ -208,7 +226,16 @@
           "uri": "https://documents.example.com/se-hund-plus/2026.1/ipid-en.pdf",
           "sha256": "240069944c3d29893c04b31e94c22bf12c46a66317fddf0a0fd1a1b315ad978f"
         }
-      ]
+      ],
+      "billing": {
+        "paymentIntervals": [
+          "year",
+          "quarter",
+          "month"
+        ],
+        "defaultPaymentInterval": "year",
+        "installmentFee": 0
+      }
     }
   }
 ]

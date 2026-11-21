@@ -507,7 +507,12 @@ async function insertApplicationDecision(db: pg.PoolClient, applicationId: strin
 }
 
 async function insertApplication(db: pg.PoolClient, a: Application) {
-  const choices = { ...(a.vetCare ? { vetCare: a.vetCare } : {}), ...(a.groupId ? { groupId: a.groupId } : {}), ...(a.campaignCode ? { campaignCode: a.campaignCode } : {}) };
+  const choices = {
+    ...(a.vetCare ? { vetCare: a.vetCare } : {}),
+    ...(a.groupId ? { groupId: a.groupId } : {}),
+    ...(a.campaignCode ? { campaignCode: a.campaignCode } : {}),
+    ...(a.paymentInterval ? { paymentInterval: a.paymentInterval } : {}),
+  };
   await db.query(
     `insert into policies.application (application_id, market, animal_id, policyholder_party_id, product_version, start_date, choices, acceptance,
        premium, currency, status, underwriting, policy_id, received_by, received_at, deadline)
