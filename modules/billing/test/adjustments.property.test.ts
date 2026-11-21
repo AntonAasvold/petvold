@@ -30,7 +30,7 @@ test('changes and a cancellation: the term is billed exactly what it costs', asy
       fc.integer({ min: 12_000, max: 2_000_000 }),
       fc.integer({ min: 0, max: 360 }),
       fc.array(fc.integer({ min: -300_000, max: 300_000 }), { maxLength: 3 }),
-      fc.option(fc.record({ day: fc.integer({ min: 0, max: 365 }), bp: fc.integer({ min: 0, max: 10_000 }) }), { nil: undefined }),
+      fc.option(fc.record({ day: fc.integer({ min: 0, max: 365 }), bp: fc.integer({ min: 0, max: 10_000 }), invoiceAfter: fc.boolean(), reinstate: fc.boolean() }), { nil: undefined }),
       async (interval, premium, invoicedUpTo, changes, cancel) => {
         let n = 0;
         const store = new InMemoryBillingStore();
@@ -56,9 +56,15 @@ test('changes and a cancellation: the term is billed exactly what it costs', asy
           await service.handlePolicyEvent({ id: 'pev_x', type: 'policy.cancelled', policyId: 'pol_1', occurredAt: `${day}T11:00:00.000Z`, data: { transactionId: 'ptx_x', effectiveDate: addDays('2026-01-01', cancel.day), refund: { amount: refund, currency: 'SEK' } } });
           const affected = addDays('2026-01-01', cancel.day) < '2027-01-01';
           assert.equal(await billed(store), affected ? cost - refund : cost, 'after the cancellation');
+          // A charge the cancellation made may be invoiced before it is reversed.
+          if (cancel.invoiceAfter) await service.invoicingRun({ market: 'SE', onDate: addDays(day, 1), dryRun: false }, 'scheduler');
+          if (cancel.reinstate) {
+            await service.handlePolicyEvent({ id: 'pev_r', type: 'policy.reinstated', policyId: 'pol_1', occurredAt: `${day}T12:00:00.000Z`, data: { transactionId: 'ptx_r', reverses: 'ptx_x', refundReversed: { amount: refund, currency: 'SEK' } } });
+            assert.equal(await billed(store), cost, 'after the reinstatement');
+          }
         }
       },
     ),
-    { numRuns: 150 },
+    { numRuns: 300 },
   );
 });

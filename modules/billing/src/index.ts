@@ -107,7 +107,7 @@ export interface PlanRecord {
 }
 
 export interface PlanAdjustment {
-  kind: 'change' | 'cancellation' | 'transfer-from' | 'transfer-to';
+  kind: 'change' | 'cancellation' | 'reinstatement' | 'transfer-from' | 'transfer-to';
   transactionId: string;
   /** The day it takes effect. */
   from: ISODate;
@@ -332,7 +332,7 @@ export class BillingService {
    * relay may deliver an event more than once. Returns the new plan, or null.
    */
   async handlePolicyEvent(e: SourceEvent): Promise<PlanRecord | null> {
-    if (e.type === 'policy.changed' || e.type === 'policy.cancelled' || e.type === 'policy.transferred') return (await this.adjust(e))[0] ?? null;
+    if (e.type === 'policy.changed' || e.type === 'policy.cancelled' || e.type === 'policy.transferred' || e.type === 'policy.reinstated') return (await this.adjust(e))[0] ?? null;
     if (e.type !== 'policy.issued' && e.type !== 'policy.renewed') return null;
     if (!e.policyId) throw new Error(`Event ${e.id} has no policy`);
     const data = e.data as {
@@ -471,7 +471,43 @@ export class BillingService {
     const accounts: PayerAccount[] = [];
     const creditLines: { invoiceId: string; line: CreditNoteLine }[] = [];
 
-    if (e.type === 'policy.changed') {
+    if (e.type === 'policy.reinstated') {
+      // The cancellation is reversed (ADR 0040, punkt 4): each term gets back the installments the cancellation
+      // took out, and what it credited is charged again. Only a cancellation plan still in force can be reversed.
+      const reverses = String(e.data.reverses ?? '');
+      const all = await this.d.store.plans({ policyId: e.policyId });
+      for (const cancelPlan of current.filter((p) => p.adjustment?.kind === 'cancellation' && p.adjustment.transactionId === reverses)) {
+        const before = all.find((p) => p.id === cancelPlan.replaces)!;
+        const doneBefore = (await this.d.store.invoicedSeqs([before.id])).get(before.id) ?? new Set<number>();
+        let installments = before.plan.installments.filter((i) => !doneBefore.has(i.seq)).map((i) => ({ ...i }));
+        const credited = (await this.d.store.creditNotes({ policyId: e.policyId }))
+          .filter((c) => c.source.eventId === cancelPlan.source.eventId)
+          .flatMap((c) => c.lines)
+          .filter((l) => all.some((p) => p.id === l.planId && p.termNo === cancelPlan.termNo && p.accountId === cancelPlan.accountId))
+          .reduce((s, l) => s + l.amount, 0);
+        const { lines } = await this.termLines(cancelPlan);
+        // A charge the cancellation made and that is invoiced is paid for by the restored installments: it comes off them.
+        const doneCancel = (await this.d.store.invoicedSeqs([cancelPlan.id])).get(cancelPlan.id) ?? new Set<number>();
+        const chargedAlready = cancelPlan.plan.installments.filter((i) => doneCancel.has(i.seq)).reduce((s, i) => s + i.amount, 0);
+        let rest = 0;
+        if (chargedAlready > 0) {
+          const r = reduceInstallments(chargedAlready, installments.map((i) => ({ seq: i.seq, premium: i.amount })));
+          installments = installments.map((i) => {
+            const off = r.parts.find((x) => x.seq === i.seq)?.amount ?? 0;
+            return { ...i, premium: i.premium - Math.min(off, i.premium), tax: i.tax - Math.max(0, off - i.premium), amount: i.amount - off };
+          });
+          rest = r.rest;
+        }
+        const recharge = credited - rest;
+        if (recharge > 0) {
+          const seq = Math.max(0, ...lines.map((l) => l.seq), ...installments.map((i) => i.seq)) + 1;
+          installments.push({ seq, periodStart: cancelPlan.plan.termStart, periodEnd: cancelPlan.plan.termEnd, dueDate: eventDate, premium: recharge, tax: 0, fee: 0, amount: recharge });
+        }
+        installments.sort((a, b) => a.seq - b.seq);
+        plans.push(this.replacement(e, cancelPlan, installments, { kind: 'reinstatement', transactionId, from: cancelPlan.adjustment!.from, premium: -cancelPlan.adjustment!.premium, tax: -cancelPlan.adjustment!.tax }, now));
+      }
+      if (plans.length === 0) return [];
+    } else if (e.type === 'policy.changed') {
       const d = e.data as { termNo: number; from: ISODate; premiumAdjustment: number };
       const plan = current.find((p) => p.termNo === Number(d.termNo));
       if (!plan || !d.premiumAdjustment) return [];
