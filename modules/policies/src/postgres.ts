@@ -286,7 +286,7 @@ export class PostgresPolicyStore implements PolicyStore {
 
   async pendingEvents(limit: number): Promise<PolicyEvent[]> {
     const { rows } = await this.pool.query(
-      `select event_id, type, policy_id, application_id, occurred_at, data from policies.outbox where published_at is null order by seq limit $1`,
+      `select seq, event_id, type, policy_id, application_id, occurred_at, data from policies.outbox where published_at is null order by seq limit $1`,
       [limit],
     );
     return rows.map((r) => ({
@@ -296,6 +296,7 @@ export class PostgresPolicyStore implements PolicyStore {
       ...(r.application_id === null ? {} : { applicationId: r.application_id }),
       occurredAt: iso(r.occurred_at),
       data: r.data,
+      sequence: Number(r.seq),
     }));
   }
 

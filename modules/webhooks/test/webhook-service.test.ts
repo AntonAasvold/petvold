@@ -67,6 +67,12 @@ test('an event becomes a thin CloudEvent: ids and allowed fields only, versioned
   assert.equal(declined.subject, 'app_1');
 });
 
+test('the outbox position becomes the extension sequence, zero-padded so it orders as a string', () => {
+  assert.equal(toCloudEvent(issued({ sequence: 9 }))!.sequence, '00000000000000000009');
+  assert.ok(toCloudEvent(issued({ sequence: 9 }))!.sequence! < toCloudEvent(issued({ sequence: 10 }))!.sequence!);
+  assert.equal('sequence' in toCloudEvent(issued())!, false, 'no outbox, no sequence');
+});
+
 test('patterns, private addresses and the retry schedule', () => {
   assert.deepEqual([matches('*', 'policy.issued'), matches('policy.*', 'policy.issued'), matches('policy.*', 'proposal.created'), matches('policy.issued', 'policy.issued')], [true, true, false, true]);
   assert.deepEqual(['10.1.2.3', '127.0.0.1', '192.168.0.1', '172.20.0.1', '169.254.169.254', '::1', 'fd00::1', '::ffff:10.0.0.1', '93.184.216.34'].map(isPrivateAddress), [true, true, true, true, true, true, true, true, false]);

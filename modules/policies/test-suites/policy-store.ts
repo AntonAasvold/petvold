@@ -153,6 +153,7 @@ export function policyStoreSuite(name: string, factory: PolicyStoreFactory): voi
 
       const pending = await store.pendingEvents(10);
       assert.deepEqual(pending.map((e) => e.id), ['pev_1', 'pev_2']);
+      assert.ok(pending[0]!.sequence! < pending[1]!.sequence!, 'the outbox position increases');
       await store.markPublished(['pev_1'], later);
       assert.deepEqual((await store.pendingEvents(10)).map((e) => e.id), ['pev_2']);
     });
