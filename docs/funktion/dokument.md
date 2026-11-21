@@ -76,7 +76,7 @@ Petvold kan göra ett meddelande till en PDF med sina egna mallar (ADR 0038):
 - **Petvold gör underlaget.** Mallen fylls med meddelandets innehåll, och dessutom med uppgifter som läses när PDF:en görs: mottagarens namn och adress, djurets namn och skälens text. Skälen har samma text som i API:t. Namn och adresser sparas aldrig i meddelandet.
 - **Gotenberg gör PDF:en.** Den blir PDF/A-2b och PDF/UA-1, och Gotenberg hämtar ingenting utifrån.
 - **Dokumentet** hör till meddelandet och gäller mottagaren. Det finns alltså i kundens lista. Det sparar mallens namn, marknad, språk, version och kontrollsumma, och en hash av datan (`template`). Samma mall och data ger samma dokument.
-- **Mallar finns** för `claim-decision` (skadebesked) och `policy-confirmation` (försäkringsbrev), för Sverige på svenska och engelska. En annan typ ger `422`.
+- **Mallar finns** för `claim-decision` (skadebesked), `policy-confirmation` (försäkringsbrev) och `invoice` (faktura: belopp, förfallodag, OCR- eller RF-referens, vart kunden betalar och raderna med period och avgift), för Sverige på svenska och engelska. En annan typ ger `422`.
 - **Utan Gotenberg** (`PETVOLD_GOTENBERG_URL`) svarar anropet `503`.
 - **En ny PDF** av samma meddelande blir ett nytt dokument.
 - **Dokumenten per meddelande:** `GET /v1/documents?noticeId=` listar dem.

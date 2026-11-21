@@ -156,9 +156,51 @@ ${docs.length ? `<h2>${esc(t.documents)}</h2><ul>${docs.map((x) => `<li>${esc(t[
   return page(t.policyConfirmation, body, d);
 };
 
+/**
+ * The invoice (ADR 0040; FAL 5 kap. 1 §): what to pay, by when and with which
+ * reference, where to pay, and the installments it holds. The period shows its
+ * last day, since the plan's end is exclusive.
+ */
+const invoice: Render = (d, _ctx, { t, money, date, page }) => {
+  const currency = d.total?.currency ?? 'SEK';
+  const lines: { policyId: string; periodStart: string; periodEnd: string; premium: number; tax: number; fee: number; amount: number }[] = d.lines ?? [];
+  const hasTax = lines.some((l) => l.tax > 0);
+  const hasFee = lines.some((l) => l.fee > 0);
+  const lastDay = (end: string) => new Date(Date.parse(`${end}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+  const refLabel = t[`reference.${d.reference?.type}` as keyof TemplateTexts] ?? t['reference.rf'];
+  const amount = (n: number) => esc(money({ amount: n, currency }));
+  const body = `
+<p class="lead">${esc(t.payLead.replace('{amount}', money(d.total)).replace('{date}', date(d.dueDate)))}</p>
+<div class="box">
+<dl>
+  <dt>${esc(t.toPay)}</dt><dd>${esc(money(d.total))}</dd>
+  <dt>${esc(t.dueDate)}</dt><dd>${esc(date(d.dueDate))}</dd>
+  <dt>${esc(refLabel)}</dt><dd class="mono">${esc(d.reference?.value)}</dd>
+  ${d.payment ? `<dt>${esc(t.payTo)}</dt><dd>${esc(d.payment)}</dd>` : ''}
+</dl>
+</div>
+<p class="note">${esc(t.referenceNote)}</p>
+<dl>
+  <dt>${esc(t.invoiceNo)}</dt><dd class="mono">${esc(d.invoiceNo)}</dd>
+  <dt>${esc(t.issueDate)}</dt><dd>${esc(date(d.issueDate))}</dd>
+</dl>
+<h2>${esc(t.specification)}</h2>
+<table><thead><tr><th scope="col">${esc(t.policy)}</th><th scope="col">${esc(t.insurancePeriod)}</th>${hasTax ? `<th scope="col" class="amount">${esc(t.tax)}</th>` : ''}${hasFee ? `<th scope="col" class="amount">${esc(t.fee)}</th>` : ''}<th scope="col" class="amount">${esc(t.amount)}</th></tr></thead><tbody>
+${lines
+  .map(
+    (l) =>
+      `<tr><td class="mono">${esc(l.policyId)}</td><td>${esc(date(l.periodStart))} – ${esc(date(lastDay(l.periodEnd)))}</td>${hasTax ? `<td class="amount">${amount(l.tax)}</td>` : ''}${hasFee ? `<td class="amount">${amount(l.fee)}</td>` : ''}<td class="amount">${amount(l.amount)}</td></tr>`,
+  )
+  .join('\n')}
+<tr class="total"><td colspan="${2 + (hasTax ? 1 : 0) + (hasFee ? 1 : 0)}">${esc(t.toPay)}</td><td class="amount">${esc(money(d.total))}</td></tr>
+</tbody></table>`;
+  return page(`${t.invoice} ${d.invoiceNo ?? ''}`.trim(), body, d);
+};
+
 const SOURCES: { name: string; version: number; render: Render }[] = [
   { name: 'claim-decision', version: 1, render: claimDecision },
   { name: 'policy-confirmation', version: 1, render: policyConfirmation },
+  { name: 'invoice', version: 1, render: invoice },
 ];
 
 /** The markets and languages the templates are made for. */

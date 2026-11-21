@@ -49,6 +49,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - Testerna för migreringar och lagringar uppdaterar sig själva. Status arkiverad, och mindre dokumentation per PR (`CLAUDE.md`, `arbetssatt.md`).
 
 - Fakturan som meddelande (ADR 0040, steg 2b-2), PR #133: `invoice.issued` ger meddelandet `invoice`, som ska skickas på fakturans dag (FAL 5 kap. 1 §), med `invoiceId` i stället för policy. Bolagets text `payment` (vart kunden betalar) krävs, och utan den hamnar fakturan i kön. Migration 0052. 607 tester och 171 databastester.
+- Mall för fakturan (PR #134): Petvold gör fakturans PDF med belopp, förfallodag, OCR- eller RF-referens, vart kunden betalar och raderna, på svenska och engelska, när marknaden har `documentMaker: petvold`.
 
 **Nästa steg**
 1. ADR 0040, steg 2c: kundens val av intervall vid tecknandet, och ändring, avslut, återkallelse och överlåtelse mot planen.

@@ -260,7 +260,7 @@ export class SettingsView extends LitElement {
         </wa-select>
         <wa-radio-group
           label=${msg('Who makes the documents', { id: 'settings.documentMaker' })}
-          hint=${msg('Petvold makes claims decisions and policy confirmations as PDF from its templates; other notices stay with the document system.', { id: 'settings.documentMakerHint' })}
+          hint=${msg('Petvold makes claims decisions, policy confirmations and invoices as PDF from its templates; other notices stay with the document system.', { id: 'settings.documentMakerHint' })}
           value=${this.form.documentMaker ?? 'insurer'}
           ?disabled=${!edit}
           @change=${(e: Event) => (this.form = { ...this.form, documentMaker: (e.target as HTMLInputElement).value as 'insurer' | 'petvold' })}

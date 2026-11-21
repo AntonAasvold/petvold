@@ -33,6 +33,20 @@ export const en = {
   'document.terms': 'Terms',
   'document.pre-contract': 'Pre-contract information',
   'document.ipid': 'Product information',
+  invoice: 'Invoice',
+  invoiceNo: 'Invoice number',
+  issueDate: 'Invoice date',
+  dueDate: 'Due date',
+  toPay: 'Amount due',
+  payLead: 'Please pay {amount} by {date}.',
+  payTo: 'Pay to',
+  'reference.ocr': 'OCR number',
+  'reference.rf': 'Reference',
+  referenceNote: 'Always give the reference when you pay, so that the payment is matched to the invoice.',
+  specification: 'Specification',
+  insurancePeriod: 'Period',
+  tax: 'Tax',
+  fee: 'Fee',
 } as const;
 
 export type TemplateTexts = { readonly [K in keyof typeof en]: string };
