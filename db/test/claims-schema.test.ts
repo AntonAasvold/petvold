@@ -6,6 +6,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
+import { readdirSync } from 'node:fs';
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url) throw new Error('TEST_DATABASE_URL is missing. Copy .env.example to .env and run npm run dev:up.');
@@ -60,9 +61,15 @@ async function journal(id: string, amounts: number[]): Promise<void> {
 
 test('the migrations have been applied', async () => {
   const { rows } = await db.query(`select version from schema_migrations order by version`);
+  // Every file in db/migrations, in order: a migration that was not run, or a run one whose file is gone, fails.
+  const files = readdirSync(new URL('../migrations/', import.meta.url))
+    .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+    .map((f) => f.slice(0, 4))
+    .sort();
+  assert.ok(files.length > 50);
   assert.deepEqual(
     rows.map((r) => r.version),
-    ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0022', '0023', '0024', '0025', '0026', '0027', '0028', '0029', '0030', '0031', '0032', '0033', '0034', '0035', '0036', '0037', '0038', '0039', '0040', '0041', '0042', '0043', '0044', '0045', '0046', '0047', '0048', '0049', '0050', '0051'],
+    files,
   );
 });
 

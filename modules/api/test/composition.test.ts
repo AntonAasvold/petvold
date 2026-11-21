@@ -1,14 +1,14 @@
 /** The composition root (granskningen A1): every module connected once, in memory here. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compose, databasesFromEnv } from '../src/composition.ts';
+import { compose, DATABASES, databasesFromEnv } from '../src/composition.ts';
 import { seedSampleData } from '../src/seed.ts';
 import { createApp } from '../src/index.ts';
 
 test('the modules are connected, and the relay drives the policy module from the animal register', async () => {
   const clock = { now: () => '2026-11-15T10:00:00.000Z' };
   const inst = await compose({ databases: {}, engineVersion: 'test', clock });
-  assert.deepEqual(Object.values(inst.storage), ['memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory']);
+  assert.deepEqual(inst.storage, Object.fromEntries(DATABASES.map((d) => [d, 'memory'])));
   await seedSampleData(inst, clock);
   await seedSampleData(inst, clock); // twice is harmless
   const app = createApp({ ...inst.deps, auth: { authenticate: async () => ({ subject: 'h', roles: ['handler'], markets: '*' }) } });

@@ -185,6 +185,13 @@ Distribution och provision (färdplanen, M5) får en egen ADR.
 4. **Dagsavslutet:** CSV först och SIE 4 senare (punkt 9).
 5. **Dröjsmålsränta:** väntar till ett senare steg (punkt 7).
 
+## Rättelse 2026-11-21
+
+Punkt 3 och 5 nämnde bara lagens regel för den första premien. FAL 5 kap. 1 § andra och tredje stycket säger också att premien för en senare premieperiod, och vid förnyelse, inte behöver betalas tidigare än en månad efter att kravet skickades. Ett egenskapstest för faktureringen hittade det (PR #132).
+
+- **Fakturans förfallodag** är den tidigaste radens, men aldrig tidigare än lagen tillåter för någon rad: fjorton dagar efter fakturan för en ny policys första premie, och en månad efter fakturan för en senare premie. Marknadsprofilen anger båda (`firstPremiumDays`, `laterPremiumMonths`).
+- **Förvalet för `billing.invoiceLeadDays` är 31 dagar** i stället för 20. En månad är aldrig längre än 31 dagar, så en senare premie förfaller då på periodens första dag när körningen går varje dag. En kortare framförhållning flyttar förfallodagen framåt.
+
 ## Källor
 
 - Försäkringsavtalslagen (2005:104), 5 kap. 1, 2 och 6 §§. riksdagen.se

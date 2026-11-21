@@ -4072,8 +4072,8 @@ export interface components {
                  */
                 installmentFee: number;
                 /**
-                 * @description Days before an installment is due that the invoicing run puts it on an invoice.
-                 * @default 20
+                 * @description Days before an installment is due that the invoicing run puts it on an invoice. A later premium is due at the earliest a month after the invoice (SE: FAL 5 kap. 1 §), so a shorter lead moves its due date.
+                 * @default 31
                  */
                 invoiceLeadDays: number;
             };
@@ -4416,7 +4416,7 @@ export interface components {
             issueDate: string;
             /**
              * Format: date
-             * @description The earliest line's due date. A new policy's first premium is due at the earliest the market's days after the invoice (SE: 14, FAL 5 kap. 1 §).
+             * @description The earliest line's due date, but never before any line may be due by law: a new policy's first premium fourteen days after the invoice, a later premium a month after (SE: FAL 5 kap. 1 §).
              */
             dueDate: string;
             reference: {
@@ -4488,7 +4488,7 @@ export interface components {
                 };
             };
             plan: components["schemas"]["PremiumPlan"];
-            /** @description The product's lead time when the plan was made. Omitted: 20. */
+            /** @description The product's lead time when the plan was made. Omitted: 31. */
             invoiceLeadDays?: number;
             /** Format: date-time */
             createdAt: string;
