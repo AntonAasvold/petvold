@@ -20,10 +20,10 @@ import { IdempotencyKeys } from '../decide.ts';
 import { formatDate, formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import { displayName } from '../party-logic.ts';
-import { CHANNELS, answerProblems, answersBody, answersFor, applicationBody, emptyIssue, issueBody, insuredFrom, issueProblems, latestStart, needsApplication, quoteBody, withProductDefaults, type AnswerForm, type IssueForm, type ProductLike } from '../policy-form.ts';
+import { CHANNELS, answerProblems, answersBody, answersFor, applicationBody, emptyIssue, issueBody, insuredFrom, issueProblems, latestStart, needsApplication, paymentIntervalsOf, quoteBody, withProductDefaults, type AnswerForm, type IssueForm, type ProductLike } from '../policy-form.ts';
 import { navigate } from '../router.ts';
 import { pvComponents } from '../styles/pv-components.ts';
-import { channelLabelFor, documentLabel, problemLabel, underwritingLabel } from './labels.ts';
+import { channelLabelFor, documentLabel, problemLabel, underwritingLabel, paymentIntervalLabel } from './labels.ts';
 
 type Product = components['schemas']['ProductVersion'];
 type Quote = components['schemas']['Quote'];
@@ -293,6 +293,11 @@ export class PolicyIssue extends LitElement {
                       ${p.content.vetCare.deductibles.map((d) => html`<wa-option value=${d.code}>${d.labels?.[lang] ?? d.labels?.en ?? d.code}</wa-option>`)}
                     </wa-select>
                     <wa-input label=${msg('Campaign code (optional)', { id: 'policy.campaign' })} .value=${f.campaignCode} @input=${(e: Event) => this.set({ campaignCode: value(e) })}></wa-input>
+                    ${paymentIntervalsOf(p).length > 1
+                      ? html`<wa-select label=${msg('Pays', { id: 'policy.paymentInterval' })} value=${f.paymentInterval} @change=${(e: Event) => this.set({ paymentInterval: value(e) })}>
+                          ${paymentIntervalsOf(p).map((i) => html`<wa-option value=${i}>${paymentIntervalLabel(i)}</wa-option>`)}
+                        </wa-select>`
+                      : nothing}
                   </div>`
                 : html`<p>${msg('No product version is on sale for this animal on the start date.', { id: 'policy.noProduct' })}</p>`}
             </div>

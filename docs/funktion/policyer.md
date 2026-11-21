@@ -41,6 +41,8 @@ Termens längd kommer från produkten (`policy.termMonths`, förval 12 månader)
 
 **Kundens godkännande (ADR 0031).** `acceptance` har kanalen (till exempel `web`, `app`, `phone` eller `paper`), en referens om kanalen har en, till exempel ett sessions-id eller en signering, och tiden då kunden godkände. Petvold lägger till tiden då anropet kom fram, och sparar godkännandet på transaktionen (`issue.acceptance`). Tiden från kanalen får ligga högst fem minuter efter Petvolds klocka, eftersom klockorna kan skilja sig åt. Godkännandet gäller produktversionen och priset i svaret.
 
+**Betalningsintervall (ADR 0040).** `paymentInterval` (`year`, `half-year`, `quarter` eller `month`) säger hur ofta kunden betalar. Det måste vara ett av produktens `billing.paymentIntervals`, annars blir svaret `422`. Utan `paymentInterval` gäller produktens förval. Valet sparas på transaktionen (`issue.paymentInterval`) och följer med i `policy.issued`, och premieplanen görs efter det ([Premier och betalningar](premier.md)). Vid förnyelse behålls valet så länge produkten tillåter det. En ansökan tar samma fält.
+
 **Dokumenten kunden fick se (ADR 0032).** För en produkt med [dokument](produktkonfiguration.md#produktens-dokument) anger `acceptance.documents` vilka dokument kanalen visade, med typ, språk och kontrollsumma, som produkten listar dem. Villkoren (`terms`) och förköpsinformationen (`pre-contract`) måste finnas med. Ett dokument som produktversionen inte har, eller en annan kontrollsumma, ger `422`. Listan sparas med godkännandet, sorterad.
 
 ```json

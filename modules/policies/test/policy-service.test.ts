@@ -662,11 +662,20 @@ const no = (question: string) => ({ question, value: false });
 const allNo = [no('previous-illness'), no('ongoing-symptoms'), no('lameness')];
 const application = (o: Partial<ApplicationInput> = {}): ApplicationInput => ({ ...input({ productVersion: 'SE-UW@1' }), answers: allNo, ...o });
 
+test('the payment interval at issue: the product\'s default, or one it allows, in the event for billing (ADR 0040)', async () => {
+  const s = setup({ 'SE-HUND@1': offer({ species: ['dog', 'cat'], paymentIntervals: ['year', 'month'], defaultPaymentInterval: 'month' }) });
+  const byDefault = await s.issue(input(), by);
+  assert.equal((await s.transactions(byDefault.id))[0]!.issue?.paymentInterval, 'month');
+  const yearly = await s.issue(input({ animalId: 'ani_cat', paymentInterval: 'year' }), by);
+  assert.equal((await s.transactions(yearly.id))[0]!.issue?.paymentInterval, 'year');
+  await rejects(s.issue(input({ paymentInterval: 'quarter' }), by), 'validation', /payment intervals year, month/);
+});
+
 test('the customer\'s acceptance is stored at issue, with the time Petvold received it (ADR 0031)', async () => {
   const s = setup();
   const p = await s.issue(input(), by);
   const tx = (await s.transactions(p.id))[0]!;
-  assert.deepEqual(tx.issue, { acceptance: { channel: 'web', reference: 'sess-1', acceptedAt: '2026-11-15T09:58:00.000Z', receivedAt: '2026-11-15T10:00:00.000Z' } });
+  assert.deepEqual(tx.issue, { acceptance: { channel: 'web', reference: 'sess-1', acceptedAt: '2026-11-15T09:58:00.000Z', receivedAt: '2026-11-15T10:00:00.000Z' }, paymentInterval: 'year' });
   assert.equal(tx.steps[2]!.note, 'Accepted (the product has no underwriting rules)');
   await rejects(s.issue(input({ animalId: 'ani_cat', acceptance: { channel: ' ', acceptedAt: '2026-11-15T09:00:00Z' } }), by), 'validation', /acceptance.channel/);
   await rejects(s.issue(input({ acceptance: { channel: 'web', acceptedAt: 'yesterday' } }), by), 'validation', /timestamp/);

@@ -6232,6 +6232,7 @@ components:
         priceOverride: { $ref: '#/components/schemas/PriceOverride' }
         groupId: { type: string, pattern: '^pgr_[A-Za-z0-9]+$', description: A group the policy joins from its start; gives the group discount. }
         campaignCode: { type: string, maxLength: 32 }
+        paymentInterval: { allOf: [{ $ref: '#/components/schemas/PaymentInterval' }], description: "How often the customer pays (ADR 0040), one of the product's billing.paymentIntervals. Omitted: the product's default. Another gives 422." }
 
     NoticeType:
       type: string
@@ -6669,6 +6670,7 @@ components:
         priceOverride: { $ref: '#/components/schemas/PriceOverride' }
         groupId: { type: string, pattern: '^pgr_[A-Za-z0-9]+$', description: A group the policy joins from its start; gives the group discount. }
         campaignCode: { type: string, maxLength: 32 }
+        paymentInterval: { allOf: [{ $ref: '#/components/schemas/PaymentInterval' }], description: "How often the customer pays (ADR 0040), one of the product's billing.paymentIntervals. Omitted: the product's default. Another gives 422." }
         answers:
           type: array
           description: An answer to every question for the animal's species (GET /v1/application-questions).
@@ -6742,6 +6744,7 @@ components:
             deductible: { type: string }
         groupId: { type: string }
         campaignCode: { type: string }
+        paymentInterval: { $ref: '#/components/schemas/PaymentInterval' }
         acceptance: { $ref: '#/components/schemas/Acceptance' }
         premium:
           type: object
@@ -6922,6 +6925,7 @@ components:
           properties:
             acceptance: { $ref: '#/components/schemas/Acceptance' }
             applicationId: { type: string }
+            paymentInterval: { allOf: [{ $ref: '#/components/schemas/PaymentInterval' }], description: 'How often the customer chose to pay (ADR 0040). Omitted: issued before the choice existed.' }
         cancellation:
           type: object
           required: [reason, receivedOn, effectiveDate, refund]

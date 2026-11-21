@@ -58,6 +58,8 @@ test('a product with underwriting takes an application, and one with documents n
 test('the issue body has the choices, the premium without a tariff and the documents shown', () => {
   const f = { ...withProductDefaults(emptyIssue(today, now, { animalId: 'ani_bosse', holder: 'pty_owner001' }), manual), premium: '3 600', campaignCode: ' puppy2026 ' };
   const body = issueBody(f, manual);
+  assert.equal(body.paymentInterval, 'year', "the product's default (ADR 0040)");
+  assert.equal(issueBody({ ...f, paymentInterval: 'month' }, manual).paymentInterval, 'month');
   assert.deepEqual(
     { premium: body.premium, vetCare: body.vetCare, campaignCode: body.campaignCode, channel: body.acceptance.channel },
     { premium: { amount: 360_000, currency: 'SEK' }, vetCare: { annualLimit: 6_000_000, deductible: 'standard' }, campaignCode: 'PUPPY2026', channel: 'phone' },

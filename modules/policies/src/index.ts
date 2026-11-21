@@ -199,7 +199,7 @@ export interface PolicyTransaction {
     premium: { amount: number; currency: string };
   };
   /** How the customer accepted at issue (ADR 0031), and the application it came from. Omitted: issued before ADR 0031. */
-  issue?: { acceptance: Acceptance; applicationId?: string };
+  issue?: { acceptance: Acceptance; applicationId?: string; paymentInterval?: string };
   transfer?: {
     fromPartyId: string;
     toPartyId: string;
@@ -345,6 +345,8 @@ export interface Application {
   vetCare?: { annualLimit?: number; deductible?: string };
   groupId?: string;
   campaignCode?: string;
+  /** How often the customer chose to pay (ADR 0040). */
+  paymentInterval?: string;
   acceptance: Acceptance;
   /** The premium for the term the customer applied at. */
   premium: { amount: number; currency: string };
@@ -549,6 +551,10 @@ export interface ProductOffer {
   termMonths: number;
   /** Days before a term ends that it is renewed. */
   renewalLeadDays: number;
+  /** The payment intervals a customer may choose (ADR 0040). Omitted: ['year']. */
+  paymentIntervals?: string[];
+  /** The interval when none is chosen. Omitted: 'year'. */
+  defaultPaymentInterval?: string;
   /** Throws on an option the product does not offer. */
   vetCareTermsFor(choice: { annualLimit?: number; deductible?: string }): VetCareTerms & { deductibleOption: string };
 }
@@ -669,6 +675,8 @@ export interface IssueInput {
   /** A group the policy joins from its start, for the group discount (ADR 0007). */
   groupId?: string;
   campaignCode?: string;
+  /** How often the customer pays (ADR 0040), one the product allows. Omitted: the product's default. */
+  paymentInterval?: string;
   /** How the customer accepted the offer (ADR 0031). */
   acceptance: AcceptanceInput;
 }
@@ -1810,6 +1818,7 @@ export class PolicyService implements PolicyPort {
       ...(input.vetCare ? { vetCare: structuredClone(input.vetCare) } : {}),
       ...(input.groupId ? { groupId: input.groupId } : {}),
       ...(input.campaignCode ? { campaignCode: input.campaignCode } : {}),
+      paymentInterval: plan.paymentInterval,
       acceptance: plan.acceptance,
       premium: { amount: plan.premium.amount, currency: plan.offer.currency },
       status,
@@ -1897,6 +1906,7 @@ export class PolicyService implements PolicyPort {
       ...(a.vetCare ? { vetCare: a.vetCare } : {}),
       ...(a.groupId ? { groupId: a.groupId } : {}),
       ...(a.campaignCode ? { campaignCode: a.campaignCode } : {}),
+      ...(a.paymentInterval ? { paymentInterval: a.paymentInterval } : {}),
       // The customer accepted this premium; a different price from the tariff today is kept as a manual one with its reason.
       premium: a.premium,
       priceOverride: { reason: `The premium the customer applied at (${a.id})` },
@@ -2038,7 +2048,11 @@ export class PolicyService implements PolicyPort {
       deductibleOption,
     });
     const premium = this.premiumFor(pricing, input.premium, input.priceOverride, rights, by, offer.currency);
-    return { now, today, animal, offer, endDate, terms, deductibleOption, premium, acceptance, policyId: this.d.ids.next('pol') };
+    // How often the customer pays (ADR 0040): billing makes the premium plan from it.
+    const allowed = offer.paymentIntervals ?? ['year'];
+    const paymentInterval = input.paymentInterval ?? offer.defaultPaymentInterval ?? 'year';
+    if (!allowed.includes(paymentInterval)) throw new PolicyError('validation', `${input.productVersion} allows the payment intervals ${allowed.join(', ')}`);
+    return { now, today, animal, offer, endDate, terms, deductibleOption, premium, acceptance, paymentInterval, policyId: this.d.ids.next('pol') };
   }
 
   /** Stores a planned issue: the policy, its first term and version, and the application it came from, in one transaction. */
@@ -2088,7 +2102,7 @@ export class PolicyService implements PolicyPort {
       ],
       requestedBy: by,
       requestedAt: now,
-      issue: { acceptance: plan.acceptance, ...(u.applicationId ? { applicationId: u.applicationId } : {}) },
+      issue: { acceptance: plan.acceptance, ...(u.applicationId ? { applicationId: u.applicationId } : {}), paymentInterval: plan.paymentInterval },
     };
     await this.d.store
       .issue(
@@ -2106,6 +2120,7 @@ export class PolicyService implements PolicyPort {
             startDate: input.startDate,
             endDate,
             premium: { amount: premium.amount, currency: offer.currency },
+            paymentInterval: plan.paymentInterval,
             ...(u.applicationId ? { applicationId: u.applicationId } : {}),
           }),
         ],

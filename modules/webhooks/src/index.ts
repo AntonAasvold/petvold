@@ -47,7 +47,7 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'invoice.issued': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'issueDate', 'dueDate', 'total', 'currency', 'reference', 'policyIds'] },
   // A run failed (ADR 0037), for the insurer's operations to alert on. The error stays inside Petvold.
   'job.failed': { source: 'scheduling', subject: 'runId', fields: ['job', 'trigger', 'startedAt'] },
-  'policy.issued': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'animalId', 'policyholderPartyId', 'productVersion', 'startDate', 'endDate', 'premium', 'applicationId'] },
+  'policy.issued': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'animalId', 'policyholderPartyId', 'productVersion', 'startDate', 'endDate', 'premium', 'paymentInterval', 'applicationId'] },
   'policy.changed': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'termNo', 'changeNo', 'from', 'premiumAdjustment', 'currency'] },
   'policy.renewed': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'termNo', 'startDate', 'endDate', 'productVersion', 'premium'] },
   'policy.transferred': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'fromPartyId', 'toPartyId', 'from', 'premium'] },

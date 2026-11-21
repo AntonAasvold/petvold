@@ -9,7 +9,7 @@ Hur Petvold delar en terms premie i delbetalningar, fördelar en betalning och r
 När en policy tecknas (`policy.issued`) eller förnyas (`policy.renewed`) gör `billing` en premieplan för termen:
 
 - **Betalarkontot** är försäkringstagarens, ett per marknad och valuta. Det skapas med den första planen, och senare policyer hamnar på samma konto. Betalsättet är faktura tills betalningsmodulen finns.
-- **Intervallet** är produktens förval (`billing.defaultPaymentInterval`, se [Produktkonfiguration](produktkonfiguration.md#produkter-och-produktversioner)). Vid förnyelse behålls förra termens intervall om produkten fortfarande tillåter det, och annars gäller förvalet. Kundens eget val vid tecknandet kommer i steg 2c.
+- **Intervallet** är det kunden valde vid tecknandet (`paymentInterval`, se [Policyer](policyer.md#teckna-en-policy)), annars produktens förval (`billing.defaultPaymentInterval`, se [Produktkonfiguration](produktkonfiguration.md#produkter-och-produktversioner)). Vid förnyelse behålls förra termens intervall om produkten fortfarande tillåter det, och annars gäller förvalet.
 - **Den första premien** räknas från den dag policyn tecknades, eftersom försäkringsbrevet och avin går ut samtidigt. I Sverige förfaller den fjorton dagar senare, men aldrig före termens början.
 - **Skatten** kommer från marknadens regler (`BILLING_MARKET_RULES`). Sverige har ingen skatt på premien. En marknad utan regler ger ett fel som reläet försöker igen, så att ingen plan görs med fel regler.
 - Samma händelse två gånger ger bara en plan.

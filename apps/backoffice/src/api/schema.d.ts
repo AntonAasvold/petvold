@@ -4253,6 +4253,8 @@ export interface components {
             /** @description A group the policy joins from its start; gives the group discount. */
             groupId?: string;
             campaignCode?: string;
+            /** @description How often the customer pays (ADR 0040), one of the product's billing.paymentIntervals. Omitted: the product's default. Another gives 422. */
+            paymentInterval?: components["schemas"]["PaymentInterval"];
         };
         /**
          * @description - policy-confirmation: the written confirmation after issue (SE: FAL 2 kap. 4 §), schema policy-confirmation.v1
@@ -4689,6 +4691,8 @@ export interface components {
             /** @description A group the policy joins from its start; gives the group discount. */
             groupId?: string;
             campaignCode?: string;
+            /** @description How often the customer pays (ADR 0040), one of the product's billing.paymentIntervals. Omitted: the product's default. Another gives 422. */
+            paymentInterval?: components["schemas"]["PaymentInterval"];
             /** @description An answer to every question for the animal's species (GET /v1/application-questions). */
             answers: components["schemas"]["UnderwritingAnswer"][];
         };
@@ -4744,6 +4748,7 @@ export interface components {
             };
             groupId?: string;
             campaignCode?: string;
+            paymentInterval?: components["schemas"]["PaymentInterval"];
             acceptance: components["schemas"]["Acceptance"];
             /** @description The premium for the term the customer applied at. */
             premium: {
@@ -4904,6 +4909,8 @@ export interface components {
             issue?: {
                 acceptance: components["schemas"]["Acceptance"];
                 applicationId?: string;
+                /** @description How often the customer chose to pay (ADR 0040). Omitted: issued before the choice existed. */
+                paymentInterval?: components["schemas"]["PaymentInterval"];
             };
             cancellation?: {
                 reason: components["schemas"]["CancellationReason"];

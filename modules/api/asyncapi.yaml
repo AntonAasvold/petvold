@@ -748,6 +748,7 @@ components:
         startDate: { $ref: '#/components/schemas/Date' }
         endDate: { $ref: '#/components/schemas/Date', description: Exclusive. }
         premium: { $ref: '#/components/schemas/Money' }
+        paymentInterval: { type: string, enum: [year, half-year, quarter, month], description: 'How often the customer chose to pay (ADR 0040).' }
         applicationId: { type: string, pattern: '^app_[A-Za-z0-9]+$' }
     PolicyChangedData:
       type: object
