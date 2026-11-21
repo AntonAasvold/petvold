@@ -24,10 +24,12 @@ Alla tre kräver `billing:read` (rollen `billing-clerk`). Kundportalen (`custome
 
 ## Fakturor
 
-**Faktureringen** är körningen `billing.invoicing` ([Körningar](korningar.md)), som går klockan 04:00 varje dag i varje marknad, efter förnyelsen. Den tar varje delbetalning som inte fakturerats och som förfaller inom planens framförhållning (`billing.invoiceLeadDays`, förval 20 dagar). Allt för samma betalarkonto hamnar på **en faktura**, också när kunden har flera policyer med olika intervall.
+**Faktureringen** är körningen `billing.invoicing` ([Körningar](korningar.md)), som går klockan 04:00 varje dag i varje marknad, efter förnyelsen. Den tar varje delbetalning som inte fakturerats och som förfaller inom planens framförhållning (`billing.invoiceLeadDays`, förval 31 dagar). Allt för samma betalarkonto hamnar på **en faktura**, också när kunden har flera policyer med olika intervall.
 
-- **Fakturans förfallodag** är den tidigaste radens.
-- **Den första premien** för en ny policy förfaller tidigast fjorton dagar efter fakturan (FAL 5 kap. 1 §), även om planen säger tidigare. En faktura som skickas en vecka sent förfaller alltså en vecka senare. Har fakturan en första premie förfaller hela fakturan tidigast då.
+- **Fakturans förfallodag** är den tidigaste radens, men aldrig tidigare än lagen tillåter för någon rad (FAL 5 kap. 1 §):
+  - **Den första premien** för en ny policy förfaller tidigast fjorton dagar efter fakturan.
+  - **En senare premie**, också vid förnyelse, förfaller tidigast en månad efter fakturan.
+- **Förvalet 31 dagar** gör att en senare premie normalt förfaller på periodens första dag, eftersom en månad aldrig är längre än 31 dagar. En kortare framförhållning, eller en körning som inte gått på några dagar, flyttar förfallodagen framåt. Den flyttas aldrig bakåt.
 - **En delbetalning faktureras bara en gång.** Två körningar samtidigt kan inte fakturera samma delbetalning.
 - **En faktura ändras aldrig.** En rättelse blir en kreditnota (steg 5).
 - **En provkörning** (`dryRun`) visar vilka fakturor som skulle göras utan att spara något.
@@ -41,7 +43,9 @@ Alla tre kräver `billing:read` (rollen `billing-clerk`). Kundportalen (`custome
 | Sverige | OCR för Bankgirot: fakturans år och nummer, en längdsiffra (referensens längd modulo 10) och en kontrollsiffra enligt Luhn (modulo 10). Banken kan då vägra en referens med en siffra för mycket eller för lite. | `202600000121` |
 | EUR-marknader | RF-referens enligt ISO 11649: `RF`, två kontrollsiffror (modulo 97) och fakturans år och nummer | `RF422026000001` |
 
-**Exempel:** Anna tecknar en hundförsäkring den 22 november 2026 som börjar den 25 november och betalas per månad med 400 kr. Faktureringen den 22 november gör faktura `SE-2026-000001` på 400 kr som förfaller den 6 december. Hon tecknar en kattförsäkring som börjar den 15 december. Faktureringen den 12 december tar hundens andra månad (förfaller den 25 december) och kattens första månad på samma faktura, `SE-2026-000002`. Kattens första premie får inte förfalla förrän fjorton dagar efter fakturan, så hela fakturan förfaller den 26 december.
+**Exempel:** Anna tecknar en hundförsäkring den 22 november 2026 som börjar den 25 november och betalas per månad med 400 kr. Faktureringen samma dag gör faktura `SE-2026-000001` på 400 kr. Den förfaller den 6 december, fjorton dagar efter fakturan. Faktureringen den 24 november tar hundens andra månad, som då förfaller om 31 dagar, och den förfaller på sin dag, den 25 december. Det är mer än en månad efter fakturan.
+
+Hade körningen stått still och den andra månaden fakturerats först den 10 december, hade den förfallit den 10 januari, en månad efter fakturan och inte den 25 december.
 
 | Anrop | Vad det ger |
 | --- | --- |

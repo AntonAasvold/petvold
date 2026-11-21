@@ -8,12 +8,12 @@
  * product's billing settings, the policyholder at renewal) through ports.
  */
 import { addDays, marketDate, type ISODate, type Timestamp } from '@petvold/common';
-import { PAYMENT_INTERVALS, paymentReference, premiumPlan, type PaymentInterval, type PlanInput, type PremiumPlan, type ReferenceType } from '@petvold/billing-core';
+import { PAYMENT_INTERVALS, addMonths, paymentReference, premiumPlan, type PaymentInterval, type PlanInput, type PremiumPlan, type ReferenceType } from '@petvold/billing-core';
 
 export { PAYMENT_INTERVALS, type PaymentInterval, type PlanInput, type PremiumPlan, type ReferenceType } from '@petvold/billing-core';
 
 /** Days before an installment is due that it goes on an invoice, when the plan does not say (ADR 0040, punkt 5). */
-export const DEFAULT_INVOICE_LEAD_DAYS = 20;
+export const DEFAULT_INVOICE_LEAD_DAYS = 31;
 
 /**
  * The law on premiums per market (ADR 0040), shipped with Petvold like the
@@ -24,6 +24,8 @@ export interface BillingMarketRules {
   market: string;
   /** Days from sending the notice that the first premium is due, never before the term starts. */
   firstPremiumDays: number;
+  /** Months from sending the invoice that a later premium is due at the earliest, also at renewal. */
+  laterPremiumMonths: number;
   /** Tax on the premium in basis points. 0: none. */
   premiumTaxBp: number;
   /** The invoice's payment reference: OCR for Bankgirot, or RF (ISO 11649) in EUR markets. */
@@ -35,10 +37,12 @@ export const BILLING_MARKET_RULES: Record<string, BillingMarketRules> = {
   SE: {
     market: 'SE',
     firstPremiumDays: 14,
+    laterPremiumMonths: 1,
     premiumTaxBp: 0,
     paymentReference: 'ocr',
     sources: [
-      'Insurance Contracts Act (2005:104) chapter 5 section 1: the first premium within fourteen days of the notice, never before the insurance period starts',
+      'Insurance Contracts Act (2005:104) chapter 5 section 1 first paragraph: the first premium need not be paid earlier than fourteen days after the demand was sent',
+      'Insurance Contracts Act chapter 5 section 1 second and third paragraphs: a later premium period, and a renewal, need not be paid earlier than a month after the demand was sent',
       'Sweden has no tax on non-life insurance premiums for pets',
       'Bankgirot, OCR reference control: a reference with a length digit and a mod 10 check digit',
       'Accounting Act (1999:1078) chapter 5 section 7: invoices numbered in an unbroken series',
@@ -107,7 +111,7 @@ export interface Invoice {
   market: string;
   currency: string;
   issueDate: ISODate;
-  /** The earliest line's due date, but never before a new policy's first premium on it may be due. */
+  /** The earliest line's due date, but never before any line on it may be due by law. */
   dueDate: ISODate;
   reference: { type: ReferenceType; value: string };
   lines: InvoiceLine[];
@@ -338,8 +342,9 @@ export class BillingService {
   /**
    * The invoicing run for one market (ADR 0040, punkt 5): every installment not
    * yet invoiced that is due within its plan's lead time goes on one invoice
-   * per payer account. The first premium of a new policy is due at the
-   * earliest the market's days after the invoice is issued (FAL 5 kap. 1 §).
+   * per payer account. By law (in Sweden FAL 5 kap. 1 §) the first premium of
+   * a new policy is due at the earliest fourteen days after the invoice, and a
+   * later premium a month after; the invoice is never due before any of its lines.
    * A dry run says what would be invoiced and stores nothing. A plan whose
    * installment another run invoiced meanwhile is left for the next run.
    */
@@ -350,8 +355,8 @@ export class BillingService {
     const invoiced = await this.d.store.invoicedSeqs(plans.map((p) => p.id));
     const byAccount = new Map<string, InvoiceLine[]>();
     const dueOf = new Map<InvoiceLine, ISODate>();
-    /** A new policy's first premium: never due before the market's days after the invoice. */
-    const firstPremiumMin = new Map<InvoiceLine, ISODate>();
+    /** The law's earliest due date per line, counted from the invoice: days for a first premium, months for a later one. */
+    const minDue = new Map<InvoiceLine, ISODate>();
     for (const p of plans) {
       const horizon = addDays(input.onDate, p.invoiceLeadDays ?? DEFAULT_INVOICE_LEAD_DAYS);
       const done = invoiced.get(p.id) ?? new Set<number>();
@@ -359,9 +364,9 @@ export class BillingService {
         if (done.has(i.seq) || i.dueDate > horizon) continue;
         const line: InvoiceLine = { planId: p.id, policyId: p.policyId, termNo: p.termNo, seq: i.seq, periodStart: i.periodStart, periodEnd: i.periodEnd, premium: i.premium, tax: i.tax, fee: i.fee, amount: i.amount };
         const first = i.seq === 1 && p.input.firstPremium;
-        const min = first ? addDays(input.onDate, p.input.firstPremium!.payWithinDays) : undefined;
-        if (min) firstPremiumMin.set(line, min);
-        dueOf.set(line, min ? maxDate(i.dueDate, min) : i.dueDate);
+        const min = first ? addDays(input.onDate, p.input.firstPremium!.payWithinDays) : addMonths(input.onDate, rules.laterPremiumMonths);
+        minDue.set(line, min);
+        dueOf.set(line, maxDate(i.dueDate, min));
         byAccount.set(p.accountId, [...(byAccount.get(p.accountId) ?? []), line]);
       }
     }
@@ -371,8 +376,8 @@ export class BillingService {
       const planned: PlannedInvoice = {
         accountId,
         issueDate: input.onDate,
-        // The earliest line's, but never before a first premium on it may be due.
-        dueDate: [lines.map((l) => dueOf.get(l)!).sort()[0]!, ...lines.flatMap((l) => (firstPremiumMin.has(l) ? [firstPremiumMin.get(l)!] : []))].sort().at(-1)!,
+        // The earliest line's, but never before any line on it may be due by law.
+        dueDate: [lines.map((l) => dueOf.get(l)!).sort()[0]!, ...lines.map((l) => minDue.get(l)!)].sort().at(-1)!,
         lines,
         total: lines.reduce((s, l) => s + l.amount, 0),
       };

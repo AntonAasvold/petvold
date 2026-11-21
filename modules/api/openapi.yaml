@@ -6008,7 +6008,7 @@ components:
               default: year
               description: The interval when none is chosen. One of paymentIntervals.
             installmentFee: { type: integer, minimum: 0, maximum: 100000, default: 0, description: 'A fee per installment in minor units of the product''s currency, taken only when the interval is shorter than a year.' }
-            invoiceLeadDays: { type: integer, minimum: 1, maximum: 60, default: 20, description: 'Days before an installment is due that the invoicing run puts it on an invoice.' }
+            invoiceLeadDays: { type: integer, minimum: 1, maximum: 60, default: 31, description: 'Days before an installment is due that the invoicing run puts it on an invoice. A later premium is due at the earliest a month after the invoice (SE: FAL 5 kap. 1 §), so a shorter lead moves its due date.' }
         vetCare:
           type: object
           additionalProperties: false
@@ -6409,7 +6409,7 @@ components:
         market: { $ref: '#/components/schemas/Market' }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
         issueDate: { type: string, format: date }
-        dueDate: { type: string, format: date, description: "The earliest line's due date. A new policy's first premium is due at the earliest the market's days after the invoice (SE: 14, FAL 5 kap. 1 §)." }
+        dueDate: { type: string, format: date, description: "The earliest line's due date, but never before any line may be due by law: a new policy's first premium fourteen days after the invoice, a later premium a month after (SE: FAL 5 kap. 1 §)." }
         reference:
           type: object
           additionalProperties: false
@@ -6482,7 +6482,7 @@ components:
                 noticeSentOn: { type: string, format: date }
                 payWithinDays: { type: integer, minimum: 0 }
         plan: { $ref: '#/components/schemas/PremiumPlan' }
-        invoiceLeadDays: { type: integer, minimum: 1, maximum: 60, description: "The product's lead time when the plan was made. Omitted: 20." }
+        invoiceLeadDays: { type: integer, minimum: 1, maximum: 60, description: "The product's lead time when the plan was made. Omitted: 31." }
         createdAt: { type: string, format: date-time }
 
     PremiumPlan:

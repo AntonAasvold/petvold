@@ -153,9 +153,9 @@ test('billing settings have defaults and limits (ADR 0040)', async () => {
   const s = setup();
   const withBilling = (billing: Record<string, unknown>) => draft({ content: { ...content(), billing } as never });
   const v = await s.createDraft('XX-DOG-VC', draft(), author);
-  assert.deepEqual(billingSettingsOf(v.content), { paymentIntervals: ['year'], defaultPaymentInterval: 'year', installmentFee: 0, invoiceLeadDays: 20 });
+  assert.deepEqual(billingSettingsOf(v.content), { paymentIntervals: ['year'], defaultPaymentInterval: 'year', installmentFee: 0, invoiceLeadDays: 31 });
   const monthly = await s.createDraft('XX-DOG-M', withBilling({ paymentIntervals: ['year', 'month'], defaultPaymentInterval: 'month', installmentFee: 2_900 }), author);
-  assert.deepEqual(billingSettingsOf(monthly.content), { paymentIntervals: ['year', 'month'], defaultPaymentInterval: 'month', installmentFee: 2_900, invoiceLeadDays: 20 });
+  assert.deepEqual(billingSettingsOf(monthly.content), { paymentIntervals: ['year', 'month'], defaultPaymentInterval: 'month', installmentFee: 2_900, invoiceLeadDays: 31 });
   await rejects(s.createDraft('XX-DOG-X', withBilling({ paymentIntervals: [] }), author), 'validation', /paymentIntervals/);
   await rejects(s.createDraft('XX-DOG-X', withBilling({ paymentIntervals: ['week'] }), author), 'validation', /paymentIntervals/);
   await rejects(s.createDraft('XX-DOG-X', withBilling({ paymentIntervals: ['year', 'year'] }), author), 'validation', /twice/);

@@ -119,11 +119,12 @@ test('the invoicing run: one invoice per account with what is due within the lea
   assert.equal(inv.reference.value, '202600000121');
   // The next day nothing new is due within the lead time.
   assert.equal((await service.invoicingRun({ market: 'SE', onDate: '2026-11-23', dryRun: false }, 'scheduler')).invoices.length, 0);
-  // On 12 December: pol_1's second installment (25 December) and pol_2's first premium, which may not be due before
-  // 26 December, fourteen days after this invoice. The invoice is due then.
+  // On 12 December: pol_1's second installment (25 December) and pol_2's first premium. A later premium may not be
+  // due before a month after the invoice, 12 January, and the first premium not before 26 December (FAL 5 kap. 1 §).
+  // A lead of 20 days is shorter than the law's month, so the invoice is due 12 January.
   const dec = await service.invoicingRun({ market: 'SE', onDate: '2026-12-12', dryRun: false }, 'scheduler');
   const second = await service.invoice(dec.invoices[0]!.invoiceId!);
-  assert.deepEqual([second.number, second.lines.map((l) => `${l.policyId}#${l.seq}`), second.dueDate, second.total], ['SE-2026-000002', ['pol_1#2', 'pol_2#1'], '2026-12-26', 60_000]);
+  assert.deepEqual([second.number, second.lines.map((l) => `${l.policyId}#${l.seq}`), second.dueDate, second.total], ['SE-2026-000002', ['pol_2#1', 'pol_1#2'], '2027-01-12', 60_000]);
   assert.deepEqual((await service.invoices({ policyId: 'pol_2' })).map((i) => i.number), ['SE-2026-000002']);
 });
 

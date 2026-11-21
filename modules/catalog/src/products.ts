@@ -80,11 +80,11 @@ export interface BillingSettings {
   defaultPaymentInterval?: PaymentInterval;
   /** A fee per installment in minor units, taken only when the interval is shorter than a year. Default 0. */
   installmentFee?: number;
-  /** Days before an installment is due that it goes on an invoice. Default 20. */
+  /** Days before an installment is due that it goes on an invoice. Default 31: a month is never longer, so a later premium can be due on its day a month after the invoice (FAL 5 kap. 1 §). */
   invoiceLeadDays?: number;
 }
 
-export const BILLING_SETTING_DEFAULTS: Required<BillingSettings> = { paymentIntervals: ['year'], defaultPaymentInterval: 'year', installmentFee: 0, invoiceLeadDays: 20 };
+export const BILLING_SETTING_DEFAULTS: Required<BillingSettings> = { paymentIntervals: ['year'], defaultPaymentInterval: 'year', installmentFee: 0, invoiceLeadDays: 31 };
 
 /** The product's billing settings with defaults filled in. Pure. */
 export function billingSettingsOf(c: ProductContent): Required<BillingSettings> {
