@@ -5982,6 +5982,7 @@ components:
       type: object
       additionalProperties: false
       properties:
+        documentMaker: { type: string, enum: [insurer, petvold], description: 'Who makes the notices'' documents (ADR 0038). Omitted: insurer, the insurer''s document system. petvold: Petvold makes the PDF of the types it has templates for (claim-decision, policy-confirmation) when the notice is made, and the notice gets it as document; other types stay with the insurer. Needs a PDF renderer (PETVOLD_GOTENBERG_URL), else 422.' }
         promptlyDays: { type: integer, minimum: 1, maximum: 30, description: 'Days that "promptly" gives. Omitted: Petvold''s default (SE: 3).' }
         disabledTypes: { type: array, items: { $ref: '#/components/schemas/NoticeType' }, description: Types the law does not require that are not made. }
         texts:
@@ -6059,6 +6060,16 @@ components:
         overdue: { type: boolean, description: Not sent and dueBy has passed. }
         incomplete: { type: array, items: { type: string }, description: 'Texts the insurer''s settings lacked when it was made, e.g. review. Unsent, it is in the queue (attention=true).' }
         settingsVersion: { type: integer, minimum: 1, description: 'The version of the notice settings it was made with. Omitted: made before the settings existed.' }
+        documentMaker: { type: string, enum: [insurer, petvold], description: 'Who makes its document, from the market''s setting when it was made (ADR 0038).' }
+        document:
+          type: object
+          required: [id, sha256, madeBy, madeAt]
+          description: 'documentMaker petvold: the PDF Petvold made, in its archive (GET /v1/documents/{id}). notice.document_made says when it is there; send it, then report the delivery without documentId and sha256.'
+          properties:
+            id: { type: string, pattern: '^doc_[A-Za-z0-9_]+$' }
+            sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+            madeBy: { type: string }
+            madeAt: { $ref: '#/components/schemas/DateTime' }
         createdAt: { $ref: '#/components/schemas/DateTime' }
         deliveries:
           type: array
@@ -6086,8 +6097,8 @@ components:
         outcome: { type: string, enum: [sent, failed] }
         channel: { type: string, enum: [letter, email, digital-mailbox, customer-portal], description: Required when sent. }
         sentAt: { $ref: '#/components/schemas/DateTime', description: 'When it was sent. Required when sent; not in the future.' }
-        documentId: { type: string, maxLength: 200, description: The document's id in the insurer's archive. Required when sent. }
-        sha256: { type: string, pattern: '^[0-9a-fA-F]{64}$', description: sha256 of the document's bytes. Required when sent. }
+        documentId: { type: string, maxLength: 200, description: 'The document''s id in the insurer''s archive. Required when sent, unless Petvold made the document (documentMaker petvold): then omitted, and Petvold''s document is recorded.' }
+        sha256: { type: string, pattern: '^[0-9a-fA-F]{64}$', description: 'sha256 of the document''s bytes. Required when sent, unless Petvold made the document.' }
         reason: { type: string, maxLength: 500, description: 'Why it failed, e.g. a missing address. Required when failed. No personal data.' }
 
     AcceptanceInput:

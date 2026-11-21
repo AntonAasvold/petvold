@@ -32,4 +32,7 @@ test('notice settings: days 1-30, a reason, and empty fields left out', () => {
   assert.deepEqual(noticeSettingsProblems({ ...f, promptlyDays: '31' }, ''), ['settings.badPromptly', 'settings.needReason']);
   assert.deepEqual(noticeMarketSettings(f), { promptlyDays: 5, disabledTypes: ['transfer-offer'], texts: { sv: { sender: 'Exempelbolaget' } } });
   assert.deepEqual(noticeMarketSettings({ promptlyDays: '', disabledTypes: [], texts: {} }), {});
+  // The insurer's document system is the default and is left out (ADR 0038).
+  assert.deepEqual(noticeMarketSettings({ documentMaker: 'insurer', promptlyDays: '', disabledTypes: [], texts: {} }), {});
+  assert.deepEqual(noticeMarketSettings({ documentMaker: 'petvold', promptlyDays: '', disabledTypes: [], texts: {} }), { documentMaker: 'petvold' });
 });

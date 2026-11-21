@@ -4,13 +4,15 @@
  * so notices and deliveries never change.
  */
 import type pg from 'pg';
-import { NoticeConflictError, type Delivery, type Notice, type NoticeEvent, type NoticeFilter, type NoticeSettings, type NoticeSettingsStore, type NoticeStore } from './index.ts';
+import { NoticeConflictError, type Delivery, type NoticeDocument, type Notice, type NoticeEvent, type NoticeFilter, type NoticeSettings, type NoticeSettingsStore, type NoticeStore } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
 const FOREIGN_KEY_VIOLATION = '23503';
 
 const NOTICE = `n.notice_id, n.type, n.schema, n.market, n.recipient_party_id, n.language, n.policy_id, n.application_id,
-  n.source_event_id, n.source_event_type, n.source_occurred_at, n.legal_basis, n.due_by::text as due_by, n.content, n.settings_version, n.created_at,
+  n.source_event_id, n.source_event_type, n.source_occurred_at, n.legal_basis, n.due_by::text as due_by, n.content, n.settings_version, n.document_maker, n.created_at,
+  (select json_build_object('id', x.document_id, 'sha256', x.sha256, 'madeBy', x.made_by, 'madeAt', x.made_at)
+    from communications.notice_document x where x.notice_id = n.notice_id) as document,
   coalesce((select json_agg(json_build_object(
       'id', d.delivery_id, 'outcome', d.outcome, 'channel', d.channel, 'sentAt', d.sent_at, 'documentId', d.document_id,
       'sha256', d.sha256, 'reason', d.reason, 'reportedBy', d.reported_by, 'reportedAt', d.reported_at)
@@ -49,8 +51,8 @@ export class PostgresNoticeStore implements NoticeStore {
   private async insertNotice(db: pg.PoolClient, n: Notice): Promise<boolean> {
     const r = await db.query(
       `insert into communications.notice (notice_id, type, schema, market, recipient_party_id, language, policy_id, application_id,
-         source_event_id, source_event_type, source_occurred_at, legal_basis, due_by, content, settings_version, created_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+         source_event_id, source_event_type, source_occurred_at, legal_basis, due_by, content, settings_version, document_maker, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        on conflict (source_event_id, type) do nothing`,
       [
         n.id,
@@ -68,6 +70,7 @@ export class PostgresNoticeStore implements NoticeStore {
         n.dueBy,
         JSON.stringify(n.content),
         n.settingsVersion ?? null,
+        n.documentMaker ?? 'insurer',
         n.createdAt,
       ],
     );
@@ -120,6 +123,23 @@ export class PostgresNoticeStore implements NoticeStore {
       });
   }
 
+  async addDocument(noticeId: string, doc: NoticeDocument, events: NoticeEvent[]): Promise<void> {
+    await this.tx(async (db) => {
+      await db.query(`insert into communications.notice_document (notice_id, document_id, sha256, made_by, made_at) values ($1, $2, $3, $4, $5)`, [
+        noticeId,
+        doc.id,
+        doc.sha256,
+        doc.madeBy,
+        doc.madeAt,
+      ]);
+      await insertEvents(db, events);
+    }).catch((e: { code?: string }) => {
+      if (e.code === FOREIGN_KEY_VIOLATION) throw new NoticeConflictError(`Notice ${noticeId} does not exist`);
+      if (e.code === UNIQUE_VIOLATION) throw new NoticeConflictError(`Notice ${noticeId} has its document already`);
+      throw e;
+    });
+  }
+
   async pendingEvents(limit: number): Promise<NoticeEvent[]> {
     const { rows } = await this.pool.query(
       `select event_id, type, notice_id, market, occurred_at, data from communications.outbox where published_at is null order by seq limit $1`,
@@ -161,6 +181,8 @@ function toNotice(r: Record<string, any>): Notice {
     dueBy: r.due_by,
     content: r.content,
     ...(r.settings_version === null ? {} : { settingsVersion: r.settings_version }),
+    documentMaker: r.document_maker,
+    ...(r.document ? { document: { id: r.document.id, sha256: r.document.sha256, madeBy: r.document.madeBy, madeAt: iso(r.document.madeAt) } } : {}),
     createdAt: iso(r.created_at),
     deliveries: (r.deliveries as Record<string, any>[]).map((d) => ({
       id: d.id,

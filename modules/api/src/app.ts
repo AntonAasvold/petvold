@@ -57,6 +57,7 @@ import {
   type ScopeAttributes,
 } from './permissions.ts';
 import { DocumentError, DocumentService, InMemoryBlobStore, InMemoryDocumentStore, MAX_UPLOAD_BYTES, sha256, type StoredDocument } from '@petvold/documents';
+import { makeNoticePdf } from './notice-pdf.ts';
 import { localizeDeep, localizeExplanation, pickLocale, renderRule, type Locale } from './messages.ts';
 
 /**
@@ -1493,32 +1494,9 @@ export function createApp(d: AppDeps) {
     const n = await visibleNotice(c);
     const r = await readJson(c, 'Empty');
     if (!r.ok) return r.res;
-    const recipient = await parties.get(n.recipientPartyId).catch(() => null);
-    const name = recipient ? (recipient.name ?? [recipient.givenName, recipient.familyName].filter(Boolean).join(' ')) : '';
-    const address = recipient?.address ? [recipient.address.street, `${recipient.address.postalCode} ${recipient.address.city}`] : [];
-    const animalId = typeof n.content.animalId === 'string' ? n.content.animalId : undefined;
-    const animal = animalId ? await animals.get(animalId).catch(() => null) : null;
-    const locale: Locale = n.language === 'sv' ? 'sv' : 'en';
     return idempotent(c, { noticeId: n.id }, async () => ({
       status: 201,
-      body: await documents.generate(
-        {
-          template: n.type,
-          market: n.market,
-          language: n.language,
-          data: n.content,
-          context: {
-            now: d.clock.now(),
-            ...(recipient ? { recipient: { name, addressLines: address } } : {}),
-            ...(typeof n.content.sender === 'string' ? { sender: n.content.sender } : {}),
-            ...(animal ? { animalName: animal.name } : {}),
-            reason: (x) => renderRule(x, locale),
-          },
-          owner: { noticeId: n.id, ...(n.policyId ? { policyId: n.policyId } : {}), ...(typeof n.content.claimId === 'string' ? { claimId: n.content.claimId } : {}) },
-          partyIds: [n.recipientPartyId],
-        },
-        c.get('principal').subject,
-      ),
+      body: await makeNoticePdf({ documents, communications, parties, animals, clock: d.clock }, n, c.get('principal').subject),
     }));
   });
 
@@ -1553,6 +1531,8 @@ export function createApp(d: AppDeps) {
           mediaType: doc.mediaType,
           size: doc.size,
           sha256: doc.sha256,
+          // A notice's PDF names its notice; the template is named after the notice type.
+          ...(doc.owner.noticeId ? { noticeId: doc.owner.noticeId, ...(doc.template ? { noticeType: doc.template.name } : {}) } : {}),
           ...(kindOf.get(doc.id) ? { kind: kindOf.get(doc.id) } : {}),
           ...(doc.filename ? { filename: doc.filename } : {}),
           ...(doc.owner.claimId ? { claimId: doc.owner.claimId } : {}),
@@ -1568,6 +1548,8 @@ export function createApp(d: AppDeps) {
     if (can(c, 'notices:read')) {
       for (const n of await communications.list({ recipientPartyId: party.id })) {
         if (!seesNotice(scope, n)) continue;
+        // A PDF Petvold made is in its archive and in the list already.
+        if (n.document) continue;
         const sent = n.deliveries.find((x) => x.outcome === 'sent' && x.documentId);
         if (!sent) continue;
         out.push({

@@ -18,7 +18,7 @@ Bolagets system kan få veta när något händer i Petvold, utan att fråga. En 
 | Förslag | `proposal.created`: överlåtelse till en ny ägare, eller avslut när djuret dött | policyns id |
 | Skador | `claim.registered`, `claim.decision_proposed`, `claim.proposal_returned`, `claim.decided`, `claim.payout_ordered`, `claim.review_requested`, `claim.withdrawn`, `claim.dismissed`, `claim.corrected`, `claim.attachment_added`, `claim.information_requested`, `claim.information_reminded`, `claim.information_received`, `claim.information_expired`, `claim.information_cancelled` | skadans id |
 | Djur | `animal.ownership_changed`, `animal.died` | djurets id |
-| Kundmeddelanden | `notice.created`, `notice.delivered`, `notice.failed` | meddelandets id |
+| Kundmeddelanden | `notice.created`, `notice.document_made`, `notice.delivered`, `notice.failed` | meddelandets id |
 | Körningar | `job.failed`: körning, startsätt och start, aldrig felet (ADR 0037) | körningens id |
 
 En prenumeration anger typer som `*` (alla), en grupp (`policy.*`) eller en enskild typ (`application.declined`).

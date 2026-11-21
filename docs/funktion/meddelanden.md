@@ -12,7 +12,7 @@ Lagen kräver att kunden får vissa besked, till exempel ett försäkringsbrev n
 
 Samma händelse ger aldrig två meddelanden av samma typ, även om den levereras flera gånger.
 
-**Dokumentsystemet kan få veta direkt** i stället för att fråga. Det prenumererar då på `notice.created` med [webhooks](webhooks.md), och `notice.delivered` och `notice.failed` säger när ett utskick har rapporterats.
+**Dokumentsystemet kan få veta direkt** i stället för att fråga. Det prenumererar då på `notice.created` med [webhooks](webhooks.md), och `notice.delivered` och `notice.failed` säger när ett utskick har rapporterats. När Petvold gör dokumentet (`documentMaker: petvold`) säger `notice.document_made` att PDF:en finns i Petvolds arkiv. Läs mer i [Dokument](dokument.md#petvold-gör-breven-automatiskt).
 
 ## Typer
 
@@ -94,6 +94,7 @@ POST /v1/notices/ntc_7f3a…/deliveries
 - `channel` är `letter`, `email`, `digital-mailbox` eller `customer-portal`.
 - `documentId` är dokumentets id i bolagets arkiv, och `sha256` är dokumentets kontrollsumma. Då går det att visa senare exakt vilket dokument kunden fick.
 - `sentAt` får inte ligga i framtiden eller före meddelandet skapades.
+- **När Petvold gjorde dokumentet** (`documentMaker: petvold`) utelämnas `documentId` och `sha256`. Petvold fyller i sitt dokument. Innan PDF:en finns ger rapporten `409`.
 
 **Misslyckat:**
 
@@ -123,6 +124,7 @@ Bolagets val och texter ligger i en versionerad inställning per marknad (ADR 00
 
 | Fält | Betyder | Exempel |
 | --- | --- | --- |
+| `documentMaker` | Vem som gör dokumenten: `insurer` (förval, bolagets dokumentsystem) eller `petvold` (Petvold gör PDF av skadebesked och försäkringsbrev när meddelandet skapas). `petvold` kräver Gotenberg. | `"petvold"` |
 | `promptlyDays` | Dagar som "snarast" ger, 1–30. Utelämnat: Petvolds förval, i Sverige 3. | 5 |
 | `disabledTypes` | Typer som lagen inte kräver och som inte ska skapas. En typ som lagen kräver kan inte stängas av. | `["cancellation-confirmation"]` |
 | `texts` | Texter per språk: `sender` (avsändaren) och `review` (hur ett beslut prövas). Ett meddelande får texterna på sitt språk, annars på marknadens. | se nedan |

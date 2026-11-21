@@ -224,6 +224,11 @@ export class NoticeDetail extends LitElement {
             <dd>${n.source.eventType}, ${formatDateTime(n.source.occurredAt, lang)}</dd>
             <dt>${msg('Schema', { id: 'notice.schema' })}</dt>
             <dd>${n.schema}</dd>
+            <dt>${msg('The document is made by', { id: 'notice.documentMaker' })}</dt>
+            <dd>
+              ${n.documentMaker === 'petvold' ? msg('Petvold', { id: 'settings.makerPetvold' }) : msg("The insurer's document system", { id: 'settings.makerInsurer' })}
+              ${n.documentMaker === 'petvold' && !n.document ? html`<span class="pv-badge pv-badge--pending">${msg('Not made yet', { id: 'notice.pdfPending' })}</span>` : nothing}
+            </dd>
           </dl>
         </wa-card>
         <wa-card>
@@ -266,7 +271,11 @@ export class NoticeDetail extends LitElement {
         <wa-select label=${msg('Channel', { id: 'claims.col.channel' })} value=${this.channel} @change=${(e: Event) => (this.channel = (e.target as HTMLSelectElement).value as Channel)}>
           ${CHANNELS.map((c) => html`<wa-option value=${c}>${c}</wa-option>`)}
         </wa-select>
-        ${this.outcome === 'sent'
+        ${this.outcome === 'sent' && this.notice?.documentMaker === 'petvold'
+          ? html`<p>${this.notice.document
+              ? msg("Petvold made the document: the report names only channel and time.", { id: 'notice.petvoldDocument' })
+              : msg('Petvold has not made the PDF yet. Make it above, then report.', { id: 'notice.petvoldPending' })}</p>`
+          : this.outcome === 'sent'
           ? html`<wa-input label=${msg("The document's id in the archive", { id: 'notice.documentId' })} .value=${this.documentId} @input=${(e: Event) => (this.documentId = (e.target as HTMLInputElement).value)}></wa-input>
               <wa-input label="sha256" .value=${this.sha256} @input=${(e: Event) => (this.sha256 = (e.target as HTMLInputElement).value)}></wa-input>`
           : html`<wa-input label=${msg('Why it failed, without personal data', { id: 'notice.failReason' })} .value=${this.reason} @input=${(e: Event) => (this.reason = (e.target as HTMLInputElement).value)}></wa-input>`}
@@ -279,7 +288,9 @@ export class NoticeDetail extends LitElement {
     e.preventDefault();
     this.busy = true;
     const body =
-      this.outcome === 'sent'
+      this.outcome === 'sent' && this.notice?.documentMaker === 'petvold'
+        ? { outcome: 'sent' as const, channel: this.channel, sentAt: new Date().toISOString() }
+        : this.outcome === 'sent'
         ? { outcome: 'sent' as const, channel: this.channel, sentAt: new Date().toISOString(), documentId: this.documentId.trim(), sha256: this.sha256.trim() }
         : { outcome: 'failed' as const, channel: this.channel, reason: this.reason.trim() };
     const r = await act(

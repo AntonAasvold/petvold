@@ -4064,6 +4064,11 @@ export interface components {
             createdAt: components["schemas"]["DateTime"];
         };
         MarketNoticeSettings: {
+            /**
+             * @description Who makes the notices' documents (ADR 0038). Omitted: insurer, the insurer's document system. petvold: Petvold makes the PDF of the types it has templates for (claim-decision, policy-confirmation) when the notice is made, and the notice gets it as document; other types stay with the insurer. Needs a PDF renderer (PETVOLD_GOTENBERG_URL), else 422.
+             * @enum {string}
+             */
+            documentMaker?: "insurer" | "petvold";
             /** @description Days that "promptly" gives. Omitted: Petvold's default (SE: 3). */
             promptlyDays?: number;
             /** @description Types the law does not require that are not made. */
@@ -4143,6 +4148,18 @@ export interface components {
             incomplete?: string[];
             /** @description The version of the notice settings it was made with. Omitted: made before the settings existed. */
             settingsVersion?: number;
+            /**
+             * @description Who makes its document, from the market's setting when it was made (ADR 0038).
+             * @enum {string}
+             */
+            documentMaker?: "insurer" | "petvold";
+            /** @description documentMaker petvold: the PDF Petvold made, in its archive (GET /v1/documents/{id}). notice.document_made says when it is there; send it, then report the delivery without documentId and sha256. */
+            document?: {
+                id: string;
+                sha256: string;
+                madeBy: string;
+                madeAt: components["schemas"]["DateTime"];
+            };
             createdAt: components["schemas"]["DateTime"];
             deliveries: components["schemas"]["Delivery"][];
         };
@@ -4169,9 +4186,9 @@ export interface components {
             channel?: "letter" | "email" | "digital-mailbox" | "customer-portal";
             /** @description When it was sent. Required when sent; not in the future. */
             sentAt?: components["schemas"]["DateTime"];
-            /** @description The document's id in the insurer's archive. Required when sent. */
+            /** @description The document's id in the insurer's archive. Required when sent, unless Petvold made the document (documentMaker petvold): then omitted, and Petvold's document is recorded. */
             documentId?: string;
-            /** @description sha256 of the document's bytes. Required when sent. */
+            /** @description sha256 of the document's bytes. Required when sent, unless Petvold made the document. */
             sha256?: string;
             /** @description Why it failed, e.g. a missing address. Required when failed. No personal data. */
             reason?: string;

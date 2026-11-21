@@ -170,8 +170,27 @@ export interface NoticeTexts {
   review?: string;
 }
 
+/** Who makes a notice's document (ADR 0038): the insurer's document system, or Petvold from its templates. */
+export const DOCUMENT_MAKERS = ['insurer', 'petvold'] as const;
+export type DocumentMaker = (typeof DOCUMENT_MAKERS)[number];
+
+/** The PDF Petvold made for a notice. Set once and never changed. */
+export interface NoticeDocument {
+  /** The document's id in Petvold's archive. */
+  id: string;
+  sha256: string;
+  madeBy: string;
+  madeAt: Timestamp;
+}
+
 /** The insurer's choices for a market. Laws cannot be weakened: required types cannot be turned off. */
 export interface MarketNoticeSettings {
+  /**
+   * Who makes the notices' documents. Omitted: insurer. With petvold, Petvold
+   * makes the PDF of the types it has templates for when the notice is made;
+   * other types stay with the insurer's document system.
+   */
+  documentMaker?: DocumentMaker;
   /** Days that "promptly" gives, 1-30. Omitted: the market rules' default. */
   promptlyDays?: number;
   /** Types the law does not require that the insurer does not want. */
@@ -218,6 +237,10 @@ export interface Notice {
   content: Record<string, unknown>;
   /** The version of the insurer's settings it was made with. Omitted: made before settings existed (migration 0032). */
   settingsVersion?: number;
+  /** Who makes its document, from the market's setting when it was made. Omitted: insurer. */
+  documentMaker?: DocumentMaker;
+  /** documentMaker petvold: the PDF, once Petvold has made it. */
+  document?: NoticeDocument;
   createdAt: Timestamp;
   deliveries: Delivery[];
 }
@@ -366,7 +389,7 @@ export interface NoticeFilter {
 /** What the module tells others (ADR 0008, 0033): a notice made, sent or failed. Written with the change. */
 export interface NoticeEvent {
   id: string;
-  type: 'notice.created' | 'notice.delivered' | 'notice.failed';
+  type: 'notice.created' | 'notice.document_made' | 'notice.delivered' | 'notice.failed';
   noticeId: string;
   market: string;
   occurredAt: Timestamp;
@@ -381,6 +404,8 @@ export interface NoticeStore {
   list(filter: NoticeFilter): Promise<Notice[]>;
   /** Stores the delivery and its events in one transaction. Throws NoticeConflictError if the notice does not exist. */
   addDelivery(noticeId: string, d: Delivery, events: NoticeEvent[]): Promise<void>;
+  /** Stores the notice's PDF and its events in one transaction. Throws NoticeConflictError if the notice does not exist or has a document. */
+  addDocument(noticeId: string, doc: NoticeDocument, events: NoticeEvent[]): Promise<void>;
   /** Unpublished events, oldest first. */
   pendingEvents(limit: number): Promise<NoticeEvent[]>;
   markPublished(ids: string[], at: Timestamp): Promise<void>;
@@ -428,6 +453,12 @@ export interface CommunicationsDeps {
   rules?: Record<string, MarketNoticeRules>;
   /** Version 1 of the settings. Defaults to an empty setting per market with rules. */
   defaults?: Record<string, MarketNoticeSettings>;
+  /**
+   * Whether Petvold has a template for a type in a market (ADR 0038).
+   * Omitted: Petvold makes no documents, e.g. without a PDF renderer, and the
+   * setting petvold is refused.
+   */
+  petvoldTemplates?: (type: NoticeType, market: string) => boolean;
 }
 
 const INSURER_REASONS = new Set(['insurer-term-end', 'insurer-breach', 'unpaid-premium']);
@@ -546,6 +577,8 @@ export class CommunicationsService {
       rule.due === 'promptly' ? addDays(eventDate, ms.promptlyDays ?? rules.promptlyDays) : rule.due === 'term-start' ? planned.termStart! : planned.sentOn!;
     const wanted = new Set<string>(['sender', ...(REQUIRED_TEXTS[planned.type] ?? [])]);
     const fromSettings = Object.fromEntries(Object.entries(texts).filter(([k, v]) => wanted.has(k) && v));
+    // Petvold makes the document only of the types it has templates for; the rest stay with the insurer.
+    const documentMaker: DocumentMaker = ms.documentMaker === 'petvold' && this.d.petvoldTemplates?.(planned.type, planned.market) ? 'petvold' : 'insurer';
     const notice: Notice = {
       id: this.d.ids.next('ntc'),
       type: planned.type,
@@ -560,6 +593,7 @@ export class CommunicationsService {
       dueBy,
       content: { ...planned.content, ...fromSettings },
       settingsVersion: settings.version,
+      documentMaker,
       createdAt: this.d.clock.now(),
       deliveries: [],
     };
@@ -577,6 +611,7 @@ export class CommunicationsService {
         ...(notice.policyId ? { policyId: notice.policyId } : {}),
         ...(notice.applicationId ? { applicationId: notice.applicationId } : {}),
         dueBy: notice.dueBy,
+        documentMaker,
       },
     };
     return (await this.d.store.add(notice, [created])) ? notice : null;
@@ -715,6 +750,11 @@ export class CommunicationsService {
       const rules = this.rulesFor(market);
       if (!rules) fail(`Petvold has no notice rules for '${market}'`);
       const out: MarketNoticeSettings = {};
+      if (s.documentMaker !== undefined) {
+        if (!(DOCUMENT_MAKERS as readonly string[]).includes(s.documentMaker)) fail(`documentMaker must be one of ${DOCUMENT_MAKERS.join(', ')}`);
+        if (s.documentMaker === 'petvold' && !this.d.petvoldTemplates) fail('Petvold cannot make documents here: no PDF renderer is configured (PETVOLD_GOTENBERG_URL)');
+        if (s.documentMaker === 'petvold') out.documentMaker = 'petvold';
+      }
       if (s.promptlyDays !== undefined) {
         if (!Number.isInteger(s.promptlyDays) || s.promptlyDays < 1 || s.promptlyDays > 30) fail(`promptlyDays for ${market} must be 1-30`);
         out.promptlyDays = s.promptlyDays;
@@ -782,9 +822,18 @@ export class CommunicationsService {
       if (Number.isNaN(at)) fail('sentAt must be a timestamp');
       if (at > Date.parse(now) + 5 * 60_000) fail('sentAt cannot be in the future');
       if (at < Date.parse(n.createdAt) - 5 * 60_000) fail('sentAt cannot be before the notice was made');
-      const documentId = (input.documentId ?? '').trim();
+      let documentId = (input.documentId ?? '').trim();
+      let sha256 = input.sha256 ?? '';
+      if (n.documentMaker === 'petvold') {
+        // Petvold made the document: the report names only the channel and time (ADR 0038).
+        if (!n.document) throw new CommunicationsError('conflict', `Petvold has not made the document of notice ${noticeId} yet`);
+        if ((documentId && documentId !== n.document.id) || (sha256 && sha256.toLowerCase() !== n.document.sha256))
+          fail(`Petvold made this notice's document: omit documentId and sha256, or give ${n.document.id} and its checksum`);
+        documentId = n.document.id;
+        sha256 = n.document.sha256;
+      }
       if (!documentId || documentId.length > 200) fail('documentId is required: the document in the archive, at most 200 characters');
-      if (!/^[0-9a-fA-F]{64}$/.test(input.sha256 ?? '')) fail('sha256 must be the document\'s checksum, 64 hex digits');
+      if (!/^[0-9a-fA-F]{64}$/.test(sha256)) fail('sha256 must be the document\'s checksum, 64 hex digits');
       if (input.reason !== undefined) fail('reason is only for a failed delivery');
       d = {
         id: this.d.ids.next('ndl'),
@@ -792,7 +841,7 @@ export class CommunicationsService {
         channel: input.channel as DeliveryChannel,
         sentAt: new Date(at).toISOString(),
         documentId,
-        sha256: input.sha256!.toLowerCase(),
+        sha256: sha256.toLowerCase(),
         reportedBy: by,
         reportedAt: now,
       };
@@ -819,6 +868,33 @@ export class CommunicationsService {
       },
     };
     await this.d.store.addDelivery(noticeId, d, [event]).catch((e: unknown) => {
+      if (e instanceof NoticeConflictError) throw new CommunicationsError('conflict', e.message);
+      throw e;
+    });
+    return this.get(noticeId);
+  }
+
+  /**
+   * Records the PDF Petvold made for a notice whose document Petvold makes
+   * (ADR 0038). Once per notice; the document system is told by
+   * notice.document_made that it can be sent.
+   */
+  async addDocument(noticeId: string, doc: { id: string; sha256: string }, by: string): Promise<NoticeView> {
+    const n = await this.d.store.get(noticeId);
+    if (!n) throw new CommunicationsError('not_found', `Notice ${noticeId} does not exist`);
+    if (n.documentMaker !== 'petvold') throw new CommunicationsError('conflict', `The insurer's document system makes the document of notice ${noticeId}`);
+    if (n.document) throw new CommunicationsError('conflict', `Notice ${noticeId} has its document already`);
+    if (!/^[0-9a-f]{64}$/.test(doc.sha256)) throw new CommunicationsError('validation', 'sha256 must be 64 lower-case hex digits');
+    const made: NoticeDocument = { id: doc.id, sha256: doc.sha256, madeBy: by, madeAt: this.d.clock.now() };
+    const event: NoticeEvent = {
+      id: this.d.ids.next('nev'),
+      type: 'notice.document_made',
+      noticeId,
+      market: n.market,
+      occurredAt: made.madeAt,
+      data: { noticeType: n.type, documentId: made.id, sha256: made.sha256 },
+    };
+    await this.d.store.addDocument(noticeId, made, [event]).catch((e: unknown) => {
       if (e instanceof NoticeConflictError) throw new CommunicationsError('conflict', e.message);
       throw e;
     });
@@ -921,6 +997,14 @@ export class InMemoryNoticeStore implements NoticeStore {
     const n = this.rows.find((x) => x.id === noticeId);
     if (!n) throw new NoticeConflictError(`Notice ${noticeId} does not exist`);
     n.deliveries.push(structuredClone(d));
+    this.outbox.push(...structuredClone(events));
+  }
+
+  async addDocument(noticeId: string, doc: NoticeDocument, events: NoticeEvent[]) {
+    const n = this.rows.find((x) => x.id === noticeId);
+    if (!n) throw new NoticeConflictError(`Notice ${noticeId} does not exist`);
+    if (n.document) throw new NoticeConflictError(`Notice ${noticeId} has its document already`);
+    n.document = structuredClone(doc);
     this.outbox.push(...structuredClone(events));
   }
 }

@@ -83,7 +83,18 @@ Petvold kan göra ett meddelande till en PDF med sina egna mallar (ADR 0038):
 
 Mallarna använder designsystemets färger och avstånd: svartvitt, ramar och tabeller med linjer. Typsnitten Inter och Space Grotesk finns inte i Gotenberg, så Liberation Sans används i stället.
 
-*Kommer i steg 4:* en inställning per marknad som avgör om Petvold eller bolagets dokumentsystem gör breven, så att PDF:en görs när meddelandet skapas.
+### Petvold gör breven automatiskt
+
+Inställningen `documentMaker` per marknad avgör vem som gör meddelandenas dokument (se [Meddelanden](meddelanden.md#bolagets-inställningar)).
+
+- **`insurer` är förvalet.** Bolagets dokumentsystem gör dokumentet som förut, och den som redan har ett dokumentsystem märker ingen skillnad.
+- **Med `petvold`** gör Petvold PDF:en direkt när meddelandet skapas, för de typer som har en mall: skadebesked och försäkringsbrev. Andra typer gör dokumentsystemet som förut.
+- **Meddelandet sparar vem som gör dokumentet** (`documentMaker`) när det skapas. En ändrad inställning gäller bara nya meddelanden.
+- **PDF:en görs av reläet** efter `notice.created`. Om Gotenberg inte svarar försöker reläet igen, och efter tio försök läggs händelsen undan som en död händelse. Då går PDF:en fortfarande att göra med "Gör PDF". En PDF som gjordes före ett avbrott används i stället för att en ny görs.
+- **Meddelandet får dokumentet** (`document`: id, sha256, vem och när), och händelsen `notice.document_made` säger till dokumentsystemet att PDF:en finns.
+- **Utskicket rapporteras med bara kanal och tid.** Petvold fyller i sitt dokument och dess sha256. Ett annat dokument-id ger `422`, och en rapport innan PDF:en finns ger `409`.
+- **Utan Gotenberg** nekas inställningen `petvold` med `422`, eftersom Petvold då inte kan göra några PDF:er.
+- **Kundens lista** visar PDF:en en gång, från Petvolds arkiv, med meddelandets id och typ.
 
 ## Rättigheter
 
@@ -96,6 +107,5 @@ En sparad rollinställning behöver `npm run roles:sync -- --apply` för att få
 
 ## Det som kommer
 
-ADR 0038 byggs i fem steg. Steg 1–3 är byggda.
-4. Meddelanden som PDF från Petvold eller från bolagets dokumentsystem.
+ADR 0038 byggs i fem steg. Steg 1–4 är byggda.
 5. Gallring av dokument som en körning.
