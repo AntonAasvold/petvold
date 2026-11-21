@@ -59,6 +59,13 @@ export class PartyDetail extends LitElement {
   @state() private shown: string[] = [];
   @state() private notice: Notice | null = null;
   @state() private busy = '';
+  /** ADR 0039: the number being removed, and the forms for restriction and ending. */
+  @state() private removing: string | null = null;
+  @state() private removalReason = '';
+  @state() private restrictForm = { until: '', reason: '' };
+  @state() private liftReason = '';
+  @state() private endForm = { cause: '' as '' | 'deceased' | 'dissolved' | 'other', on: '', reason: '' };
+  @state() private reopenReason = '';
   private keys = new IdempotencyKeys();
 
   constructor() {
@@ -69,6 +76,22 @@ export class PartyDetail extends LitElement {
   static styles = [
     pvComponents,
     css`
+      .removal {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-3);
+        margin-top: var(--space-4);
+        padding: var(--space-4);
+        border: var(--border-strong) solid var(--ink);
+      }
+      .removal wa-input {
+        align-self: stretch;
+      }
+      ul.removed {
+        margin: var(--space-2) 0 0;
+        padding-left: var(--space-5);
+      }
       .crumbs {
         display: flex;
         gap: var(--space-2);
@@ -188,6 +211,7 @@ export class PartyDetail extends LitElement {
         <span class="pv-badge">${p.kind === 'person' ? msg('Person', { id: 'party.person' }) : msg('Organization', { id: 'party.organization' })} · ${p.market}</span>
         ${p.anonymized ? html`<span class="pv-badge pv-badge--solid">${msg('Anonymized', { id: 'party.anonymized' })}</span>` : nothing}
         ${p.restrictedUntil ? html`<span class="pv-badge pv-badge--pending">${msg('Restricted until', { id: 'party.restricted' })} ${p.restrictedUntil}</span>` : nothing}
+        ${p.ended ? html`<span class="pv-badge pv-badge--solid">${msg('Ended', { id: 'party.ended' })} ${p.ended.on}</span>` : nothing}
       </div>
       ${this.notice ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'danger' ? 'alert' : 'status'}>${this.notice.text}</wa-callout>` : nothing}
       <div class="cols">
@@ -198,7 +222,7 @@ export class PartyDetail extends LitElement {
             ? html`<section class="pv-card" aria-labelledby="policies">
             <div class="pv-card__head">
               <h2 class="pv-card__title" id="policies">${msg('Policies as policyholder', { id: 'party.policies' })}</h2>
-              ${this.may('policies:write') && !p.anonymized
+              ${this.may('policies:write') && !p.anonymized && !p.ended
                 ? html`<wa-button size="small" appearance="outlined" @click=${() => navigate(`/policies/new?holder=${encodeURIComponent(this.partyId)}`)}
                     >${msg('Issue a policy', { id: 'policy.issue' })}</wa-button
                   >`
@@ -217,7 +241,9 @@ export class PartyDetail extends LitElement {
         </div>
         <div class="side">
           ${this.may('policies:read') ? this.groupsCard(p) : nothing}
-          ${writable ? this.changeCard(p) : nothing} ${this.may('parties:privacy') && !p.anonymized ? this.erasureCard() : nothing}
+          ${writable ? this.changeCard(p) : nothing} ${writable ? this.endingCard(p) : nothing}
+          ${this.may('parties:privacy') && !p.anonymized ? this.restrictionCard(p) : nothing}
+          ${this.may('parties:privacy') && !p.anonymized ? this.erasureCard() : nothing}
           <pv-event-log heading=${msg('History', { id: 'claim.history' })} .entries=${this.history()}></pv-event-log>
         </div>
       </div>
@@ -285,7 +311,7 @@ export class PartyDetail extends LitElement {
     return html`<section class="pv-card" aria-labelledby="animals">
       <div class="pv-card__head">
         <h2 class="pv-card__title" id="animals">${msg('Animals owned today', { id: 'party.animals' })}</h2>
-        ${this.may('animals:write') && !this.party?.anonymized
+        ${this.may('animals:write') && !this.party?.anonymized && !this.party?.ended
           ? html`<wa-button size="small" appearance="outlined" @click=${() => navigate(`/animals/new?owner=${encodeURIComponent(this.partyId)}`)}
               >${msg('Register an animal', { id: 'animal.register' })}</wa-button
             >`
@@ -333,11 +359,40 @@ export class PartyDetail extends LitElement {
               ${p.identifiers.map(
                 (i) => html`<div class="pv-dl__row">
                   <dt>${i.type === 'personal-number' ? msg('Personal number', { id: 'party.personalNumber' }) : msg('Organization number', { id: 'party.orgNumber' })}, ${i.country}</dt>
-                  <dd class="pv-mono">${i.value}</dd>
+                  <dd>
+                    <span class="pv-mono">${i.value}</span>
+                    ${writable && this.removing !== i.id
+                      ? html`<wa-button size="small" appearance="outlined" @click=${() => ((this.removing = i.id), (this.removalReason = ''))}
+                          >${msg('Remove', { id: 'party.removeNumber' })}</wa-button
+                        >`
+                      : nothing}
+                  </dd>
                 </div>`,
               )}
             </dl>`
           : html`<p>${msg('No numbers.', { id: 'party.noNumbers' })}</p>`}
+        ${this.removing
+          ? html`<form class="removal" @submit=${this.removeIdentifier}>
+              <p>${msg('The number stays as history and can then be added to the right party. To correct a number, remove it and add the right one.', { id: 'party.removeHow' })}</p>
+              <wa-input
+                label=${msg('Reason, without personal data', { id: 'party.eraseReason' })}
+                .value=${this.removalReason}
+                @input=${(e: Event) => (this.removalReason = (e.target as HTMLInputElement).value)}
+              ></wa-input>
+              <wa-button type="submit" variant="danger" ?loading=${this.busy === 'remove'}>${msg('Remove the number', { id: 'party.removeSubmit' })}</wa-button>
+              <wa-button appearance="plain" @click=${() => (this.removing = null)}>${msg('Cancel', { id: 'common.cancel' })}</wa-button>
+            </form>`
+          : nothing}
+        ${p.removedIdentifiers?.length
+          ? html`<details>
+              <summary>${msg('Removed numbers', { id: 'party.removedNumbers' })} (${p.removedIdentifiers.length})</summary>
+              <ul class="removed">
+                ${p.removedIdentifiers.map(
+                  (i) => html`<li><span class="pv-mono">${i.value}</span>, ${i.country}: ${i.removalReason} · ${i.removedBy} · ${formatDateTime(i.removedAt!, getLocale())}</li>`,
+                )}
+              </ul>
+            </details>`
+          : nothing}
         ${writable
           ? html`<form class="row" @submit=${this.addIdentifier}>
               <wa-select label=${msg('Number', { id: 'party.number' })} value=${this.identifier.type} @change=${(e: Event) => (this.identifier = { ...this.identifier, type: (e.target as HTMLSelectElement).value as IdentifierForm['type'] })}>
@@ -374,6 +429,62 @@ export class PartyDetail extends LitElement {
           <wa-button appearance="plain" @click=${() => ((this.editing = null), (this.shown = []))}>${msg('Cancel', { id: 'common.cancel' })}</wa-button>
         </div>
       </form>
+    </section>`;
+  }
+
+  /** End the party, or reopen it (ADR 0039). */
+  private endingCard(p: Party) {
+    if (p.ended) {
+      return html`<section class="pv-card" aria-labelledby="ending">
+        <div class="pv-card__head"><h2 class="pv-card__title" id="ending">${msg('Ended', { id: 'party.ended' })}</h2></div>
+        <form class="pv-card__body" @submit=${this.reopen}>
+          <dl class="pv-dl">
+            <div class="pv-dl__row"><dt>${msg('Cause', { id: 'party.endCause' })}</dt><dd>${this.causeLabel(p.ended.cause)}</dd></div>
+            <div class="pv-dl__row"><dt>${msg('Date', { id: 'party.endOn' })}</dt><dd>${p.ended.on}</dd></div>
+            ${p.ended.reason ? html`<div class="pv-dl__row"><dt>${msg('Reason', { id: 'party.reason' })}</dt><dd>${p.ended.reason}</dd></div>` : nothing}
+            <div class="pv-dl__row"><dt>${msg('By', { id: 'party.by' })}</dt><dd>${p.ended.endedBy}</dd></div>
+          </dl>
+          <wa-input label=${msg('Reason for reopening', { id: 'party.reopenReason' })} .value=${this.reopenReason} @input=${(e: Event) => (this.reopenReason = (e.target as HTMLInputElement).value)}></wa-input>
+          <wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'reopen'}>${msg('Reopen the party', { id: 'party.reopen' })}</wa-button>
+        </form>
+      </section>`;
+    }
+    const causes = p.kind === 'person' ? (['deceased', 'other'] as const) : (['dissolved', 'other'] as const);
+    return html`<section class="pv-card" aria-labelledby="ending">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="ending">${msg('End the party', { id: 'party.end' })}</h2></div>
+      <form class="pv-card__body" @submit=${this.end}>
+        <p>${msg('An ended party cannot become a policyholder or owner again. Its details stay until the retention rules erase them. A policyholder of a policy in force cannot be ended.', { id: 'party.endHow' })}</p>
+        <wa-select label=${msg('Cause', { id: 'party.endCause' })} value=${this.endForm.cause} @change=${(e: Event) => (this.endForm = { ...this.endForm, cause: (e.target as HTMLSelectElement).value as typeof this.endForm.cause })}>
+          ${causes.map((c) => html`<wa-option value=${c}>${this.causeLabel(c)}</wa-option>`)}
+        </wa-select>
+        <wa-input type="date" label=${msg('Date', { id: 'party.endOn' })} .value=${this.endForm.on} @input=${(e: Event) => (this.endForm = { ...this.endForm, on: (e.target as HTMLInputElement).value })}></wa-input>
+        <wa-input label=${msg('Reason, without personal data', { id: 'party.eraseReason' })} .value=${this.endForm.reason} @input=${(e: Event) => (this.endForm = { ...this.endForm, reason: (e.target as HTMLInputElement).value })}></wa-input>
+        <wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'end'}>${msg('End the party', { id: 'party.end' })}</wa-button>
+      </form>
+    </section>`;
+  }
+
+  private causeLabel(c: string) {
+    return c === 'deceased' ? msg('Deceased', { id: 'party.deceased' }) : c === 'dissolved' ? msg('Dissolved', { id: 'party.dissolved' }) : msg('Other', { id: 'party.otherCause' });
+  }
+
+  /** Restrict the processing, or lift it (GDPR article 18, ADR 0039). */
+  private restrictionCard(p: Party) {
+    const restricted = p.restrictedUntil !== undefined && today() <= p.restrictedUntil;
+    return html`<section class="pv-card" aria-labelledby="restriction">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="restriction">${msg('Restriction', { id: 'party.restriction' })}</h2></div>
+      ${restricted
+        ? html`<form class="pv-card__body" @submit=${this.lift}>
+            <p>${msg('Restricted until', { id: 'party.restricted' })} ${p.restrictedUntil}. ${msg('Only privacy officers see the party, and nothing new may point at it.', { id: 'party.restrictedHow' })}</p>
+            <wa-input label=${msg('Reason, without personal data', { id: 'party.eraseReason' })} .value=${this.liftReason} @input=${(e: Event) => (this.liftReason = (e.target as HTMLInputElement).value)}></wa-input>
+            <wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'lift'}>${msg('Lift the restriction', { id: 'party.lift' })}</wa-button>
+          </form>`
+        : html`<form class="pv-card__body" @submit=${this.restrict}>
+            <p>${msg('For example while the customer contests the details (GDPR article 18). Only privacy officers then see the party.', { id: 'party.restrictHow' })}</p>
+            <wa-input type="date" label=${msg('Restricted until', { id: 'party.restricted' })} .value=${this.restrictForm.until} @input=${(e: Event) => (this.restrictForm = { ...this.restrictForm, until: (e.target as HTMLInputElement).value })}></wa-input>
+            <wa-input label=${msg('Reason, without personal data', { id: 'party.eraseReason' })} .value=${this.restrictForm.reason} @input=${(e: Event) => (this.restrictForm = { ...this.restrictForm, reason: (e.target as HTMLInputElement).value })}></wa-input>
+            <wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'restrict'}>${msg('Restrict the processing', { id: 'party.restrict' })}</wa-button>
+          </form>`}
     </section>`;
   }
 
@@ -455,6 +566,93 @@ export class PartyDetail extends LitElement {
         }),
       msg('The request waits for another privacy officer.', { id: 'party.eraseRequested' }),
       () => (this.erasureReason = ''),
+    );
+  }
+
+  private needReason(r: string): boolean {
+    if (r.trim()) return false;
+    this.notice = { variant: 'danger', text: problemLabel('settings.needReason') };
+    return true;
+  }
+
+  private async removeIdentifier(e: Event) {
+    e.preventDefault();
+    const id = this.removing!;
+    if (this.needReason(this.removalReason)) return;
+    await this.send(
+      'remove',
+      () =>
+        this.api.POST('/v1/parties/{partyId}/identifiers/{identifierId}/removals', {
+          params: { path: { partyId: this.partyId, identifierId: id }, header: { 'Idempotency-Key': this.keys.for(`remove:${id}`) } },
+          body: { reason: this.removalReason.trim() },
+        }),
+      msg('The number is removed.', { id: 'party.numberRemoved' }),
+      () => ((this.removing = null), (this.removalReason = '')),
+    );
+  }
+
+  private async restrict(e: Event) {
+    e.preventDefault();
+    if (this.needReason(this.restrictForm.reason)) return;
+    await this.send(
+      'restrict',
+      () =>
+        this.api.POST('/v1/parties/{partyId}/restrictions', {
+          params: { path: { partyId: this.partyId }, header: { 'Idempotency-Key': this.keys.for('restrict') } },
+          body: { until: this.restrictForm.until, reason: this.restrictForm.reason.trim() },
+        }),
+      msg('The processing is restricted.', { id: 'party.restrictedDone' }),
+      () => (this.restrictForm = { until: '', reason: '' }),
+    );
+  }
+
+  private async lift(e: Event) {
+    e.preventDefault();
+    if (this.needReason(this.liftReason)) return;
+    await this.send(
+      'lift',
+      () =>
+        this.api.POST('/v1/parties/{partyId}/restriction-liftings', {
+          params: { path: { partyId: this.partyId }, header: { 'Idempotency-Key': this.keys.for('lift') } },
+          body: { reason: this.liftReason.trim() },
+        }),
+      msg('The restriction is lifted.', { id: 'party.liftedDone' }),
+      () => (this.liftReason = ''),
+    );
+  }
+
+  private async end(e: Event) {
+    e.preventDefault();
+    const f = this.endForm;
+    if (!f.cause || !f.on) {
+      this.notice = { variant: 'danger', text: msg('Choose a cause and a date.', { id: 'party.endMissing' }) };
+      return;
+    }
+    if (this.needReason(f.reason)) return;
+    await this.send(
+      'end',
+      () =>
+        this.api.POST('/v1/parties/{partyId}/endings', {
+          params: { path: { partyId: this.partyId }, header: { 'Idempotency-Key': this.keys.for('end') } },
+          body: { cause: f.cause as 'deceased' | 'dissolved' | 'other', on: f.on, reason: f.reason.trim() },
+        }),
+      msg('The party is ended.', { id: 'party.endedDone' }),
+      () => (this.endForm = { cause: '', on: '', reason: '' }),
+    );
+  }
+
+  private async reopen(e: Event) {
+    e.preventDefault();
+    if (this.needReason(this.reopenReason)) return;
+    await this.send(
+      'reopen',
+      () =>
+        this.api.POST('/v1/parties/{partyId}/reopenings', {
+          params: { path: { partyId: this.partyId }, header: { 'Idempotency-Key': this.keys.for('reopen') } },
+          body: { reason: this.reopenReason.trim() },
+        }),
+      msg('The party is reopened.', { id: 'party.reopenedDone' }),
+      () => (this.reopenReason = ''),
     );
   }
 

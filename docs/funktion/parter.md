@@ -12,27 +12,47 @@ Parter är de personer och organisationer som andra delar pekar på, till exempe
 | `givenName`, `familyName`, `birthDate` | Personens namn och födelsedatum | Med motivering |
 | `name` | Organisationens namn | Med motivering |
 | `email`, `phone`, `address`, `language` | Kontaktuppgifter. Telefon i internationellt format (`+46…`), språk som `sv`. | Med motivering |
-| `identifiers` | Personnummer och organisationsnummer, med land | Läggs till, tas aldrig bort |
+| `identifiers` | Personnummer och organisationsnummer, med land och ett id (`pid_`) | Läggs till, och tas bort med ett skäl. Ett borttaget nummer finns kvar i `removedIdentifiers`. |
+| `restrictedUntil` | Begränsad till och med datumet (dataskyddsförordningen artikel 18) | Sätts och hävs av den som har `parties:privacy` |
+| `ended` | Avslutad: orsak, datum, skäl, vem och när | Avslutas och öppnas igen |
 
 ## Så fungerar det
 
 - **Historik.** Varje ändring blir en ny revision med vem, när och varför. En ändring ersätter alla uppgifter, så en uppgift som utelämnas tas bort i den nya revisionen.
-- **Id-nummer är unika per land.** Samma personnummer kan bara höra till en part.
+- **Id-nummer är unika per land.** Samma personnummer kan bara höra till en part åt gången. Ett nummer som tagits bort kan läggas till på en annan part.
 - **Svenska nummer kontrolleras.** Personnummer anges med 12 siffror (`ÅÅÅÅMMDD-NNNK`), och datum och kontrollsiffra måste stämma. Samordningsnummer godtas. Organisationsnummer har 10 siffror och kontrollsiffra. För andra länder kontrolleras bara att numret består av bokstäver och siffror.
 - **Personnummer visas aldrig.** Alla svar visar `19850312-****` och `masked: true`. Organisationsnummer visas.
-- **Sökning sker i anropets innehåll.** `POST /v1/parties/searches` med numret i innehållet, så att numret inte hamnar i adresser och loggar.
+- **Sökning sker i anropets innehåll.** `POST /v1/parties/searches` med numret, eller med `{ "text": "…" }` för en del av namnet eller e-postadressen, så att det som söks inte hamnar i adresser och loggar. En text ger högst 50 parter, sorterade efter namn (ADR 0039).
 - **Roller finns där relationen finns.** Att Anna äger Bella står i djurregistret, och att hon är försäkringstagare kommer att stå på policyn.
 
 ## Anrop
 
 | Anrop | Rättighet | Gör |
 | --- | --- | --- |
-| `POST /v1/parties/searches` | `parties:read` | Hittar en part på personnummer eller organisationsnummer |
+| `POST /v1/parties/searches` | `parties:read` | Hittar en part på personnummer, organisationsnummer, namn eller e-post |
 | `POST /v1/parties` | `parties:write` | Registrerar en person eller organisation |
 | `GET /v1/parties/{id}` | `parties:read` | Parten med id-nummer |
 | `PUT /v1/parties/{id}` | `parties:write` | Ändrar uppgifterna, med `basedOnRevision` och `reason` |
 | `GET /v1/parties/{id}/revisions` | `parties:read` | Alla revisioner, äldst först |
 | `POST /v1/parties/{id}/identifiers` | `parties:write` | Lägger till ett personnummer eller organisationsnummer |
+| `POST /v1/parties/{id}/identifiers/{identifierId}/removals` | `parties:write` | Tar bort ett nummer med ett skäl (ADR 0039) |
+| `POST /v1/parties/{id}/restrictions` | `parties:privacy` | Begränsar behandlingen till och med ett datum |
+| `POST /v1/parties/{id}/restriction-liftings` | `parties:privacy` | Häver begränsningen |
+| `POST /v1/parties/{id}/endings` | `parties:write` | Avslutar parten: `deceased`, `dissolved` eller `other` |
+| `POST /v1/parties/{id}/reopenings` | `parties:write` | Öppnar en avslutad part igen |
+
+## Partens livscykel (ADR 0039)
+
+- **Rätta ett nummer.** Ta bort det felaktiga med ett skäl och lägg till det rätta. Det borttagna finns kvar i historiken med vem, när och varför. Det maskeras som alla personnummer och räknas inte längre, så det kan läggas till på rätt part. Numret anges med sitt id, eftersom ett personnummer aldrig står i en adress.
+- **Begränsa behandlingen** (artikel 18), till exempel medan kunden bestrider uppgifterna. Begränsningen gäller till och med ett datum efter i dag, och den som har `parties:privacy` kan häva den. Den senaste händelsen gäller, oavsett om den kom från en avslagen radering eller sattes direkt.
+- **Avsluta en part**, för en person som avlidit (`deceased`) eller en organisation som upphört (`dissolved`), eller av en annan orsak (`other`).
+  - Datumet får inte ligga i framtiden.
+  - En avslutad part kan inte bli försäkringstagare eller ägare igen.
+  - Uppgifterna kan fortfarande ändras, till exempel adressen till ett dödsbo, och de gallras enligt lagringstiden.
+  - En försäkringstagare med en policy som löper kan inte avslutas (`409`, och svaret anger policyerna). Säg upp eller överlåt policyn först.
+  - Ett avslut som blev fel ångras med `reopenings`.
+
+**Exempel:** Anna avlider. Kundservice säger upp Bellas försäkring och avslutar sedan Anna med `{ "cause": "deceased", "on": "2026-11-10", "reason": "Dödsbevis har kommit in" }`. Anna finns kvar, märkt som avslutad, tills gallringen tar henne.
 
 ## Exempel
 

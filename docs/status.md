@@ -382,6 +382,13 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 
 - End-to-end-scenarier för en hel kundresa, att testa för hand, och en lista över det som saknas i gränssnittet (`docs/end-to-end-scenario.md`), PR #119.
 
+- Partens livscykel (ADR 0039), PR #120:
+  - **Sökning** på namn och e-post, i anropets innehåll, med en lista i back office.
+  - **Nummer** tas bort med ett skäl och finns kvar som historik.
+  - **Begränsning** sätts och hävs direkt.
+  - **Avslut** och återöppning. En försäkringstagare med en policy som löper kan inte avslutas.
+  - **Migration 0049.** 148 operationer, 43 flöden.
+
 **Nästa steg**
 1. ADR 0038, steg 5: gallring av dokument som en körning.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.

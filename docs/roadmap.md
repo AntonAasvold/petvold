@@ -130,6 +130,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [x] **Ansökan:** registrera en ansökan med hälsofrågorna, och se vad svaren skulle ge
 - [x] **Djur:** sök, registrera och rätta djur, id-nummer, ägarbyte, historik och kullar
 - [x] **Parter:** sök, registrera och ändra personer och organisationer, id-nummer, historik och begäran om radering
+- [x] **Partens livscykel (ADR 0039):** sökning på namn och e-post, nummer som tas bort, begränsning och avslut
 - [x] **Radering (ADR 0028):** begära radering av en part och kön för radering med fyra ögon
 - [x] **Grupper (ADR 0007):** kull och hushåll, med medlemmar och utträde
 - [ ] **Referensdata (ADR 0022):** arter, raser och kön med översättningar och historik

@@ -69,18 +69,69 @@ export interface Party extends PartyDetails {
 }
 
 export interface PartyIdentifier {
+  /** pid_…: the number is shown masked and never put in an address (ADR 0039). */
+  id: string;
   type: PartyIdentifierType;
   /** The country that issued the number, ISO 3166-1 alpha-2. */
   country: string;
   value: string;
   addedBy: string;
   addedAt: string;
+  /** Removed with a reason (ADR 0039): kept as history, no longer counts. */
+  removedBy?: string;
+  removedAt?: string;
+  removalReason?: string;
+}
+
+export const END_CAUSES = ['deceased', 'dissolved', 'other'] as const;
+/** Why a party is ended: a person who died, an organization that ceased, or another reason. */
+export type EndCause = (typeof END_CAUSES)[number];
+
+/** A party ended (ADR 0039): nothing new may point at it. */
+export interface PartyEnding {
+  cause: EndCause;
+  on: ISODate;
+  reason?: string;
+  endedBy: string;
+  endedAt: string;
+}
+
+/** A restriction set or lifted directly (ADR 0039). */
+export interface RestrictionEvent {
+  id: string;
+  partyId: string;
+  action: 'restrict' | 'lift';
+  /** restrict: up to and including. */
+  until?: ISODate;
+  reason?: string;
+  decidedBy: string;
+  decidedAt: string;
+}
+
+/** A party ended or reopened (ADR 0039). */
+export interface StatusEvent {
+  id: string;
+  partyId: string;
+  action: 'end' | 'reopen';
+  cause?: EndCause;
+  on?: ISODate;
+  reason?: string;
+  decidedBy: string;
+  decidedAt: string;
 }
 
 export interface PartyRecord extends Party {
+  /** The identifiers in force. */
   identifiers: PartyIdentifier[];
-  /** Restricted (GDPR article 18) up to and including this date, after a rejected erasure request. */
+  /** Identifiers removed with a reason, oldest first. */
+  removedIdentifiers?: PartyIdentifier[];
+  /**
+   * Restricted (GDPR article 18) up to and including this date: the latest of a
+   * rejected erasure request and a restriction set directly, unless lifted since.
+   */
   restrictedUntil?: ISODate;
+  /** Ended and not reopened since. */
+  ended?: PartyEnding;
 }
 
 export const ERASURE_BASES = ['subject-request', 'retention-expired'] as const;
@@ -110,16 +161,23 @@ export interface ErasureRequest {
 
 /** An identifier as shown: personal numbers are masked (ADR 0026). */
 export interface ShownIdentifier {
+  id: string;
   type: PartyIdentifierType;
   country: string;
   value: string;
   masked: boolean;
   addedBy: string;
   addedAt: string;
+  removedBy?: string;
+  removedAt?: string;
+  removalReason?: string;
 }
 
 export interface PartyView extends Party {
   identifiers: ShownIdentifier[];
+  removedIdentifiers?: ShownIdentifier[];
+  restrictedUntil?: ISODate;
+  ended?: PartyEnding;
 }
 
 export interface PartyStore {
@@ -128,7 +186,17 @@ export interface PartyStore {
   partyIds(): Promise<string[]>;
   /** Every revision of the details, oldest first. */
   revisions(id: string): Promise<Party[]>;
+  /** The party with the identifier in force, if any. */
   findByIdentifier(type: PartyIdentifierType, country: string, value: string): Promise<string | null>;
+  /**
+   * Parties whose latest revision's name or email contains the text, case
+   * insensitive, not anonymized, in the markets, sorted by name. At most limit.
+   */
+  search(q: { text: string; markets: string[] | '*'; limit: number }): Promise<string[]>;
+  /** Records the removal. Throws PartyConflictError if the identifier is not the party's or is removed already. */
+  removeIdentifier(partyId: string, identifierId: string, removal: { removedBy: string; removedAt: string; reason: string }): Promise<void>;
+  addRestriction(e: RestrictionEvent): Promise<void>;
+  addStatus(e: StatusEvent): Promise<void>;
   /** Stores a new party with its first revision and identifiers, all or nothing. */
   register(party: Party, identifiers: PartyIdentifier[]): Promise<void>;
   /** Throws PartyConflictError unless it is the next revision. */
@@ -155,6 +223,18 @@ export function anonymize(p: Party): Party {
   const out: Record<string, unknown> = { ...p };
   for (const f of PERSONAL_FIELDS) delete out[f];
   return { ...(out as unknown as Party), anonymized: true };
+}
+
+/** The restriction in force from the events, latest first wins. Pure. */
+export function restrictionFrom(events: { at: string; until?: ISODate }[]): ISODate | undefined {
+  return [...events].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)).at(-1)?.until;
+}
+
+/** The ending in force from the status events. Pure. */
+export function endingFrom(events: StatusEvent[]): PartyEnding | undefined {
+  const last = [...events].sort((a, b) => (a.decidedAt < b.decidedAt ? -1 : a.decidedAt > b.decidedAt ? 1 : 0)).at(-1);
+  if (!last || last.action !== 'end') return undefined;
+  return { cause: last.cause!, on: last.on!, ...(last.reason ? { reason: last.reason } : {}), endedBy: last.decidedBy, endedAt: last.decidedAt };
 }
 
 /** Whether the party is restricted on the date (GDPR article 18). Pure. */
@@ -269,7 +349,8 @@ export function maskIdentifier(i: PartyIdentifier): ShownIdentifier {
 
 /** The party as shown through the API: personal numbers masked. Pure. */
 export function publicView(p: PartyRecord): PartyView {
-  return { ...p, identifiers: p.identifiers.map(maskIdentifier) };
+  const { removedIdentifiers, ...rest } = p;
+  return { ...rest, identifiers: p.identifiers.map(maskIdentifier), ...(removedIdentifiers?.length ? { removedIdentifiers: removedIdentifiers.map(maskIdentifier) } : {}) };
 }
 
 /** The name to show: given and family name for a person, the name for an organization. Pure. */
@@ -293,7 +374,7 @@ export class PartyService {
    */
   async marketOf(id: string): Promise<string | null> {
     const p = await this.d.store.get(id);
-    if (!p || p.anonymized || restrictedOn(p, this.today(p.market))) return null;
+    if (!p || p.anonymized || p.ended || restrictedOn(p, this.today(p.market))) return null;
     return p.market;
   }
 
@@ -305,7 +386,7 @@ export class PartyService {
   /** The postal code of the party's address, for a tariff's zone (ADR 0030). null for an anonymized or restricted party. */
   async postalCodeOf(id: string): Promise<string | null> {
     const p = await this.d.store.get(id);
-    if (!p || p.anonymized || restrictedOn(p, this.today(p.market))) return null;
+    if (!p || p.anonymized || p.ended || restrictedOn(p, this.today(p.market))) return null;
     return p.address?.postalCode ?? null;
   }
 
@@ -393,6 +474,83 @@ export class PartyService {
     return this.d.store.revisions(id);
   }
 
+  /**
+   * Parties by a part of the name or email (ADR 0039), at least 2 characters.
+   * The text comes in a request body and is never logged.
+   */
+  async search(text: string, markets: string[] | '*', limit = 50): Promise<PartyRecord[]> {
+    const t = (text ?? '').trim().replace(/\s+/g, ' ');
+    if (t.length < 2 || t.length > 100) throw new PartyError('validation', 'The search text must be 2-100 characters');
+    const ids = await this.d.store.search({ text: t, markets, limit });
+    return Promise.all(ids.map((id) => this.get(id)));
+  }
+
+  /** Removes an identifier with a reason, e.g. one added to the wrong party. It stays as history. */
+  async removeIdentifier(partyId: string, identifierId: string, input: { reason: string }, by: string): Promise<PartyRecord> {
+    const p = await this.get(partyId);
+    if (p.anonymized) throw new PartyError('conflict', `Party ${partyId} is anonymized`);
+    const reason = (input.reason ?? '').trim();
+    if (!reason || reason.length > 500) throw new PartyError('validation', 'A reason of at most 500 characters is required');
+    if (!p.identifiers.some((i) => i.id === identifierId)) {
+      if (p.removedIdentifiers?.some((i) => i.id === identifierId)) throw new PartyError('conflict', `Identifier ${identifierId} is removed already`);
+      throw new PartyError('not_found', `Party ${partyId} has no identifier ${identifierId}`);
+    }
+    await this.d.store.removeIdentifier(partyId, identifierId, { removedBy: by, removedAt: this.d.clock.now(), reason }).catch(this.translate);
+    return this.get(partyId);
+  }
+
+  /** Restricts the processing (GDPR article 18) up to and including a date after today. */
+  async restrict(partyId: string, input: { until: ISODate; reason: string }, by: string): Promise<PartyRecord> {
+    const p = await this.get(partyId);
+    if (p.anonymized) throw new PartyError('conflict', `Party ${partyId} is anonymized`);
+    if (!isDate(input.until) || input.until <= this.today(p.market)) throw new PartyError('validation', 'until must be a date after today');
+    const reason = this.reasonOf(input.reason);
+    await this.d.store.addRestriction({ id: this.d.ids.next('prs'), partyId, action: 'restrict', until: input.until, reason, decidedBy: by, decidedAt: this.d.clock.now() });
+    return this.get(partyId);
+  }
+
+  /** Lifts a restriction in force. */
+  async liftRestriction(partyId: string, input: { reason: string }, by: string): Promise<PartyRecord> {
+    const p = await this.get(partyId);
+    if (!this.isRestricted(p)) throw new PartyError('conflict', `Party ${partyId} is not restricted`);
+    const reason = this.reasonOf(input.reason);
+    await this.d.store.addRestriction({ id: this.d.ids.next('prs'), partyId, action: 'lift', reason, decidedBy: by, decidedAt: this.d.clock.now() });
+    return this.get(partyId);
+  }
+
+  /**
+   * Ends the party: deceased, dissolved or another cause, on a date not after
+   * today. Nothing new may point at it; its details may still change. Whether it
+   * is a policyholder is checked by the caller, which reads the policies.
+   */
+  async end(partyId: string, input: { cause: EndCause; on: ISODate; reason: string }, by: string): Promise<PartyRecord> {
+    const p = await this.get(partyId);
+    if (p.anonymized) throw new PartyError('conflict', `Party ${partyId} is anonymized`);
+    if (p.ended) throw new PartyError('conflict', `Party ${partyId} is ended already`);
+    if (!(END_CAUSES as readonly string[]).includes(input.cause)) throw new PartyError('validation', `cause must be one of ${END_CAUSES.join(', ')}`);
+    if (input.cause === 'deceased' && p.kind !== 'person') throw new PartyError('validation', 'Only a person can be deceased');
+    if (input.cause === 'dissolved' && p.kind !== 'organization') throw new PartyError('validation', 'Only an organization can be dissolved');
+    if (!isDate(input.on) || input.on > this.today(p.market)) throw new PartyError('validation', 'on must be a date not after today');
+    const reason = this.reasonOf(input.reason);
+    await this.d.store.addStatus({ id: this.d.ids.next('pst'), partyId, action: 'end', cause: input.cause, on: input.on, reason, decidedBy: by, decidedAt: this.d.clock.now() });
+    return this.get(partyId);
+  }
+
+  /** Reopens an ended party, e.g. one ended by mistake. */
+  async reopen(partyId: string, input: { reason: string }, by: string): Promise<PartyRecord> {
+    const p = await this.get(partyId);
+    if (!p.ended) throw new PartyError('conflict', `Party ${partyId} is not ended`);
+    const reason = this.reasonOf(input.reason);
+    await this.d.store.addStatus({ id: this.d.ids.next('pst'), partyId, action: 'reopen', reason, decidedBy: by, decidedAt: this.d.clock.now() });
+    return this.get(partyId);
+  }
+
+  private reasonOf(r: string): string {
+    const reason = (r ?? '').trim();
+    if (!reason || reason.length > 500) throw new PartyError('validation', 'A reason of at most 500 characters is required');
+    return reason;
+  }
+
   async findByIdentifier(input: PartyIdentifierInput): Promise<PartyRecord[]> {
     const i = normalizePartyIdentifier(input);
     const id = await this.d.store.findByIdentifier(i.type, i.country, i.value);
@@ -410,7 +568,7 @@ export class PartyService {
     }
     const now = this.d.clock.now();
     const party: Party = { id: this.d.ids.next('pty'), revision: 1, kind: input.kind, market: input.market, ...details, changedBy: by, changedAt: now };
-    await this.d.store.register(party, identifiers.map((i) => ({ ...i, addedBy: by, addedAt: now }))).catch(this.translate);
+    await this.d.store.register(party, identifiers.map((i) => ({ id: this.d.ids.next('pid'), ...i, addedBy: by, addedAt: now }))).catch(this.translate);
     return this.get(party.id);
   }
 
@@ -443,7 +601,7 @@ export class PartyService {
     const i = normalizePartyIdentifier(input);
     this.checkKind(cur.kind, i);
     if (cur.identifiers.some((x) => x.type === i.type && x.country === i.country && x.value === i.value)) return cur; // a retry
-    await this.d.store.addIdentifier(id, { ...i, addedBy: by, addedAt: this.d.clock.now() }).catch(this.translate);
+    await this.d.store.addIdentifier(id, { id: this.d.ids.next('pid'), ...i, addedBy: by, addedAt: this.d.clock.now() }).catch(this.translate);
     return this.get(id);
   }
 
@@ -520,24 +678,60 @@ export class PartyService {
 export class InMemoryPartyStore implements PartyStore {
   private erasures: ErasureRequest[] = [];
   private parties: Party[] = [];
-  private identifiers = new Map<string, PartyIdentifier & { partyId: string }>();
+  private identifiers: (PartyIdentifier & { partyId: string })[] = [];
+  private restrictions: RestrictionEvent[] = [];
+  private statuses: StatusEvent[] = [];
+
+  private active(type: string, country: string, value: string) {
+    return this.identifiers.find((i) => !i.removedAt && i.type === type && i.country === country && i.value === value);
+  }
 
   async get(id: string): Promise<PartyRecord | null> {
     const latest = (await this.revisions(id)).at(-1);
     if (!latest) return null;
-    const until = this.erasures
-      .filter((r) => r.partyId === id && r.decision?.restrictUntil)
-      .map((r) => r.decision!.restrictUntil!)
-      .sort()
-      .at(-1);
+    const until = restrictionFrom([
+      ...this.erasures.filter((r) => r.partyId === id && r.decision?.restrictUntil).map((r) => ({ at: r.decision!.decidedAt, until: r.decision!.restrictUntil })),
+      ...this.restrictions.filter((r) => r.partyId === id).map((r) => ({ at: r.decidedAt, ...(r.until ? { until: r.until } : {}) })),
+    ]);
+    const ended = endingFrom(this.statuses.filter((s) => s.partyId === id));
+    const mine = this.identifiers
+      .filter((i) => i.partyId === id)
+      .sort((a, b) => (a.addedAt < b.addedAt ? -1 : a.addedAt > b.addedAt ? 1 : 0))
+      .map(({ partyId: _p, ...i }) => i);
+    const removed = mine.filter((i) => i.removedAt);
     return structuredClone({
       ...latest,
       ...(until ? { restrictedUntil: until } : {}),
-      identifiers: [...this.identifiers.values()]
-        .filter((i) => i.partyId === id)
-        .sort((a, b) => (a.addedAt < b.addedAt ? -1 : a.addedAt > b.addedAt ? 1 : 0))
-        .map(({ partyId: _p, ...i }) => i),
+      ...(ended ? { ended } : {}),
+      identifiers: mine.filter((i) => !i.removedAt),
+      ...(removed.length ? { removedIdentifiers: removed } : {}),
     });
+  }
+
+  async search(q: { text: string; markets: string[] | '*'; limit: number }) {
+    const t = q.text.toLowerCase();
+    const latest = new Map<string, Party>();
+    for (const p of this.parties) if ((latest.get(p.id)?.revision ?? 0) < p.revision) latest.set(p.id, p);
+    return [...latest.values()]
+      .filter((p) => !p.anonymized && (q.markets === '*' || q.markets.includes(p.market)))
+      .filter((p) => [displayName(p), p.email ?? ''].some((s) => s.toLowerCase().includes(t)))
+      .sort((a, b) => displayName(a).localeCompare(displayName(b)) || (a.id < b.id ? -1 : 1))
+      .slice(0, q.limit)
+      .map((p) => p.id);
+  }
+
+  async removeIdentifier(partyId: string, identifierId: string, removal: { removedBy: string; removedAt: string; reason: string }) {
+    const i = this.identifiers.find((x) => x.id === identifierId && x.partyId === partyId);
+    if (!i || i.removedAt) throw new PartyConflictError(`Identifier ${identifierId} is not the party's or is removed already`);
+    Object.assign(i, { removedBy: removal.removedBy, removedAt: removal.removedAt, removalReason: removal.reason });
+  }
+
+  async addRestriction(e: RestrictionEvent) {
+    this.restrictions.push(structuredClone(e));
+  }
+
+  async addStatus(e: StatusEvent) {
+    this.statuses.push(structuredClone(e));
   }
 
   async revisions(id: string) {
@@ -549,14 +743,14 @@ export class InMemoryPartyStore implements PartyStore {
   }
 
   async findByIdentifier(type: PartyIdentifierType, country: string, value: string) {
-    return this.identifiers.get(`${type}:${country}:${value}`)?.partyId ?? null;
+    return this.active(type, country, value)?.partyId ?? null;
   }
 
   async register(party: Party, identifiers: PartyIdentifier[]) {
     if (this.parties.some((p) => p.id === party.id)) throw new PartyConflictError(`Party ${party.id} exists`);
-    for (const i of identifiers) if (this.identifiers.has(`${i.type}:${i.country}:${i.value}`)) throw new PartyIdentifierTakenError(i);
+    for (const i of identifiers) if (this.active(i.type, i.country, i.value)) throw new PartyIdentifierTakenError(i);
     this.parties.push(structuredClone(party));
-    for (const i of identifiers) this.identifiers.set(`${i.type}:${i.country}:${i.value}`, { ...structuredClone(i), partyId: party.id });
+    for (const i of identifiers) this.identifiers.push({ ...structuredClone(i), partyId: party.id });
   }
 
   async appendRevision(party: Party) {
@@ -567,9 +761,8 @@ export class InMemoryPartyStore implements PartyStore {
   }
 
   async addIdentifier(partyId: string, i: PartyIdentifier) {
-    const key = `${i.type}:${i.country}:${i.value}`;
-    if (this.identifiers.has(key)) throw new PartyIdentifierTakenError(i);
-    this.identifiers.set(key, { ...structuredClone(i), partyId });
+    if (this.active(i.type, i.country, i.value)) throw new PartyIdentifierTakenError(i);
+    this.identifiers.push({ ...structuredClone(i), partyId });
   }
 
   async addErasureRequest(request: ErasureRequest) {
@@ -596,7 +789,8 @@ export class InMemoryPartyStore implements PartyStore {
     if (decision.outcome === 'approved') {
       if (decision.decidedBy === r.requestedBy) throw new Error('Four eyes: the requester cannot approve');
       this.parties = this.parties.map((p) => (p.id === r.partyId ? anonymize(p) : p));
-      for (const [k, i] of this.identifiers) if (i.partyId === r.partyId) this.identifiers.delete(k);
+      this.identifiers = this.identifiers.filter((i) => i.partyId !== r.partyId);
+      for (const x of [...this.restrictions, ...this.statuses]) if (x.partyId === r.partyId) delete x.reason;
     }
     r.decision = structuredClone(decision);
   }

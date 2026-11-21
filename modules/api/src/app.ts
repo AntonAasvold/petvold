@@ -860,7 +860,12 @@ export function createApp(d: AppDeps) {
   app.post('/v1/parties/searches', async (c) => {
     const r = await readJson(c, 'PartySearchRequest');
     if (!r.ok) return r.res;
-    const found = await parties.findByIdentifier(r.body);
+    // By number, or by a part of the name or email (ADR 0039). Both come in the body and are never logged.
+    const scope = c.get('scope');
+    const found =
+      'text' in r.body
+        ? await parties.search(r.body.text, scope.markets === '*' ? '*' : [...scope.markets])
+        : await parties.findByIdentifier(r.body);
     return send(c, { items: found.filter((p) => seesParty(c, p)).map(publicView) });
   });
 
@@ -1356,6 +1361,51 @@ export function createApp(d: AppDeps) {
     const r = await readJson(c, 'PartyIdentifierInput');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => ({ status: 201, body: publicView(await parties.addIdentifier(p.id, r.body, c.get('principal').subject)) }));
+  });
+
+  // The party's life cycle (ADR 0039): numbers removed, restriction set and lifted, ended and reopened.
+  app.post('/v1/parties/:partyId/identifiers/:identifierId/removals', async (c) => {
+    const p = await visibleParty(c);
+    const r = await readJson(c, 'ReasonRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({
+      status: 201,
+      body: publicView(await parties.removeIdentifier(p.id, c.req.param('identifierId'), r.body, c.get('principal').subject)),
+    }));
+  });
+
+  app.post('/v1/parties/:partyId/restrictions', async (c) => {
+    const p = await visibleParty(c);
+    const r = await readJson(c, 'RestrictPartyRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: publicView(await parties.restrict(p.id, r.body, c.get('principal').subject)) }));
+  });
+
+  app.post('/v1/parties/:partyId/restriction-liftings', async (c) => {
+    const p = await visibleParty(c);
+    const r = await readJson(c, 'ReasonRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: publicView(await parties.liftRestriction(p.id, r.body, c.get('principal').subject)) }));
+  });
+
+  app.post('/v1/parties/:partyId/endings', async (c) => {
+    const p = await visibleParty(c);
+    const r = await readJson(c, 'EndPartyRequest');
+    if (!r.ok) return r.res;
+    // A policyholder of a policy in force is not ended: the policy is cancelled or transferred first.
+    const today = marketDate(p.market, d.clock.now());
+    const inForce = (await policies.findByPolicyholder(p.id))
+      .filter((x) => x.versions.some((v) => v.status === 'active' && v.policyholderPartyId === p.id && v.validTo > today))
+      .map((x) => x.id);
+    if (inForce.length) return problem(c, 409, 'Conflict', `Party ${p.id} is the policyholder of policies in force: ${inForce.join(', ')}. Cancel or transfer them first.`);
+    return idempotent(c, r.body, async () => ({ status: 201, body: publicView(await parties.end(p.id, r.body, c.get('principal').subject)) }));
+  });
+
+  app.post('/v1/parties/:partyId/reopenings', async (c) => {
+    const p = await visibleParty(c);
+    const r = await readJson(c, 'ReasonRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: publicView(await parties.reopen(p.id, r.body, c.get('principal').subject)) }));
   });
 
   // Who the caller is, for a user interface. Only a valid token is needed (x-permission signed-in).

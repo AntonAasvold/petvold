@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-21 | [Partens livscykel: sökning på namn, nummer som tas bort, begränsning och avslut](2026-11-21-partens-livscykel.md) | #120 |
 | 2026-11-21 | [End-to-end-scenarier för en hel kundresa](2026-11-21-end-to-end-scenarier.md) | #119 |
 | 2026-11-21 | [Dokument, steg 4: Petvold gör breven automatiskt](2026-11-21-dokument-steg-4.md) | #118 |
 | 2026-11-21 | [Dokument, steg 3: Gotenberg och mallarna](2026-11-21-dokument-steg-3.md) | #117 |

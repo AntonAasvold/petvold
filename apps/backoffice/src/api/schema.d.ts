@@ -1556,10 +1556,12 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Find a party by personal or organization number
-         * @description Requires the permission `parties:read`. The number is sent in the body,
-         *     so it never ends up in URLs or access logs (ADR 0026). Only parties in
-         *     the caller's markets are returned, and personal numbers are masked.
+         * Find a party by personal or organization number, or by name or email
+         * @description Requires the permission `parties:read`. The number or text is sent in
+         *     the body, so it never ends up in URLs or access logs (ADR 0026, 0039).
+         *     Only parties in the caller's markets are returned, and personal numbers
+         *     are masked. A text finds parties whose name or email contains it, at
+         *     most 50, sorted by name; a restricted party only for parties:privacy.
          */
         post: operations["searchParties"];
         delete?: never;
@@ -1626,9 +1628,119 @@ export interface paths {
         put?: never;
         /**
          * Add a personal or organization number
-         * @description Requires the permission `parties:write`. Identifiers are never removed. Adding one the party already has returns it unchanged.
+         * @description Requires the permission `parties:write`. Adding one the party already has returns it unchanged. A number removed from another party may be added (ADR 0039).
          */
         post: operations["addPartyIdentifier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/parties/{partyId}/identifiers/{identifierId}/removals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove a personal or organization number
+         * @description Requires the permission `parties:write` (ADR 0039). The number stays as history with who,
+         *     when and why, and no longer counts: it may then be added to the right party.
+         *     To correct a number, remove it and add the right one. The identifier's id is
+         *     used, since a personal number is shown masked and never put in an address.
+         */
+        post: operations["removePartyIdentifier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/parties/{partyId}/restrictions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restrict the processing of a party (GDPR article 18)
+         * @description Requires the permission `parties:privacy` (ADR 0039). The party is restricted up to and
+         *     including `until`, a date after today: only callers with parties:privacy see it,
+         *     and nothing new may point at it. The latest restriction or lifting is in force,
+         *     also against a rejected erasure request.
+         */
+        post: operations["restrictParty"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/parties/{partyId}/restriction-liftings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lift the restriction of a party
+         * @description Requires the permission `parties:privacy` (ADR 0039). 409 if the party is not restricted.
+         */
+        post: operations["liftPartyRestriction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/parties/{partyId}/endings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End a party (deceased, dissolved or another cause)
+         * @description Requires the permission `parties:write` (ADR 0039). An ended party cannot become a
+         *     policyholder, owner or recipient of anything new; its details may still change,
+         *     e.g. an estate's address, and it is erased by the retention rules (ADR 0028).
+         *     409 while it is the policyholder of a policy in force: cancel or transfer the
+         *     policy first. The problem's detail then names the policies.
+         */
+        post: operations["endParty"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/parties/{partyId}/reopenings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen an ended party
+         * @description Requires the permission `parties:write` (ADR 0039), e.g. for a party ended by mistake.
+         */
+        post: operations["reopenParty"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3889,7 +4001,40 @@ export interface components {
             country: string;
             value: string;
         };
-        PartySearchRequest: components["schemas"]["PartyIdentifierInput"];
+        PartySearchRequest: components["schemas"]["PartyIdentifierInput"] | {
+            /** @description A part of the name (given and family name, or the organization's name) or email, case insensitive. */
+            text: string;
+        };
+        RestrictPartyRequest: {
+            /** @description Restricted up to and including this date */
+            until: components["schemas"]["Date"];
+            reason: string;
+        };
+        EndPartyRequest: {
+            /**
+             * @description deceased: a person; dissolved: an organization.
+             * @enum {string}
+             */
+            cause: "deceased" | "dissolved" | "other";
+            /** @description The day it ended */
+            on: components["schemas"]["Date"];
+            /** @description e.g. the death certificate received. */
+            reason: string;
+        };
+        PartyIdentifierShown: {
+            id: string;
+            /** @enum {string} */
+            type: "personal-number" | "organization-number";
+            country: string;
+            /** @description Personal numbers are masked, e.g. 19850312-****. */
+            value: string;
+            masked: boolean;
+            addedBy: string;
+            addedAt: components["schemas"]["DateTime"];
+            removedBy?: string;
+            removedAt?: components["schemas"]["DateTime"];
+            removalReason?: string;
+        };
         Address: {
             street: string;
             postalCode: string;
@@ -3929,16 +4074,19 @@ export interface components {
         PartyRecord: components["schemas"]["Party"] & {
             /** @description Restricted (GDPR article 18) up to and including this date. While restricted, only callers with parties:privacy see the party. */
             restrictedUntil?: components["schemas"]["Date"];
-            identifiers: {
+            /** @description The numbers in force. */
+            identifiers: components["schemas"]["PartyIdentifierShown"][];
+            /** @description Numbers removed with a reason (ADR 0039), as history. */
+            removedIdentifiers?: components["schemas"]["PartyIdentifierShown"][];
+            /** @description Ended (ADR 0039): nothing new may point at the party. */
+            ended?: {
                 /** @enum {string} */
-                type: "personal-number" | "organization-number";
-                country: string;
-                /** @description Personal numbers are masked, e.g. 19850312-****. */
-                value: string;
-                masked: boolean;
-                addedBy: string;
-                addedAt: components["schemas"]["DateTime"];
-            }[];
+                cause: "deceased" | "dissolved" | "other";
+                on: components["schemas"]["Date"];
+                reason?: string;
+                endedBy: string;
+                endedAt: components["schemas"]["DateTime"];
+            };
         };
         IssuePolicyRequest: {
             market: components["schemas"]["Market"];
@@ -7951,6 +8099,172 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PartyIdentifierInput"];
+            };
+        };
+        responses: {
+            /** @description The party */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyRecord"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    removePartyIdentifier: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                partyId: components["parameters"]["PartyId"];
+                identifierId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description The party */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyRecord"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    restrictParty: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                partyId: components["parameters"]["PartyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestrictPartyRequest"];
+            };
+        };
+        responses: {
+            /** @description The party */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyRecord"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    liftPartyRestriction: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                partyId: components["parameters"]["PartyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description The party */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyRecord"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    endParty: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                partyId: components["parameters"]["PartyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EndPartyRequest"];
+            };
+        };
+        responses: {
+            /** @description The party */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyRecord"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    reopenParty: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                partyId: components["parameters"]["PartyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonRequest"];
             };
         };
         responses: {

@@ -3,7 +3,7 @@ import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { PostgresPartyStore, PostgresRetentionStore, reapplyErasures } from '../src/postgres.ts';
-import { organization, person, partyStoreSuite } from '../test-suites/party-store.ts';
+import { organization, person, personalNumber, partyStoreSuite } from '../test-suites/party-store.ts';
 
 const ownerUrl = process.env.TEST_DATABASE_URL;
 const serviceUrl = process.env.PARTIES_TEST_DATABASE_URL;
@@ -15,7 +15,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate parties.party_revision, parties.party_identifier, parties.erasure_request, parties.erasure_decision, parties.retention_settings');
+const clean = () => admin.query('truncate parties.party_revision, parties.party_identifier, parties.erasure_request, parties.erasure_decision, parties.retention_settings, parties.restriction, parties.party_status');
 
 partyStoreSuite('PostgresPartyStore', async () => {
   await clean();
@@ -31,6 +31,20 @@ test('the database keeps the history, the kind and the market', async () => {
   await assert.rejects(store.appendRevision(person({ revision: 2, market: 'YY', reason: 'x' })), /never change/);
   await assert.rejects(store.register(organization({ givenName: 'Anna' }), []), /party_revision_names/);
   await assert.rejects(store.register(person({ id: 'pty_bo', name: 'Bo AB' }), []), /party_revision_names/);
+});
+
+test('an identifier may only be removed, once; restriction and ending rows never change (ADR 0039)', async () => {
+  await clean();
+  const store = new PostgresPartyStore(pool);
+  await store.register(person(), [personalNumber()]);
+  await assert.rejects(pool.query(`update parties.party_identifier set value = '209903154566'`), /permission denied/);
+  await assert.rejects(pool.query(`update parties.party_identifier set party_id = 'pty_bo'`), /permission denied/);
+  await pool.query(`update parties.party_identifier set removed_by = 'a', removed_at = now(), removal_reason = 'Wrong party'`);
+  await assert.rejects(pool.query(`update parties.party_identifier set removal_reason = 'Other'`), /removed already/);
+  await assert.rejects(pool.query(`delete from parties.party_identifier`), /permission denied/);
+  await store.addRestriction({ id: 'prs_1', partyId: 'pty_anna', action: 'restrict', until: '2027-01-31', reason: 'x', decidedBy: 'a', decidedAt: '2026-11-15T10:00:00.000Z' });
+  await assert.rejects(pool.query(`update parties.restriction set until = '2099-01-01'`), /permission denied/);
+  await assert.rejects(pool.query(`delete from parties.party_status`), /permission denied/);
 });
 
 test('only an approved request by someone else anonymizes, and only through the function', async () => {

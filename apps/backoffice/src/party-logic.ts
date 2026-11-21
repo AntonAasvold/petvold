@@ -119,3 +119,11 @@ export function displayName(p: { kind?: string; givenName?: string; familyName?:
   if (p.anonymized) return '–';
   return [p.givenName, p.familyName].filter(Boolean).join(' ') || p.name || '';
 }
+
+/** Ended wins over restricted (ADR 0039). */
+export function partyStatus(p: { anonymized?: boolean; ended?: unknown; restrictedUntil?: string }, today: string): 'anonymized' | 'ended' | 'restricted' | 'active' {
+  if (p.anonymized) return 'anonymized';
+  if (p.ended) return 'ended';
+  if (p.restrictedUntil && today <= p.restrictedUntil) return 'restricted';
+  return 'active';
+}
