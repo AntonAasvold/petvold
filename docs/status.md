@@ -366,8 +366,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Kundens dokument:** `GET /v1/parties/{id}/documents` samlar Petvolds arkiv, brev som bolagets dokumentsystem skickat och bilagor i bolagets arkiv. Kortet "Dokument" finns på kundens sida.
   - 142 operationer, 74 enhetstester och 40 flöden i back office.
 
+- Dokument, steg 3 (ADR 0038), PR #117:
+  - **Gotenberg 9.1.0** i docker compose, utan nätåtkomst, JavaScript eller hämtning för Chromium.
+  - **Mallar** i HTML och CSS med designsystemets tokens för skadebesked och försäkringsbrev, på svenska och engelska, med version och kontrollsumma.
+  - **`POST /v1/notices/{id}/documents`** gör meddelandet till PDF/A-2b och PDF/UA-1 och sparar mallen och datans hash. `GET /v1/documents?noticeId=` listar dokumenten.
+  - **Back office:** kortet "PDF från Petvold" på meddelandets sida.
+  - **Migration 0047.** 143 operationer, 543 tester, 158 databastester och 41 flöden.
+
 **Nästa steg**
-1. ADR 0038, steg 3: Gotenberg och mallarna, med skadebesked och försäkringsbrev som PDF.
+1. ADR 0038, steg 4: meddelanden som PDF från Petvold eller bolagets dokumentsystem, enligt en inställning.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
 3. Back office: översikten på startsidan, omräkning av beslut och policyns sida enligt designsystemet.
 

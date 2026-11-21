@@ -42,6 +42,27 @@ services:
       timeout: 3s
       retries: 60
 
+  # PDFs from Petvold's templates (ADR 0038): Gotenberg (MIT). Chromium may not
+  # reach any address, private or public, so a template can fetch nothing; no
+  # JavaScript, no downloads, no webhooks, and LibreOffice off until needed.
+  gotenberg:
+    image: gotenberg/gotenberg:9.1.0
+    command:
+      - gotenberg
+      - --chromium-deny-private-ips=true
+      - --chromium-deny-public-ips=true
+      - --chromium-disable-javascript=true
+      - --api-disable-download-from=true
+      - --webhook-disable=true
+      - --libreoffice-disable-routes=true
+    ports:
+      - "127.0.0.1:${PETVOLD_GOTENBERG_PORT:-3100}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3000/health >/dev/null || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
 volumes:
   pgdata:
   s3data:

@@ -119,3 +119,36 @@ test("the customer's list has Petvold's documents, notices the insurer sent and 
   assert.deepEqual([letter.source, letter.noticeType, letter.archiveId, letter.channel], ['insurer', 'claim-decision', 'arch-2026-000777', 'digital-mailbox']);
   assert.equal((await call('GET', '/v1/parties/pty_owner001/documents', 'clinic')).status, 403, 'a clinic has no parties:read');
 });
+
+test('a notice becomes a PDF from the template, with the recipient and the reasons in words, and the document service sees it (ADR 0038)', async () => {
+  const html: string[] = [];
+  let now = '2026-11-20T10:00:00.000Z';
+  const clock = { now: () => now };
+  const inst = await compose({
+    databases: {},
+    engineVersion: 'test',
+    clock,
+    documents: { key: Buffer.alloc(32, 1).toString('base64'), renderer: { render: async (i) => (html.push(i.html), new TextEncoder().encode('%PDF-1.7 rendered')) } },
+  });
+  await seedSampleData(inst, clock);
+  while ((await inst.relay.tick()) > 0);
+  const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
+  const post = (path: string, token: string) =>
+    app.request(path, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'idempotency-key': `key-${path}-${token}` }, body: '{}' });
+  const [n] = await inst.deps.communications!.list({ type: 'claim-decision', policyId: 'pol_bella' });
+  assert.equal((await post(`/v1/notices/${n!.id}/documents`, 'handler')).status, 403, 'notices:deliver is needed');
+  const res = await post(`/v1/notices/${n!.id}/documents`, 'docs');
+  assert.equal(res.status, 201);
+  const doc = (await res.json()) as any;
+  valid('Document', doc);
+  assert.deepEqual([doc.kind, doc.template.name, doc.owner.noticeId, doc.partyIds], ['generated', 'claim-decision', n!.id, ['pty_owner001']]);
+  assert.match(html[0]!, /Anna/, 'the recipient\'s name, read when the PDF is made');
+  assert.doesNotMatch(html[0]!, /decision\.(approved|partial)/, 'the reasons in words, not keys');
+  const listed = await app.request(`/v1/documents?noticeId=${n!.id}`, { headers: { authorization: 'Bearer docs' } });
+  assert.deepEqual(((await listed.json()) as any).items.map((x: any) => x.id), [doc.id]);
+  now = '2026-11-20T10:01:00.000Z';
+  const without = await setup();
+  while ((await without.inst.relay.tick()) > 0);
+  const [m] = (await without.call('GET', '/v1/notices?type=claim-decision', 'docs')).body.items;
+  assert.equal((await without.call('POST', `/v1/notices/${m.id}/documents`, 'docs', {})).status, 503, 'no renderer');
+});

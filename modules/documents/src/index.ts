@@ -4,9 +4,14 @@
  * through links that expire, are logged and can be revoked. Other modules keep
  * only a document's id, never the file or an address.
  *
- * Step 1: uploads and links. PDFs from templates (Gotenberg) come in step 3.
+ * Uploads (step 1), and PDFs made from Petvold's templates with a PdfRenderer
+ * such as Gotenberg (step 3).
  */
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { findTemplate, type RenderContext } from './templates/index.ts';
+
+export type { RenderContext } from './templates/index.ts';
+export { TEMPLATES } from './templates/index.ts';
 
 export type Timestamp = string;
 
@@ -27,6 +32,8 @@ export interface StoredDocument {
   sha256: string;
   /** The name it was uploaded with, for display. */
   filename?: string;
+  /** A generated document: the template, its version and checksum, and the hash of the data it was filled with. */
+  template?: TemplateRef;
   owner: DocumentOwner;
   /** The parties the document concerns, set when it is made: for a customer's list of documents. */
   partyIds: string[];
@@ -58,6 +65,30 @@ export interface DocumentFilter {
   partyId?: string;
   claimId?: string;
   policyId?: string;
+  noticeId?: string;
+}
+
+/** Which template made a document (ADR 0038 point 3): the same template and data give the same document. */
+export interface TemplateRef {
+  name: string;
+  market: string;
+  language: string;
+  version: number;
+  /** sha256 of the template's source. */
+  checksum: string;
+  /** sha256 of the data, canonical JSON. */
+  dataHash: string;
+}
+
+export interface RenderInput {
+  html: string;
+  /** Fonts and images, sent with the HTML: Chromium fetches nothing. */
+  assets?: { name: string; bytes: Uint8Array; mediaType: string }[];
+}
+
+/** Turns finished HTML into a PDF (ADR 0038 point 2). Gotenberg in production (gotenberg.ts). */
+export interface PdfRenderer {
+  render(input: RenderInput): Promise<Uint8Array>;
 }
 
 /** The documents' records. Postgres in production, memory in tests. */
@@ -89,7 +120,7 @@ export class DocumentConflictError extends Error {
   }
 }
 
-export type DocumentErrorCode = 'validation' | 'not_found' | 'conflict' | 'gone';
+export type DocumentErrorCode = 'validation' | 'not_found' | 'conflict' | 'gone' | 'unavailable';
 
 export class DocumentError extends Error {
   constructor(
@@ -130,6 +161,21 @@ export interface DocumentsDeps {
   publicBaseUrl: string;
   /** The longest a customer's link may last, in seconds. Default 7 days. */
   maxCustomerLinkSeconds?: number;
+  /** Makes PDFs from templates. Omitted: generating gives 'unavailable'. */
+  renderer?: PdfRenderer;
+}
+
+export interface GenerateInput {
+  /** The template's name, e.g. claim-decision. */
+  template: string;
+  market: string;
+  language: string;
+  /** The data the template is filled with, e.g. a notice's content. */
+  data: Record<string, unknown>;
+  /** What the person reading needs that the data leaves out: names and addresses, never stored as data. */
+  context: RenderContext;
+  owner: DocumentOwner;
+  partyIds: string[];
 }
 
 export interface UploadInput {
@@ -182,6 +228,36 @@ export class DocumentService {
     return doc;
   }
 
+  /**
+   * Makes a PDF from a template (ADR 0038 point 3): Petvold fills the template
+   * with the data and sends the HTML to the renderer. The document keeps the
+   * template, its version and checksum, and the data's hash.
+   */
+  async generate(input: GenerateInput, by: string): Promise<StoredDocument> {
+    if (!this.d.renderer) throw new DocumentError('unavailable', 'No PDF renderer is configured (PETVOLD_GOTENBERG_URL)');
+    const t = findTemplate(input.template, input.market, input.language);
+    if (!t) throw new DocumentError('validation', `No template ${input.template} for ${input.market} in ${input.language}`);
+    const html = t.render(input.data, input.context);
+    const bytes = await this.d.renderer.render({ html });
+    if (ascii(bytes, 0, 5) !== '%PDF-') throw new Error('The renderer did not return a PDF');
+    const doc: StoredDocument = {
+      id: this.d.ids.next('doc'),
+      kind: 'generated',
+      mediaType: 'application/pdf',
+      size: bytes.length,
+      sha256: sha256(bytes),
+      template: { name: t.name, market: t.market, language: t.language, version: t.version, checksum: t.checksum, dataHash: sha256(new TextEncoder().encode(canonical(input.data))) },
+      owner: { ...input.owner },
+      partyIds: [...new Set(input.partyIds)].sort(),
+      market: input.market,
+      createdBy: by,
+      createdAt: this.d.clock.now(),
+    };
+    await this.d.blobs.put(doc.id, bytes, doc.mediaType);
+    await this.d.store.save(doc);
+    return doc;
+  }
+
   async get(id: string): Promise<StoredDocument> {
     const doc = await this.d.store.get(id);
     if (!doc) throw new DocumentError('not_found', `Document ${id} does not exist`);
@@ -189,7 +265,7 @@ export class DocumentService {
   }
 
   async list(filter: DocumentFilter): Promise<StoredDocument[]> {
-    if (!filter.partyId && !filter.claimId && !filter.policyId) throw new DocumentError('validation', 'Give partyId, claimId or policyId');
+    if (!filter.partyId && !filter.claimId && !filter.policyId && !filter.noticeId) throw new DocumentError('validation', 'Give partyId, claimId, policyId or noticeId');
     return this.d.store.list(filter);
   }
 
@@ -275,6 +351,13 @@ export class DocumentService {
   }
 }
 
+/** JSON with sorted keys, so the same data always gives the same hash. */
+export function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
+  if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical((v as Record<string, unknown>)[k])}`).join(',')}}`;
+  return JSON.stringify(v);
+}
+
 export function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -294,7 +377,13 @@ export class InMemoryDocumentStore implements DocumentStore {
   }
   async list(f: DocumentFilter) {
     return this.docs
-      .filter((d) => (!f.partyId || d.partyIds.includes(f.partyId)) && (!f.claimId || d.owner.claimId === f.claimId) && (!f.policyId || d.owner.policyId === f.policyId))
+      .filter(
+        (d) =>
+          (!f.partyId || d.partyIds.includes(f.partyId)) &&
+          (!f.claimId || d.owner.claimId === f.claimId) &&
+          (!f.policyId || d.owner.policyId === f.policyId) &&
+          (!f.noticeId || d.owner.noticeId === f.noticeId),
+      )
       .sort((a, b) => (a.createdAt > b.createdAt ? -1 : a.createdAt < b.createdAt ? 1 : a.id < b.id ? 1 : -1))
       .map((d) => structuredClone(d));
   }

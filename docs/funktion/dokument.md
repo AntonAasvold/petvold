@@ -67,6 +67,24 @@ En fil öppnas aldrig via en permanent adress. Den som vill öppna den skapar en
 - **Spärr:** `POST /v1/documents/{id}/links/{linkId}/revocations` (rättighet `documents:share`) gör att länken slutar fungera direkt.
 - **Petvold sparar inte adressen.** Skapa en ny länk när den behövs igen.
 
+## PDF från Petvolds mallar
+
+Petvold kan göra ett meddelande till en PDF med sina egna mallar (ADR 0038):
+
+`POST /v1/notices/{id}/documents` (rättighet `notices:deliver`).
+
+- **Petvold gör underlaget.** Mallen fylls med meddelandets innehåll, och dessutom med uppgifter som läses när PDF:en görs: mottagarens namn och adress, djurets namn och skälens text. Skälen har samma text som i API:t. Namn och adresser sparas aldrig i meddelandet.
+- **Gotenberg gör PDF:en.** Den blir PDF/A-2b och PDF/UA-1, och Gotenberg hämtar ingenting utifrån.
+- **Dokumentet** hör till meddelandet och gäller mottagaren. Det finns alltså i kundens lista. Det sparar mallens namn, marknad, språk, version och kontrollsumma, och en hash av datan (`template`). Samma mall och data ger samma dokument.
+- **Mallar finns** för `claim-decision` (skadebesked) och `policy-confirmation` (försäkringsbrev), för Sverige på svenska och engelska. En annan typ ger `422`.
+- **Utan Gotenberg** (`PETVOLD_GOTENBERG_URL`) svarar anropet `503`.
+- **En ny PDF** av samma meddelande blir ett nytt dokument.
+- **Dokumenten per meddelande:** `GET /v1/documents?noticeId=` listar dem.
+
+Mallarna använder designsystemets färger och avstånd: svartvitt, ramar och tabeller med linjer. Typsnitten Inter och Space Grotesk finns inte i Gotenberg, så Liberation Sans används i stället.
+
+*Kommer i steg 4:* en inställning per marknad som avgör om Petvold eller bolagets dokumentsystem gör breven, så att PDF:en görs när meddelandet skapas.
+
 ## Rättigheter
 
 | Rättighet | Får | Standardroller |
@@ -78,7 +96,6 @@ En sparad rollinställning behöver `npm run roles:sync -- --apply` för att få
 
 ## Det som kommer
 
-ADR 0038 byggs i fem steg. Steg 1 och 2 är byggda.
-3. Gotenberg och mallarna: skadebesked och försäkringsbrev som PDF.
+ADR 0038 byggs i fem steg. Steg 1–3 är byggda.
 4. Meddelanden som PDF från Petvold eller från bolagets dokumentsystem.
 5. Gallring av dokument som en körning.

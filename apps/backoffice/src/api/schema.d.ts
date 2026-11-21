@@ -586,6 +586,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/notices/{noticeId}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make the notice a PDF from Petvold's template
+         * @description Requires the permission `notices:deliver`.
+         *
+         *     Petvold fills its template for the notice's type, market and language
+         *     with the notice's content, and the recipient's name and address, the
+         *     animal's name and the reasons' texts read now. Gotenberg turns it into
+         *     PDF/A (ADR 0038). The document belongs to the notice, concerns its
+         *     recipient, and keeps the template's version and checksum and the data's
+         *     hash. Making it again gives a new document. 503 without a PDF renderer
+         *     (PETVOLD_GOTENBERG_URL), 422 for a type without a template.
+         */
+        post: operations["renderNoticeDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/documents": {
         parameters: {
             query?: never;
@@ -599,7 +627,7 @@ export interface paths {
          *     to what it belongs to: `claims:read` for a claim, `policies:read` for a
          *     policy and `notices:read` for a notice, within the caller's scope. A
          *     customer's list (`partyId`) also needs `parties:read`. Newest first.
-         *     Give one of partyId, claimId and policyId.
+         *     Give one of partyId, claimId, policyId and noticeId.
          */
         get: operations["listDocuments"];
         put?: never;
@@ -3234,6 +3262,15 @@ export interface components {
             createdAt: components["schemas"]["DateTime"];
             /** @description The file was removed by retention; the record stays. */
             erasedAt?: components["schemas"]["DateTime"];
+            /** @description A generated document's template, its version and checksum, and the hash of the data (canonical JSON) it was filled with. */
+            template?: {
+                name: string;
+                market: components["schemas"]["Market"];
+                language: string;
+                version: number;
+                checksum: string;
+                dataHash: string;
+            };
         };
         /** @description A document about a customer, in Petvold's archive or the insurer's. */
         CustomerDocument: {
@@ -5167,6 +5204,15 @@ export interface components {
         };
     };
     responses: {
+        /** @description A service it needs is not configured or does not answer, e.g. the PDF renderer */
+        Unavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description It is no longer there, e.g. an erased document */
         Gone: {
             headers: {
@@ -6123,12 +6169,46 @@ export interface operations {
             422: components["responses"]["Unprocessable"];
         };
     };
+    renderNoticeDocument: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                noticeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Empty"];
+            };
+        };
+        responses: {
+            /** @description Made */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Document"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
     listDocuments: {
         parameters: {
             query?: {
                 partyId?: string;
                 claimId?: string;
                 policyId?: string;
+                noticeId?: string;
                 /** @description Items per page, 1-200. Default 50. */
                 limit?: components["parameters"]["Limit"];
                 /** @description The nextCursor from the previous page (ADR 0002). Opaque. */

@@ -25,6 +25,12 @@ import { mayReportDelivery, noticeFlags } from '../integration-logic.ts';
 import type { Me } from '../permissions.ts';
 import { navigate } from '../router.ts';
 import { noticeFlagLabel, noticeStatusLabel, noticeTypeLabel } from './labels.ts';
+import { formatSize } from '../attachment-logic.ts';
+
+type StoredDocument = components['schemas']['Document'];
+
+/** The notice types Petvold has templates for (ADR 0038). */
+const TEMPLATED = ['claim-decision', 'policy-confirmation'];
 
 type Notice = components['schemas']['Notice'];
 type Delivery = components['schemas']['Delivery'];
@@ -45,6 +51,9 @@ export class NoticeDetail extends LitElement {
   @state() private sha256 = '';
   @state() private reason = '';
   @state() private busy = false;
+  /** The notice's documents in Petvold's archive (ADR 0038). */
+  @state() private documents: StoredDocument[] = [];
+  @state() private rendering = false;
   private keys = new IdempotencyKeys();
 
   constructor() {
@@ -53,6 +62,18 @@ export class NoticeDetail extends LitElement {
   }
 
   static styles = css`
+    ul.docs {
+      list-style: none;
+      margin: 0 0 var(--wa-space-m);
+      padding: 0;
+    }
+    ul.docs li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--wa-space-s);
+      padding: var(--wa-space-xs) 0;
+    }
     .head {
       display: flex;
       align-items: center;
@@ -106,6 +127,56 @@ export class NoticeDetail extends LitElement {
     } catch (e) {
       this.problem = e as Problem;
     }
+    if (this.me?.permissions.includes('documents:read')) {
+      const { data } = await this.api.GET('/v1/documents', { params: { query: { noticeId: this.noticeId } } });
+      this.documents = data?.items ?? [];
+    }
+  }
+
+  /** Petvold makes the notice a PDF from its template, with Gotenberg (ADR 0038). */
+  private async renderPdf() {
+    this.rendering = true;
+    const { ok, notice } = await act(
+      () =>
+        this.api.POST('/v1/notices/{noticeId}/documents', {
+          params: { path: { noticeId: this.noticeId }, header: { 'Idempotency-Key': crypto.randomUUID() } },
+          body: {},
+        }),
+      () => ({ variant: 'success', text: msg('The PDF is made.', { id: 'notice.pdfMade' }) }),
+    );
+    this.rendering = false;
+    this.result = { ...notice, reload: false };
+    if (ok) await this.load();
+  }
+
+  private async openDocument(documentId: string) {
+    const { data } = await this.api.POST('/v1/documents/{documentId}/links', {
+      params: { path: { documentId }, header: { 'Idempotency-Key': crypto.randomUUID() } },
+      body: { audience: 'internal' },
+    });
+    if (data) window.open(data.url, '_blank', 'noopener');
+  }
+
+  private documentsCard(n: { type: string }) {
+    const may = this.me?.permissions.includes('notices:deliver') && TEMPLATED.includes(n.type);
+    if (!this.documents.length && !may) return nothing;
+    const lang = getLocale();
+    return html`<wa-card>
+      <h3 slot="header">${msg('PDF from Petvold', { id: 'notice.pdfTitle' })}</h3>
+      ${this.documents.length
+        ? html`<ul class="docs">
+            ${this.documents.map(
+              (d) => html`<li>
+                <span>${formatDateTime(d.createdAt, lang)} · ${formatSize(d.size)}${d.template ? html` · <span class="pv-mono">${d.template.name} v${d.template.version}</span>` : nothing}</span>
+                <wa-button size="small" appearance="outlined" @click=${() => this.openDocument(d.id)}>${msg('Open', { id: 'history.open' })}</wa-button>
+              </li>`,
+            )}
+          </ul>`
+        : html`<p>${msg("No PDF yet. The insurer's document system makes the letter, unless Petvold makes it here.", { id: 'notice.noPdf' })}</p>`}
+      ${may
+        ? html`<wa-button appearance="outlined" ?loading=${this.rendering} @click=${() => this.renderPdf()}>${msg('Make a PDF', { id: 'notice.makePdf' })}</wa-button>`
+        : nothing}
+    </wa-card>`;
   }
 
   render() {
@@ -133,6 +204,7 @@ export class NoticeDetail extends LitElement {
           >`
         : nothing}
       <div class="cards">
+        ${this.documentsCard(n)}
         <wa-card>
           <h3 slot="header">${msg('Details', { id: 'claim.facts' })}</h3>
           <dl>

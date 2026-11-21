@@ -58,6 +58,19 @@ export function documentStoreSuite(name: string, factory: StoreFactory): void {
       assert.deepEqual(await s.get('doc_2'), bare);
     });
 
+    it('a generated document keeps its template, and documents are listed per notice', async (s) => {
+      const g = doc('doc_g', {
+        kind: 'generated',
+        owner: { noticeId: 'ntc_1', policyId: 'pol_1' },
+        template: { name: 'claim-decision', market: 'SE', language: 'sv', version: 1, checksum: 'c'.repeat(64), dataHash: 'd'.repeat(64) },
+      });
+      delete g.filename;
+      await s.save(g);
+      await s.save(doc('doc_u'));
+      assert.deepEqual(await s.get('doc_g'), g);
+      assert.deepEqual((await s.list({ noticeId: 'ntc_1' })).map((d) => d.id), ['doc_g']);
+    });
+
     it('documents are listed per party, claim or policy, newest first', async (s) => {
       await s.save(doc('doc_1'));
       await s.save(doc('doc_2', { createdAt: '2026-11-20T11:00:00.000Z', partyIds: ['pty_anna', 'pty_bo'], owner: { policyId: 'pol_2' } }));

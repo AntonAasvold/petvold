@@ -925,4 +925,8 @@ export const templates: Record<string, string> = {
   'document.badType': 'Filen ska vara PDF, JPEG, PNG eller HEIC.',
   'document.tooLarge': 'Filen är större än 25 MB.',
   'document.empty': 'Filen är tom.',
+  'notice.pdfMade': 'PDF:en är gjord.',
+  'notice.pdfTitle': 'PDF från Petvold',
+  'notice.noPdf': 'Ingen PDF än. Bolagets dokumentsystem gör brevet, om inte Petvold gör det här.',
+  'notice.makePdf': 'Gör PDF',
 };

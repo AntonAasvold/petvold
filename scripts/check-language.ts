@@ -21,6 +21,7 @@ const ALLOWED: Record<string, string> = {
   'modules/catalog/seed/products.json': 'sample product with Swedish names (sv)',
   'modules/api/seed/underwriting-rules.json': 'sample underwriting rules with Swedish questions (sv)',
   'apps/backoffice/src/locales/sv.ts': 'Swedish texts of the back office (sv)',
+  'modules/documents/src/templates/texts-sv.ts': 'Swedish texts of the document templates (sv)',
   'db/migrations/0001_claims.sql': 'migration already applied; never edited',
   'db/migrations/0002_claims_grants.sql': 'migration already applied; never edited',
   'db/migrations/0003_claims_line_order_and_journal_currency.sql': 'migration already applied; never edited',

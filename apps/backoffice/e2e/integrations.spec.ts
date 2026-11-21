@@ -56,3 +56,15 @@ test('a subscription is created with its secret shown once, turned off and on, a
   await expect(page.getByText(/^whsec_/)).toBeVisible();
   await expect(page.getByText('The previous secret signs until')).toBeVisible();
 });
+
+test('the document system may have Petvold make a notice a PDF; without Gotenberg it says so (ADR 0038)', async ({ page }) => {
+  await signIn(page, 'dev-documents');
+  await page.getByRole('link', { name: 'Notices' }).click();
+  await page.getByRole('tab', { name: 'Waiting' }).click();
+  const grid = page.getByRole('grid', { name: 'Notices' });
+  await grid.getByRole('row').filter({ hasText: 'Claims decision' }).first().getByRole('gridcell').first().click();
+  await expect(page.getByRole('heading', { name: 'PDF from Petvold' })).toBeVisible();
+  await page.getByRole('button', { name: 'Make a PDF' }).click();
+  // The flow tests run without Gotenberg: the answer names what is missing.
+  await expect(page.getByRole('alert')).toContainText('PETVOLD_GOTENBERG_URL');
+});
