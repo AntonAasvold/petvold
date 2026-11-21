@@ -990,4 +990,6 @@ export const templates: Record<string, string> = {
   'notice.made': 'Skapat',
   'notice.sentDesc': 'Kunden har fått det: med kanalen och, om inte Petvold gjorde det, dokumentet i arkivet.',
   'notice.failedDesc': 'Det gick inte att skicka, till exempel för att adress saknas. Meddelandet ligger kvar i kön.',
+  'webhooks.actions': 'Åtgärder för prenumerationen',
+  'webhooks.rotateHow': 'En ny hemlighet visas en gång. Den förra signerar också i 24 timmar, så att mottagaren hinner byta utan att förlora händelser.',
 };
