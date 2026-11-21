@@ -380,6 +380,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Back office:** valet under Inställningar → Meddelanden, och vem som gör dokumentet på meddelandets sida.
   - **Migration 0048.** 547 tester, 159 databastester och 42 flöden.
 
+- End-to-end-scenarier för en hel kundresa, att testa för hand, och en lista över det som saknas i gränssnittet (`docs/end-to-end-scenario.md`), PR #119.
+
 **Nästa steg**
 1. ADR 0038, steg 5: gallring av dokument som en körning.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
