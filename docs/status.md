@@ -424,8 +424,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - Egenskapstester för varje funktion. Ny sida: [Premier och betalningar](funktion/premier.md).
   - 582 tester.
 
+- Pengar, steg 2a: betalarkonton och premieplaner (ADR 0040), PR #130:
+  - **Modulen `billing`** gör en premieplan av `policy.issued` och `policy.renewed`, på försäkringstagarens betalarkonto (ett per marknad och valuta). Intervallet behålls vid förnyelse om produkten tillåter det.
+  - **Produktens `billing`:** `paymentIntervals`, `defaultPaymentInterval`, `installmentFee` och `invoiceLeadDays`, med kontroll.
+  - **API:** `GET /v1/payer-accounts`, `.../{id}` och `GET /v1/premium-plans`, med rättigheten `billing:read` och rollen `billing-clerk`. Tre nya operationer, 151 i kontraktet.
+  - **Migration 0050:** schemat `billing` med rollen `billing_service`, som bara får läsa och lägga till. Provad ner och upp igen. En befintlig rollinställning behöver `npm run roles:sync -- --apply`.
+  - Gallringen ser att en part har en pågående plan.
+  - 595 tester och 167 databastester.
+
 **Nästa steg**
-1. ADR 0040, steg 2: `billing` med betalarkonton, premieplaner från policyhändelserna och fakturering som körning.
+1. ADR 0040, steg 2b: fakturering som körning, nummerserie, betalningsreferens och fakturan som meddelande.
 2. ADR 0041 om demotjänsten som tar emot händelserna, spelar bank och kontrollerar att allt stämmer.
 3. ADR 0038, steg 5: gallring av dokument som en körning.
 4. Back office: översikten på startsidan och omräkning av beslut.

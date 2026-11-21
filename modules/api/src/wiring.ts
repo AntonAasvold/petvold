@@ -4,7 +4,8 @@
  * and by the dev server.
  */
 import { AnimalError, type AnimalService } from '@petvold/animals';
-import { CatalogError, onSale, policySettingsOf, productVersionId, vetCareTermsFor, type ProductService } from '@petvold/catalog';
+import type { PolicySource as BillingPolicySource, ProductSource as BillingProductSource } from '@petvold/billing';
+import { CatalogError, billingSettingsOf, onSale, policySettingsOf, productVersionId, vetCareTermsFor, type ProductService } from '@petvold/catalog';
 import { DomainError, eventClaimId, type ClaimsEvent, type ClaimsService } from '@petvold/claims-core';
 import type { SourceEvent as WebhookSourceEvent } from '@petvold/webhooks';
 import type { ClaimSource, PartySource, PolicySource, SourceEvent as NoticeSourceEvent } from '@petvold/communications';
@@ -321,4 +322,36 @@ export async function claimsEventForWebhooks(
       return { ...base, data: { requestId: r.id, recipient: r.recipient, items: r.items, dueDate: r.dueDate, status: r.status } };
     }
   }
+}
+
+/** The product catalog as billing reads it (ADR 0040): the market, currency and billing settings. */
+export function billingProductSource(products: ProductService): BillingProductSource {
+  return {
+    async billing(productVersion) {
+      const [product, version] = productVersion.split('@');
+      if (!product || !version) return null;
+      const v = await products.get(product, version).catch((e: unknown) => {
+        if (e instanceof CatalogError && e.code === 'not_found') return null;
+        throw e;
+      });
+      if (!v) return null;
+      const b = billingSettingsOf(v.content);
+      return { market: v.content.market, currency: v.content.currency, paymentIntervals: b.paymentIntervals, defaultPaymentInterval: b.defaultPaymentInterval, installmentFee: b.installmentFee };
+    },
+  };
+}
+
+/** The policy module as billing reads it: the policyholder on a day. */
+export function billingPolicySource(policies: PolicyService): BillingPolicySource {
+  return {
+    async policyholderOn(policyId, date) {
+      const p = await policies.get(policyId).catch((e: unknown) => {
+        if (e instanceof PolicyError && e.code === 'not_found') return null;
+        throw e;
+      });
+      if (!p) return null;
+      const v = p.versions.find((x) => x.validFrom <= date && date < x.validTo) ?? p.versions.filter((x) => x.validFrom <= date).at(-1) ?? p.versions[0];
+      return v?.policyholderPartyId ?? null;
+    },
+  };
 }

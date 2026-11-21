@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CatalogError, InMemoryProductStore, ProductService, policySettingsOf, productChecksum, vetCareTermsFor, type ProductDraft } from '../src/index.ts';
+import { CatalogError, InMemoryProductStore, ProductService, billingSettingsOf, policySettingsOf, productChecksum, vetCareTermsFor, type ProductDraft } from '../src/index.ts';
 import { content } from '../test-suites/product-store.ts';
 
 function setup(opts: { species?: string[]; series?: Record<string, string> } = {}) {
@@ -147,6 +147,21 @@ test('policy settings have defaults and limits (ADR 0029)', async () => {
   await rejects(s.createDraft('XX-DOG-X', withPolicy({ maxStartAheadDays: 366 }), author), 'validation', /maxStartAheadDays/);
   await rejects(s.createDraft('XX-DOG-X', withPolicy({ maxStartAheadDays: -1 }), author), 'validation', /maxStartAheadDays/);
   assert.equal(policySettingsOf((await s.createDraft('XX-DOG-T', withPolicy({ maxStartAheadDays: 0 }), author)).content).maxStartAheadDays, 0);
+});
+
+test('billing settings have defaults and limits (ADR 0040)', async () => {
+  const s = setup();
+  const withBilling = (billing: Record<string, unknown>) => draft({ content: { ...content(), billing } as never });
+  const v = await s.createDraft('XX-DOG-VC', draft(), author);
+  assert.deepEqual(billingSettingsOf(v.content), { paymentIntervals: ['year'], defaultPaymentInterval: 'year', installmentFee: 0, invoiceLeadDays: 20 });
+  const monthly = await s.createDraft('XX-DOG-M', withBilling({ paymentIntervals: ['year', 'month'], defaultPaymentInterval: 'month', installmentFee: 2_900 }), author);
+  assert.deepEqual(billingSettingsOf(monthly.content), { paymentIntervals: ['year', 'month'], defaultPaymentInterval: 'month', installmentFee: 2_900, invoiceLeadDays: 20 });
+  await rejects(s.createDraft('XX-DOG-X', withBilling({ paymentIntervals: [] }), author), 'validation', /paymentIntervals/);
+  await rejects(s.createDraft('XX-DOG-X', withBilling({ paymentIntervals: ['week'] }), author), 'validation', /paymentIntervals/);
+  await rejects(s.createDraft('XX-DOG-X', withBilling({ paymentIntervals: ['year', 'year'] }), author), 'validation', /twice/);
+  await rejects(s.createDraft('XX-DOG-X', withBilling({ defaultPaymentInterval: 'month' }), author), 'validation', /defaultPaymentInterval/);
+  await rejects(s.createDraft('XX-DOG-X', withBilling({ installmentFee: -1 }), author), 'validation', /installmentFee/);
+  await rejects(s.createDraft('XX-DOG-X', withBilling({ invoiceLeadDays: 61 }), author), 'validation', /invoiceLeadDays/);
 });
 
 test('a product with a tariff series needs a tariff in force that covers it (ADR 0030)', async () => {

@@ -8,7 +8,7 @@ import { createApp } from '../src/index.ts';
 test('the modules are connected, and the relay drives the policy module from the animal register', async () => {
   const clock = { now: () => '2026-11-15T10:00:00.000Z' };
   const inst = await compose({ databases: {}, engineVersion: 'test', clock });
-  assert.deepEqual(Object.values(inst.storage), ['memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory']);
+  assert.deepEqual(Object.values(inst.storage), ['memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory', 'memory']);
   await seedSampleData(inst, clock);
   await seedSampleData(inst, clock); // twice is harmless
   const app = createApp({ ...inst.deps, auth: { authenticate: async () => ({ subject: 'h', roles: ['handler'], markets: '*' }) } });

@@ -15,8 +15,9 @@ import {
 } from '@petvold/parties';
 import { InMemoryPolicyStore, PolicyError, PolicyService, type Application, type ApplicationStatus, type PolicyGroup, type PolicyRecord, type Proposal } from '@petvold/policies';
 import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_TYPES, type NoticeType, type NoticeView } from '@petvold/communications';
+import { BillingError, BillingService, InMemoryBillingStore } from '@petvold/billing';
 import { InMemoryWebhookStore, SecretBox, WebhookError, WebhookService, type Subscription } from '@petvold/webhooks';
-import { animalPort, claimSource, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
+import { animalPort, billingPolicySource, billingProductSource, claimSource, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
 import { tariffCoverage } from '@petvold/pricing-core';
 import { questionsFor, underwritingCoverage } from '@petvold/underwriting-core';
 import { marketDate } from '@petvold/common';
@@ -135,6 +136,8 @@ export interface AppDeps {
   webhooks?: WebhookService;
   /** Documents (ADR 0038). Omitted: kept in memory, with a random signing key and links on http://localhost. */
   documents?: DocumentService;
+  /** Billing (ADR 0040). Omitted: kept in memory; the installation's relay feeds it the policy events. */
+  billing?: BillingService;
   /** Runs (ADR 0037). Omitted: the four jobs over these services, with history in memory. */
   scheduler?: Scheduler;
   /** The relay, to send a dead letter again (ADR 0037). Omitted: the dead letter is only removed from the store. */
@@ -1065,6 +1068,42 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/notices/:noticeId', async (c) => send(c, await visibleNotice(c)));
 
+  // Billing (ADR 0040). Scope: the caller's markets. A role bound to policies sees
+  // only the plans of its policies and no accounts, and a clinic nothing.
+  const billing =
+    d.billing ??
+    new BillingService({
+      store: new InMemoryBillingStore(),
+      products: billingProductSource(products),
+      policies: billingPolicySource(policies),
+      clock: d.clock,
+      ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` },
+    });
+  const inBillingMarket = (scope: Scope, market: string) => scope.markets === '*' || scope.markets.has(market);
+  const seesAccount = (scope: Scope, market: string) => !scope.clinicId && !scope.policyIds && inBillingMarket(scope, market);
+  const seesPlan = (scope: Scope, p: { market: string; policyId: string }) => !scope.clinicId && inBillingMarket(scope, p.market) && (!scope.policyIds || scope.policyIds.has(p.policyId));
+
+  app.get('/v1/payer-accounts', async (c) => {
+    const partyId = c.req.query('partyId');
+    const market = c.req.query('market');
+    const items = await billing.accounts({ ...(partyId ? { partyId } : {}), ...(market ? { market } : {}) });
+    return sendPage(c, items.filter((a) => seesAccount(c.get('scope'), a.market)));
+  });
+
+  app.get('/v1/payer-accounts/:accountId', async (c) => {
+    const id = c.req.param('accountId');
+    const a = await billing.account(id);
+    if (!seesAccount(c.get('scope'), a.market)) throw new BillingError('not_found', `Payer account ${id} does not exist`);
+    return send(c, a);
+  });
+
+  app.get('/v1/premium-plans', async (c) => {
+    const policyId = c.req.query('policyId');
+    const accountId = c.req.query('accountId');
+    const items = await billing.plans({ ...(policyId ? { policyId } : {}), ...(accountId ? { accountId } : {}) });
+    return sendPage(c, items.filter((p) => seesPlan(c.get('scope'), p)));
+  });
+
   // Webhook subscriptions (ADR 0033). A subscription's markets must lie within the caller's;
   // only a caller with every market may subscribe to '*'.
   const webhooks =
@@ -1672,6 +1711,9 @@ export function createApp(d: AppDeps) {
     if (err instanceof WebhookError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
       return problem(c, status, err.message);
+    }
+    if (err instanceof BillingError) {
+      return problem(c, err.code === 'not_found' ? 404 : 422, err.message);
     }
     if (err instanceof CommunicationsError) {
       return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);

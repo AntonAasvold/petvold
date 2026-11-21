@@ -51,9 +51,11 @@ import { GotenbergRenderer } from '@petvold/documents/gotenberg';
 import { ensureNoticePdf } from './notice-pdf.ts';
 import { PostgresDocumentStore } from '@petvold/documents/postgres';
 import { S3BlobStore, s3ConfigFromEnv, type S3Config } from '@petvold/documents/s3';
-import { animalPort, claimSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
+import { BillingService, InMemoryBillingStore, type BillingStore } from '@petvold/billing';
+import { PostgresBillingStore } from '@petvold/billing/postgres';
+import { animalPort, billingProductSource, billingPolicySource, claimSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
 
-export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling', 'documents'] as const;
+export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling', 'documents', 'billing'] as const;
 export type DatabaseName = (typeof DATABASES)[number];
 
 export interface InstallationConfig {
@@ -105,6 +107,7 @@ export const DATABASE_ENV: Record<DatabaseName, string> = {
   webhooks: 'WEBHOOKS_DATABASE_URL',
   scheduling: 'SCHEDULING_DATABASE_URL',
   documents: 'DOCUMENTS_DATABASE_URL',
+  billing: 'BILLING_DATABASE_URL',
 };
 
 /** The database URLs from the environment, skipping empty ones. */
@@ -162,6 +165,7 @@ export interface Installation {
     webhooks: WebhookStore;
     scheduling: SchedulingStore;
     documents: DocumentStore;
+    billing: BillingStore;
   };
   relay: Relay;
   /** Runs the daily jobs when they are due (ADR 0037). Start it next to the relay. */
@@ -305,6 +309,11 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     ...(config.claimNumberPrefix ? { claimNumberPrefix: config.claimNumberPrefix } : {}),
   });
 
+  // Billing (ADR 0040): payer accounts and premium plans from the policy events below.
+  const billingPool = pool('billing', 2);
+  const billingStore: BillingStore = billingPool ? new PostgresBillingStore(billingPool) : new InMemoryBillingStore();
+  const billing = new BillingService({ store: billingStore, products: billingProductSource(products), policies: billingPolicySource(policies), clock, ids });
+
   const retention = new RetentionService({
     parties,
     settings: partiesPool ? new PostgresRetentionStore(partiesPool) : new InMemoryRetentionStore(),
@@ -312,6 +321,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
       { name: 'animals', activityOf: (id) => animals.activityOf(id) },
       { name: 'policies', activityOf: (id) => policies.activityOf(id) },
       claimsActivity(policies, service),
+      { name: 'billing', activityOf: (id) => billing.activityOf(id) },
     ],
     clock,
   });
@@ -372,6 +382,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
           log(`[event] ${e.type} ${e.policyId ?? e.applicationId}`);
           const notice = await communications.handlePolicyEvent(e);
           if (notice) log(`[notice] ${notice.type} ${notice.id} due ${notice.dueBy}`);
+          const plan = await billing.handlePolicyEvent(e);
+          if (plan) log(`[billing] ${plan.policyId} term ${plan.termNo}: ${plan.plan.interval}, ${plan.plan.installments.length} installment(s)`);
           if (e.type !== 'policy.version_superseded') {
             const queued = await webhooks.enqueue({ ...e, market: await marketOf(e) });
             if (queued) log(`[webhook] ${e.type} ${e.id} queued for ${queued} subscription(s)`);
@@ -421,7 +433,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   });
 
   return {
-    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks, scheduler, relay, documents },
+    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks, scheduler, relay, documents, billing },
     stores: {
       claims: claimsStore,
       roles: roleStore,
@@ -435,6 +447,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
       webhooks: webhookStore,
       scheduling: schedulingStore,
       documents: documentStore,
+      billing: billingStore,
     },
     relay,
     scheduler,

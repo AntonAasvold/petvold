@@ -2,7 +2,25 @@
 
 Hur Petvold delar en terms premie i delbetalningar, fördelar en betalning och räknar ut vad ett avslut betyder i pengar (ADR 0040).
 
-**Läge:** räkningen är byggd som en ren funktion i `billing-core` (steg 1 av 8). Fakturor, betalarkonton och inbetalningar kommer i nästa steg, och fram till dess syns ingenting av detta i API:et.
+**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör betalarkonton och premieplaner av policyhändelserna (steg 2a). Fakturor, inbetalningar och ändringar mitt i termen kommer i nästa steg.
+
+## Betalarkonto och premieplan
+
+När en policy tecknas (`policy.issued`) eller förnyas (`policy.renewed`) gör `billing` en premieplan för termen:
+
+- **Betalarkontot** är försäkringstagarens, ett per marknad och valuta. Det skapas med den första planen, och senare policyer hamnar på samma konto. Betalsättet är faktura tills betalningsmodulen finns.
+- **Intervallet** är produktens förval (`billing.defaultPaymentInterval`, se [Produktkonfiguration](produktkonfiguration.md#produkter-och-produktversioner)). Vid förnyelse behålls förra termens intervall om produkten fortfarande tillåter det, och annars gäller förvalet. Kundens eget val vid tecknandet kommer i steg 2c.
+- **Den första premien** räknas från den dag policyn tecknades, eftersom försäkringsbrevet och avin går ut samtidigt. I Sverige förfaller den fjorton dagar senare, men aldrig före termens början.
+- **Skatten** kommer från marknadens regler (`BILLING_MARKET_RULES`). Sverige har ingen skatt på premien. En marknad utan regler ger ett fel som reläet försöker igen, så att ingen plan görs med fel regler.
+- Samma händelse två gånger ger bara en plan.
+
+| Anrop | Vad det ger |
+| --- | --- |
+| `GET /v1/payer-accounts?partyId=…&market=…` | Betalarkonton |
+| `GET /v1/payer-accounts/{accountId}` | Ett betalarkonto |
+| `GET /v1/premium-plans?policyId=…` eller `?accountId=…` | Premieplanerna med underlaget (`input`) och resultatet (`plan`), äldst först |
+
+Alla tre kräver `billing:read` (rollen `billing-clerk`). Kundportalen (`customer-channel`) ser premieplanerna för sina egna policyer.
 
 ## Premieplanen
 

@@ -2494,6 +2494,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/payer-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Payer accounts, oldest first
+         * @description Requires the permission `billing:read` (ADR 0040). A payer account is made
+         *     when the first policy of a policyholder is issued in a market and
+         *     currency; later policies join it. Only accounts in the caller's markets;
+         *     a role bound to policies or a clinic sees none.
+         */
+        get: operations["listPayerAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payer-accounts/{accountId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A payer account
+         * @description Requires the permission `billing:read`. An account outside the caller's scope answers 404.
+         */
+        get: operations["getPayerAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/premium-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Premium plans of a policy or an account, oldest first
+         * @description Requires the permission `billing:read` (ADR 0040). `policy.issued` and
+         *     `policy.renewed` each give a plan for the term: the premium split into
+         *     installments by the payment interval, with each installment's period,
+         *     due date and amount. A plan never changes; a change is a new plan.
+         *     `policyId` or `accountId` is required. Only plans in the caller's
+         *     markets; a role bound to policies sees only its policies' plans.
+         */
+        get: operations["listPremiumPlans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/notices": {
         parameters: {
             query?: never;
@@ -3940,6 +4008,31 @@ export interface components {
                  */
                 maxStartAheadDays: number;
             };
+            /** @description How the product's premium is paid (ADR 0040). Omitted settings get their defaults. */
+            billing?: {
+                /**
+                 * @description The payment intervals a customer may choose.
+                 * @default [
+                 *       "year"
+                 *     ]
+                 */
+                paymentIntervals: components["schemas"]["PaymentInterval"][];
+                /**
+                 * @description The interval when none is chosen. One of paymentIntervals.
+                 * @default year
+                 */
+                defaultPaymentInterval: components["schemas"]["PaymentInterval"];
+                /**
+                 * @description A fee per installment in minor units of the product's currency, taken only when the interval is shorter than a year.
+                 * @default 0
+                 */
+                installmentFee: number;
+                /**
+                 * @description Days before an installment is due that the invoicing run puts it on an invoice.
+                 * @default 20
+                 */
+                invoiceLeadDays: number;
+            };
             vetCare: {
                 annualLimits: components["schemas"]["NonNegativeMoney"][];
                 defaultAnnualLimit: components["schemas"]["NonNegativeMoney"];
@@ -3952,6 +4045,11 @@ export interface components {
                 waitingPeriodDays: number;
             };
         };
+        /**
+         * @description How often the premium is paid (ADR 0040).
+         * @enum {string}
+         */
+        PaymentInterval: "year" | "half-year" | "quarter" | "month";
         ProductDraftUpdate: {
             content: components["schemas"]["ProductContent"];
             salesFrom: components["schemas"]["Date"];
@@ -4246,6 +4344,101 @@ export interface components {
             markets: {
                 [key: string]: components["schemas"]["MarketNoticeSettings"];
             };
+        };
+        /** @description One payer per party, market and currency (ADR 0040). The payer is the policyholder. */
+        PayerAccount: {
+            id: string;
+            partyId: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            /**
+             * @description How the payer pays. Autogiro, direct debit, Swish and card come with the payments module.
+             * @enum {string}
+             */
+            paymentMethod: "invoice";
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description The premium plan for one term of a policy (ADR 0040). Never changes. */
+        PremiumPlanRecord: {
+            id: string;
+            accountId: string;
+            policyId: string;
+            termNo: number;
+            market: components["schemas"]["Market"];
+            productVersion: string;
+            /** @description The policy event it was made from. */
+            source: {
+                eventId: string;
+                eventType: string;
+                /** Format: date-time */
+                occurredAt: string;
+            };
+            /** @description What the plan was computed from, so it can be computed again (ADR 0018). */
+            input: {
+                currency: string;
+                /** Format: date */
+                termStart: string;
+                /**
+                 * Format: date
+                 * @description Exclusive.
+                 */
+                termEnd: string;
+                termPremium: number;
+                interval: components["schemas"]["PaymentInterval"];
+                installmentFee?: number;
+                premiumTaxBp?: number;
+                /** @description The first premium of a new policy: due payWithinDays after the notice, never before the term starts (SE: FAL 5 kap. 1 §). */
+                firstPremium?: {
+                    /** Format: date */
+                    noticeSentOn: string;
+                    payWithinDays: number;
+                };
+            };
+            plan: components["schemas"]["PremiumPlan"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PremiumPlan: {
+            /**
+             * @description The calculation model. A change in the result is a new model.
+             * @enum {string}
+             */
+            model: "premium-plan.v1";
+            currency: string;
+            /** Format: date */
+            termStart: string;
+            /**
+             * Format: date
+             * @description Exclusive.
+             */
+            termEnd: string;
+            interval: components["schemas"]["PaymentInterval"];
+            termPremium: number;
+            premiumTaxBp: number;
+            /** @description Tax on the term premium */
+            tax: number;
+            fees: number;
+            /** @description termPremium + tax + fees. */
+            total: number;
+            installments: {
+                seq: number;
+                /** Format: date */
+                periodStart: string;
+                /**
+                 * Format: date
+                 * @description Exclusive.
+                 */
+                periodEnd: string;
+                /** Format: date */
+                dueDate: string;
+                premium: number;
+                tax: number;
+                fee: number;
+                /** @description premium + tax + fee. */
+                amount: number;
+            }[];
+            inputHash: string;
         };
         Notice: {
             id: string;
@@ -9327,6 +9520,99 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listPayerAccounts: {
+        parameters: {
+            query?: {
+                partyId?: string;
+                market?: components["schemas"]["Market"];
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The accounts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["PayerAccount"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getPayerAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayerAccount"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPremiumPlans: {
+        parameters: {
+            query?: {
+                policyId?: string;
+                accountId?: string;
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plans */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["PremiumPlanRecord"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["Unprocessable"];
         };
     };
