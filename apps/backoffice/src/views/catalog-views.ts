@@ -20,6 +20,7 @@ import { formatDate } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import type { Me } from '../permissions.ts';
 import { navigate } from '../router.ts';
+import { pvComponents } from '../styles/pv-components.ts';
 
 type ProductVersion = components['schemas']['ProductVersion'];
 type RuleSetVersion = components['schemas']['RuleSetVersion'];
@@ -31,6 +32,48 @@ const styles = css`
     margin-top: 0;
   }
 `;
+
+/** The head of a detail page: breadcrumbs and the title (docs/teknik/designsystem.md, "Detaljsidan"). */
+const detailStyles = [
+  pvComponents,
+  css`
+    :host {
+      display: block;
+    }
+    .crumbs {
+      display: flex;
+      gap: var(--space-2);
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .crumbs a {
+      color: var(--text-secondary);
+    }
+    .title {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-3);
+      margin: var(--space-2) 0 var(--space-3);
+    }
+    h1 {
+      margin: 0;
+      font: 700 36px/1.1 var(--font-display);
+      letter-spacing: -0.02em;
+    }
+  `,
+];
+
+function detailHead(list: string, listLabel: string, title: string, id: string) {
+  return html`<nav class="crumbs" aria-label=${msg('Breadcrumb', { id: 'common.breadcrumb' })}>
+      <a href=${list} @click=${(e: Event) => (e.preventDefault(), navigate(list))}>${listLabel}</a>
+      <span aria-hidden="true">/</span>
+      <span aria-current="page">${id}</span>
+    </nav>
+    <div class="title">
+      <h1>${title}</h1>
+    </div>`;
+}
 const latest = <T,>(xs: T[]) => xs.at(-1);
 
 @customElement('pv-products')
@@ -84,7 +127,7 @@ export class ProductDetail extends LitElement {
     updateWhenLocaleChanges(this);
   }
 
-  static styles = styles;
+  static styles = detailStyles;
 
   private adapter(): VersionsAdapter {
     const api = this.api;
@@ -124,10 +167,7 @@ export class ProductDetail extends LitElement {
   }
 
   render() {
-    return html`<wa-button appearance="plain" size="small" @click=${() => navigate('/products')}
-        ><wa-icon slot="start" name="arrow-left"></wa-icon>${msg('Back', { id: 'common.back' })}</wa-button
-      >
-      <h2>${msg('Product', { id: 'policy.product' })} ${this.product}</h2>
+    return html`${detailHead('/products', msg('Products', { id: 'catalog.products' }), `${msg('Product', { id: 'policy.product' })} ${this.product}`, this.product)}
       <pv-versions-panel .adapter=${this.adapter()} .me=${this.me} .api=${this.api}></pv-versions-panel>`;
   }
 }
@@ -183,7 +223,7 @@ export class RuleSetDetail extends LitElement {
     updateWhenLocaleChanges(this);
   }
 
-  static styles = styles;
+  static styles = detailStyles;
 
   private adapter(): VersionsAdapter {
     const api = this.api;
@@ -220,10 +260,7 @@ export class RuleSetDetail extends LitElement {
   }
 
   render() {
-    return html`<wa-button appearance="plain" size="small" @click=${() => navigate('/rule-sets')}
-        ><wa-icon slot="start" name="arrow-left"></wa-icon>${msg('Back', { id: 'common.back' })}</wa-button
-      >
-      <h2>${msg('Rule set', { id: 'catalog.ruleSet' })} ${this.series}</h2>
+    return html`${detailHead('/rule-sets', msg('Rule sets', { id: 'catalog.ruleSets' }), `${msg('Rule set', { id: 'catalog.ruleSet' })} ${this.series}`, this.series)}
       <pv-versions-panel .adapter=${this.adapter()} .me=${this.me}></pv-versions-panel>`;
   }
 }
