@@ -170,14 +170,14 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 ## Senare
 
 **M5 – Pengar**
-- [ ] ADR 0040: premieplaner, fakturor, inbetalningar, utbetalningar och bokföring (föreslagen). Byggs i åtta steg:
+- [x] ADR 0040: premieplaner, fakturor, inbetalningar, utbetalningar och bokföring (beslutad 2026-11-21). Byggs i åtta steg:
   - [ ] `billing-core`: premieplan, fördelning av betalningar och avräkning vid avslut
   - [ ] `billing`: betalarkonton, premieplaner från policyhändelserna, fakturering som körning
   - [ ] `payments` med `fake`-adapter: inbetalningar, koppling till faktura och utbetalningar
   - [ ] Obetald premie: påminnelse, uppsägning och avslut
   - [ ] Tillgodohavanden, återbetalningar och kreditnotor med attest
   - [ ] `accounting`: verifikationer, kontoplan, perioder och dagsavslut
-  - [ ] Bankfiler (ISO 20022) som första adapter
+  - [ ] Betaltjänster: bankfiler (ISO 20022), Stripe eller Surfboard (kort och Swish), Autogiro och SEPA, och Swish direkt
   - [ ] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav
 - Premieåterbetalning vid avslut och ny premieplan vid förnyelse.
 - Distribution och provision (ny ADR):

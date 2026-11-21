@@ -1,6 +1,6 @@
 # 0040. Pengar: premieplaner, fakturor, inbetalningar, utbetalningar och bokföring
 
-- Status: Föreslagen
+- Status: Beslutad
 - Datum: 2026-11-21
 
 ## Sammanhang
@@ -46,8 +46,9 @@ Andra marknader har motsvarande regler. Precis som avslutsreglerna i ADR 0029 li
 ### 2. Betalarkontot
 
 - **En betalare per policy, i en marknad och en valuta.** Betalaren är försäkringstagaren, och kontot skapas när den första policyn tecknas.
-- Kontot har **betalsätt** (faktura, autogiro eller direktdebitering, eller sparat kort) och **betalningsintervall** (år, halvår, kvartal eller månad). Produkten anger vilka intervall som får väljas och en eventuell avgift per delbetalning (`billing.installmentFee`).
-- **Alla policyer för samma betalare hamnar på samma faktura** (ADR 0007: en faktura för en grupp).
+- Kontot har **betalsätt**: faktura, autogiro eller direktdebitering, Swish eller sparat kort.
+- **Betalningsintervallet väljs per policy** (år, halvår, kvartal eller månad). Produkten anger vilka intervall som får väljas, vilket som är förvalt (`billing.paymentIntervals`, `billing.defaultPaymentInterval`) och en eventuell avgift per delbetalning (`billing.installmentFee`). Det valda intervallet sparas på tecknandet och kan ändras.
+- **Alla policyer för samma betalare hamnar på samma faktura** (ADR 0007: en faktura för en grupp), också när de har olika intervall.
 - Ett byte av betalsätt eller intervall gäller från nästa term, eller från nästa delbetalning om produkten tillåter det.
 
 ### 3. Premieplanen
@@ -103,7 +104,7 @@ Varje steg är en körning, och varje tidsgräns är en inställning med förval
 ### 8. Utbetalningar
 
 - **`claim.payout_ordered` ger en utbetalning** i `payments` med ordernumret som idempotensnyckel. En order betalas aldrig ut två gånger.
-- **Mottagaren** (öppen fråga i ADR 0017) är **kunden** som förval. **Kliniken** är mottagare när skadan kom via klinikens kanal (`clinicId` i ordern) och kliniken har avtal om direktreglering med bolaget. Avtalet är en inställning per klinik.
+- **Mottagaren** (öppen fråga i ADR 0017) är **kunden**, utom när kliniken har avtal om direktreglering med bolaget. Då får **kliniken** betalt. Kliniken är den i ordern (`clinicId`), och avtalet är en inställning per klinik med giltighetstid.
 - **Betaluppgifterna** (konto, Swish-nummer eller IBAN) ägs av `payments`, per part. En ändring av betaluppgifterna loggas med vem som ändrade, och en utbetalning till uppgifter som ändrats inom ett antal dagar (`payments.newPayeeHoldDays`, förval 0) väntar på en handläggare. Det skyddar mot bedrägeri med ändrade kontouppgifter.
 - **Attesten är redan gjord** i skadekedjan (ADR 0019). Utbetalningen kräver ingen ny attest.
 - **Premie tillbaka** till kunden går samma väg, med en återbetalning från `billing` som order.
@@ -114,7 +115,7 @@ Varje steg är en körning, och varje tidsgräns är en inställning med förval
 
 - **Dubbel bokföring med verifikationer.** Varje händelse som rör pengar blir en verifikation i `accounting` med löpnummer, bokföringsdag, belopp i minsta enhet per valuta, och en hänvisning till händelsen och objektet (faktura, betalning eller ärende).
 - **Kontona är Petvolds egna slag** (premiefordran, premieintäkt, skatt på premie, tillgodohavande, skuld för ersättning, bank och okopplade inbetalningar). **Kontoplanen** översätter dem till bolagets kontonummer och är en inställning per installation med historik (ADR 0020).
-- **Perioder och dagsavslut.** Bokföringen har perioder (månad som förval). **Dagsavslutet** är en körning som stänger dagen och lämnar **dagens verifikationer** till bolagets ekonomisystem: som fil (SIE 4 i Sverige, CSV som förval) och som händelsen `accounting.day_closed`. En stängd dag eller period ändras aldrig. En rättelse bokas i en öppen period, med hänvisning till det den rättar.
+- **Perioder och dagsavslut.** Bokföringen har perioder (månad som förval). **Dagsavslutet** är en körning som stänger dagen och lämnar **dagens verifikationer** till bolagets ekonomisystem: som en CSV-fil och som händelsen `accounting.day_closed`. CSV går att läsa in i alla ekonomisystem och är lätt att kontrollera. SIE 4, som svenska ekonomisystem läser direkt, kommer när en installation behöver det. En stängd dag eller period ändras aldrig. En rättelse bokas i en öppen period, med hänvisning till det den rättar.
 - **Petvold är inte bolagets huvudbok.** Periodisering av premien (intjänad och ej intjänad premie), avsättningar och rapporter till tillsynen görs i bolagets ekonomisystem. Varje verifikation för premie bär termens period, så att det går att periodisera.
 
 ### 10. Behörighet och fyra ögon
@@ -127,10 +128,23 @@ Varje steg är en körning, och varje tidsgräns är en inställning med förval
 - Fakturor, betalningar, utbetalningar och verifikationer är räkenskapsinformation och sparas i sju år (bokföringslagen 7 kap. 2 §). De raderas inte vid en begäran om radering. Rättslig grund är rättslig förpliktelse (GDPR artikel 6.1 c och 17.3 b).
 - **Betaluppgifterna** (konto och Swish-nummer) gallras när kontot inte använts på ett antal år, och vid radering när inget längre är utestående. Gallringen (ADR 0028) får veta att `billing` och `payments` har relationer till parten.
 
-### 12. Betaltjänster först
+### 12. Betaltjänster
 
-- **Den första riktiga adaptern är bankfiler enligt ISO 20022** (`pain.001` för utbetalningar och `camt.054` för inbetalningar med referens). Den fungerar mot alla banker, både in och ut, och går att testa med filer utan ett konto hos en tjänst. Autogiro via Bankgirot och Swish kommer därefter.
+Petvold ska klara bankfiler, autogiro, Swish och kort. Ingen enskild tjänst täcker allt (kontrollerat 2026-11-21 i tjänsternas publika dokumentation):
+- **Stripe** har kort, SEPA-autogiro och Swish. Swish går där bara att använda för enstaka betalningar, inte för återkommande dragningar. Bankgirots Autogiro och utbetalningar till kundens konto finns inte.
+- **Surfboard Payments** har kort och Swish, och återkommande dragningar med sparat kort. Utbetalningar till kunder finns inte i deras publika dokumentation.
+
+Därför en adapter per tjänst, med porten i ADR 0017, och val av adapter per marknad, syfte och betalsätt i installationens inställningar:
+
+| Behov | Adapter | Steg |
+| --- | --- | --- |
+| Utbetalning till konto, och inbetalning med OCR via bankgiro | **Bankfiler** enligt ISO 20022 (`pain.001` ut, `camt.054` in) | Först. Fungerar mot alla banker och går att testa med filer. |
+| Kort och Swish för enstaka betalningar, sparat kort för återkommande | **Stripe**, eller **Surfboard Payments** om bolaget har avtal där | Andra. Båda har testmiljöer. |
+| Återkommande dragning från konto | **Autogiro** via Bankgirot (filer med medgivanden och dragningar), och **SEPA Direct Debit** i EUR-marknader | Tredje |
+| Utbetalning till Swish-nummer, och återkommande Swish | **Swish** direkt, med bolagets avtal med banken | Fjärde |
+
 - **`fake`-adaptern** används i tester och i dev-servern, som ADR 0017 säger.
+- En ny tjänst, till exempel en annan betalningsförmedlare, är en ny adapter som klarar den gemensamma sviten.
 
 ### 13. Införs i steg
 
@@ -140,7 +154,7 @@ Varje steg är en körning, och varje tidsgräns är en inställning med förval
 4. **Obetald premie:** påminnelse, uppsägning och avslut som körningar.
 5. **Tillgodohavanden, återbetalningar och kreditnotor**, med attest.
 6. **`accounting`:** verifikationer, kontoplan, perioder och dagsavslut med fil.
-7. **Bankfiler** (ISO 20022) som första riktiga adapter.
+7. **Betaltjänster** i ordningen i punkt 12: bankfiler, Stripe eller Surfboard, Autogiro och SEPA, och Swish.
 8. **Back office:** betalarens konto på partens sida, fakturor, okopplade inbetalningar, utbetalningar och återkrav som köer.
 
 Distribution och provision (färdplanen, M5) får en egen ADR.
@@ -161,15 +175,15 @@ Distribution och provision (färdplanen, M5) får en egen ADR.
 - **Bara händelser ut, och bolagets ekonomisystem fakturerar.** Enklast för Petvold, och möjligt för ett bolag som redan har ett faktureringssystem: det kan låta bli att slå på `billing` och lyssna på policyhändelserna. Men då kan Petvold inte säga upp för obetald premie, kvitta eller visa kundens skuld, och ett bolag utan faktureringssystem kan inte använda Petvold. Valdes bort som enda väg.
 - **En huvudbok i Petvold.** Valdes bort. Försäkringsbolag har redan en huvudbok med periodisering och rapporter till tillsynen. Petvold lämnar verifikationer som underlag.
 - **Fakturan som ändras när policyn ändras.** Enklare att visa, men en skickad faktura är en verifikation och får inte ändras. Kreditnotor gör ändringen synlig.
-- **Stripe som första adapter.** Bäst testmiljö, men kort är ovanligt för återkommande premier i Sverige, och utbetalningar till konto behöver ändå bank eller Swish.
+- **Bara Stripe eller bara Surfboard.** Färre integrationer, men ingen av dem har Bankgirots Autogiro eller utbetalningar till kundens konto, och båda behövs i Sverige.
 
-## Öppna frågor för beslut
+## Beslut 2026-11-21
 
-- **Betalningsintervall och avgift:** ska förvalet vara år eller månad, och ska en avgift per delbetalning vara möjlig i första versionen?
-- **Mottagare av ersättning:** kunden som förval, och kliniken bara med avtal om direktreglering. Stämmer det?
-- **Första adapter:** bankfiler (ISO 20022) eller Autogiro?
-- **Filformat för dagsavslutet:** SIE 4 och CSV, eller bara CSV till att börja med?
-- **Dröjsmålsränta:** ska den vänta till ett senare steg, som föreslaget?
+1. **Betalningsintervall:** konfigurerbart per policy, med tillåtna intervall, förval och avgift i produkten (punkt 2).
+2. **Mottagare av ersättning:** kunden, utom när kliniken har avtal om direktreglering. Då får kliniken betalt (punkt 8).
+3. **Betaltjänster:** bankfiler, Autogiro, Swish och kort, med en adapter per tjänst. Stripe eller Surfboard Payments för kort och Swish (punkt 12).
+4. **Dagsavslutet:** CSV först och SIE 4 senare (punkt 9).
+5. **Dröjsmålsränta:** väntar till ett senare steg (punkt 7).
 
 ## Källor
 
@@ -179,6 +193,8 @@ Distribution och provision (färdplanen, M5) får en egen ADR.
 - Lagen (1981:739) om ersättning för inkassokostnader m.m., 2 §. riksdagen.se
 - Bokföringslagen (1999:1078), 5 kap. och 7 kap. 2 §. riksdagen.se
 - Dataskyddsförordningen (EU) 2016/679, artikel 6.1 c och 17.3 b. eur-lex.europa.eu
+- Stripe, *Swish payments* (enstaka betalningar, inte återkommande). docs.stripe.com/payments/swish
+- Surfboard Payments, *Swish* och *Recurring payments*. surfboardpayments.com
 - ISO 20022, meddelanden `pain.001` och `camt.054`. iso20022.org
 - ISO 11649, strukturerad betalningsreferens (RF). iso.org
 - Bankgirot, *OCR-referenskontroll* och *Autogiro*. bankgirot.se

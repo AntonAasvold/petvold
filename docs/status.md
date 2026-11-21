@@ -401,16 +401,20 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 
 - Produktens och regeluppsättningens sidor enligt designsystemet (PR #126). Alla detaljsidor i back office följer nu mönstret.
 
-- ADR 0040 om pengar (M5), föreslagen (PR #127):
+- ADR 0040 om pengar (M5), beslutad 2026-11-21 (PR #127). ADR 0017 beslutades samtidigt:
   - **Tre moduler:** `billing` (premieplaner, fakturor, obetalt), `payments` (ADR 0017) och `accounting` (verifikationer och dagsavslut till bolagets ekonomisystem).
   - **Allt via händelser:** policyhändelserna ger premieplaner, `claim.payout_ordered` ger utbetalningar, och premie tillbaka räknas mot det som faktiskt är betalt.
   - **Obetald premie** blir påminnelse, uppsägning och avslut som körningar, enligt FAL 5 kap.
-  - **Bankfiler (ISO 20022)** som första adapter, och kunden som mottagare av ersättning, med kliniken vid direktreglering.
+  - **Betalningsintervall per policy**, med tillåtna intervall, förval och avgift i produkten.
+  - **Kunden får ersättningen**, utom när kliniken har avtal om direktreglering.
+  - **En adapter per betaltjänst:** bankfiler först, sedan Stripe eller Surfboard (kort och Swish), Autogiro och SEPA, och Swish direkt.
+  - **Dagsavslutet som CSV** först. Dröjsmålsränta väntar.
 
 **Nästa steg**
-1. Besluta ADR 0040 (fem öppna frågor) och bygga steg 1: `billing-core`.
-2. ADR 0038, steg 5: gallring av dokument som en körning.
-3. Back office: översikten på startsidan och omräkning av beslut.
+1. ADR 0041 om en fristående demotjänst som tar emot händelserna, spelar bank och kontrollerar att allt stämmer.
+2. ADR 0040, steg 1: `billing-core`.
+3. ADR 0038, steg 5: gallring av dokument som en körning.
+4. Back office: översikten på startsidan och omräkning av beslut.
 
 **Öppet**
 - Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.
