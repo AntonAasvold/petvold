@@ -57,3 +57,31 @@ test('generate keeps the PDF with its template and data hash; without a renderer
   await assert.rejects(s.generate({ ...input, template: 'no-such' }, 'h'), (e: unknown) => e instanceof DocumentError && e.code === 'validation');
   await assert.rejects(new DocumentService(deps).generate(input, 'h'), (e: unknown) => e instanceof DocumentError && e.code === 'unavailable');
 });
+
+test('the invoice: what to pay, by when, the reference, where to pay and the installments (ADR 0040)', () => {
+  const data = {
+    invoiceId: 'inv_1',
+    invoiceNo: 'SE-2026-000001',
+    issueDate: '2026-11-22',
+    dueDate: '2026-12-06',
+    total: { amount: 82_900, currency: 'SEK' },
+    reference: { type: 'ocr', value: '202600000121' },
+    payment: 'Bankgiro 123-4567',
+    lines: [
+      { policyId: 'pol_bella', periodStart: '2026-12-01', periodEnd: '2027-01-01', premium: 40_000, tax: 0, fee: 2_900, amount: 42_900 },
+      { policyId: 'pol_<x>', periodStart: '2026-12-15', periodEnd: '2027-01-15', premium: 40_000, tax: 0, fee: 0, amount: 40_000 },
+    ],
+  };
+  const t = TEMPLATES.find((x) => x.name === 'invoice' && x.language === 'sv')!;
+  const html = t.render(data, ctx);
+  assert.match(html, /Faktura SE-2026-000001/);
+  assert.match(html, /Betala 829,00\s*kr senast 6 december 2026\./);
+  assert.match(html, /OCR-nummer<\/dt><dd class="mono">202600000121/);
+  assert.match(html, /Bankgiro 123-4567/);
+  assert.match(html, /1 december 2026 – 31 december 2026/, 'the period ends on its last day');
+  assert.match(html, /Avgift/, 'a fee column when there is a fee');
+  assert.doesNotMatch(html, /Skatt/, 'no tax column without tax');
+  assert.match(html, /pol_&lt;x&gt;/, 'escaped');
+  const en = TEMPLATES.find((x) => x.name === 'invoice' && x.language === 'en')!.render({ ...data, reference: { type: 'rf', value: 'RF422026000001' } }, ctx);
+  assert.match(en, /Reference<\/dt><dd class="mono">RF422026000001/);
+});

@@ -31,7 +31,7 @@ Samma händelse ger aldrig två meddelanden av samma typ, även om den levereras
 | `invoice` | Faktureringen gör en faktura ([Premier och betalningar](premier.md#fakturor)) | Fakturans dag, eftersom tiden att betala räknas från den dag kravet skickades | FAL 5 kap. 1 § |
 
 - **Tre dagar** är Petvolds tolkning av "snarast", eftersom lagen inte anger något antal dagar. Bolaget kan ändra det i [inställningarna](#bolagets-inställningar).
-- **Fakturan** har fakturans id (`invoiceId`) i stället för en policy, eftersom en faktura kan samla flera policyer. Den görs av bolagets dokumentsystem, också när Petvold gör andra dokument, tills Petvold har en mall för fakturor. Skickas den sent blir den `late`, och då bör någon kontrollera förfallodagen, som räknas från fakturans dag.
+- **Fakturan** har fakturans id (`invoiceId`) i stället för en policy, eftersom en faktura kan samla flera policyer. Med `documentMaker: petvold` gör Petvold PDF:en med sin mall för fakturor ([Dokument](dokument.md)). Skickas den sent blir den `late`, och då bör någon kontrollera förfallodagen, som räknas från fakturans dag.
 - **Mottagaren** är försäkringstagaren när beskedet gäller, vid en uppsägning den sista dagen policyn gällde. Vid ett avslag är det den sökande, och vid ett erbjudande den nya ägaren. För en skada är det försäkringstagaren på den första behandlingsdagen.
 - **En begäran om komplettering till kliniken** ger inget meddelande. Kliniken är inte kund, och bolaget når den på annat sätt.
 - **Språket** är partens språk, annars marknadens, i Sverige svenska.

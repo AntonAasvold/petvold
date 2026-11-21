@@ -930,7 +930,7 @@ export const templates: Record<string, string> = {
   'notice.noPdf': 'Ingen PDF än. Bolagets dokumentsystem gör brevet, om inte Petvold gör det här.',
   'notice.makePdf': 'Gör PDF',
   'settings.documentMaker': 'Vem gör dokumenten',
-  'settings.documentMakerHint': 'Petvold gör skadebesked och försäkringsbrev som PDF med sina mallar. Andra meddelanden gör dokumentsystemet som förut.',
+  'settings.documentMakerHint': 'Petvold gör skadebesked, försäkringsbrev och fakturor som PDF med sina mallar. Andra meddelanden gör dokumentsystemet som förut.',
   'settings.makerInsurer': 'Bolagets dokumentsystem',
   'settings.makerPetvold': 'Petvold',
   'notice.documentMaker': 'Dokumentet görs av',

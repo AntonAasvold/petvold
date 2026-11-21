@@ -168,14 +168,19 @@ test('with the setting petvold the relay makes the PDF when the notice is made; 
   await communications.changeSettings({ markets: { SE: { documentMaker: 'petvold' } }, basedOnVersion: v, reason: 'Petvold makes the letters' }, 'compliance');
   await seedSampleData(inst, clock);
   while ((await inst.relay.tick()) > 0);
+  // Invoices (ADR 0040): the run makes them, and the relay their notices and PDFs.
+  await inst.deps.billing!.invoicingRun({ market: 'SE', onDate: '2027-11-01', dryRun: false }, 'scheduler');
+  while ((await inst.relay.tick()) > 0);
   const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
   const get = async (path: string) => (await app.request(path, { headers: { authorization: 'Bearer docs' } })).json() as Promise<any>;
 
-  const notices = (await get('/v1/notices')).items as any[];
+  const notices = (await get('/v1/notices?limit=200')).items as any[];
   const made = notices.filter((x) => x.documentMaker === 'petvold');
-  assert.ok(made.length >= 2, 'claims decisions and policy confirmations');
-  assert.ok(made.every((x) => ['claim-decision', 'policy-confirmation'].includes(x.type) && x.document?.madeBy === 'petvold'));
-  assert.ok(notices.filter((x) => !['claim-decision', 'policy-confirmation'].includes(x.type)).every((x) => x.documentMaker === 'insurer' && !x.document));
+  const templated = ['claim-decision', 'policy-confirmation', 'invoice'];
+  assert.ok(made.length >= 3, 'claims decisions, policy confirmations and invoices');
+  assert.ok(made.some((x) => x.type === 'invoice'));
+  assert.ok(made.every((x) => templated.includes(x.type) && x.document?.madeBy === 'petvold'));
+  assert.ok(notices.filter((x) => !templated.includes(x.type)).every((x) => x.documentMaker === 'insurer' && !x.document));
   assert.equal(rendered, made.length, 'one PDF per notice, also when the relay runs again');
   const n = made[0];
   valid('Notice', n);
