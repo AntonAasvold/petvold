@@ -71,6 +71,19 @@ Lit-komponenter har shadow DOM, så globala klasser når inte in av sig själva.
 | TopBar | Namn, flikar, sök och konto | Toppraden i `app-shell.ts`, med `pv-topbar`-klasserna |
 | EventLog | Anrop och historik, nyast först | `<pv-event-log>` i `apps/backoffice/src/components/event-log.ts` |
 
+### Detaljsidan
+
+En sida om ett objekt (skada, policy, part, djur, körning och så vidare) byggs på samma sätt, så att man vet var saker finns:
+
+1. **Brödsmulor** till listan objektet hör till, i stället för en knapp Tillbaka.
+2. **Rubrik** (`h1`, visningstypsnittet, 36 px) med det objektet heter för en människa, till exempel "Policy för Bella", och därefter märken för id och status. Den viktigaste åtgärden som leder till ett annat objekt står bredvid, till exempel Registrera skada.
+3. **En rad med fakta** (`.facts`) under rubriken: vem och vad det gäller, med namn och länkar och inte id, och de viktigaste datumen.
+4. **Två kolumner** (`.cols`):
+   - till vänster (`.basis`) det man läser, som kort (`.pv-card`) med `.pv-dl` eller `<pv-data-grid>`, viktigast först
+   - till höger (`.side`, högst 420 px) det man gör, som kort med val och förklaring, och sist historiken i `<pv-event-log>`, nyast först
+
+Skadesidan (`claim-detail.ts`) och policysidan (`policy-detail.ts`) är förebilderna. På smala skärmar hamnar högerkolumnen under.
+
 Regler för knappar och märken:
 
 - **Knappar** har verb och objekt. Den primära knappen finns en gång per område. En inaktiv knapp säger varför, till exempel "Välj ett skäl för att avslå".

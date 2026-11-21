@@ -73,7 +73,14 @@ En anonymiserad part kan inte ändras.
   - **prisindikation** från tariffen (`POST /v1/quotes`): grundpris, premie per år och för termen. En produkt utan tariff får premien för en term angiven för hand.
   - **kundens godkännande:** kanal, tid, referens och, för en produkt med dokument, vilka dokument kunden fick se. Villkor och förköpsinformation krävs (ADR 0031, 0032).
   - **en produkt med hälsofrågor** visar frågorna. Svaren skickas med en ansökan (`POST /v1/applications`), och ansökans sida öppnas: godkänd, godkänd med förbehåll, till manuell prövning eller avslag (ADR 0031). En fråga om diagnoser som besvaras med ja kräver diagnoskoderna. Prisindikationen visar vad svaren skulle ge.
-- **På policyns sida** finns åtgärderna:
+- **Policyns sida** är byggd som skadans sida (se [Designsystemet](../teknik/designsystem.md#detaljsidan)):
+  - **rubriken** "Policy för Bella", med id, status och Registrera skada
+  - **en rad med fakta:** djuret och försäkringstagaren som länkar, marknad, sedan när och terminen
+  - **terminen som gäller**, med produkt, premie, självrisk och försäkringsbelopp, och för den som har `limits:read` hur mycket som betalats ut detta försäkringsår, hur mycket som återstår och en stapel som visar det
+  - **skadorna på policyn**, med status och ersättning, för den som har `claims:read`
+  - förbehåll, terminer och versioner över tid
+  - i högerkolumnen förslag att svara på, åtgärderna och historiken
+- **Åtgärderna på policyns sida** är:
   - **Ändra valen** från i dag eller senare, med skäl
   - **Säg upp** med det skäl lagen känner till. Skälet avgör från när, och vissa skäl kräver dag eller anteckning.
   - **Ångra uppsägningen,** bara när den är policyns senaste transaktion

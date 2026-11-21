@@ -122,7 +122,6 @@ Kontrollerat mot kontraktet 2026-11-21: 18 av 143 operationer har inget gränssn
 | **Kundens egen kanal** | Ansökan, svar på komplettering, begäran om prövning, godkänt erbjudande | Headless med avsikt. Handläggaren gör det i back office, eller kanalen anropar API:t med `dev-customer`. | API-sidan `/docs` med `dev-customer` |
 | **Länk till dokument för kunden** (`audience: customer`) | Kunden öppnar sitt brev | Back office gör bara interna länkar. | API: `POST /v1/documents/{id}/links` |
 | **Länkarna till ett dokument, och att spärra en länk** | Efter delning | Saknas i back office. | API: `GET …/links` och `…/revocations` |
-| **Försäkringsbelopp som återstår** | Skada, i bedömningen | Saknas (färdplanen, "Skador"). | API: `GET /v1/policies/{id}/limits` |
 | **Omräkning av ett sparat beslut** (ADR 0018) | Efter beslut, när beslutet ska styrkas | Saknas (färdplanen, "Skador"). | API: `POST …/decisions/{seq}/replays` |
 | **Policyns ögonblicksbild och veterinärvillkoren** | Policyns sida | Saknas (färdplanen, "Policy"). | API: `GET /v1/policies/{id}/snapshot`, `…/vet-care-terms` |
 | **PDF av andra meddelanden** | Förnyelse, uppsägning, avslag, komplettering, erbjudande | Mallar finns bara för skadebesked och försäkringsbrev. Övriga gör bolagets dokumentsystem. | Bara "Rapportera ett utskick" |
@@ -132,4 +131,6 @@ Kontrollerat mot kontraktet 2026-11-21: 18 av 143 operationer har inget gränssn
 | **Webhooks till en mottagare** | Bolagets system får händelser | Prenumerationer finns i back office, men mottagaren behövs utanför. | En lokal mottagare på `http://localhost` |
 | **Simulering av regler och ändring av referensdata** | Inte kundens resa, men produktens | Saknas (färdplanen, "Regler" och "Referensdata"). | API |
 
-**Förslag på ordning:** först försäkringsbeloppet som återstår och omräkningen, eftersom båda behövs för att styrka ett skadebeslut. Sedan länken till kunden och listan över länkar, så att resan från PDF till kund går att testa i gränssnittet. Premier och betalningar är den största luckan, men de kräver ADR:en för M5 först.
+Försäkringsbeloppet som återstår visas sedan PR #122 på policyns sida.
+
+**Förslag på ordning:** först omräkningen, som behövs för att styrka ett skadebeslut. Sedan länken till kunden och listan över länkar, så att resan från PDF till kund går att testa i gränssnittet. Premier och betalningar är den största luckan, men de kräver ADR:en för M5 först.

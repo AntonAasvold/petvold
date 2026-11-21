@@ -126,7 +126,9 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 
 **Back office: det som saknas** (inventering 2026-11-18: back office använder 68 av API:ets 115 operationer)
 - [x] **Policy:** teckna med prisindikation och kundens godkännande, ändra, säga upp, ångra en uppsägning och förnya för hand
-- [ ] **Policy:** ögonblicksbild och policyns sida enligt designsystemet
+- [x] **Policy:** policyns sida enligt designsystemet, med försäkringsbeloppet som återstår och skadorna
+- [ ] **Policy:** ögonblicksbild
+- [ ] **Detaljsidor enligt designsystemet:** ansökan, meddelande, webhook, produkt och regeluppsättning
 - [x] **Ansökan:** registrera en ansökan med hälsofrågorna, och se vad svaren skulle ge
 - [x] **Djur:** sök, registrera och rätta djur, id-nummer, ägarbyte, historik och kullar
 - [x] **Parter:** sök, registrera och ändra personer och organisationer, id-nummer, historik och begäran om radering

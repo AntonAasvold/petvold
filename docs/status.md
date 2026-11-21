@@ -391,6 +391,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 
 - Partens sida (PR #121): numren ligger i kortet Uppgifter, och djurlistan visar vilken policy som försäkrar varje djur, med "Teckna försäkring" för ett djur utan policy. 44 flöden.
 
+- Policysidan enligt designsystemet (PR #122): rubrik och fakta som på skadan, försäkringsbeloppet som återstår, skadorna på policyn, och åtgärder och historik i högerkolumnen. Mönstret står i designsystemet som "Detaljsidan".
+
 **Nästa steg**
 1. ADR 0038, steg 5: gallring av dokument som en körning.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
