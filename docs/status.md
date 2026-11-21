@@ -418,9 +418,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **`payout` i `claim.decided`** är beskriven som skadans hela ersättning efter beslutet.
   - 559 tester och 163 databastester.
 
+- Pengar, steg 1: `billing-core` (ADR 0040), PR #129:
+  - **Premieplanen** (`premium-plan.v1`): perioder per intervall från termens början, lika belopp för hela perioder med resten på den första, en kortare sista period per dag, skatt och avgift per delbetalning, och den första premiens förfallodag. Kan räknas om med `replayPlan`.
+  - **Fördelning av en betalning**, den äldsta först, **en premieändring** på ofakturerade delbetalningar, och **avräkning vid avslut** mot det som är fakturerat och betalt.
+  - Egenskapstester för varje funktion. Ny sida: [Premier och betalningar](funktion/premier.md).
+  - 582 tester.
+
 **Nästa steg**
-1. ADR 0041 om demotjänsten som tar emot händelserna, spelar bank och kontrollerar att allt stämmer.
-2. ADR 0040, steg 1: `billing-core`.
+1. ADR 0040, steg 2: `billing` med betalarkonton, premieplaner från policyhändelserna och fakturering som körning.
+2. ADR 0041 om demotjänsten som tar emot händelserna, spelar bank och kontrollerar att allt stämmer.
 3. ADR 0038, steg 5: gallring av dokument som en körning.
 4. Back office: översikten på startsidan och omräkning av beslut.
 

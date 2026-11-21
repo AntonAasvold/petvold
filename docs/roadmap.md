@@ -171,7 +171,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 
 **M5 – Pengar**
 - [x] ADR 0040: premieplaner, fakturor, inbetalningar, utbetalningar och bokföring (beslutad 2026-11-21). Byggs i åtta steg:
-  - [ ] `billing-core`: premieplan, fördelning av betalningar och avräkning vid avslut
+  - [x] `billing-core`: premieplan, fördelning av betalningar och avräkning vid avslut
   - [ ] `billing`: betalarkonton, premieplaner från policyhändelserna, fakturering som körning
   - [ ] `payments` med `fake`-adapter: inbetalningar, koppling till faktura och utbetalningar
   - [ ] Obetald premie: påminnelse, uppsägning och avslut

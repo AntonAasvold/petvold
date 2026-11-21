@@ -39,6 +39,7 @@ Modulerna talar med varandra genom portar som `composition.ts` kopplar ihop, och
 | `animals` | Djurregistret: `AnimalService`, porten `AnimalStore`, lagring i minnet och i Postgres (schemat `animals`), `ownerOn` och `normalizeIdentifier` (ADR 0024). Läser referensdata via porten `ReferencePort` och parter via porten `PartyPort`. | `pg` |
 | `parties` | Parter: `PartyService`, porten `PartyStore`, lagring i minnet och i Postgres (schemat `parties`), `normalizePartyIdentifier` med kontroll av svenska nummer, och `publicView` som maskerar personnummer (ADR 0026) | `pg` |
 | `pricing-core` | Priset som en ren funktion: `price(tariff, input, prisvillkor)`, `validateTariff`, `validatePriceTerms`, `tariffCoverage`, `zoneFor` och `ageInYears` (ADR 0030). Ingen I/O. | inga |
+| `billing-core` | Räkningen för pengar som rena funktioner (ADR 0040): `premiumPlan` (modellen `premium-plan.v1`) och `replayPlan`, `allocatePayment`, `distributeAdjustment` och `settleCancellation`. Ingen I/O. | inga |
 | `underwriting-core` | Teckningsreglerna som en ren funktion: `underwrite(rules, input)`, `questionsFor`, `validateUnderwriting` och `underwritingCoverage` (ADR 0031). Ingen I/O. | inga |
 | `policies` | Policyer: `PolicyService` (också skademotorns `PolicyPort`), porten `PolicyStore`, lagring i minnet och i Postgres (schemat `policies`), `MARKET_PROFILES` och `toSnapshot` (ADR 0029). Ansökan med teckningsregler (ADR 0031). Läser produkter, djur, parter, tariffer och teckningsregler via portar. | `claims-core` (typer), `pricing-core`, `underwriting-core`, `pg` |
 | `communications` | Kundmeddelanden (ADR 0032): `CommunicationsService` gör meddelanden av policymodulens händelser, med lagrum och sista dag ur `NOTICE_RULES` per marknad, och tar emot dokumentsystemets rapporter om utskick. Porten `NoticeStore`, lagring i minnet och i Postgres (schemat `communications`). Läser policyer, ansökningar och parternas språk via portarna `PolicySource` och `PartySource`. | `common`, `pg` |
@@ -50,7 +51,7 @@ Modulerna talar med varandra genom portar som `composition.ts` kopplar ihop, och
 
 ## Portar och adaptrar
 
-Kärnorna (`claims-core`, `pricing-core`, `underwriting-core`) är rena: ingen I/O, inget ramverk och inga texter för användare. Allt de behöver från omvärlden får de via gränssnitt. Adaptrarna mellan modulerna finns i `modules/api/src/wiring.ts`, och `composition.ts` kopplar ihop dem.
+Kärnorna (`claims-core`, `pricing-core`, `underwriting-core`, `billing-core`) är rena: ingen I/O, inget ramverk och inga texter för användare. Allt de behöver från omvärlden får de via gränssnitt. Adaptrarna mellan modulerna finns i `modules/api/src/wiring.ts`, och `composition.ts` kopplar ihop dem.
 
 **Skademotorns portar** (`claims-core/src/ports.ts`):
 

@@ -19,7 +19,7 @@ Petvold installeras en gång per försäkringsbolag (ADR 0010). Varje kund har s
 | Back office | Gränssnitt för handläggare och back office (ADR 0035). | Skadornas köer och ärenden, bara läsning, se [Back office](backoffice.md) |
 | Webhooks | Händelser till bolagets system: prenumerationer, signatur och omförsök. | Byggt för policyer, ansökningar och förslag, se [Webhooks](webhooks.md) |
 | Meddelanden | Besked som lagen kräver, till exempel försäkringsbrev och avslag med skäl. Petvold tar fram underlaget, och bolagets dokumentsystem gör och skickar dokumenten. | Byggt för policyer och ansökningar, se [Meddelanden](meddelanden.md) |
-| Billing och betalningar | Premier in, ersättningar ut, via flera betaltjänster. | *(planerat, M5)* |
+| Premier och betalningar | Premier in, ersättningar ut, via flera betaltjänster (ADR 0040). | Räkningen är byggd: premieplan, fördelning av betalningar och avräkning vid avslut, se [Premier och betalningar](premier.md). Fakturor och betalningar kommer i M5. |
 
 ## Grundprinciper
 
