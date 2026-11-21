@@ -155,9 +155,13 @@ En produktversion säger vad som kan säljas och med vilka val (ADR 0023). Id:t 
 | `policy.transferAcceptanceDays` | Dagar som en ny ägare har på sig att godkänna en överlåten policy | 30 (förval) |
 | `policy.applicationExpiryDays` | Dagar som en ansökan får vänta på manuell prövning innan den går ut ([Teckning](teckning.md#manuell-prövning)), 1–90 | 30 (förval) |
 | `policy.maxStartAheadDays` | Hur många dagar efter dagen för tecknandet en ny policy får börja, 0–365. Priset och teckningsreglerna bestäms den dag policyn tecknas, så en start långt fram skulle låsa dem länge. 0 betyder att policyn börjar samma dag. Gäller tecknande, ansökan, en persons godkännande av en ansökan och prisindikationen, inte förnyelse. | 90 (förval) |
+| `billing.paymentIntervals` | Betalningsintervallen kunden får välja: `year`, `half-year`, `quarter` och `month` ([Premier och betalningar](premier.md)) | `["year"]` (förval) |
+| `billing.defaultPaymentInterval` | Intervallet när inget väljs. Ett av `paymentIntervals`. | `year` (förval) |
+| `billing.installmentFee` | Avgift per delbetalning i minsta enhet, 0–100 000. Tas bara när intervallet är kortare än ett år. | 0 (förval) |
+| `billing.invoiceLeadDays` | Dagar före förfallodagen som en delbetalning kommer med på en faktura, 1–60. Används av faktureringen (ADR 0040, steg 2b). | 20 (förval) |
 | `documents` | Produktens dokument till kunden (ADR 0032), se [Produktens dokument](#produktens-dokument) | villkor, förköpsinformation och faktablad på svenska och engelska |
 
-Inställningarna under `policy` kan utelämnas, och då gäller förvalen. De låses med resten av innehållet när versionen publiceras.
+Inställningarna under `policy` och `billing` kan utelämnas, och då gäller förvalen. De låses med resten av innehållet när versionen publiceras.
 
 ### Produktens dokument
 

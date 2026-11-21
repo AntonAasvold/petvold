@@ -101,6 +101,8 @@ export const PERMISSIONS = [
   'documents:read',
   /** Give the customer a link to a document, and revoke a link (ADR 0038). */
   'documents:share',
+  /** Read payer accounts and premium plans (ADR 0040). */
+  'billing:read',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -205,7 +207,9 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Watches and steers Petvold's runs and the relay (ADR 0037), e.g. the operations team. */
   operations: { permissions: ['jobs:read', 'jobs:operate', 'jobs:configure', 'webhooks:read'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */
-  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read', 'documents:read', 'documents:share'], bindsTo: 'policies' },
+  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read', 'documents:read', 'documents:share', 'billing:read'], bindsTo: 'policies' },
+  /** Follows the premiums: payer accounts, premium plans and later invoices and payments (ADR 0040), e.g. the finance team. */
+  'billing-clerk': { permissions: ['billing:read', 'policies:read', 'parties:read', 'catalog:read'] },
 };
 
 export function isPermission(value: unknown): value is Permission {

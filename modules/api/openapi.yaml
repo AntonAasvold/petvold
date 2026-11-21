@@ -60,6 +60,8 @@ tags:
     description: The consumed and remaining annual limit of a policy.
   - name: notices
     description: Notices the law requires the customer to get, for the insurer's document system (ADR 0032).
+  - name: billing
+    description: Payer accounts and premium plans, made from the policies' events (ADR 0040).
   - name: webhooks
     x-displayName: webhook subscriptions
     description: |
@@ -3659,6 +3661,93 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/payer-accounts:
+    get:
+      tags: [billing]
+      operationId: listPayerAccounts
+      x-permission: billing:read
+      summary: Payer accounts, oldest first
+      description: |
+        Requires the permission `billing:read` (ADR 0040). A payer account is made
+        when the first policy of a policyholder is issued in a market and
+        currency; later policies join it. Only accounts in the caller's markets;
+        a role bound to policies or a clinic sees none.
+      parameters:
+        - { name: partyId, in: query, schema: { type: string } }
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayerAccount' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/payer-accounts/{accountId}:
+    get:
+      tags: [billing]
+      operationId: getPayerAccount
+      x-permission: billing:read
+      summary: A payer account
+      description: Requires the permission `billing:read`. An account outside the caller's scope answers 404.
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string, pattern: '^bac_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The account
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayerAccount' }
+
+  /v1/premium-plans:
+    get:
+      tags: [billing]
+      operationId: listPremiumPlans
+      x-permission: billing:read
+      summary: Premium plans of a policy or an account, oldest first
+      description: |
+        Requires the permission `billing:read` (ADR 0040). `policy.issued` and
+        `policy.renewed` each give a plan for the term: the premium split into
+        installments by the payment interval, with each installment's period,
+        due date and amount. A plan never changes; a change is a new plan.
+        `policyId` or `accountId` is required. Only plans in the caller's
+        markets; a role bound to policies sees only its policies' plans.
+      parameters:
+        - { name: policyId, in: query, schema: { type: string } }
+        - { name: accountId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The plans
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PremiumPlanRecord' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/notices:
     get:
       tags: [notices]
@@ -5848,6 +5937,24 @@ components:
             transferAcceptanceDays: { type: integer, minimum: 1, maximum: 90, default: 30, description: Days a new owner has to accept a transferred policy. }
             applicationExpiryDays: { type: integer, minimum: 1, maximum: 90, default: 30, description: 'Days an application referred to a person may wait before the expiry run ends it (ADR 0031).' }
             maxStartAheadDays: { type: integer, minimum: 0, maximum: 365, default: 90, description: 'How many days after the day of issue a new policy may start. The price and the underwriting are set on the day of issue. 0, it starts the same day.' }
+        billing:
+          type: object
+          additionalProperties: false
+          description: How the product's premium is paid (ADR 0040). Omitted settings get their defaults.
+          properties:
+            paymentIntervals:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              items: { $ref: '#/components/schemas/PaymentInterval' }
+              default: [year]
+              description: The payment intervals a customer may choose.
+            defaultPaymentInterval:
+              allOf: [{ $ref: '#/components/schemas/PaymentInterval' }]
+              default: year
+              description: The interval when none is chosen. One of paymentIntervals.
+            installmentFee: { type: integer, minimum: 0, maximum: 100000, default: 0, description: 'A fee per installment in minor units of the product''s currency, taken only when the interval is shorter than a year.' }
+            invoiceLeadDays: { type: integer, minimum: 1, maximum: 60, default: 20, description: 'Days before an installment is due that the invoicing run puts it on an invoice.' }
         vetCare:
           type: object
           additionalProperties: false
@@ -5871,6 +5978,11 @@ components:
                   terms: { $ref: '#/components/schemas/DeductibleTerms' }
             defaultDeductible: { type: string }
             waitingPeriodDays: { type: integer, minimum: 0, maximum: 365 }
+
+    PaymentInterval:
+      type: string
+      enum: [year, half-year, quarter, month]
+      description: How often the premium is paid (ADR 0040).
 
     ProductDraftUpdate:
       type: object
@@ -6216,6 +6328,97 @@ components:
           type: object
           propertyNames: { pattern: '^[A-Z]{2}$' }
           additionalProperties: { $ref: '#/components/schemas/MarketNoticeSettings' }
+
+    PayerAccount:
+      type: object
+      additionalProperties: false
+      required: [id, partyId, market, currency, paymentMethod, createdAt]
+      description: One payer per party, market and currency (ADR 0040). The payer is the policyholder.
+      properties:
+        id: { type: string, pattern: '^bac_[A-Za-z0-9]+$' }
+        partyId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        paymentMethod: { type: string, enum: [invoice], description: 'How the payer pays. Autogiro, direct debit, Swish and card come with the payments module.' }
+        createdAt: { type: string, format: date-time }
+
+    PremiumPlanRecord:
+      type: object
+      additionalProperties: false
+      required: [id, accountId, policyId, termNo, market, productVersion, source, input, plan, createdAt]
+      description: The premium plan for one term of a policy (ADR 0040). Never changes.
+      properties:
+        id: { type: string, pattern: '^ppl_[A-Za-z0-9]+$' }
+        accountId: { type: string }
+        policyId: { type: string }
+        termNo: { type: integer, minimum: 1 }
+        market: { $ref: '#/components/schemas/Market' }
+        productVersion: { type: string }
+        source:
+          type: object
+          additionalProperties: false
+          required: [eventId, eventType, occurredAt]
+          description: The policy event it was made from.
+          properties:
+            eventId: { type: string }
+            eventType: { type: string }
+            occurredAt: { type: string, format: date-time }
+        input:
+          type: object
+          additionalProperties: false
+          required: [currency, termStart, termEnd, termPremium, interval]
+          description: What the plan was computed from, so it can be computed again (ADR 0018).
+          properties:
+            currency: { type: string, pattern: '^[A-Z]{3}$' }
+            termStart: { type: string, format: date }
+            termEnd: { type: string, format: date, description: Exclusive. }
+            termPremium: { type: integer, minimum: 0 }
+            interval: { $ref: '#/components/schemas/PaymentInterval' }
+            installmentFee: { type: integer, minimum: 0 }
+            premiumTaxBp: { type: integer, minimum: 0 }
+            firstPremium:
+              type: object
+              additionalProperties: false
+              required: [noticeSentOn, payWithinDays]
+              description: 'The first premium of a new policy: due payWithinDays after the notice, never before the term starts (SE: FAL 5 kap. 1 §).'
+              properties:
+                noticeSentOn: { type: string, format: date }
+                payWithinDays: { type: integer, minimum: 0 }
+        plan: { $ref: '#/components/schemas/PremiumPlan' }
+        createdAt: { type: string, format: date-time }
+
+    PremiumPlan:
+      type: object
+      additionalProperties: false
+      required: [model, currency, termStart, termEnd, interval, termPremium, premiumTaxBp, tax, fees, total, installments, inputHash]
+      properties:
+        model: { type: string, enum: [premium-plan.v1], description: 'The calculation model. A change in the result is a new model.' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        termStart: { type: string, format: date }
+        termEnd: { type: string, format: date, description: Exclusive. }
+        interval: { $ref: '#/components/schemas/PaymentInterval' }
+        termPremium: { type: integer, minimum: 0 }
+        premiumTaxBp: { type: integer, minimum: 0 }
+        tax: { type: integer, minimum: 0, description: Tax on the term premium, rounded half up once. }
+        fees: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 0, description: termPremium + tax + fees. }
+        installments:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [seq, periodStart, periodEnd, dueDate, premium, tax, fee, amount]
+            properties:
+              seq: { type: integer, minimum: 1 }
+              periodStart: { type: string, format: date }
+              periodEnd: { type: string, format: date, description: Exclusive. }
+              dueDate: { type: string, format: date }
+              premium: { type: integer, minimum: 0 }
+              tax: { type: integer, minimum: 0 }
+              fee: { type: integer, minimum: 0 }
+              amount: { type: integer, minimum: 0, description: premium + tax + fee. }
+        inputHash: { type: string, pattern: '^[0-9a-f]{64}$' }
 
     Notice:
       type: object

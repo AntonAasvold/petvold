@@ -1,0 +1,16 @@
+{
+  "name": "@petvold/billing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./postgres": "./src/postgres.ts",
+    "./test-suites/billing-store": "./test-suites/billing-store.ts"
+  },
+  "dependencies": {
+    "@petvold/billing-core": "^0.1.0",
+    "@petvold/common": "^0.1.0",
+    "pg": "^8.23.1"
+  }
+}

@@ -68,6 +68,29 @@ export interface PolicySettings {
   maxStartAheadDays?: number;
 }
 
+/** How often the premium is paid (ADR 0040). */
+export const PAYMENT_INTERVALS = ['year', 'half-year', 'quarter', 'month'] as const;
+export type PaymentInterval = (typeof PAYMENT_INTERVALS)[number];
+
+/** How the product's premium is paid (ADR 0040). */
+export interface BillingSettings {
+  /** The intervals a customer may choose. Default ['year']. */
+  paymentIntervals?: PaymentInterval[];
+  /** The interval when none is chosen. One of paymentIntervals. Default 'year'. */
+  defaultPaymentInterval?: PaymentInterval;
+  /** A fee per installment in minor units, taken only when the interval is shorter than a year. Default 0. */
+  installmentFee?: number;
+  /** Days before an installment is due that it goes on an invoice. Default 20. */
+  invoiceLeadDays?: number;
+}
+
+export const BILLING_SETTING_DEFAULTS: Required<BillingSettings> = { paymentIntervals: ['year'], defaultPaymentInterval: 'year', installmentFee: 0, invoiceLeadDays: 20 };
+
+/** The product's billing settings with defaults filled in. Pure. */
+export function billingSettingsOf(c: ProductContent): Required<BillingSettings> {
+  return { ...BILLING_SETTING_DEFAULTS, ...structuredClone(c.billing ?? {}) };
+}
+
 export const POLICY_SETTING_DEFAULTS: Required<PolicySettings> = { midTermCancellation: 'term-end', termMonths: 12, renewalLeadDays: 45, transferAcceptanceDays: 30, applicationExpiryDays: 30, maxStartAheadDays: 90 };
 
 /** The product's policy settings with defaults filled in. Pure. */
@@ -112,6 +135,8 @@ export interface ProductContent {
   underwritingSeries?: string;
   vetCare: VetCareCover;
   policy?: PolicySettings;
+  /** How the premium is paid (ADR 0040). */
+  billing?: BillingSettings;
   /**
    * The documents per type and language (ADR 0032). Locked with the content at
    * review. Omitted: the product has none in Petvold and acceptance names none.
@@ -458,7 +483,22 @@ export class ProductService {
         fail('policy.maxStartAheadDays must be 0-365');
       }
     }
+    if (c.billing !== undefined) validateBilling(c.billing, fail);
     if (c.documents !== undefined) validateDocuments(c.documents, fail);
+  }
+}
+
+function validateBilling(b: BillingSettings, fail: (m: string) => never): void {
+  const intervals = b.paymentIntervals ?? BILLING_SETTING_DEFAULTS.paymentIntervals;
+  if (!Array.isArray(intervals) || intervals.length === 0 || intervals.some((i) => !PAYMENT_INTERVALS.includes(i))) {
+    fail(`billing.paymentIntervals must be one or more of ${PAYMENT_INTERVALS.join(', ')}`);
+  }
+  if (new Set(intervals).size !== intervals.length) fail('billing.paymentIntervals lists an interval twice');
+  const def = b.defaultPaymentInterval ?? BILLING_SETTING_DEFAULTS.defaultPaymentInterval;
+  if (!intervals.includes(def)) fail('billing.defaultPaymentInterval must be one of billing.paymentIntervals');
+  if (b.installmentFee !== undefined && (!isAmount(b.installmentFee) || b.installmentFee > 100_000)) fail('billing.installmentFee must be 0-100000');
+  if (b.invoiceLeadDays !== undefined && (!Number.isSafeInteger(b.invoiceLeadDays) || b.invoiceLeadDays < 1 || b.invoiceLeadDays > 60)) {
+    fail('billing.invoiceLeadDays must be 1-60');
   }
 }
 

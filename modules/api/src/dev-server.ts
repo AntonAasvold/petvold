@@ -121,6 +121,7 @@ console.log(`  Animals:   ${where('animals')} (GET /v1/animals/ani_bella)`);
 console.log(`  Parties:   ${where('parties')} (GET /v1/parties/pty_owner001)`);
 console.log(`  Policies:  ${where('policies')} (GET /v1/policies/pol_bella)`);
 console.log(`  Notices:   ${where('communications')} (GET /v1/notices?status=pending, token dev-documents)`);
+console.log(`  Billing:   ${where('billing')} (GET /v1/premium-plans?policyId=pol_bella)`);
 console.log(`  Webhooks:  ${where('webhooks')} (POST /v1/webhook-subscriptions, token dev-integration; http://localhost is allowed)`);
 console.log(`  Roles:     ${where('access')}, versioned (GET /v1/settings/roles)`);
 console.log(`  API page:  http://localhost:${port}/docs`);
