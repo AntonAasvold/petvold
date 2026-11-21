@@ -18,7 +18,7 @@
 | [0014](0014-valuta-en-gang-per-objekt.md) | Belopp som heltal med valutan en gång per objekt (ersätter 0005) | Beslutad |
 | [0015](0015-postgres-med-pg-och-ren-sql.md) | Databasåtkomst med node-postgres och ren SQL | Beslutad |
 | [0016](0016-behorighet.md) | Behörighet: rättigheter i kontraktet, roller per installation och åtkomst till data | Beslutad |
-| [0017](0017-betalningar-och-betaltjanster.md) | Betalningar via en port med en adapter per betaltjänst | Föreslagen |
+| [0017](0017-betalningar-och-betaltjanster.md) | Betalningar via en port med en adapter per betaltjänst | Beslutad |
 | [0018](0018-beslutsmotor-och-beviskedja.md) | Beslutsmotor som egen modul, med beviskedja för varje beslut | Beslutad |
 | [0019](0019-attestkedja-och-utbetalningsorder.md) | Attestkedja: beslutsförslag, attest och utbetalningsorder | Beslutad |
 | [0020](0020-roller-och-granser-som-konfiguration.md) | Roller och beloppsgränser som versionerad konfiguration via API | Beslutad |
@@ -41,5 +41,6 @@
 | [0037](0037-korningar.md) | Körningar: schema, lås, historik och styrning i back office | Beslutad |
 | [0038](0038-dokument-och-arkiv.md) | Dokument: PDF med Gotenberg, ett arkiv och tidsbegränsade länkar | Beslutad |
 | [0039](0039-partens-livscykel.md) | Partens livscykel: sökning på namn, nummer som tas bort, begränsning och avslut | Beslutad |
+| [0040](0040-premier-fakturor-och-utbetalningar.md) | Pengar: premieplaner, fakturor, inbetalningar, utbetalningar och bokföring | Beslutad |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.

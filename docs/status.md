@@ -401,13 +401,23 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 
 - Produktens och regeluppsättningens sidor enligt designsystemet (PR #126). Alla detaljsidor i back office följer nu mönstret.
 
+- ADR 0040 om pengar (M5), beslutad 2026-11-21 (PR #127). ADR 0017 beslutades samtidigt:
+  - **Tre moduler:** `billing` (premieplaner, fakturor, obetalt), `payments` (ADR 0017) och `accounting` (verifikationer och dagsavslut till bolagets ekonomisystem).
+  - **Allt via händelser:** policyhändelserna ger premieplaner, `claim.payout_ordered` ger utbetalningar, och premie tillbaka räknas mot det som faktiskt är betalt.
+  - **Obetald premie** blir påminnelse, uppsägning och avslut som körningar, enligt FAL 5 kap.
+  - **Betalningsintervall per policy**, med tillåtna intervall, förval och avgift i produkten.
+  - **Kunden får ersättningen**, utom när kliniken har avtal om direktreglering.
+  - **En adapter per betaltjänst:** bankfiler först, sedan Stripe eller Surfboard (kort och Swish), Autogiro och SEPA, och Swish direkt.
+  - **Dagsavslutet som CSV** först. Dröjsmålsränta väntar.
+
 **Nästa steg**
-1. ADR 0038, steg 5: gallring av dokument som en körning.
-2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
-3. Back office: översikten på startsidan, omräkning av beslut och policyns sida enligt designsystemet.
+1. ADR 0041 om en fristående demotjänst som tar emot händelserna, spelar bank och kontrollerar att allt stämmer.
+2. ADR 0040, steg 1: `billing-core`.
+3. ADR 0038, steg 5: gallring av dokument som en körning.
+4. Back office: översikten på startsidan och omräkning av beslut.
 
 **Öppet**
 - Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.
-- En sänkt ersättning vid omprövning ger ingen återkravsorder. Återkrav är en öppen fråga (M5).
+- En sänkt ersättning vid omprövning ger ingen återkravsorder. ADR 0040 föreslår ett förslag till återkrav i en kö.
 - Gallringen känner till djur, policyer, ansökningar och skador. Innan den körs skarpt hos ett försäkringsbolag behöver bolaget bekräfta lagringstiderna och att inga andra system har relationer som Petvold inte känner till, till exempel betalningar (M5).
 - Det sparas inte vem som slagit upp ett djur.

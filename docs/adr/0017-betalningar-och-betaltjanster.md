@@ -1,6 +1,6 @@
 # 0017. Betalningar via en port med en adapter per betaltjänst
 
-- Status: Föreslagen
+- Status: Beslutad (2026-11-21, med ADR 0040)
 - Datum: 2026-11-14
 
 ## Sammanhang
@@ -90,6 +90,9 @@ interface PaymentProvider {
 - **Billing och betalningar i samma modul:** utbetalning av skador skulle bero på billing, som inte finns förrän M5.
 
 ## Öppna frågor för beslut
+
+Besvarade i ADR 0040 (2026-11-21): ersättningen går till kunden, eller till kliniken vid avtal om direktreglering. Bankfiler är första adaptern, sedan Stripe eller Surfboard, Autogiro via Bankgirots filer och Swish.
+
 
 - Vilken adapter först: Stripe (bäst testmiljö), Swish (Sverige) eller open banking via en aggregator?
 - Ersättning till klinik eller kund, eller båda?

@@ -141,7 +141,8 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [ ] **Referensdata (ADR 0022):** arter, raser och kön med översättningar och historik
 - [x] **Produkter och regler:** formulär för produkter och skaderegler, med JSON som alternativ, och en sammanfattning av vald version
 - [ ] **Regler:** formulär för tariffer, prisvillkor och teckningsregler, och simulering av regelutkast mot sparade underlag
-- [ ] **Skador:** omräkning av ett sparat beslut (ADR 0018) och försäkringsbeloppet som återstår på policyn
+- [ ] **Skador:** omräkning av ett sparat beslut (ADR 0018)
+- [x] **Policy:** försäkringsbeloppet som återstår (PR #122)
 - [ ] **Översikt:** en startsida med köerna, körningarna och det som fastnat
 
 **Dokument**
@@ -169,6 +170,15 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 ## Senare
 
 **M5 – Pengar**
+- [x] ADR 0040: premieplaner, fakturor, inbetalningar, utbetalningar och bokföring (beslutad 2026-11-21). Byggs i åtta steg:
+  - [ ] `billing-core`: premieplan, fördelning av betalningar och avräkning vid avslut
+  - [ ] `billing`: betalarkonton, premieplaner från policyhändelserna, fakturering som körning
+  - [ ] `payments` med `fake`-adapter: inbetalningar, koppling till faktura och utbetalningar
+  - [ ] Obetald premie: påminnelse, uppsägning och avslut
+  - [ ] Tillgodohavanden, återbetalningar och kreditnotor med attest
+  - [ ] `accounting`: verifikationer, kontoplan, perioder och dagsavslut
+  - [ ] Betaltjänster: bankfiler (ISO 20022), Stripe eller Surfboard (kort och Swish), Autogiro och SEPA, och Swish direkt
+  - [ ] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav
 - Premieåterbetalning vid avslut och ny premieplan vid förnyelse.
 - Distribution och provision (ny ADR):
   - vem som sålde en policy: försäkringsbolagets egen kanal, en säljare eller ett ombud (förmedlare), sparat på tecknandet och på varje förnyelse
@@ -197,14 +207,14 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 
 ## Öppna frågor
 
-- Kvittning av premie mot ersättning: när villkor och lag tillåter det per marknad, och om kunden ska kunna välja bort det. Utreds med källor i ADR:n för utbetalning.
+- Kvittning av premie mot ersättning: ADR 0040 föreslår att det bara sker när marknadsprofilen tillåter det och produkten slår på det (förval av). Kvar: om kunden ska kunna välja bort det.
 
 - Licens: stängd, källkod tillgänglig eller öppen källkod?
 - Gemensamt försäkringsbelopp för en kull.
 - Överlåtelseregler per marknad.
 - Självriskperiod över förnyelse: konfigurerbart per produkt (`periodEndsAtRenewal`, standard är att perioden fortsätter). Kvar: perioden ska bara fortsätta så länge skyddet är oavbrutet, inte över avslut, uppehåll eller ny ägare.
-- Retroaktivt avslut när ersättning redan är betald för tiden efter avslutet: återkrav, avräkning mot premieåterbetalning eller avskrivning?
-- Premieåterbetalning vid avslut: per dag eller enligt produktens regel, och vid ånger?
+- Retroaktivt avslut när ersättning redan är betald för tiden efter avslutet: ADR 0040 föreslår ett förslag till återkrav i en kö, där handläggaren väljer återkrav, avräkning eller avskrivning.
+- Premieåterbetalning vid avslut: ADR 0040 föreslår per dag, också vid ånger, enligt FAL 5 kap. 6 § och distansavtalslagen 3 kap. 20 §.
 - Moln och klientlager.
 
 ## Källor för punkter som lagts till 2026-11-14
