@@ -168,3 +168,35 @@ test('every OCR and RF reference made is valid, and one changed digit is caught'
     }),
   );
 });
+
+test('a reduction is never lost or created, and no installment goes below zero', async () => {
+  const { reduceInstallments } = await import('@petvold/billing-core');
+  fc.assert(
+    fc.property(fc.integer({ min: 0, max: 2_000_000 }), fc.uniqueArray(fc.record({ seq: fc.integer({ min: 1, max: 12 }), premium: fc.integer({ min: 0, max: 500_000 }) }), { selector: (u) => u.seq, maxLength: 12 }), (reduction, uninvoiced) => {
+      const r = reduceInstallments(reduction, uninvoiced);
+      assert.equal(r.parts.reduce((s, p) => s + p.amount, 0) + r.rest, reduction);
+      for (const p of r.parts) assert.ok(p.amount > 0 && p.amount <= uninvoiced.find((u) => u.seq === p.seq)!.premium);
+      if (r.rest > 0) assert.equal(r.parts.reduce((s, p) => s + p.amount, 0), uninvoiced.reduce((s, u) => s + u.premium, 0), 'a rest only when every installment is used up');
+    }),
+  );
+});
+
+test('a settled term: kept + new charge is the new total, kept + credited is what was owed on the invoices', async () => {
+  const { settleTerm } = await import('@petvold/billing-core');
+  const line = fc.record({ premium: fc.integer({ min: 0, max: 300_000 }), fee: fc.integer({ min: 0, max: 5_000 }), invoiced: fc.boolean(), creditedBp: fc.integer({ min: 0, max: 10_000 }) });
+  fc.assert(
+    fc.property(fc.array(line, { minLength: 1, maxLength: 12 }), fc.integer({ min: 0, max: 4_000_000 }), (ls, reduction) => {
+      const lines = ls.map((l, i) => {
+        const amount = l.premium + l.fee;
+        const open = l.invoiced ? amount - Math.floor((amount * l.creditedBp) / 10_000) : amount;
+        return { key: `k${String(i).padStart(2, '0')}`, dueDate: addDays('2026-01-01', 30 * i), premium: l.premium, tax: 0, fee: l.fee, open, invoiced: l.invoiced };
+      });
+      const s = settleTerm({ lines, premiumReduction: reduction, taxReduction: 0 });
+      const kept = s.kept.reduce((a, k) => a + k.open, 0);
+      const credited = s.credited.reduce((a, c) => a + c.amount, 0);
+      assert.equal(kept + s.newCharge, s.newTotal);
+      assert.equal(kept + credited, lines.filter((l) => l.invoiced).reduce((a, l) => a + l.open, 0));
+      assert.ok(s.newCharge === 0 || credited === 0);
+    }),
+  );
+});

@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-21 | [Ändring, avslut och överlåtelse mot fakturorna](2026-11-21-avrakning-mot-fakturor.md) | #136 |
 | 2026-11-21 | [Betalningsintervall vid tecknandet](2026-11-21-betalningsintervall.md) | #135 |
 | 2026-11-21 | [Mall för fakturan](2026-11-21-fakturamall.md) | #134 |
 | 2026-11-21 | [Pengar, steg 2b-2: fakturan som meddelande](2026-11-21-fakturan-som-meddelande.md) | #133 |

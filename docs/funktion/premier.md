@@ -83,6 +83,23 @@ En term får en premieplan när policyn tecknas eller förnyas. Planen delar ter
 
 En ändring som höjer premien (`policy.changed` med positiv `premiumAdjustment`) läggs på de delbetalningar som inte fakturerats än, lika mycket på var och en, och det som blir över hamnar på den första. Om alla delbetalningar redan är fakturerade blir höjningen en egen faktura. En sänkning blir en kredit.
 
+## Ändring, avslut och överlåtelse mot fakturorna
+
+En plan ändras aldrig. En policyhändelse ger en **ny plan som ersätter** den förra (`replaces`, med `adjustment` som säger vad som hände). Den nya planen har det som är kvar att fakturera av termen. Det som den förra planen fakturerade står kvar på sina fakturor.
+
+| Händelse | Vad som händer |
+| --- | --- |
+| `policy.changed`, högre premie | Höjningen läggs på delbetalningarna som inte fakturerats, lika mycket på var och en. Är allt fakturerat blir den en egen delbetalning från ändringsdagen. |
+| `policy.changed`, lägre premie | Sänkningen dras av från delbetalningarna som inte fakturerats, lika mycket på var och en och aldrig under noll. Det som de inte räcker till krediteras på det som är fakturerat, de senaste först (beslut 2026-11-21). |
+| `policy.cancelled` | Premien tillbaka (`refund`) delas på termerna efter hur många dagar de förlorar. Delbetalningar som inte fakturerats tas bort, och deras avgifter tas inte ut. Det som termen fortfarande kostar står kvar på fakturorna, de äldsta först, och resten krediteras. Räcker fakturorna inte blir resten en egen delbetalning. |
+| `policy.transferred` | Den förra ägaren avräknas som vid ett avslut från försäljningsdagen. Den nya ägaren får ett betalarkonto, om den inte har ett, och en plan från försäljningsdagen till termens slut med samma belopp och reglerna för en första premie. |
+
+**Kreditnotor** görs automatiskt, en per faktura, med nummer ur fakturornas serie. De har ingen attest, eftersom de följer av en policyhändelse och inte av en persons beslut. Händelsen `invoice.credited` går ut med webhooks, och kreditnotorna läses med `GET /v1/credit-notes` och `GET /v1/credit-notes/{id}`.
+
+**Exempel:** Bella betalar 400 kr i månaden från 1 december. December och januari är fakturerade. Hon dör, och policyn avslutas från 16 januari med 4 195,07 kr tillbaka (319 av 365 dagar). Termen kostar då 604,93 kr. December står kvar, 204,93 kr av januari står kvar, och 195,07 kr av januari krediteras. Februari till november tas bort.
+
+Ingen betalning tas emot än (steg 3), så inget blir ett tillgodohavande. Återkallelse av ett avslut kommer i nästa steg.
+
 ## Fördelning av en betalning
 
 En betalning går till den skuld som förföll först, och vid samma dag i id-ordning. Ingen post får mer än det som är obetalt på den. Det som blir över efter att allt är betalt blir ett tillgodohavande.

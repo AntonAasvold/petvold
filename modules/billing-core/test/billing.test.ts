@@ -159,3 +159,41 @@ test('RF after ISO 11649', async () => {
   assert.equal(rfReference('2026000001').slice(0, 2), 'RF');
   assert.throws(() => rfReference('a-b'), /base/);
 });
+
+test('a reduction comes off the installments not invoiced, never below zero, and the rest is credited', async () => {
+  const { reduceInstallments } = await import('@petvold/billing-core');
+  assert.deepEqual(reduceInstallments(10_000, [{ seq: 12, premium: 40_000 }, { seq: 10, premium: 40_000 }, { seq: 11, premium: 40_000 }]), {
+    parts: [{ seq: 10, amount: 3_334 }, { seq: 11, amount: 3_333 }, { seq: 12, amount: 3_333 }],
+    rest: 0,
+  });
+  // The second can take only 1 000; the others take the rest.
+  assert.deepEqual(reduceInstallments(9_000, [{ seq: 1, premium: 10_000 }, { seq: 2, premium: 1_000 }, { seq: 3, premium: 10_000 }]), {
+    parts: [{ seq: 1, amount: 4_000 }, { seq: 2, amount: 1_000 }, { seq: 3, amount: 4_000 }],
+    rest: 0,
+  });
+  assert.deepEqual(reduceInstallments(50_000, [{ seq: 1, premium: 10_000 }]), { parts: [{ seq: 1, amount: 10_000 }], rest: 40_000 });
+  assert.deepEqual(reduceInstallments(5_000, []), { parts: [], rest: 5_000 });
+});
+
+test('a term settled: uninvoiced removed, what is owed stays oldest first, the rest credited, or a new charge', async () => {
+  const { settleTerm } = await import('@petvold/billing-core');
+  const line = (key: string, dueDate: string, invoiced: boolean, o: Partial<{ premium: number; fee: number; open: number }> = {}) => ({ key, dueDate, premium: 100_000, tax: 0, fee: 0, open: 100_000, invoiced, ...o });
+  const quarters = [line('q1', '2026-01-01', true), line('q2', '2026-04-01', true), line('q3', '2026-07-01', false, { fee: 2_900, open: 102_900 }), line('q4', '2026-10-01', false, { fee: 2_900, open: 102_900 })];
+  // 400 000 a year; 220 000 back: the term costs 180 000, so 80 000 of q2 stays.
+  assert.deepEqual(settleTerm({ lines: quarters, premiumReduction: 220_000, taxReduction: 0 }), {
+    newTotal: 180_000,
+    removed: ['q3', 'q4'],
+    kept: [{ key: 'q1', open: 100_000 }, { key: 'q2', open: 80_000 }],
+    credited: [{ key: 'q2', amount: 20_000 }],
+    newCharge: 0,
+  });
+  // Only 120 000 back: 280 000, of which 80 000 is a new charge, without the fees of the removed quarters.
+  assert.deepEqual(settleTerm({ lines: quarters, premiumReduction: 120_000, taxReduction: 0 }).newCharge, 80_000);
+});
+
+test('a split by weight adds up exactly', async () => {
+  const { splitByWeight } = await import('@petvold/billing-core');
+  assert.deepEqual(splitByWeight(100, [1, 1, 1]), [33, 33, 34]);
+  assert.deepEqual(splitByWeight(100, [365, 0]), [100, 0]);
+  assert.deepEqual(splitByWeight(100, [0, 0]), [0, 100]);
+});

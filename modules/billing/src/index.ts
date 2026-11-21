@@ -8,7 +8,24 @@
  * product's billing settings, the policyholder at renewal) through ports.
  */
 import { addDays, marketDate, type ISODate, type Timestamp } from '@petvold/common';
-import { PAYMENT_INTERVALS, addMonths, paymentReference, premiumPlan, type PaymentInterval, type PlanInput, type PremiumPlan, type ReferenceType } from '@petvold/billing-core';
+import {
+  PAYMENT_INTERVALS,
+  addMonths,
+  applyBpHalfUp,
+  daysBetween,
+  distributeAdjustment,
+  paymentReference,
+  premiumPlan,
+  reduceInstallments,
+  settleTerm,
+  splitByWeight,
+  type Installment,
+  type PaymentInterval,
+  type PlanInput,
+  type PremiumPlan,
+  type ReferenceType,
+  type TermLine,
+} from '@petvold/billing-core';
 
 export { PAYMENT_INTERVALS, type PaymentInterval, type PlanInput, type PremiumPlan, type ReferenceType } from '@petvold/billing-core';
 
@@ -79,6 +96,53 @@ export interface PlanRecord {
   plan: PremiumPlan;
   /** From the product when the plan was made. Omitted: DEFAULT_INVOICE_LEAD_DAYS. */
   invoiceLeadDays?: number;
+  /**
+   * A plan made by a change, a cancellation or a transfer (ADR 0040, punkt 4):
+   * the plan it replaces, and what happened. Its installments are what is left
+   * to invoice of the term; what the replaced plan invoiced stays on its invoices.
+   */
+  replaces?: string;
+  adjustment?: PlanAdjustment;
+  createdAt: Timestamp;
+}
+
+export interface PlanAdjustment {
+  kind: 'change' | 'cancellation' | 'transfer-from' | 'transfer-to';
+  transactionId: string;
+  /** The day it takes effect. */
+  from: ISODate;
+  /** The premium added (positive) or taken off (negative) for this term. */
+  premium: number;
+  /** The same for the tax. */
+  tax: number;
+}
+
+/** What a credit note takes off one line of an invoice. */
+export interface CreditNoteLine {
+  planId: string;
+  policyId: string;
+  seq: number;
+  amount: number;
+}
+
+/**
+ * A credit note (ADR 0040, punkt 5): what is taken off an invoice, from the
+ * invoice series. Made automatically from a change, a cancellation or a
+ * transfer; one per invoice. Never changes.
+ */
+export interface CreditNote {
+  id: string;
+  number: string;
+  invoiceId: string;
+  accountId: string;
+  partyId: string;
+  market: string;
+  currency: string;
+  issueDate: ISODate;
+  lines: CreditNoteLine[];
+  total: number;
+  /** The policy event it was made from. */
+  source: { eventId: string; eventType: string };
   createdAt: Timestamp;
 }
 
@@ -124,7 +188,7 @@ export interface Invoice {
 /** What the module tells others (ADR 0008, 0033). Written with the change. */
 export interface BillingEvent {
   id: string;
-  type: 'invoice.issued';
+  type: 'invoice.issued' | 'invoice.credited';
   invoiceId: string;
   market: string;
   occurredAt: Timestamp;
@@ -199,6 +263,20 @@ export interface BillingStore {
   accounts(filter: { partyId?: string; market?: string }): Promise<PayerAccount[]>;
   /** Oldest first. */
   plans(filter: { policyId?: string; accountId?: string; market?: string }): Promise<PlanRecord[]>;
+  /**
+   * Stores what a policy event did to the plans, in one transaction: new plans
+   * (each replacing one, or new for a new payer, with its account if it has
+   * none), and credit notes numbered from the invoice series. false, and
+   * nothing stored, if the event already did it.
+   */
+  addAdjustment(
+    input: { market: string; year: number; accounts: PayerAccount[]; plans: PlanRecord[]; credits: Omit<CreditNote, 'number'>[] },
+    numbered: (credit: Omit<CreditNote, 'number'>, no: number) => CreditNote,
+    events: (credits: CreditNote[]) => BillingEvent[],
+  ): Promise<boolean>;
+  /** Oldest first. */
+  creditNotes(filter: { invoiceId?: string; accountId?: string; policyId?: string }): Promise<CreditNote[]>;
+  creditNote(id: string): Promise<CreditNote | null>;
   /** The seqs already invoiced per plan. */
   invoicedSeqs(planIds: string[]): Promise<Map<string, Set<number>>>;
   /**
@@ -254,6 +332,7 @@ export class BillingService {
    * relay may deliver an event more than once. Returns the new plan, or null.
    */
   async handlePolicyEvent(e: SourceEvent): Promise<PlanRecord | null> {
+    if (e.type === 'policy.changed' || e.type === 'policy.cancelled' || e.type === 'policy.transferred') return (await this.adjust(e))[0] ?? null;
     if (e.type !== 'policy.issued' && e.type !== 'policy.renewed') return null;
     if (!e.policyId) throw new Error(`Event ${e.id} has no policy`);
     const data = e.data as {
@@ -317,6 +396,234 @@ export class BillingService {
     return (await this.d.store.plans({ policyId: e.policyId })).find((p) => p.id === record.id) ?? null;
   }
 
+  /** The plans in force: those no other plan replaces. */
+  private async currentPlans(filter: { policyId?: string; market?: string }): Promise<PlanRecord[]> {
+    const all = await this.d.store.plans(filter);
+    const replaced = new Set(all.flatMap((p) => (p.replaces ? [p.replaces] : [])));
+    return all.filter((p) => !replaced.has(p.id));
+  }
+
+  /**
+   * The lines of a term (ADR 0040, punkt 4): what is invoiced from any of the
+   * term's plans for the account, with what is still owed after credit notes,
+   * and the installments of the plan in force that are not invoiced yet.
+   */
+  private async termLines(plan: PlanRecord): Promise<{ lines: (TermLine & { invoiceId?: string; planId: string; seq: number })[]; uninvoiced: Installment[] }> {
+    const termPlans = (await this.d.store.plans({ policyId: plan.policyId })).filter((p) => p.termNo === plan.termNo && p.accountId === plan.accountId);
+    const ids = new Set(termPlans.map((p) => p.id));
+    const invoices = (await this.d.store.invoices({ policyId: plan.policyId })).filter((i) => i.accountId === plan.accountId);
+    const credited = new Map<string, number>();
+    for (const c of await this.d.store.creditNotes({ policyId: plan.policyId })) for (const l of c.lines) credited.set(`${l.planId}#${l.seq}`, (credited.get(`${l.planId}#${l.seq}`) ?? 0) + l.amount);
+    const lines: (TermLine & { invoiceId?: string; planId: string; seq: number })[] = [];
+    for (const inv of invoices) {
+      for (const l of inv.lines) {
+        if (!ids.has(l.planId)) continue;
+        const key = `${l.planId}#${l.seq}`;
+        lines.push({ key, invoiceId: inv.id, planId: l.planId, seq: l.seq, dueDate: inv.dueDate, premium: l.premium, tax: l.tax, fee: l.fee, open: l.amount - (credited.get(key) ?? 0), invoiced: true });
+      }
+    }
+    const done = (await this.d.store.invoicedSeqs([plan.id])).get(plan.id) ?? new Set<number>();
+    const uninvoiced = plan.plan.installments.filter((i) => !done.has(i.seq));
+    for (const i of uninvoiced) lines.push({ key: `${plan.id}#${i.seq}`, planId: plan.id, seq: i.seq, dueDate: i.dueDate, premium: i.premium, tax: i.tax, fee: i.fee, open: i.amount, invoiced: false });
+    return { lines, uninvoiced };
+  }
+
+  /** A plan that replaces another with new installments, its totals summed from them. */
+  private replacement(e: SourceEvent, old: PlanRecord, installments: Installment[], adjustment: PlanAdjustment, now: Timestamp): PlanRecord {
+    const tax = old.plan.tax + adjustment.tax;
+    const termPremium = old.plan.termPremium + adjustment.premium;
+    const fees = installments.reduce((s, i) => s + i.fee, 0);
+    return {
+      ...structuredClone(old),
+      id: this.d.ids.next('ppl'),
+      source: { eventId: e.id, eventType: e.type, occurredAt: e.occurredAt },
+      plan: {
+        ...structuredClone(old.plan),
+        model: 'premium-plan.v1',
+        termPremium,
+        tax,
+        fees,
+        total: installments.reduce((s, i) => s + i.amount, 0),
+        installments,
+      },
+      replaces: old.id,
+      adjustment,
+      createdAt: now,
+    };
+  }
+
+  /**
+   * What a change, a cancellation or a transfer does to the plans and the
+   * invoices (ADR 0040, punkt 4 and beslut 2026-11-21). Returns the new plans;
+   * none if the event already did it or concerns no plan.
+   */
+  private async adjust(e: SourceEvent): Promise<PlanRecord[]> {
+    if (!e.policyId) throw new Error(`Event ${e.id} has no policy`);
+    const now = this.d.clock.now();
+    const current = await this.currentPlans({ policyId: e.policyId });
+    if (current.length === 0) return [];
+    const market = current[0]!.market;
+    const rules = (this.d.rules ?? BILLING_MARKET_RULES)[market];
+    if (!rules) throw new Error(`No billing rules for the market ${market} (event ${e.id})`);
+    const eventDate = marketDate(market, e.occurredAt);
+    const transactionId = String(e.data.transactionId ?? '');
+    const plans: PlanRecord[] = [];
+    const accounts: PayerAccount[] = [];
+    const creditLines: { invoiceId: string; line: CreditNoteLine }[] = [];
+
+    if (e.type === 'policy.changed') {
+      const d = e.data as { termNo: number; from: ISODate; premiumAdjustment: number };
+      const plan = current.find((p) => p.termNo === Number(d.termNo));
+      if (!plan || !d.premiumAdjustment) return [];
+      const taxDelta = applyBpHalfUp(Math.max(0, plan.plan.termPremium + d.premiumAdjustment), plan.plan.premiumTaxBp) - plan.plan.tax;
+      const { lines, uninvoiced } = await this.termLines(plan);
+      let installments = uninvoiced.map((i) => ({ ...i }));
+      if (d.premiumAdjustment > 0) {
+        const p = distributeAdjustment(d.premiumAdjustment, installments.map((i) => i.seq));
+        const t = distributeAdjustment(taxDelta, installments.map((i) => i.seq));
+        if (p.kind === 'spread') {
+          const taxOf = new Map(t.kind === 'spread' ? t.parts.map((x) => [x.seq, x.amount]) : []);
+          installments = installments.map((i) => {
+            const add = p.parts.find((x) => x.seq === i.seq)?.amount ?? 0;
+            const addTax = taxOf.get(i.seq) ?? 0;
+            return { ...i, premium: i.premium + add, tax: i.tax + addTax, amount: i.amount + add + addTax };
+          });
+        } else {
+          // Everything is invoiced: the rest of the term on its own (FAL 5 kap. 1 § sets its due date when invoiced).
+          const seq = Math.max(0, ...lines.map((l) => l.seq)) + 1;
+          installments.push({ seq, periodStart: maxDate(d.from, plan.plan.termStart), periodEnd: plan.plan.termEnd, dueDate: eventDate, premium: d.premiumAdjustment, tax: taxDelta, fee: 0, amount: d.premiumAdjustment + taxDelta });
+        }
+      } else {
+        // A lower premium comes off what is not invoiced yet; only the rest is credited (beslut 2026-11-21).
+        const r = reduceInstallments(-d.premiumAdjustment, installments);
+        const rt = reduceInstallments(-taxDelta, installments.map((i) => ({ seq: i.seq, premium: i.tax })));
+        installments = installments.map((i) => {
+          const off = r.parts.find((x) => x.seq === i.seq)?.amount ?? 0;
+          const offTax = rt.parts.find((x) => x.seq === i.seq)?.amount ?? 0;
+          return { ...i, premium: i.premium - off, tax: i.tax - offTax, amount: i.amount - off - offTax };
+        });
+        let rest = r.rest + rt.rest;
+        // The newest invoiced lines first: the months nearest the end of the term.
+        for (const l of lines.filter((x) => x.invoiced && x.open > 0).sort((a, b) => (a.dueDate < b.dueDate ? 1 : a.dueDate > b.dueDate ? -1 : 0))) {
+          if (rest === 0) break;
+          const amount = Math.min(rest, l.open);
+          creditLines.push({ invoiceId: l.invoiceId!, line: { planId: l.planId, policyId: plan.policyId, seq: l.seq, amount } });
+          rest -= amount;
+        }
+      }
+      plans.push(this.replacement(e, plan, installments, { kind: 'change', transactionId, from: d.from, premium: d.premiumAdjustment, tax: taxDelta }, now));
+    } else {
+      // A cancellation or a transfer: the premium back, split over the terms by the days they lose.
+      const cancelled = e.type === 'policy.cancelled';
+      const d = e.data as { effectiveDate?: ISODate; from?: ISODate; refund?: { amount: number }; premium?: { amount: number }; toPartyId?: string };
+      const from = (cancelled ? d.effectiveDate : d.from)!;
+      const back = (cancelled ? d.refund?.amount : d.premium?.amount) ?? 0;
+      const affected = current.filter((p) => p.plan.termEnd > from).sort((a, b) => a.termNo - b.termNo);
+      if (affected.length === 0) return [];
+      const shares = splitByWeight(back, affected.map((p) => daysBetween(maxDate(from, p.plan.termStart), p.plan.termEnd)));
+      for (const [k, plan] of affected.entries()) {
+        const share = Math.min(shares[k]!, plan.plan.termPremium);
+        const taxReduction = plan.plan.tax - applyBpHalfUp(plan.plan.termPremium - share, plan.plan.premiumTaxBp);
+        const { lines } = await this.termLines(plan);
+        const settled = settleTerm({ lines, premiumReduction: share, taxReduction });
+        for (const c of settled.credited) {
+          const l = lines.find((x) => x.key === c.key)!;
+          creditLines.push({ invoiceId: l.invoiceId!, line: { planId: l.planId, policyId: plan.policyId, seq: l.seq, amount: c.amount } });
+        }
+        const installments: Installment[] = [];
+        if (settled.newCharge > 0) {
+          const seq = Math.max(0, ...lines.map((l) => l.seq)) + 1;
+          // The tax's part of the charge, as the tax's part of what the term now costs.
+          const newTax = plan.plan.tax - taxReduction;
+          const tax = settled.newTotal > 0 ? Math.round((settled.newCharge * newTax) / settled.newTotal) : 0;
+          const end = minDate(from, plan.plan.termEnd);
+          installments.push({ seq, periodStart: plan.plan.termStart, periodEnd: end > plan.plan.termStart ? end : plan.plan.termEnd, dueDate: eventDate, premium: settled.newCharge - tax, tax, fee: 0, amount: settled.newCharge });
+        }
+        plans.push(this.replacement(e, plan, installments, { kind: cancelled ? 'cancellation' : 'transfer-from', transactionId, from, premium: -share, tax: -taxReduction }, now));
+
+        // The new owner pays from the sale day to the end of the term, the same amount (ADR 0040, punkt 4).
+        if (!cancelled && share > 0) {
+          const partyId = d.toPartyId!;
+          const product = await this.d.products.billing(plan.productVersion);
+          const interval = product && product.paymentIntervals.includes(plan.plan.interval) ? plan.plan.interval : (product?.defaultPaymentInterval ?? 'year');
+          const account = (await this.d.store.accountFor(partyId, market, plan.plan.currency)) ??
+            accounts.find((a) => a.partyId === partyId) ?? { id: this.d.ids.next('bac'), partyId, market, currency: plan.plan.currency, paymentMethod: 'invoice' as const, createdAt: now };
+          if (!accounts.includes(account)) accounts.push(account);
+          const input: PlanInput = {
+            currency: plan.plan.currency,
+            termStart: maxDate(from, plan.plan.termStart),
+            termEnd: plan.plan.termEnd,
+            termPremium: share,
+            interval,
+            ...(product && product.installmentFee > 0 ? { installmentFee: product.installmentFee } : {}),
+            ...(plan.plan.premiumTaxBp > 0 ? { premiumTaxBp: plan.plan.premiumTaxBp } : {}),
+            firstPremium: { noticeSentOn: eventDate, payWithinDays: rules.firstPremiumDays },
+          };
+          plans.push({
+            id: this.d.ids.next('ppl'),
+            accountId: account.id,
+            policyId: plan.policyId,
+            termNo: plan.termNo,
+            market,
+            productVersion: plan.productVersion,
+            source: { eventId: e.id, eventType: e.type, occurredAt: e.occurredAt },
+            input,
+            plan: premiumPlan(input),
+            ...(product ? { invoiceLeadDays: product.invoiceLeadDays } : {}),
+            adjustment: { kind: 'transfer-to', transactionId, from, premium: share, tax: applyBpHalfUp(share, plan.plan.premiumTaxBp) },
+            createdAt: now,
+          });
+        }
+      }
+    }
+
+    // One credit note per invoice.
+    const byInvoice = new Map<string, CreditNoteLine[]>();
+    for (const c of creditLines) byInvoice.set(c.invoiceId, [...(byInvoice.get(c.invoiceId) ?? []), c.line]);
+    const credits: Omit<CreditNote, 'number'>[] = [];
+    for (const [invoiceId, lines] of byInvoice) {
+      const inv = (await this.d.store.invoice(invoiceId))!;
+      credits.push({
+        id: this.d.ids.next('crn'),
+        invoiceId,
+        accountId: inv.accountId,
+        partyId: inv.partyId,
+        market,
+        currency: inv.currency,
+        issueDate: eventDate,
+        lines,
+        total: lines.reduce((s, l) => s + l.amount, 0),
+        source: { eventId: e.id, eventType: e.type },
+        createdAt: now,
+      });
+    }
+    const year = Number(eventDate.slice(0, 4));
+    const stored = await this.d.store.addAdjustment(
+      { market, year, accounts, plans, credits },
+      (c, no) => ({ ...c, number: `${market}-${year}-${String(no).padStart(6, '0')}` }),
+      (made) =>
+        made.map((c) => ({
+          id: this.d.ids.next('bev'),
+          type: 'invoice.credited' as const,
+          invoiceId: c.invoiceId,
+          market,
+          occurredAt: now,
+          data: { creditNoteId: c.id, creditNoteNo: c.number, accountId: c.accountId, partyId: c.partyId, total: c.total, currency: c.currency, reason: e.type },
+        })),
+    );
+    return stored ? plans : [];
+  }
+
+  async creditNotes(filter: { invoiceId?: string; accountId?: string; policyId?: string }): Promise<CreditNote[]> {
+    return this.d.store.creditNotes(filter);
+  }
+
+  async creditNote(id: string): Promise<CreditNote> {
+    const c = await this.d.store.creditNote(id);
+    if (!c) throw new BillingError('not_found', `Credit note ${id} does not exist`);
+    return c;
+  }
+
   async account(id: string): Promise<PayerAccount> {
     const a = await this.d.store.account(id);
     if (!a) throw new BillingError('not_found', `Payer account ${id} does not exist`);
@@ -354,7 +661,7 @@ export class BillingService {
   async invoicingRun(input: { market: string; onDate: ISODate; dryRun: boolean }, by: string): Promise<InvoicingRunResult> {
     const rules = (this.d.rules ?? BILLING_MARKET_RULES)[input.market];
     if (!rules) throw new BillingError('validation', `No billing rules for the market ${input.market}`);
-    const plans = await this.d.store.plans({ market: input.market });
+    const plans = await this.currentPlans({ market: input.market });
     const invoiced = await this.d.store.invoicedSeqs(plans.map((p) => p.id));
     const byAccount = new Map<string, InvoiceLine[]>();
     const dueOf = new Map<InvoiceLine, ISODate>();
@@ -462,6 +769,7 @@ export class InMemoryBillingStore implements BillingStore {
   private readonly accountsById = new Map<string, PayerAccount>();
   private readonly planList: PlanRecord[] = [];
   private readonly invoiceList: Invoice[] = [];
+  private readonly creditList: CreditNote[] = [];
   private readonly series = new Map<string, number>();
   private readonly outbox: (BillingEvent & { publishedAt?: Timestamp })[] = [];
 
@@ -498,6 +806,48 @@ export class InMemoryBillingStore implements BillingStore {
         .filter((p) => (!filter.policyId || p.policyId === filter.policyId) && (!filter.accountId || p.accountId === filter.accountId) && (!filter.market || p.market === filter.market))
         .sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? -1 : 1) : a.createdAt < b.createdAt ? -1 : 1)),
     );
+  }
+
+  async addAdjustment(
+    input: { market: string; year: number; accounts: PayerAccount[]; plans: PlanRecord[]; credits: Omit<CreditNote, 'number'>[] },
+    numbered: (credit: Omit<CreditNote, 'number'>, no: number) => CreditNote,
+    events: (credits: CreditNote[]) => BillingEvent[],
+  ) {
+    const eventId = input.plans[0]?.source.eventId ?? input.credits[0]?.source.eventId;
+    if (eventId && (this.planList.some((p) => p.source.eventId === eventId && p.adjustment) || this.creditList.some((c) => c.source.eventId === eventId))) return false;
+    if (input.plans.some((p) => p.replaces && this.planList.some((q) => q.replaces === p.replaces))) throw new InvoiceConflictError('A plan is already replaced');
+    for (const a of input.accounts) if (![...this.accountsById.values()].some((x) => x.partyId === a.partyId && x.market === a.market && x.currency === a.currency)) this.accountsById.set(a.id, structuredClone(a));
+    const key = `${input.market}:${input.year}`;
+    const made: CreditNote[] = [];
+    for (const c of input.credits) {
+      const no = (this.series.get(key) ?? 0) + 1;
+      this.series.set(key, no);
+      made.push(numbered(c, no));
+    }
+    for (const p of input.plans) {
+      const acc = input.accounts.find((a) => a.id === p.accountId);
+      const stored = acc ? [...this.accountsById.values()].find((x) => x.partyId === acc.partyId && x.market === acc.market && x.currency === acc.currency)! : undefined;
+      this.planList.push({ ...structuredClone(p), ...(stored ? { accountId: stored.id } : {}) });
+    }
+    this.creditList.push(...structuredClone(made));
+    this.outbox.push(...structuredClone(events(made)));
+    return true;
+  }
+
+  async creditNotes(filter: { invoiceId?: string; accountId?: string; policyId?: string }) {
+    return structuredClone(
+      this.creditList.filter(
+        (c) =>
+          (!filter.invoiceId || c.invoiceId === filter.invoiceId) &&
+          (!filter.accountId || c.accountId === filter.accountId) &&
+          (!filter.policyId || c.lines.some((l) => l.policyId === filter.policyId)),
+      ).sort((a, b) => (a.createdAt === b.createdAt ? (a.number < b.number ? -1 : 1) : a.createdAt < b.createdAt ? -1 : 1)),
+    );
+  }
+
+  async creditNote(id: string) {
+    const c = this.creditList.find((x) => x.id === id);
+    return c ? structuredClone(c) : null;
   }
 
   async invoicedSeqs(planIds: string[]) {
@@ -543,5 +893,6 @@ export class InMemoryBillingStore implements BillingStore {
 }
 
 const maxDate = (a: ISODate, b: ISODate) => (a > b ? a : b);
+const minDate = (a: ISODate, b: ISODate) => (a < b ? a : b);
 
 export const isPaymentInterval = (v: unknown): v is PaymentInterval => (PAYMENT_INTERVALS as readonly unknown[]).includes(v);

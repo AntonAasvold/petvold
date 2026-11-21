@@ -2581,6 +2581,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/credit-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Credit notes, oldest first
+         * @description Requires the permission `billing:read` (ADR 0040). A change that lowers
+         *     the premium when everything is invoiced, a cancellation and a transfer
+         *     credit what is invoiced but no longer owed, one credit note per invoice,
+         *     numbered from the invoice series. Scope as for invoices.
+         */
+        get: operations["listCreditNotes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/credit-notes/{creditNoteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A credit note
+         * @description Requires the permission `billing:read`. A credit note outside the caller's scope answers 404.
+         */
+        get: operations["getCreditNote"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/premium-plans": {
         parameters: {
             query?: never;
@@ -4456,6 +4499,33 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        /** @description What is taken off an invoice (ADR 0040). Never changes. */
+        CreditNote: {
+            id: string;
+            /** @description From the invoice series. */
+            number: string;
+            invoiceId: string;
+            accountId: string;
+            partyId: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            /** Format: date */
+            issueDate: string;
+            lines: {
+                planId: string;
+                policyId: string;
+                /** @description The invoice line's installment in its plan. */
+                seq: number;
+                amount: number;
+            }[];
+            total: number;
+            source: {
+                eventId: string;
+                eventType: string;
+            };
+            /** Format: date-time */
+            createdAt: string;
+        };
         /** @description The premium plan for one term of a policy (ADR 0040). Never changes. */
         PremiumPlanRecord: {
             id: string;
@@ -4495,6 +4565,18 @@ export interface components {
             plan: components["schemas"]["PremiumPlan"];
             /** @description The product's lead time when the plan was made. Omitted: 31. */
             invoiceLeadDays?: number;
+            /** @description The plan this one replaces after a change, a cancellation or a transfer. Its installments are what is left to invoice of the term; what the replaced plan invoiced stays on its invoices. */
+            replaces?: string;
+            adjustment?: {
+                /** @enum {string} */
+                kind: "change" | "cancellation" | "transfer-from" | "transfer-to";
+                transactionId: string;
+                /** Format: date */
+                from: string;
+                /** @description The premium added (positive) or taken off (negative) for the term. */
+                premium: number;
+                tax: number;
+            };
             /** Format: date-time */
             createdAt: string;
         };
@@ -4520,6 +4602,7 @@ export interface components {
             fees: number;
             /** @description termPremium + tax + fees. */
             total: number;
+            /** @description Empty in a plan that replaces another when nothing is left to invoice, e.g. after a cancellation. */
             installments: {
                 seq: number;
                 /** Format: date */
@@ -9743,6 +9826,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Invoice"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listCreditNotes: {
+        parameters: {
+            query?: {
+                invoiceId?: string;
+                accountId?: string;
+                policyId?: string;
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The credit notes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["CreditNote"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getCreditNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                creditNoteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The credit note */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditNote"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

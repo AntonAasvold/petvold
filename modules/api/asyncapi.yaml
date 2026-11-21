@@ -62,6 +62,7 @@ channels:
       noticeDelivered: { $ref: '#/components/messages/noticeDelivered' }
       noticeFailed: { $ref: '#/components/messages/noticeFailed' }
       invoiceIssued: { $ref: '#/components/messages/invoiceIssued' }
+      invoiceCredited: { $ref: '#/components/messages/invoiceCredited' }
 
 operations:
   sendEvent:
@@ -105,6 +106,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/noticeDelivered' }
       - { $ref: '#/channels/subscription/messages/noticeFailed' }
       - { $ref: '#/channels/subscription/messages/invoiceIssued' }
+      - { $ref: '#/channels/subscription/messages/invoiceCredited' }
 
 components:
   messageTraits:
@@ -502,6 +504,18 @@ components:
             properties:
               type: { const: petvold.invoice.issued.v1 }
               data: { $ref: '#/components/schemas/InvoiceIssuedData' }
+    invoiceCredited:
+      name: petvold.invoice.credited.v1
+      title: invoice.credited
+      summary: 'A credit note took an amount off an invoice, after a change, a cancellation or a transfer (ADR 0040). Fetch it with GET /v1/credit-notes/{id}.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.invoice.credited.v1 }
+              data: { $ref: '#/components/schemas/InvoiceCreditedData' }
     noticeCreated:
       name: petvold.notice.created.v1
       title: notice.created
@@ -886,6 +900,19 @@ components:
         policyIds:
           type: array
           items: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+    InvoiceCreditedData:
+      type: object
+      additionalProperties: false
+      required: [invoiceId, creditNoteId, creditNoteNo, accountId, partyId, total, currency, reason]
+      properties:
+        invoiceId: { type: string, pattern: '^inv_[A-Za-z0-9]+$' }
+        creditNoteId: { type: string, pattern: '^crn_[A-Za-z0-9]+$' }
+        creditNoteNo: { type: string, description: 'From the invoice series, e.g. SE-2027-000004.' }
+        accountId: { type: string, pattern: '^bac_[A-Za-z0-9]+$' }
+        partyId: { $ref: '#/components/schemas/PartyId' }
+        total: { type: integer, minimum: 1, description: In minor units of currency. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        reason: { type: string, enum: [policy.changed, policy.cancelled, policy.transferred], description: The policy event that led to it. }
     NoticeCreatedData:
       type: object
       additionalProperties: false

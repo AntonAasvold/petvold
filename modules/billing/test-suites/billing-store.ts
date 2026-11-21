@@ -2,7 +2,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { premiumPlan } from '@petvold/billing-core';
-import { InvoiceConflictError, type BillingEvent, type BillingStore, type Invoice, type PayerAccount, type PlanInput, type PlanRecord } from '../src/index.ts';
+import { InvoiceConflictError, type BillingEvent, type BillingStore, type CreditNote, type Invoice, type PayerAccount, type PlanInput, type PlanRecord } from '../src/index.ts';
 
 export function payer(n = 1, o: Partial<PayerAccount> = {}): PayerAccount {
   return { id: `bac_${n}`, partyId: 'pty_anna', market: 'SE', currency: 'SEK', paymentMethod: 'invoice', createdAt: `2026-11-21T10:00:0${n}.000Z`, ...o };
@@ -101,6 +101,29 @@ export function billingStoreSuite(name: string, make: () => Promise<{ store: Bil
       assert.ok(events.every((e, i) => i === 0 || e.sequence! > events[i - 1]!.sequence!));
       await store.markPublished(['bev_inv_a'], '2026-11-21T12:00:00.000Z');
       assert.deepEqual((await store.pendingEvents(10)).map((e) => e.invoiceId), ['inv_b', 'inv_d', 'inv_e']);
+    });
+
+    test('an adjustment: plans that replace others, a new account, credit notes from the invoice series, once per event', async () => {
+      const { store } = await make();
+      await store.addPlan(payer(), planRecord());
+      const p1 = planRecord();
+      await store.addInvoice('SE', 2026, (no) => invoiceOf('inv_a', no, p1, [1, 2]), issued);
+      const replacing: PlanRecord = { ...planRecord(5, { policyId: 'pol_1' }), source: { eventId: 'pev_x', eventType: 'policy.transferred', occurredAt: '2027-05-20T10:00:00.000Z' }, replaces: 'ppl_1', adjustment: { kind: 'transfer-from', transactionId: 'ptx_x', from: '2027-06-01', premium: -240_000, tax: 0 }, plan: { ...p1.plan, installments: [] } };
+      const bo = payer(6, { partyId: 'pty_bo' });
+      const theirs: PlanRecord = { ...planRecord(6, { policyId: 'pol_1', accountId: 'bac_6' }), source: replacing.source, adjustment: { kind: 'transfer-to', transactionId: 'ptx_x', from: '2027-06-01', premium: 240_000, tax: 0 } };
+      const credit = { id: 'crn_1', invoiceId: 'inv_a', accountId: 'bac_1', partyId: 'pty_anna', market: 'SE', currency: 'SEK', issueDate: '2027-05-20', lines: [{ planId: 'ppl_1', policyId: 'pol_1', seq: 2, amount: 10_000 }], total: 10_000, source: { eventId: 'pev_x', eventType: 'policy.transferred' }, createdAt: '2027-05-20T10:00:01.000Z' };
+      const numbered = (c: typeof credit, no: number) => ({ ...c, number: `SE-2027-${String(no).padStart(6, '0')}` });
+      const credited = (cs: CreditNote[]): BillingEvent[] => cs.map((c) => ({ id: `bev_${c.id}`, type: 'invoice.credited', invoiceId: c.invoiceId, market: 'SE', occurredAt: c.createdAt, data: { creditNoteNo: c.number } }));
+      assert.equal(await store.addAdjustment({ market: 'SE', year: 2027, accounts: [bo], plans: [replacing, theirs], credits: [credit] }, numbered, credited), true);
+      assert.equal(await store.addAdjustment({ market: 'SE', year: 2027, accounts: [bo], plans: [replacing, theirs], credits: [credit] }, numbered, credited), false, 'the same event again');
+      assert.deepEqual((await store.plans({ policyId: 'pol_1' })).map((p) => [p.id, p.replaces ?? null, p.adjustment?.kind ?? null]), [['ppl_1', null, null], ['ppl_5', 'ppl_1', 'transfer-from'], ['ppl_6', null, 'transfer-to']]);
+      assert.deepEqual(await store.account('bac_6'), bo);
+      assert.deepEqual(await store.creditNotes({ invoiceId: 'inv_a' }), [numbered(credit, 1)]);
+      assert.deepEqual(await store.creditNote('crn_1'), numbered(credit, 1));
+      assert.deepEqual((await store.creditNotes({ policyId: 'pol_1' })).map((c) => c.id), ['crn_1']);
+      assert.deepEqual((await store.pendingEvents(10)).map((e) => e.type), ['invoice.issued', 'invoice.credited']);
+      const again = { ...replacing, id: 'ppl_7', source: { ...replacing.source, eventId: 'pev_y' } };
+      await assert.rejects(store.addAdjustment({ market: 'SE', year: 2027, accounts: [], plans: [again], credits: [] }, numbered, credited), InvoiceConflictError, 'a plan is replaced once');
     });
 
     test('plans come oldest first', async () => {

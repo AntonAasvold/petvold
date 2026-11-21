@@ -1115,6 +1115,22 @@ export function createApp(d: AppDeps) {
     return send(c, i);
   });
 
+  // A credit note follows its invoice's scope.
+  const seesCredit = (scope: Scope, c: { market: string; lines: { policyId: string }[] }) => seesInvoice(scope, c);
+
+  app.get('/v1/credit-notes', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const items = await billing.creditNotes({ ...(q('invoiceId') ? { invoiceId: q('invoiceId') } : {}), ...(q('accountId') ? { accountId: q('accountId') } : {}), ...(q('policyId') ? { policyId: q('policyId') } : {}) });
+    return sendPage(c, items.filter((x) => seesCredit(c.get('scope'), x)));
+  });
+
+  app.get('/v1/credit-notes/:creditNoteId', async (c) => {
+    const id = c.req.param('creditNoteId');
+    const note = await billing.creditNote(id);
+    if (!seesCredit(c.get('scope'), note)) throw new BillingError('not_found', `Credit note ${id} does not exist`);
+    return send(c, note);
+  });
+
   app.get('/v1/premium-plans', async (c) => {
     const policyId = c.req.query('policyId');
     const accountId = c.req.query('accountId');

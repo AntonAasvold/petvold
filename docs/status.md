@@ -51,9 +51,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 - Fakturan som meddelande (ADR 0040, steg 2b-2), PR #133: `invoice.issued` ger meddelandet `invoice`, som ska skickas på fakturans dag (FAL 5 kap. 1 §), med `invoiceId` i stället för policy. Bolagets text `payment` (vart kunden betalar) krävs, och utan den hamnar fakturan i kön. Migration 0052. 607 tester och 171 databastester.
 - Mall för fakturan (PR #134): Petvold gör fakturans PDF med belopp, förfallodag, OCR- eller RF-referens, vart kunden betalar och raderna, på svenska och engelska, när marknaden har `documentMaker: petvold`.
 - Betalningsintervall vid tecknandet (PR #135): `paymentInterval` på tecknande och ansökan, kontrollerat mot produkten, sparat på transaktionen och med i `policy.issued`. `billing` gör planen efter det. Valet finns i back office, och exempelprodukterna tillåter år, kvartal och månad. 610 tester.
+- Ändring, avslut och överlåtelse mot fakturorna (PR #136): planer som ersätter varandra, en lägre premie dras från det som inte fakturerats (beslut 2026-11-21, ADR 0040), automatiska kreditnotor med `invoice.credited` och `GET /v1/credit-notes`. Egenskapstest för att termen alltid faktureras det den kostar. Migration 0053. 624 tester och 172 databastester.
 
 **Nästa steg**
-1. ADR 0040, steg 2c-2: ändring, avslut, återkallelse och överlåtelse mot planen och fakturorna.
+1. ADR 0040, steg 2c-2b: återkallelse av ett avslut.
 2. ADR 0041 om demotjänsten som tar emot händelserna, spelar bank och kontrollerar att allt stämmer.
 3. ADR 0038, steg 5: gallring av dokument som en körning.
 4. Back office: översikten på startsidan och omräkning av beslut.
