@@ -616,7 +616,6 @@ export const templates: Record<string, string> = {
   'notice.incomplete': 'Text saknas',
   'notice.incompleteHelp': 'Bolagets inställningar saknar en text som lagen kräver:',
   'notice.source': 'Skapat av',
-  'notice.schema': 'Schema',
   'notice.legalBasis': 'Lagrum',
   'notice.noLaw': 'Krävs inte av lag.',
   'notice.content': 'Innehåll',
@@ -987,4 +986,8 @@ export const templates: Record<string, string> = {
   'application.rulesGave': 'Reglerna gav',
   'application.acceptDesc': 'Policyn tecknas från startdagen.',
   'application.declineDesc': 'Sökanden får ett besked med skälen och hur beslutet kan prövas.',
+  'notice.settingsVersion': 'Inställningarnas version',
+  'notice.made': 'Skapat',
+  'notice.sentDesc': 'Kunden har fått det: med kanalen och, om inte Petvold gjorde det, dokumentet i arkivet.',
+  'notice.failedDesc': 'Det gick inte att skicka, till exempel för att adress saknas. Meddelandet ligger kvar i kön.',
 };

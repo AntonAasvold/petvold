@@ -7,6 +7,8 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { msg, updateWhenLocaleChanges } from '@lit/localize';
+import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js';
+import '@awesome.me/webawesome/dist/components/radio/radio.js';
 import '@awesome.me/webawesome/dist/components/tab-group/tab-group.js';
 import '@awesome.me/webawesome/dist/components/tab/tab.js';
 import '@awesome.me/webawesome/dist/components/card/card.js';
