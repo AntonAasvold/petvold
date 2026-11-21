@@ -41,5 +41,6 @@
 | [0037](0037-korningar.md) | Körningar: schema, lås, historik och styrning i back office | Beslutad |
 | [0038](0038-dokument-och-arkiv.md) | Dokument: PDF med Gotenberg, ett arkiv och tidsbegränsade länkar | Beslutad |
 | [0039](0039-partens-livscykel.md) | Partens livscykel: sökning på namn, nummer som tas bort, begränsning och avslut | Beslutad |
+| [0040](0040-premier-fakturor-och-utbetalningar.md) | Pengar: premieplaner, fakturor, inbetalningar, utbetalningar och bokföring | Föreslagen |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.
