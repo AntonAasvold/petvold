@@ -25,7 +25,7 @@ test('a policy is issued from the animal, cancelled and the cancellation reverse
   await form.getByRole('button', { name: /^Issue the policy/ }).click();
 
   await expect(page).toHaveURL(/\/policies\/pol_/);
-  await expect(page.getByRole('heading', { name: /^Policy pol_/ })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /^Policy for / })).toBeVisible();
 
   const actions = page.locator('pv-policy-actions');
   await actions.getByRole('button', { name: 'Cancel the policy' }).click();
@@ -40,7 +40,7 @@ test('a policy is issued from the animal, cancelled and the cancellation reverse
   await actions.getByRole('textbox', { name: 'Note, without personal data' }).fill('Withdrawn by mistake on the phone');
   await actions.getByRole('region', { name: 'Reverse the cancellation' }).getByRole('button', { name: 'Reverse the cancellation' }).click();
   await expect(actions.getByRole('status')).toContainText('The cancellation is reversed.');
-  await expect(page.getByRole('grid', { name: 'History' }).getByRole('row')).toHaveCount(4);
+  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem')).toHaveCount(3);
 });
 
 test("a policy is started from the customer's page, choosing among the customer's animals", async ({ page }) => {

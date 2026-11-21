@@ -1,8 +1,14 @@
-/** <pv-policy-detail>: a policy with its terms, riders, versions over time, history and proposals. */
+/**
+ * <pv-policy-detail>: a policy as the design system lays out a detail page
+ * (docs/teknik/designsystem.md, "Detaljsidan"). A head with the policy, its
+ * status and who and what it concerns; then two columns: what one reads (the
+ * term in force with the annual limit used, the claims, riders, terms and
+ * versions over time) and, beside it, what one does (proposals, changes,
+ * cancellation, renewal) and the history.
+ */
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { msg, updateWhenLocaleChanges } from '@lit/localize';
-import '@awesome.me/webawesome/dist/components/card/card.js';
 import '@awesome.me/webawesome/dist/components/badge/badge.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/callout/callout.js';
@@ -14,15 +20,18 @@ import { unwrap, type Api, type Problem } from '../api/client.ts';
 import type { components } from '../api/schema';
 import { act, type Notice } from '../actions.ts';
 import '../components/data-grid.ts';
+import '../components/event-log.ts';
 import '../components/policy-actions.ts';
 import type { Column } from '../components/data-grid.ts';
+import type { LogEntry } from '../components/event-log.ts';
 import { IdempotencyKeys } from '../decide.ts';
 import { formatDate, formatDateTime, formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import type { Me } from '../permissions.ts';
-import { mayAnswerProposal, versionOn } from '../policy-logic.ts';
+import { mayAnswerProposal, partyName, versionOn } from '../policy-logic.ts';
 import { navigate } from '../router.ts';
-import { policyStatusLabel, proposalKindLabel, transactionLabel } from './labels.ts';
+import { pvComponents } from '../styles/pv-components.ts';
+import { claimStatusLabel, outcomeLabel, policyStatusLabel, proposalKindLabel, statusVariant, transactionLabel } from './labels.ts';
 
 type Policy = components['schemas']['PolicyRecord'];
 type Term = components['schemas']['PolicyTerm'];
@@ -30,6 +39,12 @@ type Version = components['schemas']['PolicyVersion'];
 type Transaction = components['schemas']['PolicyTransaction'];
 type Rider = components['schemas']['Rider'];
 type Proposal = components['schemas']['PolicyProposal'];
+type Limits = components['schemas']['Limits'];
+type ClaimSummary = components['schemas']['ClaimSummary'];
+type Party = components['schemas']['Party'];
+type Animal = components['schemas']['Animal'];
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 @customElement('pv-policy-detail')
 export class PolicyDetail extends LitElement {
@@ -41,6 +56,11 @@ export class PolicyDetail extends LitElement {
   @state() private proposals: Proposal[] = [];
   @state() private problem: Problem | null = null;
   @state() private notice: Notice | null = null;
+  /** Who and what the policy concerns, the annual limit used and the claims. Each is left out if the caller may not read it. */
+  @state() private animal: Animal | null = null;
+  @state() private holder: Party | null = null;
+  @state() private limits: Limits | null = null;
+  @state() private claims: ClaimSummary[] | null = null;
   @state() private channel = 'phone';
   @state() private rejectReason = '';
   @state() private busy = '';
@@ -51,45 +71,113 @@ export class PolicyDetail extends LitElement {
     updateWhenLocaleChanges(this);
   }
 
-  static styles = css`
-    .head {
-      display: flex;
-      align-items: center;
-      gap: var(--wa-space-m);
-    }
-    .head h2 {
-      margin: 0;
-    }
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
-      gap: var(--wa-space-l);
-      margin-top: var(--wa-space-l);
-    }
-    .wide {
-      grid-column: 1 / -1;
-    }
-    dl {
-      display: grid;
-      grid-template-columns: max-content 1fr;
-      gap: var(--wa-space-2xs) var(--wa-space-m);
-      margin: 0 0 var(--wa-space-m);
-    }
-    dt {
-      color: var(--wa-color-text-quiet);
-    }
-    dd {
-      margin: 0;
-    }
-    form {
-      display: grid;
-      gap: var(--wa-space-s);
-      margin-top: var(--wa-space-s);
-    }
-  `;
+  static styles = [
+    pvComponents,
+    css`
+      :host {
+        display: block;
+      }
+      .crumbs {
+        display: flex;
+        gap: var(--space-2);
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+      .crumbs a {
+        color: var(--text-secondary);
+      }
+      a {
+        color: var(--ink);
+      }
+      .title {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-3);
+        margin: var(--space-2) 0 var(--space-3);
+      }
+      h1 {
+        margin: 0;
+        font: 700 36px/1.1 var(--font-display);
+        letter-spacing: -0.02em;
+      }
+      .facts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2) var(--space-6);
+        margin: 0 0 var(--space-8);
+        padding: 0;
+        list-style: none;
+        font-size: 14px;
+        color: var(--text-secondary);
+      }
+      .facts strong {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .cols {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: var(--space-6);
+      }
+      .basis {
+        flex: 999 1 520px;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-6);
+      }
+      .side {
+        flex: 1 1 340px;
+        max-width: 420px;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-6);
+      }
+      .pv-dl__row dd {
+        font-variant-numeric: tabular-nums;
+      }
+      .limit {
+        display: grid;
+        gap: var(--space-2);
+        margin-top: var(--space-4);
+      }
+      .limit .pv-wf__track {
+        display: block;
+      }
+      .limit .pv-wf__bar {
+        display: block;
+        height: 100%;
+        background: var(--ink);
+      }
+      .limit p {
+        margin: 0;
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+      .pv-card__body p {
+        margin: 0;
+      }
+      form {
+        display: grid;
+        gap: var(--space-3);
+      }
+      @media (max-width: 900px) {
+        .side {
+          max-width: none;
+        }
+      }
+    `,
+  ];
 
   protected updated(changed: Map<string, unknown>): void {
     if (changed.has('policyId') || changed.has('api')) void this.load();
+  }
+
+  private may(p: string): boolean {
+    return !!this.me?.permissions.includes(p);
   }
 
   private async load() {
@@ -106,115 +194,213 @@ export class PolicyDetail extends LitElement {
       this.proposals = proposals.items;
     } catch (e) {
       this.problem = e as Problem;
+      return;
     }
+    void this.loadAround();
+  }
+
+  /** The animal, the policyholder, the annual limit used and the claims. Not needed to act, so a missing permission only leaves them out. */
+  private async loadAround() {
+    const p = this.policy!;
+    const holderId = versionOn(p.versions, today())?.policyholderPartyId;
+    const [animal, holder, limits, claims] = await Promise.all([
+      this.api.GET('/v1/animals/{animalId}', { params: { path: { animalId: p.animalId } } }).then((r) => r.data ?? null, () => null),
+      holderId ? this.api.GET('/v1/parties/{partyId}', { params: { path: { partyId: holderId } } }).then((r) => r.data ?? null, () => null) : Promise.resolve(null),
+      this.may('limits:read')
+        ? this.api.GET('/v1/policies/{policyId}/limits', { params: { path: { policyId: p.id }, query: { onDate: today() } } }).then((r) => r.data ?? null, () => null)
+        : Promise.resolve(null),
+      this.may('claims:read')
+        ? this.api.GET('/v1/claims', { params: { query: { policyId: p.id, limit: 200 } } }).then((r) => r.data?.items ?? [], () => [])
+        : Promise.resolve(null),
+    ]);
+    this.animal = animal;
+    this.holder = holder;
+    this.limits = limits;
+    this.claims = claims;
   }
 
   render() {
-    const back = html`<wa-button appearance="plain" size="small" @click=${() => navigate('/policies')}
-      ><wa-icon slot="start" name="arrow-left"></wa-icon>${msg('Back', { id: 'common.back' })}</wa-button
-    >`;
+    const crumbs = html`<nav class="crumbs" aria-label=${msg('Breadcrumb', { id: 'common.breadcrumb' })}>
+      <a href="/policies" @click=${(e: Event) => (e.preventDefault(), navigate('/policies'))}>${msg('Policies', { id: 'nav.policies' })}</a>
+      <span aria-hidden="true">/</span>
+      <span aria-current="page">${this.policyId}</span>
+    </nav>`;
     if (this.problem) {
       const text = this.problem.status === 404 ? msg('Does not exist, or lies outside what you may see.', { id: 'common.notFound' }) : this.problem.title;
-      return html`${back}<wa-callout variant=${this.problem.status === 404 ? 'neutral' : 'danger'}>${text}</wa-callout>`;
+      return html`${crumbs}<wa-callout variant=${this.problem.status === 404 ? 'neutral' : 'danger'}>${text}</wa-callout>`;
     }
     const p = this.policy;
-    if (!p || !this.history) return html`${back}<wa-spinner></wa-spinner>`;
+    if (!p || !this.history) return html`${crumbs}<wa-spinner></wa-spinner>`;
     const lang = getLocale();
-    const current = versionOn(p.versions, new Date().toISOString().slice(0, 10));
+    const current = versionOn(p.versions, today());
+    const term = p.terms.find((t) => t.startDate <= today() && today() < t.endDate) ?? p.terms.at(-1)!;
     const riders = p.terms.flatMap((t) => t.riders);
+    const holder = partyName(this.holder);
+    const link = (href: string, text: string, mono = false) =>
+      html`<a href=${href} @click=${(e: Event) => (e.preventDefault(), navigate(href))}><strong class=${mono ? 'pv-mono' : ''}>${text}</strong></a>`;
     return html`
-      ${back}
-      <div class="head">
-        <h2>${msg('Policy', { id: 'claims.col.policy' })} ${p.id}</h2>
-        ${current ? html`<wa-badge variant=${current.status === 'active' ? 'success' : 'neutral'}>${policyStatusLabel(current.status)}</wa-badge>` : nothing}
-        ${this.me?.permissions.includes('claims:register')
+      ${crumbs}
+      <div class="title">
+        <h1>${msg('Policy', { id: 'claims.col.policy' })} ${this.animal ? `${msg('for', { id: 'policy.for' })} ${this.animal.name}` : p.id}</h1>
+        <span class="pv-badge pv-badge--id">${p.id}</span>
+        ${current ? html`<span class="pv-badge ${current.status === 'active' ? 'pv-badge--solid' : 'pv-badge--pending'}">${policyStatusLabel(current.status)}</span>` : nothing}
+        ${this.may('claims:register')
           ? html`<wa-button size="small" appearance="outlined" @click=${() => navigate(`/claims/new?policy=${encodeURIComponent(p.id)}`)}
               ><wa-icon slot="start" name="plus"></wa-icon>${msg('Register a claim', { id: 'register.title' })}</wa-button
             >`
           : nothing}
       </div>
+      <ul class="facts">
+        <li>${msg('Animal', { id: 'claim.animal' })}: ${link(`/animals/${p.animalId}`, this.animal?.name ?? p.animalId)}</li>
+        ${current
+          ? html`<li>${msg('Policyholder', { id: 'policy.holder' })}: ${link(`/parties/${current.policyholderPartyId}`, holder || current.policyholderPartyId)}</li>`
+          : nothing}
+        <li>${msg('Market', { id: 'policy.market' })}: <strong>${p.market}</strong></li>
+        <li>${msg('Since', { id: 'policy.since' })}: <strong>${formatDate(p.inceptionDate, lang)}</strong></li>
+        <li>${msg('Term', { id: 'policy.term' })}: <strong>${formatDate(term.startDate, lang)} – ${formatDate(term.endDate, lang)}</strong></li>
+      </ul>
       ${this.notice
         ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'danger' ? 'alert' : 'status'}
             >${this.notice.text}
             ${this.notice.reload ? html`<wa-button size="small" appearance="outlined" @click=${() => this.load()}>${msg('Reload', { id: 'common.reload' })}</wa-button>` : nothing}</wa-callout
           >`
         : nothing}
-      <div class="cards">
-        <wa-card>
-          <h3 slot="header">${msg('Details', { id: 'claim.facts' })}</h3>
-          <dl>
-            <dt>${msg('Animal', { id: 'policy.animal' })}</dt>
-            <dd>${p.animalId}</dd>
-            <dt>${msg('Policyholder', { id: 'policy.holder' })}</dt>
-            <dd>${current?.policyholderPartyId ?? '–'}</dd>
-            <dt>${msg('Market', { id: 'policy.market' })}</dt>
-            <dd>${p.market}</dd>
-            <dt>${msg('Since', { id: 'policy.since' })}</dt>
-            <dd>${formatDate(p.inceptionDate, lang)}</dd>
-          </dl>
-        </wa-card>
-        ${this.me?.permissions.includes('policies:write')
-          ? html`<div class="wide"><pv-policy-actions .api=${this.api} .policy=${p} .transactions=${this.history.transactions} @pv-changed=${() => this.load()}></pv-policy-actions></div>`
-          : nothing}
-        ${this.proposals.map((pr) => this.proposalCard(pr))}
-        <div class="wide">
-          <h3>${msg('Terms', { id: 'policy.terms' })}</h3>
-          <pv-data-grid .columns=${this.termColumns()} .rows=${p.terms} label=${msg('Terms', { id: 'policy.terms' })}></pv-data-grid>
+      <div class="cols">
+        <div class="basis">
+          ${this.termCard(term)} ${this.claims ? this.claimsCard(this.claims) : nothing}
+          <section class="pv-card" aria-labelledby="riders">
+            <div class="pv-card__head"><h2 class="pv-card__title" id="riders">${msg('Riders', { id: 'policy.riders' })}</h2></div>
+            <pv-data-grid .columns=${this.riderColumns()} .rows=${riders} label=${msg('Riders', { id: 'policy.riders' })} empty-text=${msg('No riders.', { id: 'policy.noRiders' })}></pv-data-grid>
+          </section>
+          <section class="pv-card" aria-labelledby="terms">
+            <div class="pv-card__head"><h2 class="pv-card__title" id="terms">${msg('Terms', { id: 'policy.terms' })}</h2></div>
+            <pv-data-grid .columns=${this.termColumns()} .rows=${p.terms} label=${msg('Terms', { id: 'policy.terms' })}></pv-data-grid>
+          </section>
+          <section class="pv-card" aria-labelledby="versions">
+            <div class="pv-card__head"><h2 class="pv-card__title" id="versions">${msg('Versions over time', { id: 'policy.versions' })}</h2></div>
+            <pv-data-grid .columns=${this.versionColumns()} .rows=${this.history.versions} label=${msg('Versions over time', { id: 'policy.versions' })}></pv-data-grid>
+          </section>
         </div>
-        <div class="wide">
-          <h3>${msg('Riders', { id: 'policy.riders' })}</h3>
-          <pv-data-grid
-            .columns=${this.riderColumns()}
-            .rows=${riders}
-            label=${msg('Riders', { id: 'policy.riders' })}
-            empty-text=${msg('No riders.', { id: 'policy.noRiders' })}
-          ></pv-data-grid>
-        </div>
-        <div class="wide">
-          <h3>${msg('Versions over time', { id: 'policy.versions' })}</h3>
-          <pv-data-grid .columns=${this.versionColumns()} .rows=${this.history.versions} label=${msg('Versions over time', { id: 'policy.versions' })}></pv-data-grid>
-        </div>
-        <div class="wide">
-          <h3>${msg('History', { id: 'policy.history' })}</h3>
-          <pv-data-grid .columns=${this.transactionColumns()} .rows=${this.history.transactions} label=${msg('History', { id: 'policy.history' })}></pv-data-grid>
+        <div class="side">
+          ${this.proposals.map((pr) => this.proposalCard(pr))}
+          ${this.may('policies:write')
+            ? html`<pv-policy-actions .api=${this.api} .policy=${p} .transactions=${this.history.transactions} @pv-changed=${() => this.load()}></pv-policy-actions>`
+            : nothing}
+          <pv-event-log heading=${msg('History', { id: 'policy.history' })} .entries=${this.historyEntries()}></pv-event-log>
         </div>
       </div>
     `;
   }
 
+  /** The term in force: its product and choices, and how much of the annual limit is used (ADR 0007). */
+  private termCard(t: Term) {
+    const lang = getLocale();
+    const money = (m: number) => formatMoney(m, t.currency, lang);
+    const row = (label: string, value: unknown, mono = false) => html`<div class="pv-dl__row"><dt>${label}</dt><dd class=${mono ? 'pv-mono' : ''}>${value}</dd></div>`;
+    const l = this.limits;
+    const used = l && l.annualLimit > 0 ? Math.min(100, Math.round((l.consumed / l.annualLimit) * 100)) : 0;
+    return html`<section class="pv-card" aria-labelledby="term">
+      <div class="pv-card__head">
+        <h2 class="pv-card__title" id="term">${msg('The term in force', { id: 'policy.termInForce' })}</h2>
+        <span class="pv-card__meta">${msg('Term', { id: 'policy.term' })} ${t.termNo}</span>
+      </div>
+      <div class="pv-card__body">
+        <dl class="pv-dl">
+          ${row(msg('Product', { id: 'policy.product' }), t.productVersion, true)}
+          ${row(msg('Period', { id: 'policy.period' }), `${formatDate(t.startDate, lang)} – ${formatDate(t.endDate, lang)}`)}
+          ${row(msg('Premium', { id: 'policy.premium' }), money(t.premium))} ${row(msg('Deductible', { id: 'policy.deductible' }), t.deductibleOption)}
+          ${row(msg('Annual limit', { id: 'policy.annualLimit' }), money(t.vetCare.annualLimit))}
+        </dl>
+        ${l
+          ? html`<div class="limit">
+              <dl class="pv-dl">
+                ${row(msg('Paid out this policy year', { id: 'policy.consumed' }), formatMoney(l.consumed, l.currency, lang))}
+                ${row(msg('Left of the annual limit', { id: 'calc.remainingBefore' }), html`<strong>${formatMoney(l.remaining, l.currency, lang)}</strong>`)}
+              </dl>
+              <span class="pv-wf__track" role="img" aria-label=${`${used} % ${msg('of the annual limit is used', { id: 'policy.usedShare' })}`}
+                ><span class="pv-wf__bar" style="width: ${used}%"></span
+              ></span>
+              <p>${msg('Policy year', { id: 'policy.year' })} ${formatDate(l.policyYearStart, lang)} – ${formatDate(l.policyYearEnd, lang)}</p>
+            </div>`
+          : nothing}
+      </div>
+    </section>`;
+  }
+
+  private claimsCard(claims: ClaimSummary[]) {
+    const lang = getLocale();
+    const columns: Column<ClaimSummary>[] = [
+      { key: 'no', header: msg('Claim', { id: 'claim.title' }), value: (c) => html`<span class="pv-mono">${c.claimNo}</span>` },
+      { key: 'treatment', header: msg('Treatment from', { id: 'claims.col.treatment' }), value: (c) => formatDate(c.treatmentFrom, lang) },
+      { key: 'diagnosis', header: msg('Diagnosis', { id: 'claims.col.diagnosis' }), value: (c) => html`<span class="pv-mono">${c.diagnosisCode}</span>` },
+      { key: 'status', header: msg('Status', { id: 'claims.col.status' }), value: (c) => html`<wa-badge variant=${statusVariant(c.status)}>${claimStatusLabel(c.status)}</wa-badge>` },
+      {
+        key: 'payout',
+        header: msg('Payout', { id: 'policy.payout' }),
+        align: 'end',
+        value: (c) => (c.latestDecision ? `${outcomeLabel(c.latestDecision.outcome)} · ${formatMoney(c.latestDecision.payout, c.currency, lang)}` : '–'),
+      },
+    ];
+    return html`<section class="pv-card" aria-labelledby="claims">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="claims">${msg('Claims on the policy', { id: 'policy.claims' })}</h2></div>
+      <pv-data-grid
+        .columns=${columns}
+        .rows=${claims}
+        label=${msg('Claims on the policy', { id: 'policy.claims' })}
+        empty-text=${msg('No claims.', { id: 'policy.noClaims' })}
+        @pv-row-activate=${(e: CustomEvent<{ row: ClaimSummary }>) => navigate(`/claims/${encodeURIComponent(e.detail.row.id)}`)}
+      ></pv-data-grid>
+    </section>`;
+  }
+
+  /** The policy's changes, newest first, as the design system's log. */
+  private historyEntries(): LogEntry[] {
+    return [...this.history!.transactions]
+      .sort((a, b) => (a.requestedAt < b.requestedAt ? 1 : a.requestedAt > b.requestedAt ? -1 : 0))
+      .map((t) => ({
+        key: t.id,
+        at: t.requestedAt,
+        state: 'solid' as const,
+        badge: transactionLabel(t.type),
+        line: t.steps.at(-1)?.note ?? t.cancellation?.reason ?? '',
+        status: `policy.${t.type} · ${t.requestedBy}`,
+      }));
+  }
+
   private proposalCard(pr: Proposal) {
     const lang = getLocale();
     const d = pr.details;
-    return html`<wa-card>
-      <h3 slot="header">${proposalKindLabel(pr.kind)}</h3>
-      <dl>
-        ${d.fromPartyId ? html`<dt>${msg('From', { id: 'proposal.from' })}</dt><dd>${d.fromPartyId}</dd>` : nothing}
-        ${d.toPartyId ? html`<dt>${msg('To', { id: 'proposal.to' })}</dt><dd>${d.toPartyId}</dd>` : nothing}
-        ${d.from ? html`<dt>${msg('From the day', { id: 'proposal.fromDay' })}</dt><dd>${formatDate(d.from, lang)}</dd>` : nothing}
-        ${d.deceasedOn ? html`<dt>${msg('Died', { id: 'proposal.died' })}</dt><dd>${formatDate(d.deceasedOn, lang)}</dd>` : nothing}
-        ${pr.deadline ? html`<dt>${msg('Answer by', { id: 'proposal.deadline' })}</dt><dd>${formatDate(pr.deadline, lang)}</dd>` : nothing}
-        ${pr.decision
-          ? html`<dt>${msg('Decision', { id: 'decide.action' })}</dt><dd>${pr.decision.outcome}, ${pr.decision.decidedBy}, ${formatDateTime(pr.decision.decidedAt, lang)}</dd>`
+    const row = (label: string, value: unknown) => html`<div class="pv-dl__row"><dt>${label}</dt><dd>${value}</dd></div>`;
+    return html`<section class="pv-card ${mayAnswerProposal(this.me, pr) ? 'pv-card--strong' : ''}" aria-labelledby=${`pr-${pr.id}`}>
+      <div class="pv-card__head"><h2 class="pv-card__title" id=${`pr-${pr.id}`}>${proposalKindLabel(pr.kind)}</h2></div>
+      <div class="pv-card__body">
+        <dl class="pv-dl">
+          ${d.fromPartyId ? row(msg('From', { id: 'proposal.from' }), d.fromPartyId) : nothing}
+          ${d.toPartyId ? row(msg('To', { id: 'proposal.to' }), d.toPartyId) : nothing}
+          ${d.from ? row(msg('From the day', { id: 'proposal.fromDay' }), formatDate(d.from, lang)) : nothing}
+          ${d.deceasedOn ? row(msg('Died', { id: 'proposal.died' }), formatDate(d.deceasedOn, lang)) : nothing}
+          ${pr.deadline ? row(msg('Answer by', { id: 'proposal.deadline' }), formatDate(pr.deadline, lang)) : nothing}
+          ${pr.decision ? row(msg('Decision', { id: 'decide.action' }), `${pr.decision.outcome}, ${pr.decision.decidedBy}, ${formatDateTime(pr.decision.decidedAt, lang)}`) : nothing}
+        </dl>
+        ${mayAnswerProposal(this.me, pr)
+          ? html`<form @submit=${(e: Event) => this.accept(e, pr)}>
+                ${pr.kind === 'transfer'
+                  ? html`<wa-input
+                      label=${msg('Where the new owner accepted', { id: 'proposal.channel' })}
+                      hint=${msg('e.g. phone, web or paper', { id: 'proposal.channelHint' })}
+                      .value=${this.channel}
+                      @input=${(e: Event) => (this.channel = (e.target as HTMLInputElement).value)}
+                    ></wa-input>`
+                  : nothing}
+                <wa-button type="submit" variant="brand" ?loading=${this.busy === `accept:${pr.id}`}>${msg('Accept', { id: 'proposal.accept' })}</wa-button>
+              </form>
+              <form @submit=${(e: Event) => this.reject(e, pr)}>
+                <wa-textarea label=${msg('Why it is rejected', { id: 'proposal.rejectReason' })} rows="2" .value=${this.rejectReason} @input=${(e: Event) => (this.rejectReason = (e.target as HTMLTextAreaElement).value)}></wa-textarea>
+                <wa-button type="submit" appearance="outlined" ?loading=${this.busy === `reject:${pr.id}`}>${msg('Reject', { id: 'proposal.reject' })}</wa-button>
+              </form>`
           : nothing}
-      </dl>
-      ${mayAnswerProposal(this.me, pr)
-        ? html`<form @submit=${(e: Event) => this.accept(e, pr)}>
-              ${pr.kind === 'transfer'
-                ? html`<wa-input
-                    label=${msg('Where the new owner accepted', { id: 'proposal.channel' })}
-                    hint=${msg('e.g. phone, web or paper', { id: 'proposal.channelHint' })}
-                    .value=${this.channel}
-                    @input=${(e: Event) => (this.channel = (e.target as HTMLInputElement).value)}
-                  ></wa-input>`
-                : nothing}
-              <wa-button type="submit" variant="brand" ?loading=${this.busy === `accept:${pr.id}`}>${msg('Accept', { id: 'proposal.accept' })}</wa-button>
-            </form>
-            <form @submit=${(e: Event) => this.reject(e, pr)}>
-              <wa-textarea label=${msg('Why it is rejected', { id: 'proposal.rejectReason' })} rows="2" .value=${this.rejectReason} @input=${(e: Event) => (this.rejectReason = (e.target as HTMLTextAreaElement).value)}></wa-textarea>
-              <wa-button type="submit" appearance="outlined" ?loading=${this.busy === `reject:${pr.id}`}>${msg('Reject', { id: 'proposal.reject' })}</wa-button>
-            </form>`
-        : nothing}
-    </wa-card>`;
+      </div>
+    </section>`;
   }
 
   private async accept(e: Event, pr: Proposal) {
@@ -290,16 +476,6 @@ export class PolicyDetail extends LitElement {
       { key: 'status', header: msg('Status', { id: 'claims.col.status' }), value: (v) => policyStatusLabel(v.status) },
       { key: 'known', header: msg('Known from', { id: 'policy.knownFrom' }), value: (v) => formatDateTime(v.sysFrom, lang) },
       { key: 'superseded', header: msg('Superseded', { id: 'policy.superseded' }), value: (v) => (v.sysTo ? formatDateTime(v.sysTo, lang) : '–') },
-    ];
-  }
-
-  private transactionColumns(): Column<Transaction>[] {
-    const lang = getLocale();
-    return [
-      { key: 'type', header: msg('Change', { id: 'policy.change' }), value: (t) => transactionLabel(t.type) },
-      { key: 'by', header: msg('By', { id: 'policy.by' }), value: (t) => t.requestedBy },
-      { key: 'at', header: msg('When', { id: 'policy.when' }), value: (t) => formatDateTime(t.requestedAt, lang) },
-      { key: 'note', header: msg('Note', { id: 'policy.note' }), value: (t) => t.steps.at(-1)?.note ?? t.cancellation?.reason ?? '–' },
     ];
   }
 }

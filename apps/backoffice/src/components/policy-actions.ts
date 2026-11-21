@@ -68,9 +68,11 @@ export class PolicyActions extends LitElement {
         flex-direction: column;
         gap: var(--space-4);
       }
+      /* In the side column the actions stand on top of each other, as on a claim. */
       .buttons {
         display: flex;
-        flex-wrap: wrap;
+        flex-direction: column;
+        align-items: stretch;
         gap: var(--space-3);
       }
       .row {
@@ -108,13 +110,16 @@ export class PolicyActions extends LitElement {
   render() {
     const cancellation = reversibleCancellation(this.transactions);
     return html`
-      <div class="buttons" role="group" aria-label=${msg('Policy actions', { id: 'policy.actions' })}>
-        ${!cancellation
-          ? html`<wa-button appearance="outlined" @click=${() => this.toggle('change')}>${msg('Change the choices', { id: 'policy.changeChoices' })}</wa-button>
-              <wa-button appearance="outlined" @click=${() => this.toggle('cancel')}>${msg('Cancel the policy', { id: 'policy.cancel' })}</wa-button>
-              <wa-button appearance="outlined" @click=${() => this.toggle('renew')}>${msg('Renew by hand', { id: 'policy.renew' })}</wa-button>`
-          : html`<wa-button appearance="outlined" @click=${() => this.toggle('reinstate')}>${msg('Reverse the cancellation', { id: 'policy.reinstate' })}</wa-button>`}
-      </div>
+      <section class="pv-card" aria-labelledby="actions">
+        <div class="pv-card__head"><h2 class="pv-card__title" id="actions">${msg('Policy actions', { id: 'policy.actions' })}</h2></div>
+        <div class="pv-card__body buttons" role="group" aria-labelledby="actions">
+          ${!cancellation
+            ? html`<wa-button appearance="outlined" @click=${() => this.toggle('change')}>${msg('Change the choices', { id: 'policy.changeChoices' })}</wa-button>
+                <wa-button appearance="outlined" @click=${() => this.toggle('cancel')}>${msg('Cancel the policy', { id: 'policy.cancel' })}</wa-button>
+                <wa-button appearance="outlined" @click=${() => this.toggle('renew')}>${msg('Renew by hand', { id: 'policy.renew' })}</wa-button>`
+            : html`<wa-button appearance="outlined" @click=${() => this.toggle('reinstate')}>${msg('Reverse the cancellation', { id: 'policy.reinstate' })}</wa-button>`}
+        </div>
+      </section>
       ${this.notice ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'danger' ? 'alert' : 'status'}>${this.notice.text}</wa-callout>` : nothing}
       ${this.open === 'change' ? this.changeCard() : nothing} ${this.open === 'cancel' ? this.cancelCard() : nothing}
       ${this.open === 'reinstate' && cancellation ? this.reinstateCard(cancellation) : nothing} ${this.open === 'renew' ? this.renewCard() : nothing}

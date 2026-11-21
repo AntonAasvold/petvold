@@ -18,11 +18,15 @@ test('a policy is found by its id and by its policyholder, with terms, versions 
   const grid = page.getByRole('grid', { name: 'Policies' });
   await expect(grid.getByRole('gridcell', { name: 'pol_bella' })).toBeVisible();
   await grid.getByRole('gridcell', { name: 'pol_bella' }).click();
-  await expect(page.getByRole('heading', { name: 'Policy pol_bella' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Policy for Bella' })).toBeVisible();
+  // The head names who and what, and the term shows how much of the annual limit is used.
+  await expect(page.getByRole('link', { name: 'Anna Example' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'The term in force' })).toContainText('Left of the annual limit');
+  await expect(page.getByRole('grid', { name: 'Claims on the policy' }).getByRole('row')).not.toHaveCount(1);
   await expect(page.getByRole('grid', { name: 'Terms' }).getByRole('row')).not.toHaveCount(1);
-  await expect(page.getByRole('grid', { name: 'History' }).getByRole('gridcell', { name: 'Issued' }).first()).toBeVisible();
+  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').filter({ hasText: 'Issued' }).first()).toBeVisible();
 
-  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Policies' }).click();
   await page.getByRole('textbox', { name: 'Search' }).fill('Bella');
   await page.getByRole('button', { name: 'Search' }).click();
   await expect(page.getByText('Give a policy, animal or party id')).toBeVisible();
@@ -66,5 +70,5 @@ test('a transfer to a new owner is accepted from the policy', async ({ page, req
   await expect(page.getByRole('heading', { name: 'Transfer to a new owner' })).toBeVisible();
   await page.getByRole('button', { name: 'Accept' }).click();
   await expect(page.locator('wa-callout[role="status"]')).toContainText('Accepted.');
-  await expect(page.getByRole('grid', { name: 'History' }).getByRole('gridcell', { name: 'Transferred' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').filter({ hasText: 'Transferred' })).toBeVisible();
 });
