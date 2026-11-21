@@ -982,4 +982,9 @@ export const templates: Record<string, string> = {
   'policy.payout': 'Ersättning',
   'policy.claims': 'Skador på policyn',
   'policy.noClaims': 'Inga skador.',
+  'application.campaign': 'Kampanjkod',
+  'application.outcome': 'Utfall',
+  'application.rulesGave': 'Reglerna gav',
+  'application.acceptDesc': 'Policyn tecknas från startdagen.',
+  'application.declineDesc': 'Sökanden får ett besked med skälen och hur beslutet kan prövas.',
 };

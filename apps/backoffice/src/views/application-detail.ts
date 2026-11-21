@@ -1,8 +1,11 @@
-/** <pv-application-detail>: an application with its answers and the rules' checks, and a person's decision (ADR 0031). */
+/**
+ * <pv-application-detail>: an application as the design system lays out a
+ * detail page (docs/teknik/designsystem.md, "Detaljsidan"): the rules' checks
+ * and the answers beside a person's decision and the history (ADR 0031).
+ */
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { msg, updateWhenLocaleChanges } from '@lit/localize';
-import '@awesome.me/webawesome/dist/components/card/card.js';
 import '@awesome.me/webawesome/dist/components/badge/badge.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/callout/callout.js';
@@ -10,24 +13,27 @@ import '@awesome.me/webawesome/dist/components/spinner/spinner.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/input/input.js';
 import '@awesome.me/webawesome/dist/components/textarea/textarea.js';
-import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js';
-import '@awesome.me/webawesome/dist/components/radio/radio.js';
 import { unwrap, type Api, type Problem } from '../api/client.ts';
 import type { components } from '../api/schema';
 import { act, type Notice } from '../actions.ts';
 import '../components/data-grid.ts';
+import '../components/event-log.ts';
+import type { LogEntry } from '../components/event-log.ts';
+import { pvComponents } from '../styles/pv-components.ts';
 import type { Column } from '../components/data-grid.ts';
 import { IdempotencyKeys } from '../decide.ts';
 import { formatDate, formatDateTime, formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import type { Me } from '../permissions.ts';
-import { applicationDecisionProblems, mayUnderwrite, mayWithdraw } from '../policy-logic.ts';
+import { applicationDecisionProblems, mayUnderwrite, mayWithdraw, partyName } from '../policy-logic.ts';
 import { navigate } from '../router.ts';
 import { applicationStatusLabel, problemLabel } from './labels.ts';
 
 type Application = components['schemas']['Application'];
 type Check = Application['underwriting']['result']['checks'][number];
 type Answer = components['schemas']['UnderwritingAnswer'];
+type Animal = components['schemas']['Animal'];
+type Party = components['schemas']['Party'];
 const today = () => new Date().toISOString().slice(0, 10);
 
 @customElement('pv-application-detail')
@@ -45,6 +51,8 @@ export class ApplicationDetail extends LitElement {
   @state() private withdrawReason = '';
   @state() private shown: string[] = [];
   @state() private busy = '';
+  @state() private animal: Animal | null = null;
+  @state() private holder: Party | null = null;
   private keys = new IdempotencyKeys();
 
   constructor() {
@@ -52,41 +60,104 @@ export class ApplicationDetail extends LitElement {
     updateWhenLocaleChanges(this);
   }
 
-  static styles = css`
-    .head {
-      display: flex;
-      align-items: center;
-      gap: var(--wa-space-m);
-    }
-    .head h2 {
-      margin: 0;
-    }
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
-      gap: var(--wa-space-l);
-      margin-top: var(--wa-space-l);
-    }
-    .wide {
-      grid-column: 1 / -1;
-    }
-    dl {
-      display: grid;
-      grid-template-columns: max-content 1fr;
-      gap: var(--wa-space-2xs) var(--wa-space-m);
-      margin: 0;
-    }
-    dt {
-      color: var(--wa-color-text-quiet);
-    }
-    dd {
-      margin: 0;
-    }
-    form {
-      display: grid;
-      gap: var(--wa-space-m);
-    }
-  `;
+  static styles = [
+    pvComponents,
+    css`
+      :host {
+        display: block;
+      }
+      .crumbs {
+        display: flex;
+        gap: var(--space-2);
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+      .crumbs a {
+        color: var(--text-secondary);
+      }
+      a {
+        color: var(--ink);
+      }
+      .title {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-3);
+        margin: var(--space-2) 0 var(--space-3);
+      }
+      h1 {
+        margin: 0;
+        font: 700 36px/1.1 var(--font-display);
+        letter-spacing: -0.02em;
+      }
+      .facts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2) var(--space-6);
+        margin: 0 0 var(--space-8);
+        padding: 0;
+        list-style: none;
+        font-size: 14px;
+        color: var(--text-secondary);
+      }
+      .facts strong {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .cols {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: var(--space-6);
+      }
+      .basis {
+        flex: 999 1 520px;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-6);
+      }
+      .side {
+        flex: 1 1 340px;
+        max-width: 420px;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-6);
+      }
+      .pv-dl__row dd {
+        font-variant-numeric: tabular-nums;
+      }
+      .pv-card__body p {
+        margin: 0;
+      }
+      form {
+        display: grid;
+        gap: var(--space-4);
+      }
+      fieldset {
+        display: grid;
+        gap: var(--space-3);
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+      legend {
+        padding: 0 0 var(--space-2);
+        font: 500 13px/1.4 var(--font-sans);
+        color: var(--text-secondary);
+      }
+      .pv-choice:focus-within {
+        outline: var(--border-strong) solid var(--focus);
+        outline-offset: 2px;
+      }
+      @media (max-width: 900px) {
+        .side {
+          max-width: none;
+        }
+      }
+    `,
+  ];
 
   protected updated(changed: Map<string, unknown>): void {
     if (changed.has('applicationId') || changed.has('api')) void this.load();
@@ -99,85 +170,162 @@ export class ApplicationDetail extends LitElement {
       this.reason = this.application.underwriting.result.reasons[0] ?? '';
     } catch (e) {
       this.problem = e as Problem;
+      return;
     }
+    void this.loadWho();
+  }
+
+  /** The animal and the applicant by name, for the head. A missing permission only leaves the ids. */
+  private async loadWho() {
+    const a = this.application!;
+    const [animal, holder] = await Promise.all([
+      this.api.GET('/v1/animals/{animalId}', { params: { path: { animalId: a.animalId } } }).then((r) => r.data ?? null, () => null),
+      this.api.GET('/v1/parties/{partyId}', { params: { path: { partyId: a.policyholderPartyId } } }).then((r) => r.data ?? null, () => null),
+    ]);
+    this.animal = animal;
+    this.holder = holder;
   }
 
   render() {
-    const back = html`<wa-button appearance="plain" size="small" @click=${() => navigate('/applications')}
-      ><wa-icon slot="start" name="arrow-left"></wa-icon>${msg('Back', { id: 'common.back' })}</wa-button
-    >`;
+    const crumbs = html`<nav class="crumbs" aria-label=${msg('Breadcrumb', { id: 'common.breadcrumb' })}>
+      <a href="/applications" @click=${(e: Event) => (e.preventDefault(), navigate('/applications'))}>${msg('Applications', { id: 'nav.applications' })}</a>
+      <span aria-hidden="true">/</span>
+      <span aria-current="page">${this.applicationId}</span>
+    </nav>`;
     if (this.problem) {
       const text = this.problem.status === 404 ? msg('Does not exist, or lies outside what you may see.', { id: 'common.notFound' }) : this.problem.title;
-      return html`${back}<wa-callout variant=${this.problem.status === 404 ? 'neutral' : 'danger'}>${text}</wa-callout>`;
+      return html`${crumbs}<wa-callout variant=${this.problem.status === 404 ? 'neutral' : 'danger'}>${text}</wa-callout>`;
     }
     const a = this.application;
-    if (!a) return html`${back}<wa-spinner></wa-spinner>`;
+    if (!a) return html`${crumbs}<wa-spinner></wa-spinner>`;
     const lang = getLocale();
     const u = a.underwriting;
+    const link = (href: string, text: string) => html`<a href=${href} @click=${(e: Event) => (e.preventDefault(), navigate(href))}><strong>${text}</strong></a>`;
+    const row = (label: string, value: unknown, mono = false) => html`<div class="pv-dl__row"><dt>${label}</dt><dd class=${mono ? 'pv-mono' : ''}>${value}</dd></div>`;
+    const decided = a.status !== 'referred';
     return html`
-      ${back}
-      <div class="head">
-        <h2>${msg('Application', { id: 'application.title' })} ${a.id}</h2>
-        <wa-badge variant=${a.status === 'referred' ? 'warning' : a.status === 'accepted' ? 'success' : 'neutral'}>${applicationStatusLabel(a.status)}</wa-badge>
+      ${crumbs}
+      <div class="title">
+        <h1>${msg('Application', { id: 'application.title' })} ${this.animal ? `${msg('for', { id: 'policy.for' })} ${this.animal.name}` : a.id}</h1>
+        <span class="pv-badge pv-badge--id">${a.id}</span>
+        <span class="pv-badge ${decided ? 'pv-badge--solid' : 'pv-badge--pending'}">${applicationStatusLabel(a.status)}</span>
       </div>
+      <ul class="facts">
+        <li>${msg('Animal', { id: 'claim.animal' })}: ${link(`/animals/${a.animalId}`, this.animal?.name ?? a.animalId)}</li>
+        <li>${msg('Policyholder', { id: 'policy.holder' })}: ${link(`/parties/${a.policyholderPartyId}`, partyName(this.holder) || a.policyholderPartyId)}</li>
+        <li>${msg('Starts', { id: 'application.starts' })}: <strong>${formatDate(a.startDate, lang)}</strong></li>
+        <li>${msg('Received', { id: 'claims.col.received' })}: <strong>${formatDateTime(a.receivedAt, lang)}</strong></li>
+        ${a.deadline && !decided ? html`<li>${msg('Decide by', { id: 'application.deadline' })}: <span class="pv-badge pv-badge--pending">${formatDate(a.deadline, lang)}</span></li>` : nothing}
+        ${a.decision?.policyId ?? a.policyId ? html`<li>${msg('Policy', { id: 'claims.col.policy' })}: ${link(`/policies/${a.decision?.policyId ?? a.policyId}`, (a.decision?.policyId ?? a.policyId)!)}</li>` : nothing}
+      </ul>
       ${this.notice
         ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'danger' ? 'alert' : 'status'}
             >${this.notice.text}
             ${this.notice.reload ? html`<wa-button size="small" appearance="outlined" @click=${() => this.load()}>${msg('Reload', { id: 'common.reload' })}</wa-button>` : nothing}</wa-callout
           >`
         : nothing}
-      <div class="cards">
-        <wa-card>
-          <h3 slot="header">${msg('Details', { id: 'claim.facts' })}</h3>
-          <dl>
-            <dt>${msg('Animal', { id: 'policy.animal' })}</dt>
-            <dd>${a.animalId}, ${u.input.species}${u.input.breed ? ` (${u.input.breed})` : ''}, ${msg('born', { id: 'application.born' })} ${formatDate(u.input.birthDate, lang)}</dd>
-            <dt>${msg('Policyholder', { id: 'policy.holder' })}</dt>
-            <dd>${a.policyholderPartyId}</dd>
-            <dt>${msg('Product', { id: 'policy.product' })}</dt>
-            <dd>${a.productVersion}</dd>
-            <dt>${msg('Starts', { id: 'application.starts' })}</dt>
-            <dd>${formatDate(a.startDate, lang)}</dd>
-            <dt>${msg('Premium', { id: 'policy.premium' })}</dt>
-            <dd>${formatMoney(a.premium.amount, a.premium.currency, lang)}</dd>
-            <dt>${msg('Received', { id: 'claims.col.received' })}</dt>
-            <dd>${formatDateTime(a.receivedAt, lang)}</dd>
-            ${a.deadline ? html`<dt>${msg('Decide by', { id: 'application.deadline' })}</dt><dd>${formatDate(a.deadline, lang)}</dd>` : nothing}
-            ${a.policyId
-              ? html`<dt>${msg('Policy', { id: 'claims.col.policy' })}</dt>
-                  <dd><a href="/policies/${a.policyId}" @click=${(e: Event) => (e.preventDefault(), navigate(`/policies/${a.policyId}`))}>${a.policyId}</a></dd>`
-              : nothing}
-            ${a.decision
-              ? html`<dt>${msg('Decision', { id: 'decide.action' })}</dt>
-                  <dd>${applicationStatusLabel(a.decision.outcome)}, ${a.decision.decidedBy}${a.decision.note ? `: ${a.decision.note}` : ''}</dd>`
-              : nothing}
-          </dl>
-        </wa-card>
-        ${mayUnderwrite(this.me, a) ? this.decisionForm(a) : nothing} ${mayWithdraw(this.me, a) ? this.withdrawForm() : nothing}
-        <div class="wide">
-          <h3>${msg('Answers', { id: 'application.answers' })}</h3>
-          <pv-data-grid .columns=${this.answerColumns()} .rows=${u.input.answers} label=${msg('Answers', { id: 'application.answers' })}></pv-data-grid>
+      <div class="cols">
+        <div class="basis">
+          <section class="pv-card" aria-labelledby="rules">
+            <div class="pv-card__head">
+              <h2 class="pv-card__title" id="rules">${msg('The rules', { id: 'application.checks' })}</h2>
+              <span class="pv-card__meta pv-mono">${u.result.rules ? `${u.result.rules.series}@${u.result.rules.version}` : '–'}</span>
+            </div>
+            <pv-data-grid .columns=${this.checkColumns()} .rows=${u.result.checks} label=${msg('The rules', { id: 'application.checks' })}></pv-data-grid>
+          </section>
+          <section class="pv-card" aria-labelledby="answers">
+            <div class="pv-card__head"><h2 class="pv-card__title" id="answers">${msg('Answers', { id: 'application.answers' })}</h2></div>
+            <pv-data-grid .columns=${this.answerColumns()} .rows=${u.input.answers} label=${msg('Answers', { id: 'application.answers' })}></pv-data-grid>
+          </section>
+          <section class="pv-card" aria-labelledby="details">
+            <div class="pv-card__head"><h2 class="pv-card__title" id="details">${msg('Details', { id: 'claim.facts' })}</h2></div>
+            <div class="pv-card__body">
+              <dl class="pv-dl">
+                ${row(msg('Animal', { id: 'policy.animal' }), `${u.input.species}${u.input.breed ? ` (${u.input.breed})` : ''}, ${msg('born', { id: 'application.born' })} ${formatDate(u.input.birthDate, lang)}`)}
+                ${row(msg('Product', { id: 'policy.product' }), a.productVersion, true)}
+                ${row(msg('Premium', { id: 'policy.premium' }), formatMoney(a.premium.amount, a.premium.currency, lang))}
+                ${a.campaignCode ? row(msg('Campaign code', { id: 'application.campaign' }), a.campaignCode, true) : nothing}
+                ${row(msg('Market', { id: 'policy.market' }), a.market)}
+              </dl>
+            </div>
+          </section>
         </div>
-        <div class="wide">
-          <h3>${msg('The rules', { id: 'application.checks' })} (${u.result.rules ? `${u.result.rules.series}@${u.result.rules.version}` : '–'})</h3>
-          <pv-data-grid .columns=${this.checkColumns()} .rows=${u.result.checks} label=${msg('The rules', { id: 'application.checks' })}></pv-data-grid>
+        <div class="side">
+          ${a.decision ? this.decisionCard(a) : nothing} ${mayUnderwrite(this.me, a) ? this.decisionForm(a) : nothing}
+          ${mayWithdraw(this.me, a) ? this.withdrawForm() : nothing}
+          <pv-event-log heading=${msg('History', { id: 'claim.history' })} .entries=${this.historyEntries(a)}></pv-event-log>
         </div>
       </div>
     `;
   }
 
+  /** What became of the application, with who and why. */
+  private decisionCard(a: Application) {
+    const d = a.decision!;
+    const lang = getLocale();
+    const row = (label: string, value: unknown) => html`<div class="pv-dl__row"><dt>${label}</dt><dd>${value}</dd></div>`;
+    return html`<section class="pv-card" aria-labelledby="decision">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="decision">${msg('Decision', { id: 'decide.action' })}</h2></div>
+      <div class="pv-card__body">
+        <dl class="pv-dl">
+          ${row(msg('Outcome', { id: 'application.outcome' }), applicationStatusLabel(d.outcome))}
+          ${d.reason ? row(msg('Reason code', { id: 'decide.code' }), d.reason) : nothing}
+          ${d.riders?.length ? row(msg('Riders', { id: 'policy.riders' }), d.riders.map((r) => r.description).join('; ')) : nothing}
+          ${d.note ? row(msg('Grounds', { id: 'application.note' }), d.note) : nothing}
+          ${row(msg('By', { id: 'party.by' }), `${d.decidedBy}, ${formatDateTime(d.decidedAt, lang)}`)}
+        </dl>
+      </div>
+    </section>`;
+  }
+
+  /** Received with what the rules gave, and the decision: newest first. */
+  private historyEntries(a: Application): LogEntry[] {
+    const out: LogEntry[] = [
+      {
+        key: 'received',
+        at: a.receivedAt,
+        state: 'solid',
+        badge: msg('Received', { id: 'claims.col.received' }),
+        line: `${msg('The rules gave', { id: 'application.rulesGave' })}: ${applicationStatusLabel(a.decision ? 'referred' : a.status)}`,
+        status: `application.received · ${a.receivedBy}`,
+      },
+    ];
+    if (a.decision) {
+      out.unshift({
+        key: 'decided',
+        at: a.decision.decidedAt,
+        state: 'solid',
+        badge: applicationStatusLabel(a.decision.outcome),
+        line: a.decision.note ?? '',
+        status: `application.${a.decision.outcome} · ${a.decision.decidedBy}`,
+      });
+    }
+    return out;
+  }
+
   private decisionForm(a: Application) {
     const proposed = a.underwriting.result.riders;
-    return html`<wa-card>
-      <h3 slot="header">${msg('Underwrite', { id: 'application.decide' })}</h3>
-      <form @submit=${this.decide}>
-        <wa-radio-group label=${msg('Decision', { id: 'decide.action' })} value=${this.outcome} @change=${(e: Event) => (this.outcome = (e.target as HTMLInputElement).value as 'accept' | 'decline')}>
-          <wa-radio value="accept">${msg('Accept and issue the policy', { id: 'application.accept' })}</wa-radio>
-          <wa-radio value="decline">${msg('Decline', { id: 'application.decline' })}</wa-radio>
-        </wa-radio-group>
-        ${this.outcome === 'accept' && proposed.length
-          ? html`<p>${msg('With the riders the rules propose:', { id: 'application.ridersProposed' })} ${proposed.map((r) => r.description).join('; ')}</p>`
-          : nothing}
+    const choice = (value: 'accept' | 'decline', title: string, desc: string) => html`<label class="pv-choice">
+      <input type="radio" name="outcome" value=${value} .checked=${this.outcome === value} @change=${() => (this.outcome = value)} />
+      <span>
+        <span class="pv-choice__title">${title}</span>
+        <span class="pv-choice__desc">${desc}</span>
+      </span>
+    </label>`;
+    return html`<section class="pv-card pv-card--strong" aria-labelledby="underwrite">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="underwrite">${msg('Underwrite', { id: 'application.decide' })}</h2></div>
+      <form class="pv-card__body" @submit=${this.decide}>
+        <fieldset>
+          <legend>${msg('Decision', { id: 'decide.action' })}</legend>
+          ${choice(
+            'accept',
+            msg('Accept and issue the policy', { id: 'application.accept' }),
+            proposed.length
+              ? `${msg('With the riders the rules propose:', { id: 'application.ridersProposed' })} ${proposed.map((r) => r.description).join('; ')}`
+              : msg('The policy is issued from the start date.', { id: 'application.acceptDesc' }),
+          )}
+          ${choice('decline', msg('Decline', { id: 'application.decline' }), msg('The applicant gets a notice with the reasons and how to have the decision reviewed.', { id: 'application.declineDesc' }))}
+        </fieldset>
         ${this.outcome === 'accept'
           ? html`<wa-input
               type="date"
@@ -196,18 +344,18 @@ export class ApplicationDetail extends LitElement {
         ${this.shown.length ? html`<wa-callout variant="danger" role="alert">${this.shown.map((p) => html`<div>${problemLabel(p)}</div>`)}</wa-callout>` : nothing}
         <wa-button type="submit" variant="brand" ?loading=${this.busy === 'decide'}>${msg('Decide', { id: 'decide.submit' })}</wa-button>
       </form>
-    </wa-card>`;
+    </section>`;
   }
 
   private withdrawForm() {
-    return html`<wa-card>
-      <h3 slot="header">${msg('Withdraw', { id: 'application.withdraw' })}</h3>
-      <form @submit=${this.withdraw}>
+    return html`<section class="pv-card" aria-labelledby="withdraw">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="withdraw">${msg('Withdraw', { id: 'application.withdraw' })}</h2></div>
+      <form class="pv-card__body" @submit=${this.withdraw}>
         <p>${msg('For the channel, e.g. when the customer no longer wants the policy.', { id: 'application.withdrawWhy' })}</p>
         <wa-textarea label=${msg('Reason (optional)', { id: 'application.withdrawReason' })} rows="2" .value=${this.withdrawReason} @input=${(e: Event) => (this.withdrawReason = (e.target as HTMLTextAreaElement).value)}></wa-textarea>
         <wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'withdraw'}>${msg('Withdraw', { id: 'application.withdraw' })}</wa-button>
       </form>
-    </wa-card>`;
+    </section>`;
   }
 
   private async decide(e: Event) {

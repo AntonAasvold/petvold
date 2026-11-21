@@ -393,6 +393,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 
 - Policysidan enligt designsystemet (PR #122): rubrik och fakta som på skadan, försäkringsbeloppet som återstår, skadorna på policyn, och åtgärder och historik i högerkolumnen. Mönstret står i designsystemet som "Detaljsidan".
 
+- Ansökans sida enligt designsystemet (PR #123): rubrik och fakta som på skadan, reglerna och svaren till vänster, och prövningen med val, beslutet och historiken till höger.
+
 **Nästa steg**
 1. ADR 0038, steg 5: gallring av dokument som en körning.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
