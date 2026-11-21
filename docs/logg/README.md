@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-21 | [Ansökans sida enligt designsystemet](2026-11-21-ansokningssidan.md) | #123 |
 | 2026-11-21 | [Policysidan enligt designsystemet](2026-11-21-policysidan.md) | #122 |
 | 2026-11-21 | [Partens sida: numren bland uppgifterna och djurens försäkring](2026-11-21-partens-sida.md) | #121 |
 | 2026-11-21 | [Partens livscykel: sökning på namn, nummer som tas bort, begränsning och avslut](2026-11-21-partens-livscykel.md) | #120 |

@@ -38,7 +38,8 @@ test('an underwriter decides a referred application; the grounds are required', 
   const grid = page.getByRole('grid', { name: 'Applications' });
   await expect(grid.getByRole('row').nth(1)).toContainText('ani_rocky');
   await grid.getByRole('row').nth(1).getByRole('gridcell').first().click();
-  await expect(page.getByRole('heading', { name: /^Application app_/ })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Application for Rocky' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem')).toHaveCount(1);
   await expect(page.getByRole('grid', { name: 'The rules' }).getByRole('gridcell', { name: 'answer' }).first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Decide' }).click();
@@ -47,6 +48,8 @@ test('an underwriter decides a referred application; the grounds are required', 
   await page.getByRole('button', { name: 'Decide' }).click();
   await expect(page.locator('wa-callout[role="status"]')).toContainText('Accepted. The policy is issued.');
   await expect(page.getByRole('link', { name: /^pol_/ })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Decision' })).toContainText('The vet record shows a cold, now over');
+  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem')).toHaveCount(2);
 });
 
 test('a transfer to a new owner is accepted from the policy', async ({ page, request }) => {
