@@ -55,3 +55,39 @@ test('scope: other markets, a portal bound to policies, and a clinic', async () 
   assert.ok(mine.body.items.length > 0 && mine.body.items.every((p: any) => p.policyId === plans[0]!.policyId));
   assert.equal((await call(`/v1/premium-plans?policyId=${plans[0]!.policyId}`, 'clinic')).status, 403);
 });
+
+test('the invoicing job makes invoices, the relay sends invoice.issued, and the API reads them', async () => {
+  const clock = { now: () => '2026-11-15T10:00:00.000Z' };
+  const inst = await compose({ databases: {}, engineVersion: 'test', clock });
+  await seedSampleData(inst, clock);
+  while ((await inst.relay.tick()) > 0);
+  // A year ahead, so every plan in the sample data has something due.
+  const run = await inst.deps.billing!.invoicingRun({ market: 'SE', onDate: '2027-11-01', dryRun: false }, 'scheduler');
+  assert.ok(run.invoices.length > 0);
+  const events = await inst.stores.billing.pendingEvents(100);
+  assert.deepEqual(events.map((e) => e.type), run.invoices.map(() => 'invoice.issued'));
+  while ((await inst.relay.tick()) > 0);
+  assert.equal((await inst.stores.billing.pendingEvents(100)).length, 0, 'the relay published them');
+
+  const tokens: Record<string, Principal> = {
+    clerk: { subject: 'finance@example.test', roles: ['billing-clerk'], markets: ['SE'] },
+    portal: { subject: 'portal', roles: ['customer-channel'], markets: ['SE'], policyIds: [run.invoices[0]!.lines[0]!.policyId] },
+    clinic: { subject: 'klinik-001', roles: ['clinic'], markets: ['SE'], clinicId: 'clinic_001' },
+  };
+  const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
+  const call = async (path: string, token: string) => {
+    const res = await app.request(path, { headers: { authorization: `Bearer ${token}` } });
+    return { status: res.status, body: (await res.json()) as any };
+  };
+  const list = await call('/v1/invoices?market=SE', 'clerk');
+  assert.equal(list.body.items.length, run.invoices.length);
+  for (const i of list.body.items) assert.ok(validatorFor('Invoice')(structuredClone(i)), JSON.stringify(validatorFor('Invoice').errors));
+  const first = list.body.items[0];
+  assert.match(first.number, /^SE-2027-\d{6}$/);
+  assert.deepEqual((await call(`/v1/invoices/${first.id}`, 'clerk')).body, first);
+  assert.ok((await call(`/v1/invoices?policyId=${first.lines[0].policyId}`, 'clerk')).body.items.some((i: any) => i.id === first.id));
+  const mine = (await call('/v1/invoices', 'portal')).body.items;
+  assert.ok(mine.every((i: any) => i.lines.every((l: any) => l.policyId === run.invoices[0]!.lines[0]!.policyId)));
+  assert.equal((await call('/v1/invoices', 'clinic')).status, 403);
+  assert.equal((await call('/v1/invoices/inv_nope', 'clerk')).status, 404);
+});

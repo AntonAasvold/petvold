@@ -3,7 +3,7 @@ import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { PostgresBillingStore } from '../src/postgres.ts';
-import { billingStoreSuite, payer, planRecord } from '../test-suites/billing-store.ts';
+import { billingStoreSuite, invoiceOf, payer, planRecord } from '../test-suites/billing-store.ts';
 
 const ownerUrl = process.env.TEST_DATABASE_URL;
 const serviceUrl = process.env.BILLING_TEST_DATABASE_URL;
@@ -15,7 +15,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate billing.premium_plan, billing.payer_account cascade');
+const clean = () => admin.query('truncate billing.outbox, billing.invoice_line, billing.invoice, billing.invoice_number_series, billing.premium_plan, billing.payer_account cascade');
 
 billingStoreSuite('PostgresBillingStore', async () => {
   await clean();
@@ -29,4 +29,30 @@ test('accounts and plans never change', async () => {
   await assert.rejects(pool.query(`update billing.premium_plan set term_no = 2`), /permission denied/);
   await assert.rejects(pool.query(`delete from billing.payer_account`), /permission denied/);
   await assert.rejects(pool.query(`insert into billing.payer_account (account_id, party_id, market, currency, payment_method, created_at) values ('bac_x', 'pty_x', 'SE', 'SEK', 'cash', now())`), /check/);
+});
+
+test('invoices never change, and a line must add up', async () => {
+  await clean();
+  const store = new PostgresBillingStore(pool);
+  await store.addPlan(payer(), planRecord());
+  await store.addInvoice('SE', 2026, (no) => invoiceOf('inv_a', no, planRecord()), () => []);
+  await assert.rejects(pool.query(`update billing.invoice set total = 0`), /permission denied/);
+  await assert.rejects(pool.query(`delete from billing.invoice_line`), /permission denied/);
+  await assert.rejects(pool.query(`update billing.invoice_number_series set year = 2030`), /permission denied/);
+  await assert.rejects(
+    pool.query(`insert into billing.invoice_line (invoice_id, line_no, plan_id, policy_id, term_no, seq, period_start, period_end, premium, tax, fee, amount)
+                values ('inv_a', 9, 'ppl_1', 'pol_1', 1, 9, '2027-01-01', '2027-02-01', 100, 0, 0, 99)`),
+    /check/,
+  );
+});
+
+test('two runs at once: the number series has no gaps and no installment is invoiced twice', async () => {
+  await clean();
+  const store = new PostgresBillingStore(pool);
+  await store.addPlan(payer(), planRecord());
+  const p = planRecord();
+  const results = await Promise.allSettled([1, 2, 3, 4].map((k) => store.addInvoice('SE', 2026, (no) => invoiceOf(`inv_${k}`, no, p, [k <= 2 ? 1 : k]), () => [])));
+  const ok = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value.number] : []));
+  assert.equal(ok.length, 3, 'one of the two invoices of installment 1 is refused');
+  assert.deepEqual(ok.sort(), ['SE-2026-000001', 'SE-2026-000002', 'SE-2026-000003']);
 });

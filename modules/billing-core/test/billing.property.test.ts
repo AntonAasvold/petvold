@@ -151,3 +151,20 @@ function addMonthsOf(input: PlanInput, periods: number): string {
   const last = new Date(Date.UTC(Math.floor(t / 12), (t % 12) + 1, 0)).getUTCDate();
   return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
 }
+
+test('every OCR and RF reference made is valid, and one changed digit is caught', async () => {
+  const { ocrReference, isOcrReference, rfReference, isRfReference } = await import('@petvold/billing-core');
+  fc.assert(
+    fc.property(fc.stringMatching(/^\d{1,20}$/), fc.nat(), (base, k) => {
+      const ocr = ocrReference(base);
+      const rf = rfReference(base);
+      assert.ok(isOcrReference(ocr) && isRfReference(rf));
+      const i = k % ocr.length;
+      const changed = ocr.slice(0, i) + String((Number(ocr[i]) + 1 + (k % 9)) % 10) + ocr.slice(i + 1);
+      assert.equal(isOcrReference(changed), false);
+      const j = 4 + (k % (rf.length - 4));
+      const rfChanged = rf.slice(0, j) + String((Number(rf[j]) + 1 + (k % 9)) % 10) + rf.slice(j + 1);
+      assert.equal(isRfReference(rfChanged), false);
+    }),
+  );
+});

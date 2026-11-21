@@ -432,8 +432,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - Gallringen ser att en part har en pågående plan.
   - 595 tester och 167 databastester.
 
+- Pengar, steg 2b: fakturor (ADR 0040), PR #131:
+  - **Körningen `billing.invoicing`** (04:00) gör en faktura per betalarkonto av delbetalningarna som förfaller inom framförhållningen. En ny policys första premie förfaller tidigast fjorton dagar efter fakturan.
+  - **Fakturanummer** ur en obruten serie per marknad och år (`SE-2026-000001`), tagen i fakturans transaktion. **Betalningsreferens:** OCR med längd- och kontrollsiffra i Sverige, RF (ISO 11649) i EUR-marknader.
+  - **Händelsen `invoice.issued`** via reläet till webhooks. AsyncAPI har den, och `/petvold/billing` är en ny källa.
+  - **API:** `GET /v1/invoices` och `.../{id}`. Två nya operationer, 153 i kontraktet.
+  - **Migration 0051:** fakturor, rader, nummerserie och outbox. Provad ner och upp igen.
+  - 603 tester och 170 databastester.
+
 **Nästa steg**
-1. ADR 0040, steg 2b: fakturering som körning, nummerserie, betalningsreferens och fakturan som meddelande.
+1. ADR 0040, steg 2b-2: fakturan som meddelande till kunden, via `communications`.
 2. ADR 0041 om demotjänsten som tar emot händelserna, spelar bank och kontrollerar att allt stämmer.
 3. ADR 0038, steg 5: gallring av dokument som en körning.
 4. Back office: översikten på startsidan och omräkning av beslut.

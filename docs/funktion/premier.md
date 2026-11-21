@@ -2,7 +2,7 @@
 
 Hur Petvold delar en terms premie i delbetalningar, fördelar en betalning och räknar ut vad ett avslut betyder i pengar (ADR 0040).
 
-**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör betalarkonton och premieplaner av policyhändelserna (steg 2a). Fakturor, inbetalningar och ändringar mitt i termen kommer i nästa steg.
+**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör betalarkonton och premieplaner av policyhändelserna (steg 2a) och fakturor med faktureringskörningen (steg 2b). Fakturan som meddelande till kunden, inbetalningar och ändringar mitt i termen kommer i nästa steg.
 
 ## Betalarkonto och premieplan
 
@@ -21,6 +21,34 @@ När en policy tecknas (`policy.issued`) eller förnyas (`policy.renewed`) gör 
 | `GET /v1/premium-plans?policyId=…` eller `?accountId=…` | Premieplanerna med underlaget (`input`) och resultatet (`plan`), äldst först |
 
 Alla tre kräver `billing:read` (rollen `billing-clerk`). Kundportalen (`customer-channel`) ser premieplanerna för sina egna policyer.
+
+## Fakturor
+
+**Faktureringen** är körningen `billing.invoicing` ([Körningar](korningar.md)), som går klockan 04:00 varje dag i varje marknad, efter förnyelsen. Den tar varje delbetalning som inte fakturerats och som förfaller inom planens framförhållning (`billing.invoiceLeadDays`, förval 20 dagar). Allt för samma betalarkonto hamnar på **en faktura**, också när kunden har flera policyer med olika intervall.
+
+- **Fakturans förfallodag** är den tidigaste radens.
+- **Den första premien** för en ny policy förfaller tidigast fjorton dagar efter fakturan (FAL 5 kap. 1 §), även om planen säger tidigare. En faktura som skickas en vecka sent förfaller alltså en vecka senare. Har fakturan en första premie förfaller hela fakturan tidigast då.
+- **En delbetalning faktureras bara en gång.** Två körningar samtidigt kan inte fakturera samma delbetalning.
+- **En faktura ändras aldrig.** En rättelse blir en kreditnota (steg 5).
+- **En provkörning** (`dryRun`) visar vilka fakturor som skulle göras utan att spara något.
+
+**Fakturanumret** tas ur en obruten serie per marknad och år, till exempel `SE-2026-000001` (bokföringslagen 5 kap. 7 §). Numret tas i samma transaktion som fakturan sparas, så en faktura som inte sparas tar inget nummer.
+
+**Betalningsreferensen** gör att en inbetalning kan kopplas till fakturan utan manuellt arbete:
+
+| Marknad | Referens | Exempel för faktura 1 år 2026 |
+| --- | --- | --- |
+| Sverige | OCR för Bankgirot: fakturans år och nummer, en längdsiffra (referensens längd modulo 10) och en kontrollsiffra enligt Luhn (modulo 10). Banken kan då vägra en referens med en siffra för mycket eller för lite. | `202600000121` |
+| EUR-marknader | RF-referens enligt ISO 11649: `RF`, två kontrollsiffror (modulo 97) och fakturans år och nummer | `RF422026000001` |
+
+**Exempel:** Anna tecknar en hundförsäkring den 22 november 2026 som börjar den 25 november och betalas per månad med 400 kr. Faktureringen den 22 november gör faktura `SE-2026-000001` på 400 kr som förfaller den 6 december. Hon tecknar en kattförsäkring som börjar den 15 december. Faktureringen den 12 december tar hundens andra månad (förfaller den 25 december) och kattens första månad på samma faktura, `SE-2026-000002`. Kattens första premie får inte förfalla förrän fjorton dagar efter fakturan, så hela fakturan förfaller den 26 december.
+
+| Anrop | Vad det ger |
+| --- | --- |
+| `GET /v1/invoices?accountId=…&policyId=…&market=…` | Fakturor, äldst först |
+| `GET /v1/invoices/{invoiceId}` | En faktura med rader, förfallodag och referens |
+
+Händelsen `invoice.issued` går till bolagets system med webhooks ([Webhooks](webhooks.md)). Kundportalen ser en faktura bara om alla rader gäller dess egna policyer.
 
 ## Premieplanen
 

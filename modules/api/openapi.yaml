@@ -3713,6 +3713,60 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PayerAccount' }
 
+  /v1/invoices:
+    get:
+      tags: [billing]
+      operationId: listInvoices
+      x-permission: billing:read
+      summary: Invoices, oldest first
+      description: |
+        Requires the permission `billing:read` (ADR 0040). The invoicing run
+        (`billing.invoicing`, daily per market) puts every installment due within
+        the plan's lead time on one invoice per payer account. An invoice never
+        changes. Only invoices in the caller's markets; a role bound to policies
+        sees an invoice only if every line is on its policies, and a clinic none.
+      parameters:
+        - { name: accountId, in: query, schema: { type: string } }
+        - { name: policyId, in: query, schema: { type: string }, description: Invoices with a line on the policy. }
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The invoices
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Invoice' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/invoices/{invoiceId}:
+    get:
+      tags: [billing]
+      operationId: getInvoice
+      x-permission: billing:read
+      summary: An invoice
+      description: Requires the permission `billing:read`. An invoice outside the caller's scope answers 404.
+      parameters:
+        - { name: invoiceId, in: path, required: true, schema: { type: string, pattern: '^inv_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The invoice
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+
   /v1/premium-plans:
     get:
       tags: [billing]
@@ -6342,6 +6396,49 @@ components:
         paymentMethod: { type: string, enum: [invoice], description: 'How the payer pays. Autogiro, direct debit, Swish and card come with the payments module.' }
         createdAt: { type: string, format: date-time }
 
+    Invoice:
+      type: object
+      additionalProperties: false
+      required: [id, number, accountId, partyId, market, currency, issueDate, dueDate, reference, lines, total, createdBy, createdAt]
+      description: An invoice (ADR 0040). Never changes; a correction is a credit note.
+      properties:
+        id: { type: string, pattern: '^inv_[A-Za-z0-9]+$' }
+        number: { type: string, description: 'From the market''s unbroken series per year, e.g. SE-2026-000001.' }
+        accountId: { type: string }
+        partyId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        issueDate: { type: string, format: date }
+        dueDate: { type: string, format: date, description: "The earliest line's due date. A new policy's first premium is due at the earliest the market's days after the invoice (SE: 14, FAL 5 kap. 1 §)." }
+        reference:
+          type: object
+          additionalProperties: false
+          required: [type, value]
+          properties:
+            type: { type: string, enum: [ocr, rf], description: 'ocr: Bankgirot''s OCR with a length and a check digit. rf: ISO 11649.' }
+            value: { type: string }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [planId, policyId, termNo, seq, periodStart, periodEnd, premium, tax, fee, amount]
+            properties:
+              planId: { type: string }
+              policyId: { type: string }
+              termNo: { type: integer, minimum: 1 }
+              seq: { type: integer, minimum: 1, description: "The installment's seq in the plan." }
+              periodStart: { type: string, format: date }
+              periodEnd: { type: string, format: date, description: Exclusive. }
+              premium: { type: integer, minimum: 0 }
+              tax: { type: integer, minimum: 0 }
+              fee: { type: integer, minimum: 0 }
+              amount: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 0 }
+        createdBy: { type: string, description: "Who ran the invoicing: 'scheduler' or a person." }
+        createdAt: { type: string, format: date-time }
+
     PremiumPlanRecord:
       type: object
       additionalProperties: false
@@ -6385,6 +6482,7 @@ components:
                 noticeSentOn: { type: string, format: date }
                 payWithinDays: { type: integer, minimum: 0 }
         plan: { $ref: '#/components/schemas/PremiumPlan' }
+        invoiceLeadDays: { type: integer, minimum: 1, maximum: 60, description: "The product's lead time when the plan was made. Omitted: 20." }
         createdAt: { type: string, format: date-time }
 
     PremiumPlan:

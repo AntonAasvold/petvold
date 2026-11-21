@@ -158,7 +158,7 @@ En produktversion säger vad som kan säljas och med vilka val (ADR 0023). Id:t 
 | `billing.paymentIntervals` | Betalningsintervallen kunden får välja: `year`, `half-year`, `quarter` och `month` ([Premier och betalningar](premier.md)) | `["year"]` (förval) |
 | `billing.defaultPaymentInterval` | Intervallet när inget väljs. Ett av `paymentIntervals`. | `year` (förval) |
 | `billing.installmentFee` | Avgift per delbetalning i minsta enhet, 0–100 000. Tas bara när intervallet är kortare än ett år. | 0 (förval) |
-| `billing.invoiceLeadDays` | Dagar före förfallodagen som en delbetalning kommer med på en faktura, 1–60. Används av faktureringen (ADR 0040, steg 2b). | 20 (förval) |
+| `billing.invoiceLeadDays` | Dagar före förfallodagen som en delbetalning kommer med på en faktura, 1–60. Sparas på premieplanen när den görs, och faktureringen använder planens värde (ADR 0040). | 20 (förval) |
 | `documents` | Produktens dokument till kunden (ADR 0032), se [Produktens dokument](#produktens-dokument) | villkor, förköpsinformation och faktablad på svenska och engelska |
 
 Inställningarna under `policy` och `billing` kan utelämnas, och då gäller förvalen. De låses med resten av innehållet när versionen publiceras.

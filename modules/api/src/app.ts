@@ -1097,6 +1097,23 @@ export function createApp(d: AppDeps) {
     return send(c, a);
   });
 
+  // An invoice may hold several of the payer's policies: a role bound to policies sees it only if it holds none but its own.
+  const seesInvoice = (scope: Scope, i: { market: string; lines: { policyId: string }[] }) =>
+    !scope.clinicId && inBillingMarket(scope, i.market) && (!scope.policyIds || i.lines.every((l) => scope.policyIds!.has(l.policyId)));
+
+  app.get('/v1/invoices', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const items = await billing.invoices({ ...(q('accountId') ? { accountId: q('accountId') } : {}), ...(q('policyId') ? { policyId: q('policyId') } : {}), ...(q('market') ? { market: q('market') } : {}) });
+    return sendPage(c, items.filter((i) => seesInvoice(c.get('scope'), i)));
+  });
+
+  app.get('/v1/invoices/:invoiceId', async (c) => {
+    const id = c.req.param('invoiceId');
+    const i = await billing.invoice(id);
+    if (!seesInvoice(c.get('scope'), i)) throw new BillingError('not_found', `Invoice ${id} does not exist`);
+    return send(c, i);
+  });
+
   app.get('/v1/premium-plans', async (c) => {
     const policyId = c.req.query('policyId');
     const accountId = c.req.query('accountId');
@@ -1754,13 +1771,13 @@ export function createApp(d: AppDeps) {
     new Scheduler({
       store: new InMemorySchedulingStore(),
       clock: d.clock,
-      jobs: defaultJobs({ policies, retention, claims: d.service }),
+      jobs: defaultJobs({ policies, retention, claims: d.service, billing }),
       // As the installation does: markets with a product or a retention rule.
       markets: async () =>
         [...new Set([...(await products.allProducts()).flatMap((p) => p.versions.map((v) => v.content.market)), ...Object.keys((await retention.current()).markets)])].sort(),
       holder: 'api',
     });
-  const runners = jobRunners({ policies, retention, claims: d.service }) as unknown as Record<string, JobRunner<unknown>>;
+  const runners = jobRunners({ policies, retention, claims: d.service, billing }) as unknown as Record<string, JobRunner<unknown>>;
   const byName = new Map(Object.values(runners).map((r) => [r.name, r]));
   const controlId = () => `ctl_${crypto.randomUUID().replaceAll('-', '')}`;
   const scopedMarkets = async (c: Context<Env>) => {

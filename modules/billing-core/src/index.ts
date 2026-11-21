@@ -334,6 +334,79 @@ export function settleCancellation(input: CancellationInput): CancellationSettle
   };
 }
 
+// --- Payment references (ADR 0040, punkt 5) ---
+
+export const REFERENCE_TYPES = ['ocr', 'rf'] as const;
+export type ReferenceType = (typeof REFERENCE_TYPES)[number];
+
+/** The Luhn (mod 10) check digit of a string of digits. */
+export function luhnCheckDigit(digits: string): number {
+  if (!/^\d+$/.test(digits)) throw new BillingError('digits: only 0-9');
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) {
+    // From the right, every other digit is doubled, starting with the rightmost.
+    let d = Number(digits[digits.length - 1 - i]);
+    if (i % 2 === 0) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+  }
+  return (10 - (sum % 10)) % 10;
+}
+
+/**
+ * A Swedish OCR reference for Bankgirot (ADR 0040): the base, a length digit
+ * (the whole reference's length mod 10) and a Luhn check digit. With the
+ * length digit the bank can refuse a reference that lost or gained a digit.
+ * 2-25 digits in all.
+ */
+export function ocrReference(base: string): string {
+  if (!/^\d{1,23}$/.test(base)) throw new BillingError('base: 1-23 digits');
+  const withLength = base + String((base.length + 2) % 10);
+  return withLength + String(luhnCheckDigit(withLength));
+}
+
+/** Whether an OCR reference has a correct length digit and check digit. */
+export function isOcrReference(ref: string): boolean {
+  if (!/^\d{2,25}$/.test(ref)) return false;
+  const body = ref.slice(0, -1);
+  return Number(ref.at(-2)) === ref.length % 10 && luhnCheckDigit(body) === Number(ref.at(-1));
+}
+
+/** The ISO 7064 mod 97 remainder of letters and digits, letters as 10-35. */
+function mod97(s: string): number {
+  let r = 0;
+  for (const ch of s) {
+    const v = /\d/.test(ch) ? ch : String(ch.charCodeAt(0) - 55);
+    for (const d of v) r = (r * 10 + Number(d)) % 97;
+  }
+  return r;
+}
+
+/**
+ * A creditor reference after ISO 11649 (RF), used in EUR markets (ADR 0040):
+ * 'RF', two check digits and the base, 1-21 letters or digits.
+ */
+export function rfReference(base: string): string {
+  const b = base.toUpperCase();
+  if (!/^[A-Z0-9]{1,21}$/.test(b)) throw new BillingError('base: 1-21 letters or digits');
+  const check = 98 - mod97(b + 'RF00');
+  return `RF${String(check).padStart(2, '0')}${b}`;
+}
+
+/** Whether an RF reference has correct check digits. Spaces are ignored. */
+export function isRfReference(ref: string): boolean {
+  const r = ref.replaceAll(' ', '').toUpperCase();
+  if (!/^RF\d{2}[A-Z0-9]{1,21}$/.test(r)) return false;
+  return mod97(r.slice(4) + r.slice(0, 4)) === 1;
+}
+
+/** The payment reference of a type for a base of digits. */
+export function paymentReference(type: ReferenceType, base: string): string {
+  return type === 'ocr' ? ocrReference(base) : rfReference(base);
+}
+
 // --- Helpers ---
 
 /** Rounds amount × bp / 10 000 half up. */

@@ -174,7 +174,8 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
   - [x] `billing-core`: premieplan, fördelning av betalningar och avräkning vid avslut
   - [ ] `billing`:
     - [x] 2a: betalarkonton och premieplaner från `policy.issued` och `policy.renewed`, produktens inställningar för betalning, läsning i API:et
-    - [ ] 2b: fakturering som körning, nummerserie, betalningsreferens (OCR och RF) och fakturan som meddelande
+    - [x] 2b-1: fakturering som körning, nummerserie, betalningsreferens (OCR och RF) och `invoice.issued`
+    - [ ] 2b-2: fakturan som meddelande till kunden
     - [ ] 2c: kundens val av intervall vid tecknandet, och ändring, avslut, återkallelse och överlåtelse mot planen
   - [ ] `payments` med `fake`-adapter: inbetalningar, koppling till faktura och utbetalningar
   - [ ] Obetald premie: påminnelse, uppsägning och avslut

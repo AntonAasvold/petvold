@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-21 | [Pengar, steg 2b: fakturor, nummerserie och betalningsreferens](2026-11-21-billing-fakturor.md) | #131 |
 | 2026-11-21 | [Pengar, steg 2a: betalarkonton och premieplaner](2026-11-21-billing-premieplaner.md) | #130 |
 | 2026-11-21 | [Pengar, steg 1: `billing-core`](2026-11-21-billing-core.md) | #129 |
 | 2026-11-21 | [Händelsekontraktet: ordningsnummer, källor och ersättningens betydelse](2026-11-21-handelsekontraktet.md) | #128 |
