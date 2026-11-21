@@ -13,6 +13,7 @@ import '@awesome.me/webawesome/dist/components/select/select.js';
 import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/textarea/textarea.js';
 import '@awesome.me/webawesome/dist/components/spinner/spinner.js';
+import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import { unwrap, type Api, type Problem } from '../api/client.ts';
 import type { components } from '../api/schema';
 import { act, type Notice } from '../actions.ts';
@@ -28,6 +29,7 @@ import { getLocale } from '../i18n.ts';
 import { changeBody, displayName, partyProblems, partyToForm, type IdentifierForm, type PartyForm } from '../party-logic.ts';
 import type { Me } from '../permissions.ts';
 import { versionOn } from '../policy-logic.ts';
+import { insuredFrom } from '../policy-form.ts';
 import { navigate } from '../router.ts';
 import { pvComponents } from '../styles/pv-components.ts';
 import { groupKindLabel, policyStatusLabel, problemLabel } from './labels.ts';
@@ -61,6 +63,10 @@ export class PartyDetail extends LitElement {
   @state() private busy = '';
   /** ADR 0039: the number being removed, and the forms for restriction and ending. */
   @state() private removing: string | null = null;
+  /** Whether the form to add a number is open. */
+  @state() private adding = false;
+  /** Per animal: the policy it is insured by today, or null. */
+  @state() private insured: Record<string, { policyId: string; freeFrom: string } | null> = {};
   @state() private removalReason = '';
   @state() private restrictForm = { until: '', reason: '' };
   @state() private liftReason = '';
@@ -88,6 +94,13 @@ export class PartyDetail extends LitElement {
       .removal wa-input {
         align-self: stretch;
       }
+      .removal .buttons {
+        display: flex;
+        gap: var(--space-2);
+      }
+      .add {
+        margin-top: var(--space-4);
+      }
       ul.removed {
         margin: var(--space-2) 0 0;
         padding-left: var(--space-5);
@@ -97,6 +110,9 @@ export class PartyDetail extends LitElement {
         gap: var(--space-2);
         font-size: 13px;
         color: var(--text-muted);
+      }
+      a {
+        color: var(--ink);
       }
       .crumbs a {
         color: var(--text-secondary);
@@ -180,6 +196,17 @@ export class PartyDetail extends LitElement {
           : Promise.resolve([]),
       ]);
       this.animals = animals;
+      // Which animal is insured today, by any policyholder: an animal is insured once at a time (ADR 0029).
+      if (this.may('policies:read')) {
+        const day = today();
+        const found = await Promise.all(
+          animals.map(async (a) => {
+            const items = await this.api.GET('/v1/policies', { params: { query: { animalId: a.id } } }).then((r) => r.data?.items ?? [], () => []);
+            return [a.id, insuredFrom(items, day)] as const;
+          }),
+        );
+        this.insured = Object.fromEntries(found);
+      }
       this.groups = groups;
       this.party = party;
       this.revisions = revisions.items;
@@ -216,7 +243,7 @@ export class PartyDetail extends LitElement {
       ${this.notice ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'danger' ? 'alert' : 'status'}>${this.notice.text}</wa-callout>` : nothing}
       <div class="cols">
         <div class="basis">
-          ${this.detailsCard(p)} ${this.identifiersCard(p, writable)}
+          ${this.detailsCard(p, writable)}
           ${this.may('animals:read') ? this.animalsCard() : nothing}
           ${this.may('policies:read')
             ? html`<section class="pv-card" aria-labelledby="policies">
@@ -322,6 +349,7 @@ export class PartyDetail extends LitElement {
           { key: 'name', header: msg('Name', { id: 'party.name' }), value: (a: Animal) => a.name },
           { key: 'id', header: msg('Animal id', { id: 'animal.id' }), value: (a: Animal) => a.id },
           { key: 'born', header: msg('Date of birth', { id: 'party.birthDate' }), value: (a: Animal) => formatDate(a.birthDate, getLocale()) },
+          ...(this.may('policies:read') ? [{ key: 'insured', header: msg('Insured', { id: 'party.insured' }), value: (a: Animal) => this.insuredCell(a) }] : []),
         ]}
         .rows=${this.animals}
         label=${msg('Animals owned today', { id: 'party.animals' })}
@@ -331,10 +359,32 @@ export class PartyDetail extends LitElement {
     </section>`;
   }
 
-  private detailsCard(p: Party) {
+  /** The details and the numbers in one card (ADR 0026, 0039). A number is not a revision: it is added and removed on its own. */
+  /** The policy the animal is insured by today, or a button to issue one (ADR 0029: one at a time). */
+  private insuredCell(a: Animal) {
+    const ins = this.insured[a.id];
+    if (ins) {
+      return html`<a href="/policies/${ins.policyId}" class="pv-mono" @click=${(e: Event) => (e.preventDefault(), e.stopPropagation(), navigate(`/policies/${encodeURIComponent(ins.policyId)}`))}
+        >${ins.policyId}</a
+      >`;
+    }
+    const p = this.party;
+    if (a.deceasedOn) return msg('Died', { id: 'animal.died' });
+    if (!this.may('policies:write') || !p || p.anonymized || p.ended) return msg('No', { id: 'party.notInsured' });
+    return html`<wa-button
+      size="small"
+      appearance="outlined"
+      @click=${(e: Event) => (e.stopPropagation(), navigate(`/policies/new?animal=${encodeURIComponent(a.id)}&holder=${encodeURIComponent(this.partyId)}`))}
+      >${msg('Issue a policy', { id: 'policy.issue' })}</wa-button
+    >`;
+  }
+
+  private detailsCard(p: Party, writable: boolean) {
     const lang = getLocale();
     const row = (label: string, value: unknown) => (value ? html`<div class="pv-dl__row"><dt>${label}</dt><dd>${value}</dd></div>` : nothing);
     const a = p.address;
+    const numberLabel = (i: { type: string; country: string }) =>
+      `${i.type === 'personal-number' ? msg('Personal number', { id: 'party.personalNumber' }) : msg('Organization number', { id: 'party.orgNumber' })} (${i.country})`;
     return html`<section class="pv-card" aria-labelledby="details">
       <div class="pv-card__head">
         <h2 class="pv-card__title" id="details">${msg('Details', { id: 'claim.facts' })}</h2>
@@ -342,35 +392,23 @@ export class PartyDetail extends LitElement {
       </div>
       <div class="pv-card__body">
         <dl class="pv-dl">
+          ${p.identifiers.map(
+            (i) => html`<div class="pv-dl__row">
+              <dt>${numberLabel(i)}</dt>
+              <dd>
+                <span class="pv-mono">${i.value}</span>
+                ${writable && this.removing !== i.id
+                  ? html`<wa-button size="small" appearance="outlined" @click=${() => ((this.removing = i.id), (this.removalReason = ''))}
+                      >${msg('Remove', { id: 'party.removeNumber' })}</wa-button
+                    >`
+                  : nothing}
+              </dd>
+            </div>`,
+          )}
           ${row(msg('Date of birth', { id: 'party.birthDate' }), p.birthDate ? formatDate(p.birthDate, lang) : '')} ${row(msg('Email', { id: 'party.email' }), p.email)}
           ${row(msg('Phone', { id: 'party.phone' }), p.phone)} ${row(msg('Address', { id: 'party.address' }), a ? `${a.street}, ${a.postalCode} ${a.city}, ${a.country}` : '')}
           ${row(msg('Language', { id: 'nav.language' }), p.language)}
         </dl>
-      </div>
-    </section>`;
-  }
-
-  private identifiersCard(p: Party, writable: boolean) {
-    return html`<section class="pv-card" aria-labelledby="ids">
-      <div class="pv-card__head"><h2 class="pv-card__title" id="ids">${msg('Numbers', { id: 'party.numbers' })}</h2></div>
-      <div class="pv-card__body">
-        ${p.identifiers.length
-          ? html`<dl class="pv-dl">
-              ${p.identifiers.map(
-                (i) => html`<div class="pv-dl__row">
-                  <dt>${i.type === 'personal-number' ? msg('Personal number', { id: 'party.personalNumber' }) : msg('Organization number', { id: 'party.orgNumber' })}, ${i.country}</dt>
-                  <dd>
-                    <span class="pv-mono">${i.value}</span>
-                    ${writable && this.removing !== i.id
-                      ? html`<wa-button size="small" appearance="outlined" @click=${() => ((this.removing = i.id), (this.removalReason = ''))}
-                          >${msg('Remove', { id: 'party.removeNumber' })}</wa-button
-                        >`
-                      : nothing}
-                  </dd>
-                </div>`,
-              )}
-            </dl>`
-          : html`<p>${msg('No numbers.', { id: 'party.noNumbers' })}</p>`}
         ${this.removing
           ? html`<form class="removal" @submit=${this.removeIdentifier}>
               <p>${msg('The number stays as history and can then be added to the right party. To correct a number, remove it and add the right one.', { id: 'party.removeHow' })}</p>
@@ -379,21 +417,18 @@ export class PartyDetail extends LitElement {
                 .value=${this.removalReason}
                 @input=${(e: Event) => (this.removalReason = (e.target as HTMLInputElement).value)}
               ></wa-input>
-              <wa-button type="submit" variant="danger" ?loading=${this.busy === 'remove'}>${msg('Remove the number', { id: 'party.removeSubmit' })}</wa-button>
-              <wa-button appearance="plain" @click=${() => (this.removing = null)}>${msg('Cancel', { id: 'common.cancel' })}</wa-button>
+              <div class="buttons">
+                <wa-button type="submit" variant="danger" ?loading=${this.busy === 'remove'}>${msg('Remove the number', { id: 'party.removeSubmit' })}</wa-button>
+                <wa-button appearance="plain" @click=${() => (this.removing = null)}>${msg('Cancel', { id: 'common.cancel' })}</wa-button>
+              </div>
             </form>`
           : nothing}
-        ${p.removedIdentifiers?.length
-          ? html`<details>
-              <summary>${msg('Removed numbers', { id: 'party.removedNumbers' })} (${p.removedIdentifiers.length})</summary>
-              <ul class="removed">
-                ${p.removedIdentifiers.map(
-                  (i) => html`<li><span class="pv-mono">${i.value}</span>, ${i.country}: ${i.removalReason} · ${i.removedBy} · ${formatDateTime(i.removedAt!, getLocale())}</li>`,
-                )}
-              </ul>
-            </details>`
+        ${writable && !this.adding
+          ? html`<wa-button size="small" appearance="outlined" class="add" @click=${() => (this.adding = true)}
+              ><wa-icon slot="start" name="plus"></wa-icon>${msg('Add a number', { id: 'party.addNumberOpen' })}</wa-button
+            >`
           : nothing}
-        ${writable
+        ${writable && this.adding
           ? html`<form class="row" @submit=${this.addIdentifier}>
               <wa-select label=${msg('Number', { id: 'party.number' })} value=${this.identifier.type} @change=${(e: Event) => (this.identifier = { ...this.identifier, type: (e.target as HTMLSelectElement).value as IdentifierForm['type'] })}>
                 <wa-option value="personal-number">${msg('Personal number', { id: 'party.personalNumber' })}</wa-option>
@@ -401,11 +436,25 @@ export class PartyDetail extends LitElement {
               </wa-select>
               <wa-input label=${msg('Value', { id: 'party.value' })} autocomplete="off" .value=${this.identifier.value} @input=${(e: Event) => (this.identifier = { ...this.identifier, value: (e.target as HTMLInputElement).value })}></wa-input>
               <wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'identifier'}>${msg('Add the number', { id: 'party.addNumber' })}</wa-button>
+              <wa-button appearance="plain" @click=${() => (this.adding = false)}>${msg('Cancel', { id: 'common.cancel' })}</wa-button>
             </form>`
+          : nothing}
+        ${p.removedIdentifiers?.length
+          ? html`<details>
+              <summary>${msg('Removed numbers', { id: 'party.removedNumbers' })} (${p.removedIdentifiers.length})</summary>
+              <ul class="removed">
+                ${p.removedIdentifiers.map(
+                  (i) => html`<li>${numberLabel(i)} <span class="pv-mono">${i.value}</span>: ${i.removalReason} · ${i.removedBy} · ${formatDateTime(i.removedAt!, lang)}</li>`,
+                )}
+              </ul>
+            </details>`
           : nothing}
       </div>
     </section>`;
   }
+
+
+
 
   private changeCard(p: Party) {
     if (!this.editing) {
@@ -547,7 +596,7 @@ export class PartyDetail extends LitElement {
           body: { type: this.identifier.type, country: this.identifier.country, value: this.identifier.value.trim() },
         }),
       msg('The number is added.', { id: 'party.numberAdded' }),
-      () => (this.identifier = { ...this.identifier, value: '' }),
+      () => ((this.identifier = { ...this.identifier, value: '' }), (this.adding = false)),
     );
   }
 

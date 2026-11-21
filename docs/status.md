@@ -389,6 +389,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Avslut** och återöppning. En försäkringstagare med en policy som löper kan inte avslutas.
   - **Migration 0049.** 148 operationer, 43 flöden.
 
+- Partens sida (PR #121): numren ligger i kortet Uppgifter, och djurlistan visar vilken policy som försäkrar varje djur, med "Teckna försäkring" för ett djur utan policy. 44 flöden.
+
 **Nästa steg**
 1. ADR 0038, steg 5: gallring av dokument som en körning.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.

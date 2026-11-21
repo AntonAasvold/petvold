@@ -971,4 +971,7 @@ export const templates: Record<string, string> = {
   'party.restrictedShort': 'Begränsad',
   'party.active': 'Aktiv',
   'party.tooShort': 'Skriv minst 2 tecken.',
+  'party.addNumberOpen': 'Lägg till ett nummer',
+  'party.insured': 'Försäkrad',
+  'party.notInsured': 'Nej',
 };

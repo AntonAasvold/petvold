@@ -47,6 +47,10 @@ export class DataGrid<T = unknown> extends LitElement {
     :host {
       display: block;
     }
+    /* Links in cells follow the design system: ink, underlined, never blue. */
+    a {
+      color: var(--ink);
+    }
     .wrap {
       overflow: auto;
       max-height: var(--pv-grid-max-height, none);
