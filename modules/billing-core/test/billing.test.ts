@@ -137,3 +137,25 @@ test('cancellation input is checked', () => {
   assert.throws(() => settleCancellation({ plan: quarterly, states: states(1, [0, 5]), refund: 0 }), /cannot be paid/);
   assert.throws(() => settleCancellation({ plan: quarterly, states: states(1, [100_001]), refund: 0 }), /more than the installment/);
 });
+
+test('OCR: a length digit and a Luhn check digit', async () => {
+  const { ocrReference, isOcrReference, luhnCheckDigit } = await import('@petvold/billing-core');
+  // Luhn of 7992739871 is 3 (the common worked example).
+  assert.equal(luhnCheckDigit('7992739871'), 3);
+  // 2026000001: twelve digits in all, so the length digit is 2; Luhn of 20260000012 is 1.
+  assert.equal(ocrReference('2026000001'), '202600000121');
+  assert.equal(isOcrReference('202600000121'), true);
+  assert.equal(isOcrReference('202600000126'), false, 'wrong check digit');
+  assert.equal(isOcrReference('20260000121'), false, 'a digit lost');
+  assert.throws(() => ocrReference('12a'), /base/);
+});
+
+test('RF after ISO 11649', async () => {
+  const { rfReference, isRfReference } = await import('@petvold/billing-core');
+  // The standard's example: RF18 539007547034.
+  assert.equal(rfReference('539007547034'), 'RF18539007547034');
+  assert.equal(isRfReference('RF18 5390 0754 7034'), true);
+  assert.equal(isRfReference('RF19539007547034'), false);
+  assert.equal(rfReference('2026000001').slice(0, 2), 'RF');
+  assert.throws(() => rfReference('a-b'), /base/);
+});

@@ -2537,6 +2537,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invoices, oldest first
+         * @description Requires the permission `billing:read` (ADR 0040). The invoicing run
+         *     (`billing.invoicing`, daily per market) puts every installment due within
+         *     the plan's lead time on one invoice per payer account. An invoice never
+         *     changes. Only invoices in the caller's markets; a role bound to policies
+         *     sees an invoice only if every line is on its policies, and a clinic none.
+         */
+        get: operations["listInvoices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invoices/{invoiceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An invoice
+         * @description Requires the permission `billing:read`. An invoice outside the caller's scope answers 404.
+         */
+        get: operations["getInvoice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/premium-plans": {
         parameters: {
             query?: never;
@@ -4359,6 +4403,54 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        /** @description An invoice (ADR 0040). Never changes; a correction is a credit note. */
+        Invoice: {
+            id: string;
+            /** @description From the market's unbroken series per year, e.g. SE-2026-000001. */
+            number: string;
+            accountId: string;
+            partyId: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            /** Format: date */
+            issueDate: string;
+            /**
+             * Format: date
+             * @description The earliest line's due date. A new policy's first premium is due at the earliest the market's days after the invoice (SE: 14, FAL 5 kap. 1 §).
+             */
+            dueDate: string;
+            reference: {
+                /**
+                 * @description ocr: Bankgirot's OCR with a length and a check digit. rf: ISO 11649.
+                 * @enum {string}
+                 */
+                type: "ocr" | "rf";
+                value: string;
+            };
+            lines: {
+                planId: string;
+                policyId: string;
+                termNo: number;
+                /** @description The installment's seq in the plan. */
+                seq: number;
+                /** Format: date */
+                periodStart: string;
+                /**
+                 * Format: date
+                 * @description Exclusive.
+                 */
+                periodEnd: string;
+                premium: number;
+                tax: number;
+                fee: number;
+                amount: number;
+            }[];
+            total: number;
+            /** @description Who ran the invoicing: 'scheduler' or a person. */
+            createdBy: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
         /** @description The premium plan for one term of a policy (ADR 0040). Never changes. */
         PremiumPlanRecord: {
             id: string;
@@ -4396,6 +4488,8 @@ export interface components {
                 };
             };
             plan: components["schemas"]["PremiumPlan"];
+            /** @description The product's lead time when the plan was made. Omitted: 20. */
+            invoiceLeadDays?: number;
             /** Format: date-time */
             createdAt: string;
         };
@@ -9575,6 +9669,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PayerAccount"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listInvoices: {
+        parameters: {
+            query?: {
+                accountId?: string;
+                /** @description Invoices with a line on the policy. */
+                policyId?: string;
+                market?: components["schemas"]["Market"];
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invoices */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Invoice"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoiceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invoice */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invoice"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

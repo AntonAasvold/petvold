@@ -462,6 +462,8 @@ export function jobLabel(name: string): string {
       return msg('Retention', { id: 'job.retention' });
     case 'claims.information-requests':
       return msg('Reminders and expiry of requests for information', { id: 'job.information-requests' });
+    case 'billing.invoicing':
+      return msg('Invoicing', { id: 'job.invoicing' });
     default:
       return name;
   }

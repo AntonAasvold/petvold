@@ -12,11 +12,13 @@ import type { JobContext, JobDefinition, JobResult, Schedule } from '@petvold/sc
 import type { Application, PolicyService, Proposal, RenewalRunResult } from '@petvold/policies';
 import type { RetentionRunResult, RetentionService } from '@petvold/parties';
 import type { ClaimsService, InformationRunResult } from '@petvold/claims-core';
+import type { BillingService, InvoicingRunResult } from '@petvold/billing';
 
 export interface JobServices {
   policies: Pick<PolicyService, 'renewalRun' | 'expireApplications' | 'expireProposals'>;
   retention: Pick<RetentionService, 'run'>;
   claims: Pick<ClaimsService, 'informationRequestRun'>;
+  billing: Pick<BillingService, 'invoicingRun'>;
 }
 
 /** A job with its full result, for the API, and the summary the history keeps. */
@@ -103,7 +105,15 @@ export function jobRunners(s: JobServices) {
     summarize: (r) => ({ reminded: r.reminded.length, expired: r.expired.length, remindedRequestIds: r.reminded, expiredRequestIds: r.expired }),
     join: (fulls) => fulls,
   };
-  return { applicationExpiry, proposalExpiry, renewal, retention, informationRequests };
+  // Invoicing (ADR 0040): after the renewals, so a renewed term's first installment can go on the same day's invoice.
+  const invoicing: JobRunner<InvoicingRunResult> = {
+    name: 'billing.invoicing',
+    schedule: { kind: 'daily', at: '04:00' },
+    execute: ({ market, onDate, by, dryRun }) => s.billing.invoicingRun({ market, onDate, dryRun }, by),
+    summarize: (r) => ({ checked: r.checked, invoiced: r.invoices.length, invoiceIds: r.invoices.flatMap((i) => (i.invoiceId ? [i.invoiceId] : [])) }),
+    join: (fulls) => fulls,
+  };
+  return { applicationExpiry, proposalExpiry, renewal, retention, informationRequests, invoicing };
 }
 
 /** The jobs for the scheduler, with their default schedules in each market's time zone. */

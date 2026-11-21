@@ -336,7 +336,7 @@ export function billingProductSource(products: ProductService): BillingProductSo
       });
       if (!v) return null;
       const b = billingSettingsOf(v.content);
-      return { market: v.content.market, currency: v.content.currency, paymentIntervals: b.paymentIntervals, defaultPaymentInterval: b.defaultPaymentInterval, installmentFee: b.installmentFee };
+      return { market: v.content.market, currency: v.content.currency, paymentIntervals: b.paymentIntervals, defaultPaymentInterval: b.defaultPaymentInterval, installmentFee: b.installmentFee, invoiceLeadDays: b.invoiceLeadDays };
     },
   };
 }

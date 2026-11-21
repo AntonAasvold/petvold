@@ -61,6 +61,7 @@ channels:
       noticeDocumentMade: { $ref: '#/components/messages/noticeDocumentMade' }
       noticeDelivered: { $ref: '#/components/messages/noticeDelivered' }
       noticeFailed: { $ref: '#/components/messages/noticeFailed' }
+      invoiceIssued: { $ref: '#/components/messages/invoiceIssued' }
 
 operations:
   sendEvent:
@@ -103,6 +104,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/noticeDocumentMade' }
       - { $ref: '#/channels/subscription/messages/noticeDelivered' }
       - { $ref: '#/channels/subscription/messages/noticeFailed' }
+      - { $ref: '#/channels/subscription/messages/invoiceIssued' }
 
 components:
   messageTraits:
@@ -488,6 +490,18 @@ components:
             properties:
               type: { const: petvold.proposal.created.v1 }
               data: { $ref: '#/components/schemas/ProposalCreatedData' }
+    invoiceIssued:
+      name: petvold.invoice.issued.v1
+      title: invoice.issued
+      summary: 'The invoicing run made an invoice (ADR 0040). Fetch it with GET /v1/invoices/{id}.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.invoice.issued.v1 }
+              data: { $ref: '#/components/schemas/InvoiceIssuedData' }
     noticeCreated:
       name: petvold.notice.created.v1
       title: notice.created
@@ -544,7 +558,7 @@ components:
       properties:
         specversion: { const: '1.0' }
         id: { type: string, description: Unique per source. Use it to recognize repeats. }
-        source: { type: string, enum: [/petvold/claims, /petvold/animals, /petvold/policies, /petvold/communications, /petvold/scheduling] }
+        source: { type: string, enum: [/petvold/claims, /petvold/animals, /petvold/policies, /petvold/communications, /petvold/scheduling, /petvold/billing] }
         type: { type: string, pattern: '^petvold\.[a-z]+\.[a-z_]+\.v[0-9]+$' }
         subject: { type: string, description: The id of the resource the event concerns. }
         time: { type: string, format: date-time }
@@ -854,6 +868,23 @@ components:
         from: { $ref: '#/components/schemas/Date' }
         deadline: { $ref: '#/components/schemas/Date' }
         deceasedOn: { $ref: '#/components/schemas/Date' }
+    InvoiceIssuedData:
+      type: object
+      additionalProperties: false
+      required: [invoiceId, invoiceNo, accountId, partyId, issueDate, dueDate, total, currency, reference, policyIds]
+      properties:
+        invoiceId: { type: string, pattern: '^inv_[A-Za-z0-9]+$' }
+        invoiceNo: { type: string, description: 'From the market''s unbroken series, e.g. SE-2026-000001.' }
+        accountId: { type: string, pattern: '^bac_[A-Za-z0-9]+$' }
+        partyId: { $ref: '#/components/schemas/PartyId' }
+        issueDate: { $ref: '#/components/schemas/Date' }
+        dueDate: { $ref: '#/components/schemas/Date' }
+        total: { type: integer, minimum: 0, description: In minor units of currency. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        reference: { type: string, description: 'The payment reference: OCR in Sweden, RF (ISO 11649) in EUR markets.' }
+        policyIds:
+          type: array
+          items: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
     NoticeCreatedData:
       type: object
       additionalProperties: false

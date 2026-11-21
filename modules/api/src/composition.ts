@@ -333,7 +333,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   const scheduler = new Scheduler({
     store: schedulingStore,
     clock,
-    jobs: defaultJobs({ policies, retention, claims: service }),
+    jobs: defaultJobs({ policies, retention, claims: service, billing }),
     markets: async () => {
       const fromProducts = (await products.allProducts()).flatMap((p) => p.versions.map((v) => v.content.market));
       const fromRetention = Object.keys((await retention.current()).markets);
@@ -395,6 +395,16 @@ export async function compose(config: InstallationConfig): Promise<Installation>
           }
         },
         markPublished: (ids, at) => policyStore.markPublished(ids, at),
+      }),
+      relaySource({
+        name: 'billing',
+        pending: (limit) => billingStore.pendingEvents(limit),
+        deliver: async (e) => {
+          log(`[event] ${e.type} ${e.invoiceId}`);
+          const queued = await webhooks.enqueue({ ...e });
+          if (queued) log(`[webhook] ${e.type} ${e.invoiceId} queued for ${queued} subscription(s)`);
+        },
+        markPublished: (ids, at) => billingStore.markPublished(ids, at),
       }),
       relaySource({
         name: 'communications',
