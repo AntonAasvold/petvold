@@ -7,7 +7,8 @@ import { DocumentConflictError, type DocumentFilter, type DocumentLink, type Doc
 
 const iso = (v: Date | string | null) => (v === null ? undefined : new Date(v).toISOString());
 
-const DOC = `id, kind, media_type, size_bytes, sha256, filename, owner_claim_id, owner_policy_id, owner_notice_id, party_ids, market, created_by, created_at, erased_at`;
+const DOC = `id, kind, media_type, size_bytes, sha256, filename, owner_claim_id, owner_policy_id, owner_notice_id, party_ids, market, created_by, created_at, erased_at,
+  template_name, template_market, template_language, template_version, template_checksum, data_hash`;
 
 function toDocument(r: Record<string, any>): StoredDocument {
   return {
@@ -17,6 +18,18 @@ function toDocument(r: Record<string, any>): StoredDocument {
     size: Number(r.size_bytes),
     sha256: r.sha256,
     ...(r.filename === null ? {} : { filename: r.filename }),
+    ...(r.template_name === null
+      ? {}
+      : {
+          template: {
+            name: r.template_name,
+            market: r.template_market,
+            language: r.template_language,
+            version: r.template_version,
+            checksum: r.template_checksum,
+            dataHash: r.data_hash,
+          },
+        }),
     owner: {
       ...(r.owner_claim_id === null ? {} : { claimId: r.owner_claim_id }),
       ...(r.owner_policy_id === null ? {} : { policyId: r.owner_policy_id }),
@@ -36,9 +49,13 @@ export class PostgresDocumentStore implements DocumentStore {
   async save(d: StoredDocument): Promise<void> {
     await this.pool
       .query(
-        `insert into documents.document (id, kind, media_type, size_bytes, sha256, filename, owner_claim_id, owner_policy_id, owner_notice_id, party_ids, market, created_by, created_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-        [d.id, d.kind, d.mediaType, d.size, d.sha256, d.filename ?? null, d.owner.claimId ?? null, d.owner.policyId ?? null, d.owner.noticeId ?? null, d.partyIds, d.market, d.createdBy, d.createdAt],
+        `insert into documents.document (id, kind, media_type, size_bytes, sha256, filename, owner_claim_id, owner_policy_id, owner_notice_id, party_ids, market, created_by, created_at,
+                                         template_name, template_market, template_language, template_version, template_checksum, data_hash)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+        [
+          d.id, d.kind, d.mediaType, d.size, d.sha256, d.filename ?? null, d.owner.claimId ?? null, d.owner.policyId ?? null, d.owner.noticeId ?? null, d.partyIds, d.market, d.createdBy, d.createdAt,
+          d.template?.name ?? null, d.template?.market ?? null, d.template?.language ?? null, d.template?.version ?? null, d.template?.checksum ?? null, d.template?.dataHash ?? null,
+        ],
       )
       .catch((e: { code?: string }) => {
         if (e.code === '23505') throw new DocumentConflictError(`Document ${d.id} exists`);
@@ -57,8 +74,9 @@ export class PostgresDocumentStore implements DocumentStore {
        where ($1::text is null or party_ids @> array[$1::text])
          and ($2::text is null or owner_claim_id = $2)
          and ($3::text is null or owner_policy_id = $3)
+         and ($4::text is null or owner_notice_id = $4)
        order by created_at desc, id desc`,
-      [f.partyId ?? null, f.claimId ?? null, f.policyId ?? null],
+      [f.partyId ?? null, f.claimId ?? null, f.policyId ?? null, f.noticeId ?? null],
     );
     return rows.map(toDocument);
   }

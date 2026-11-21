@@ -46,7 +46,8 @@ import { underwritingCoverage } from '@petvold/underwriting-core';
 import { InMemoryIdempotencyStore, type AppDeps, type IdempotencyStore } from './app.ts';
 import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './permissions.ts';
 import { Relay, relaySource } from './relay.ts';
-import { DocumentService, InMemoryBlobStore, InMemoryDocumentStore, type BlobStore, type DocumentStore } from '@petvold/documents';
+import { DocumentService, InMemoryBlobStore, InMemoryDocumentStore, type BlobStore, type DocumentStore, type PdfRenderer } from '@petvold/documents';
+import { GotenbergRenderer } from '@petvold/documents/gotenberg';
 import { PostgresDocumentStore } from '@petvold/documents/postgres';
 import { S3BlobStore, s3ConfigFromEnv, type S3Config } from '@petvold/documents/s3';
 import { animalPort, claimSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
@@ -81,6 +82,10 @@ export interface InstallationConfig {
     publicBaseUrl?: string;
     /** The archive (PETVOLD_DOCUMENTS_BUCKET and the rest). */
     s3?: S3Config | null;
+    /** Gotenberg, which makes PDFs from the templates (PETVOLD_GOTENBERG_URL). Omitted: no PDFs. */
+    gotenbergUrl?: string;
+    /** A renderer instead of Gotenberg, e.g. in tests. */
+    renderer?: PdfRenderer;
   };
   /** The claim number's prefix per market, e.g. { SE: 'S', NO: 'N' } (PETVOLD_CLAIM_NUMBER_PREFIX). 'S' when a market has none. */
   claimNumberPrefix?: Record<string, string>;
@@ -111,6 +116,7 @@ export function documentsFromEnv(env: Record<string, string | undefined>): NonNu
   return {
     ...(env.PETVOLD_DOCUMENT_KEY ? { key: env.PETVOLD_DOCUMENT_KEY } : {}),
     ...(env.PETVOLD_PUBLIC_URL ? { publicBaseUrl: env.PETVOLD_PUBLIC_URL } : {}),
+    ...(env.PETVOLD_GOTENBERG_URL ? { gotenbergUrl: env.PETVOLD_GOTENBERG_URL } : {}),
     s3: s3ConfigFromEnv(env),
   };
 }
@@ -392,7 +398,10 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   const blobs: BlobStore = s3 ?? new InMemoryBlobStore();
   const documentKey = config.documents?.key ? Buffer.from(config.documents.key, 'base64') : null;
   if (documentsPool && (!documentKey || documentKey.length < 32)) throw new Error('PETVOLD_DOCUMENT_KEY must be at least 32 bytes in base64 when documents are stored in Postgres');
+  const gotenberg = config.documents?.gotenbergUrl ? new GotenbergRenderer(config.documents.gotenbergUrl) : null;
+  const renderer = config.documents?.renderer ?? gotenberg;
   const documents = new DocumentService({
+    ...(renderer ? { renderer } : {}),
     store: documentStore,
     blobs,
     clock,
@@ -422,7 +431,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     webhookWorker,
     storage: Object.fromEntries(DATABASES.map((d) => [d, config.databases[d] ? 'postgres' : 'memory'])) as Record<DatabaseName, 'postgres' | 'memory'>,
     async ping() {
-      await Promise.all([...pools.map((p) => p.query('select 1')), s3?.ping()]);
+      await Promise.all([...pools.map((p) => p.query('select 1')), s3?.ping(), gotenberg?.ping()]);
     },
     async close() {
       await scheduler.stop();

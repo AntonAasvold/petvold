@@ -57,7 +57,7 @@ import {
   type ScopeAttributes,
 } from './permissions.ts';
 import { DocumentError, DocumentService, InMemoryBlobStore, InMemoryDocumentStore, MAX_UPLOAD_BYTES, sha256, type StoredDocument } from '@petvold/documents';
-import { localizeDeep, localizeExplanation, pickLocale } from './messages.ts';
+import { localizeDeep, localizeExplanation, pickLocale, renderRule, type Locale } from './messages.ts';
 
 /**
  * Who is calling. Comes from a JWT in production (e.g. the insurer's identity
@@ -1422,15 +1422,16 @@ export function createApp(d: AppDeps) {
    */
   const seesDocument = async (c: Context<Env>, doc: StoredDocument): Promise<boolean> => {
     const scope = c.get('scope');
-    if (doc.owner.claimId) {
-      if (!can(c, 'claims:read')) return false;
-      const claim = await d.service.getClaim(doc.owner.claimId).catch(() => null);
-      return !!claim && coversClaim(scope, claim);
-    }
+    // A notice's document follows the notice, also when the notice is about a claim.
     if (doc.owner.noticeId) {
       if (!can(c, 'notices:read')) return false;
       const n = await communications.get(doc.owner.noticeId).catch(() => null);
       return !!n && seesNotice(scope, n);
+    }
+    if (doc.owner.claimId) {
+      if (!can(c, 'claims:read')) return false;
+      const claim = await d.service.getClaim(doc.owner.claimId).catch(() => null);
+      return !!claim && coversClaim(scope, claim);
     }
     return !!doc.owner.policyId && can(c, 'policies:read') && !scope.clinicId && coversPolicy(scope, doc.market, doc.owner.policyId);
   };
@@ -1467,7 +1468,12 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/documents', async (c) => {
     const q = (k: string) => c.req.query(k);
-    const filter = { ...(q('partyId') ? { partyId: q('partyId')! } : {}), ...(q('claimId') ? { claimId: q('claimId')! } : {}), ...(q('policyId') ? { policyId: q('policyId')! } : {}) };
+    const filter = {
+      ...(q('partyId') ? { partyId: q('partyId')! } : {}),
+      ...(q('claimId') ? { claimId: q('claimId')! } : {}),
+      ...(q('policyId') ? { policyId: q('policyId')! } : {}),
+      ...(q('noticeId') ? { noticeId: q('noticeId')! } : {}),
+    };
     if (filter.partyId && !can(c, 'parties:read')) return problem(c, 403, 'Not permitted', 'A customer\'s documents need the permission parties:read');
     const found = await documents.list(filter);
     const visible: StoredDocument[] = [];
@@ -1476,6 +1482,45 @@ export function createApp(d: AppDeps) {
   });
 
   app.get('/v1/documents/:documentId', async (c) => send(c, await visibleDocument(c)));
+
+  /**
+   * A notice as a PDF from Petvold's template (ADR 0038 point 3): the notice's
+   * content, and the recipient's name and address, the animal's name and the
+   * reasons' texts read now. The document belongs to the notice and concerns
+   * its recipient. Making it again gives a new document.
+   */
+  app.post('/v1/notices/:noticeId/documents', async (c) => {
+    const n = await visibleNotice(c);
+    const r = await readJson(c, 'Empty');
+    if (!r.ok) return r.res;
+    const recipient = await parties.get(n.recipientPartyId).catch(() => null);
+    const name = recipient ? (recipient.name ?? [recipient.givenName, recipient.familyName].filter(Boolean).join(' ')) : '';
+    const address = recipient?.address ? [recipient.address.street, `${recipient.address.postalCode} ${recipient.address.city}`] : [];
+    const animalId = typeof n.content.animalId === 'string' ? n.content.animalId : undefined;
+    const animal = animalId ? await animals.get(animalId).catch(() => null) : null;
+    const locale: Locale = n.language === 'sv' ? 'sv' : 'en';
+    return idempotent(c, { noticeId: n.id }, async () => ({
+      status: 201,
+      body: await documents.generate(
+        {
+          template: n.type,
+          market: n.market,
+          language: n.language,
+          data: n.content,
+          context: {
+            now: d.clock.now(),
+            ...(recipient ? { recipient: { name, addressLines: address } } : {}),
+            ...(typeof n.content.sender === 'string' ? { sender: n.content.sender } : {}),
+            ...(animal ? { animalName: animal.name } : {}),
+            reason: (x) => renderRule(x, locale),
+          },
+          owner: { noticeId: n.id, ...(n.policyId ? { policyId: n.policyId } : {}), ...(typeof n.content.claimId === 'string' ? { claimId: n.content.claimId } : {}) },
+          partyIds: [n.recipientPartyId],
+        },
+        c.get('principal').subject,
+      ),
+    }));
+  });
 
   /**
    * Every document about a customer in one list (ADR 0038 point 8), wherever
@@ -1617,6 +1662,7 @@ export function createApp(d: AppDeps) {
       return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);
     }
     if (err instanceof DocumentError) {
+      if (err.code === 'unavailable') return c.body(JSON.stringify({ type: 'https://errors.petvold.dev/503', title: err.message, status: 503 }), 503, { 'content-type': PROBLEM });
       return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'gone' ? 410 : 422, err.message);
     }
     if (err instanceof DomainError) {

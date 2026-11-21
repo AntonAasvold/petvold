@@ -14,6 +14,7 @@
  * - PETVOLD_PUBLIC_URL: where the documents' links are opened, e.g. https://petvold.insurer.example. Required.
  * - PETVOLD_DOCUMENTS_BUCKET: the archive's bucket. Required. With PETVOLD_DOCUMENTS_S3_ENDPOINT,
  *   _S3_REGION, _S3_ACCESS_KEY and _S3_SECRET_KEY, else the AWS SDK's usual credentials.
+ * - PETVOLD_GOTENBERG_URL: Gotenberg on the internal network, which makes PDFs from the templates. Optional.
  * - PETVOLD_WEBHOOK_ALLOW_HOSTS: hosts a webhook may name although local or http, comma-separated. Default none.
  * - PETVOLD_VERSION: stored with every decision (ADR 0018). Required.
  * - PETVOLD_CLAIM_NUMBER_PREFIX: the claim number's prefix per market, e.g. SE=S,NO=N (ADR 0036). Default S.

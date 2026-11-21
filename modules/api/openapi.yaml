@@ -934,6 +934,42 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/notices/{noticeId}/documents:
+    post:
+      tags: [documents]
+      operationId: renderNoticeDocument
+      x-permission: notices:deliver
+      summary: Make the notice a PDF from Petvold's template
+      description: |
+        Requires the permission `notices:deliver`.
+
+        Petvold fills its template for the notice's type, market and language
+        with the notice's content, and the recipient's name and address, the
+        animal's name and the reasons' texts read now. Gotenberg turns it into
+        PDF/A (ADR 0038). The document belongs to the notice, concerns its
+        recipient, and keeps the template's version and checksum and the data's
+        hash. Making it again gives a new document. 503 without a PDF renderer
+        (PETVOLD_GOTENBERG_URL), 422 for a type without a template.
+      parameters:
+        - { name: noticeId, in: path, required: true, schema: { type: string, pattern: '^ntc_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Empty' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Made
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Document' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
   /v1/documents:
     get:
       tags: [documents]
@@ -945,11 +981,12 @@ paths:
         to what it belongs to: `claims:read` for a claim, `policies:read` for a
         policy and `notices:read` for a notice, within the caller's scope. A
         customer's list (`partyId`) also needs `parties:read`. Newest first.
-        Give one of partyId, claimId and policyId.
+        Give one of partyId, claimId, policyId and noticeId.
       parameters:
         - { name: partyId, in: query, schema: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' } }
         - { name: claimId, in: query, schema: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' } }
         - { name: policyId, in: query, schema: { type: string, pattern: '^pol_[A-Za-z0-9_]+$' } }
+        - { name: noticeId, in: query, schema: { type: string, pattern: '^ntc_[A-Za-z0-9]+$' } }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
@@ -4347,6 +4384,11 @@ components:
       schema: { type: string, minLength: 8, maxLength: 128 }
 
   responses:
+    Unavailable:
+      description: A service it needs is not configured or does not answer, e.g. the PDF renderer
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     Gone:
       description: It is no longer there, e.g. an erased document
       content:
@@ -4969,6 +5011,18 @@ components:
         createdBy: { type: string }
         createdAt: { $ref: '#/components/schemas/DateTime' }
         erasedAt: { $ref: '#/components/schemas/DateTime', description: The file was removed by retention; the record stays. }
+        template:
+          type: object
+          additionalProperties: false
+          required: [name, market, language, version, checksum, dataHash]
+          description: A generated document's template, its version and checksum, and the hash of the data (canonical JSON) it was filled with.
+          properties:
+            name: { type: string }
+            market: { $ref: '#/components/schemas/Market' }
+            language: { type: string }
+            version: { type: integer, minimum: 1 }
+            checksum: { type: string }
+            dataHash: { type: string }
 
     CustomerDocument:
       type: object

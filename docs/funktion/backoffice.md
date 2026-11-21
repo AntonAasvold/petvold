@@ -179,6 +179,8 @@ Den som har rätten `claims:request-information` kan begära underlag som saknas
 - **"Underlaget har kommit in"** (rätten `claims:register`). Ärendet går tillbaka till kön.
 - **"Återkalla begäran"**, med en anteckning om varför.
 
+Ett meddelandes sida har kortet "PDF från Petvold" (ADR 0038). Den som har `notices:deliver` kan göra ett skadebesked eller försäkringsbrev till en PDF med Petvolds mall, och de PDF:er som gjorts öppnas med en länk som gäller i 15 minuter.
+
 Historiken visar meddelandena till kunden om ärendet, med typ och läge, och "Öppna" går till meddelandet. Det gäller skadebeskedet och meddelandena om komplettering. Under Inställningar kan meddelandet om utgång stängas av.
 
 Går svarsdatumet ut utan svar står det i kortet att underlaget inte kom in. Kön visar då märket "Underlag saknas". Ett sent svar kan registreras ändå.
