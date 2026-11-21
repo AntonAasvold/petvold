@@ -66,7 +66,10 @@ test('a party is found by name, and its number removed, its processing restricte
   const detail = page.locator('pv-party-detail');
 
   // A number added by mistake is removed with a reason and stays as history.
-  await detail.getByRole('textbox', { name: 'Value' }).fill('20990303-1004');
+  // The numbers are part of the details; the form opens on request.
+  const details = detail.getByRole('region', { name: 'Details' });
+  await details.getByRole('button', { name: 'Add a number' }).click();
+  await details.getByRole('textbox', { name: 'Value' }).fill('20990303-1004');
   await detail.getByRole('button', { name: 'Add the number' }).click();
   await expect(detail.getByRole('status')).toContainText('The number is added.');
   await detail.getByRole('button', { name: 'Remove', exact: true }).click();
@@ -75,7 +78,7 @@ test('a party is found by name, and its number removed, its processing restricte
   await detail.getByRole('textbox', { name: 'Reason, without personal data' }).first().fill('Added to the wrong party');
   await detail.getByRole('button', { name: 'Remove the number' }).click();
   await expect(detail.getByRole('status')).toContainText('The number is removed.');
-  await expect(detail.getByText('No numbers.')).toBeVisible();
+  await expect(details.getByText('Personal number (SE)', { exact: true })).toHaveCount(0);
   await expect(detail.getByText('Removed numbers (1)')).toBeVisible();
 
   // Restricted and lifted (GDPR article 18).
@@ -102,4 +105,17 @@ test('a party is found by name, and its number removed, its processing restricte
   await ended.getByRole('button', { name: 'Reopen the party' }).click();
   await expect(detail.getByRole('status')).toContainText('The party is reopened.');
   await expect(detail.getByRole('region', { name: 'End the party' })).toBeVisible();
+});
+
+// The animals on a person's page say which policy insures them, and an uninsured one is insured from there.
+test('a person\'s animals show their policy, and an uninsured animal is insured from the person\'s page', async ({ page }) => {
+  await signInAs(page, 'dev-all');
+  await page.getByRole('combobox', { name: 'By' }).click();
+  await page.getByRole('option', { name: 'Party id' }).click();
+  await page.getByRole('textbox', { name: 'Party id' }).fill('pty_owner003');
+  await page.getByRole('button', { name: 'Search' }).click();
+  const animals = page.getByRole('grid', { name: 'Animals owned today' });
+  await expect(animals.getByRole('row').filter({ hasText: 'Max' }).getByRole('link', { name: /^pol_/ })).toBeVisible();
+  await animals.getByRole('row').filter({ hasText: 'Smilla' }).getByRole('button', { name: 'Issue a policy' }).click();
+  await expect(page).toHaveURL(/\/policies\/new\?animal=ani_smilla&holder=pty_owner003/);
 });

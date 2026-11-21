@@ -44,8 +44,8 @@ Petvold är headless. Kunden har inget eget gränssnitt, utan bolagets kanaler (
 | --- | --- | --- |
 | 1 | `dev-registrar`: Parter → **Registrera part**. En person med namn, adress och språk sv. Knappen syns bara med rättigheten `parties:write`. | Partens sida öppnas med ett nytt `pty_`-id. |
 | 1b | Parter → sök på en del av namnet, "Namn eller e-post". | Parten finns i listan över träffar med status Aktiv, och en rad öppnar partens sida. |
-| 2 | Djur → **Registrera djur**: hund, ras, kön, födelsedag, chipnummer och den nya parten som ägare. | Djurets sida visar ägaren. Partens sida visar djuret under "Djur som parten äger i dag". |
-| 3 | `dev-seller`: Policyer → **Teckna försäkring**. Välj djuret, parten, ett startdatum och en produkt utan hälsofrågor, till exempel `SE-HUND-BAS@2026.1`. | Under "Pris" syns premien per år och per termin. Ett startdatum som ligger för långt fram nekas (`maxStartAheadDays`). |
+| 2 | Partens sida → **Registrera djur**: hund, ras, kön, födelsedag och chipnummer. Ägaren är redan ifylld. | Djurets sida visar ägaren. Partens sida visar djuret under "Djur som parten äger i dag". |
+| 3 | `dev-all`: partens sida → djurlistan → **Teckna försäkring** på djuret. Det går också via Policyer → **Teckna försäkring**, med `dev-seller`. Välj ett startdatum och en produkt utan hälsofrågor, till exempel `SE-HUND-BAS@2026.1`. | Under "Pris" syns premien per år och per termin. Ett startdatum som ligger för långt fram nekas (`maxStartAheadDays`). |
 | 4 | Prova kampanjkoden `PUPPY2026`. | Priset ändras, och koden syns i prisets underlag. |
 | 5 | Kryssa i de dokument som kunden har fått se och tryck **Teckna försäkringen**. | "The policy is issued." visas, och policyns sida öppnas med termin, villkor och historik. |
 | 6 | Försök teckna en gång till för samma djur och period. | Nekas, med texten att djuret redan är försäkrat. |
