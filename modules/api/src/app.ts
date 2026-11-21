@@ -1058,6 +1058,7 @@ export function createApp(d: AppDeps) {
       ...(q('market') ? { market: q('market') } : {}),
       ...(q('policyId') ? { policyId: q('policyId') } : {}),
       ...(q('applicationId') ? { applicationId: q('applicationId') } : {}),
+      ...(q('invoiceId') ? { invoiceId: q('invoiceId') } : {}),
       ...(q('recipientPartyId') ? { recipientPartyId: q('recipientPartyId') } : {}),
       ...(flag('attention') ? { attention: true } : {}),
       ...(flag('overdue') ? { overdue: true } : {}),

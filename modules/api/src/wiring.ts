@@ -4,11 +4,11 @@
  * and by the dev server.
  */
 import { AnimalError, type AnimalService } from '@petvold/animals';
-import type { PolicySource as BillingPolicySource, ProductSource as BillingProductSource } from '@petvold/billing';
+import { BillingError, type BillingService, type PolicySource as BillingPolicySource, type ProductSource as BillingProductSource } from '@petvold/billing';
 import { CatalogError, billingSettingsOf, onSale, policySettingsOf, productVersionId, vetCareTermsFor, type ProductService } from '@petvold/catalog';
 import { DomainError, eventClaimId, type ClaimsEvent, type ClaimsService } from '@petvold/claims-core';
 import type { SourceEvent as WebhookSourceEvent } from '@petvold/webhooks';
-import type { ClaimSource, PartySource, PolicySource, SourceEvent as NoticeSourceEvent } from '@petvold/communications';
+import type { ClaimSource, InvoiceSource, PartySource, PolicySource, SourceEvent as NoticeSourceEvent } from '@petvold/communications';
 import { PartyError, type ActivitySource, type PartyService } from '@petvold/parties';
 import { PolicyError, type AnimalPort, type PolicyService, type ProductPort } from '@petvold/policies';
 
@@ -352,6 +352,31 @@ export function billingPolicySource(policies: PolicyService): BillingPolicySourc
       if (!p) return null;
       const v = p.versions.find((x) => x.validFrom <= date && date < x.validTo) ?? p.versions.filter((x) => x.validFrom <= date).at(-1) ?? p.versions[0];
       return v?.policyholderPartyId ?? null;
+    },
+  };
+}
+
+/** Billing's invoices as the notices read them (ADR 0040). */
+export function invoiceSource(billing: BillingService): InvoiceSource {
+  return {
+    async invoice(id) {
+      const i = await billing.invoice(id).catch((e: unknown) => {
+        if (e instanceof BillingError && e.code === 'not_found') return null;
+        throw e;
+      });
+      if (!i) return null;
+      return {
+        id: i.id,
+        number: i.number,
+        partyId: i.partyId,
+        market: i.market,
+        currency: i.currency,
+        issueDate: i.issueDate,
+        dueDate: i.dueDate,
+        reference: { ...i.reference },
+        total: i.total,
+        lines: i.lines.map((l) => ({ policyId: l.policyId, periodStart: l.periodStart, periodEnd: l.periodEnd, premium: l.premium, tax: l.tax, fee: l.fee, amount: l.amount })),
+      };
     },
   };
 }

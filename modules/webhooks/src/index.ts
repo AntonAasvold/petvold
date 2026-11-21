@@ -40,7 +40,7 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'claim.information_cancelled': { source: 'claims', subject: 'claimId', fields: INFORMATION_FIELDS },
   'animal.ownership_changed': { source: 'animals', subject: 'animalId', fields: ['fromPartyId', 'toPartyId', 'from'] },
   'animal.died': { source: 'animals', subject: 'animalId', fields: ['deceasedOn'] },
-  'notice.created': { source: 'communications', subject: 'noticeId', fields: ['noticeType', 'schema', 'recipientPartyId', 'language', 'policyId', 'applicationId', 'dueBy', 'documentMaker'] },
+  'notice.created': { source: 'communications', subject: 'noticeId', fields: ['noticeType', 'schema', 'recipientPartyId', 'language', 'policyId', 'applicationId', 'invoiceId', 'dueBy', 'documentMaker'] },
   'notice.document_made': { source: 'communications', subject: 'noticeId', fields: ['noticeType', 'documentId', 'sha256'] },
   'notice.delivered': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel', 'sentAt', 'documentId', 'late'] },
   'notice.failed': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel'] },

@@ -53,7 +53,7 @@ import { PostgresDocumentStore } from '@petvold/documents/postgres';
 import { S3BlobStore, s3ConfigFromEnv, type S3Config } from '@petvold/documents/s3';
 import { BillingService, InMemoryBillingStore, type BillingStore } from '@petvold/billing';
 import { PostgresBillingStore } from '@petvold/billing/postgres';
-import { animalPort, billingProductSource, billingPolicySource, claimSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
+import { animalPort, billingProductSource, billingPolicySource, claimSource, invoiceSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
 
 export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling', 'documents', 'billing'] as const;
 export type DatabaseName = (typeof DATABASES)[number];
@@ -264,6 +264,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     parties: partySource(parties),
     // The claims engine is made below; the port reads it when an event comes.
     claims: { decision: (id, seq) => claimSource(service).decision(id, seq), informationRequest: (id, r) => claimSource(service).informationRequest(id, r) },
+    // Billing is made below; the port reads it when an event comes.
+    invoices: { invoice: (id) => invoiceSource(billing).invoice(id) },
     // With a renderer, a market may have Petvold make the notices it has templates for (ADR 0038).
     ...(renderer ? { petvoldTemplates: (type: string, market: string) => TEMPLATES.some((t) => t.name === type && t.market === market) } : {}),
     clock,
@@ -401,6 +403,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
         pending: (limit) => billingStore.pendingEvents(limit),
         deliver: async (e) => {
           log(`[event] ${e.type} ${e.invoiceId}`);
+          const notice = await communications.handleBillingEvent(e);
+          if (notice) log(`[notice] ${notice.type} ${notice.id} due ${notice.dueBy}`);
           const queued = await webhooks.enqueue({ ...e });
           if (queued) log(`[webhook] ${e.type} ${e.invoiceId} queued for ${queued} subscription(s)`);
         },

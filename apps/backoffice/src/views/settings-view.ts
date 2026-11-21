@@ -63,7 +63,7 @@ export class SettingsView extends LitElement {
   @state() private rows: { market: string; years: string }[] = [];
   /** Notices: the market and its form. */
   @state() private market = '';
-  @state() private form: NoticeMarketForm = { promptlyDays: '', disabledTypes: [], texts: { sv: { sender: '', review: '' }, en: { sender: '', review: '' } } };
+  @state() private form: NoticeMarketForm = { promptlyDays: '', disabledTypes: [], texts: { sv: { sender: '', review: '', payment: '' }, en: { sender: '', review: '', payment: '' } } };
   private keys = new IdempotencyKeys();
 
   constructor() {
@@ -140,7 +140,7 @@ export class SettingsView extends LitElement {
 
   private fillNoticeForm() {
     const m = this.notices?.markets[this.market] ?? {};
-    const text = (lang: string) => ({ sender: m.texts?.[lang]?.sender ?? '', review: m.texts?.[lang]?.review ?? '' });
+    const text = (lang: string) => ({ sender: m.texts?.[lang]?.sender ?? '', review: m.texts?.[lang]?.review ?? '', payment: m.texts?.[lang]?.payment ?? '' });
     this.form = { documentMaker: m.documentMaker ?? 'insurer', promptlyDays: m.promptlyDays ? String(m.promptlyDays) : '', disabledTypes: [...(m.disabledTypes ?? [])], texts: { sv: text('sv'), en: text('en') } };
   }
 
@@ -250,7 +250,7 @@ export class SettingsView extends LitElement {
   private noticesTab() {
     const edit = can(this.me, 'notices:configure');
     const markets = Object.keys(this.notices!.markets);
-    const text = (lang: 'sv' | 'en', field: 'sender' | 'review') => (e: Event) =>
+    const text = (lang: 'sv' | 'en', field: 'sender' | 'review' | 'payment') => (e: Event) =>
       (this.form = { ...this.form, texts: { ...this.form.texts, [lang]: { ...this.form.texts[lang]!, [field]: (e.target as HTMLTextAreaElement).value } } });
     return html`<wa-card>
       <h3 slot="header">${msg("The insurer's notice settings", { id: 'settings.noticeTitle' })}</h3>
@@ -300,7 +300,14 @@ export class SettingsView extends LitElement {
               ?disabled=${!edit}
               .value=${this.form.texts[lang]!.review}
               @input=${text(lang, 'review')}
-            ></wa-textarea>`,
+            ></wa-textarea>
+            <wa-input
+              label=${`${msg('Where invoices are paid', { id: 'settings.payment' })} (${lang})`}
+              hint=${lang === 'sv' ? msg('For example the bankgiro number. An invoice without it cannot be sent.', { id: 'settings.paymentHint' }) : ''}
+              ?disabled=${!edit}
+              .value=${this.form.texts[lang]!.payment ?? ''}
+              @input=${text(lang, 'payment')}
+            ></wa-input>`,
         )}
         ${edit
           ? html`${this.reasonField()} ${this.problems()}

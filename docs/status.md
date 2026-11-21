@@ -48,8 +48,10 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Egenskapstest för faktureringen.** Det hittade att en senare premie kunde förfalla tidigare än lagen tillåter (FAL 5 kap. 1 §: en månad efter fakturan). Rättat, och förvalet för `billing.invoiceLeadDays` är nu 31 dagar (rättelse i ADR 0040).
   - Testerna för migreringar och lagringar uppdaterar sig själva. Status arkiverad, och mindre dokumentation per PR (`CLAUDE.md`, `arbetssatt.md`).
 
+- Fakturan som meddelande (ADR 0040, steg 2b-2), PR #133: `invoice.issued` ger meddelandet `invoice`, som ska skickas på fakturans dag (FAL 5 kap. 1 §), med `invoiceId` i stället för policy. Bolagets text `payment` (vart kunden betalar) krävs, och utan den hamnar fakturan i kön. Migration 0052. 607 tester och 171 databastester.
+
 **Nästa steg**
-1. ADR 0040, steg 2b-2: fakturan som meddelande till kunden, via `communications`.
+1. ADR 0040, steg 2c: kundens val av intervall vid tecknandet, och ändring, avslut, återkallelse och överlåtelse mot planen.
 2. ADR 0041 om demotjänsten som tar emot händelserna, spelar bank och kontrollerar att allt stämmer.
 3. ADR 0038, steg 5: gallring av dokument som en körning.
 4. Back office: översikten på startsidan och omräkning av beslut.

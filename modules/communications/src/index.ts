@@ -27,6 +27,7 @@ export const NOTICE_TYPES = [
   'claim-information-request',
   'claim-information-reminder',
   'claim-information-expired',
+  'invoice',
 ] as const;
 export type NoticeType = (typeof NOTICE_TYPES)[number];
 
@@ -42,6 +43,7 @@ export const NOTICE_SCHEMAS: Record<NoticeType, string> = {
   'claim-information-request': 'claim-information-request.v1',
   'claim-information-reminder': 'claim-information-reminder.v1',
   'claim-information-expired': 'claim-information-expired.v1',
+  invoice: 'invoice.v1',
 };
 
 /** Fields an insurer's text fills, per type: a notice without them is incomplete and in the queue. */
@@ -50,6 +52,8 @@ export const REQUIRED_TEXTS: Partial<Record<NoticeType, (keyof NoticeTexts)[]>> 
   'application-declined': ['review'],
   // How the customer has a claims decision reviewed: the insurer's complaints function and the bodies outside it.
   'claim-decision': ['review'],
+  // Where the customer pays, e.g. the insurer's bankgiro number: an invoice without it cannot be paid.
+  invoice: ['payment'],
 };
 
 /**
@@ -137,6 +141,15 @@ export const NOTICE_RULES: Record<string, MarketNoticeRules> = {
       },
       // Not required by law: the insurer may turn it off (ADR 0036).
       'claim-information-expired': { required: false, due: 'promptly', legalBasis: [] },
+      // The demand for premium (ADR 0040). The law counts the time to pay from the day it is sent, and the
+      // invoice's due date from its issue date, so it is sent on that day.
+      invoice: {
+        required: true,
+        due: 'sent-on',
+        legalBasis: [
+          'Insurance Contracts Act chapter 5 section 1: the first premium need not be paid earlier than fourteen days, and a later premium a month, after the demand was sent',
+        ],
+      },
     },
   },
 };
@@ -168,6 +181,8 @@ export interface NoticeTexts {
   sender?: string;
   /** How a decision is reviewed: the insurer's complaints function and the bodies the customer can turn to. */
   review?: string;
+  /** Where and how an invoice is paid, e.g. "Bankgiro 123-4567". */
+  payment?: string;
 }
 
 /** Who makes a notice's document (ADR 0038): the insurer's document system, or Petvold from its templates. */
@@ -228,6 +243,8 @@ export interface Notice {
   language: string;
   policyId?: string;
   applicationId?: string;
+  /** An invoice (ADR 0040): it may hold several policies, so it has no policyId. */
+  invoiceId?: string;
   /** The event it was made from. Together with the type, unique. */
   source: { eventId: string; eventType: string; occurredAt: Timestamp };
   legalBasis: string[];
@@ -319,6 +336,24 @@ export interface ApplicationView {
   decidedBy: 'rules' | 'person';
 }
 
+/** An invoice as the notice needs it, read from billing (ADR 0040). */
+export interface InvoiceView {
+  id: string;
+  number: string;
+  partyId: string;
+  market: string;
+  currency: string;
+  issueDate: ISODate;
+  dueDate: ISODate;
+  reference: { type: string; value: string };
+  total: number;
+  lines: { policyId: string; periodStart: ISODate; periodEnd: ISODate; premium: number; tax: number; fee: number; amount: number }[];
+}
+
+export interface InvoiceSource {
+  invoice(invoiceId: string): Promise<InvoiceView | null>;
+}
+
 /** What the module reads from the policy module. */
 export interface PolicySource {
   policy(policyId: string): Promise<PolicyView | null>;
@@ -383,6 +418,7 @@ export interface NoticeFilter {
   market?: string;
   policyId?: string;
   applicationId?: string;
+  invoiceId?: string;
   recipientPartyId?: string;
 }
 
@@ -451,6 +487,8 @@ export interface CommunicationsDeps {
   settings: NoticeSettingsStore;
   /** The claims engine, for claims decisions and requests for information. Omitted: claims events give no notices. */
   claims?: ClaimSource;
+  /** Billing, for invoices (ADR 0040). Omitted: billing events give no notices. */
+  invoices?: InvoiceSource;
   /** Defaults to NOTICE_RULES. */
   rules?: Record<string, MarketNoticeRules>;
   /** Version 1 of the settings. Defaults to an empty setting per market with rules. */
@@ -499,6 +537,33 @@ export class CommunicationsService {
    */
   async handleClaimEvent(e: SourceEvent & { claimId: string }): Promise<Notice | null> {
     return this.make(e, await this.planClaim(e));
+  }
+
+  /**
+   * Makes the invoice a billing event calls for (ADR 0040): invoice.issued
+   * gives the invoice to the customer, due to be sent on its issue date.
+   * Repeats give nothing new.
+   */
+  async handleBillingEvent(e: SourceEvent & { invoiceId: string }): Promise<Notice | null> {
+    if (e.type !== 'invoice.issued' || !this.d.invoices) return null;
+    const i = await this.d.invoices.invoice(e.invoiceId);
+    if (!i) throw new Error(`The invoice ${e.invoiceId} of event ${e.id} does not exist`);
+    return this.make(e, {
+      type: 'invoice',
+      market: i.market,
+      recipientPartyId: i.partyId,
+      invoiceId: i.id,
+      sentOn: i.issueDate,
+      content: {
+        invoiceId: i.id,
+        invoiceNo: i.number,
+        issueDate: i.issueDate,
+        dueDate: i.dueDate,
+        total: { amount: i.total, currency: i.currency },
+        reference: { ...i.reference },
+        lines: i.lines.map((l) => ({ policyId: l.policyId, periodStart: l.periodStart, periodEnd: l.periodEnd, premium: l.premium, tax: l.tax, fee: l.fee, amount: l.amount })),
+      },
+    });
   }
 
   private async planClaim(e: SourceEvent & { claimId: string }): Promise<Planned | null> {
@@ -590,6 +655,7 @@ export class CommunicationsService {
       language,
       ...(planned.policyId ? { policyId: planned.policyId } : {}),
       ...(planned.applicationId ? { applicationId: planned.applicationId } : {}),
+      ...(planned.invoiceId ? { invoiceId: planned.invoiceId } : {}),
       source: { eventId: e.id, eventType: e.type, occurredAt: e.occurredAt },
       legalBasis: [...rule.legalBasis],
       dueBy,
@@ -612,6 +678,7 @@ export class CommunicationsService {
         language: notice.language,
         ...(notice.policyId ? { policyId: notice.policyId } : {}),
         ...(notice.applicationId ? { applicationId: notice.applicationId } : {}),
+        ...(notice.invoiceId ? { invoiceId: notice.invoiceId } : {}),
         dueBy: notice.dueBy,
         documentMaker,
       },
@@ -773,13 +840,13 @@ export class CommunicationsService {
         for (const [lang, t] of Object.entries(s.texts)) {
           if (!/^[a-z]{2}$/.test(lang)) fail(`Invalid language '${lang}', ISO 639-1, e.g. sv`);
           const clean: NoticeTexts = {};
-          for (const k of ['sender', 'review'] as const) {
+          for (const k of ['sender', 'review', 'payment'] as const) {
             const v = t?.[k];
             if (v === undefined) continue;
             if (typeof v !== 'string' || !v.trim() || v.length > 2000) fail(`${market} ${lang} ${k} must be text of at most 2000 characters`);
             clean[k] = v.trim();
           }
-          const unknown = Object.keys(t ?? {}).filter((k) => k !== 'sender' && k !== 'review');
+          const unknown = Object.keys(t ?? {}).filter((k) => k !== 'sender' && k !== 'review' && k !== 'payment');
           if (unknown.length) fail(`Unknown texts: ${unknown.join(', ')}`);
           out.texts[lang] = clean;
         }
@@ -911,6 +978,7 @@ interface Planned {
   recipientPartyId: string;
   policyId?: string;
   applicationId?: string;
+  invoiceId?: string;
   content: Record<string, unknown>;
   termStart?: ISODate;
   sentOn?: ISODate;
@@ -989,6 +1057,7 @@ export class InMemoryNoticeStore implements NoticeStore {
           (!f.market || n.market === f.market) &&
           (!f.policyId || n.policyId === f.policyId) &&
           (!f.applicationId || n.applicationId === f.applicationId) &&
+          (!f.invoiceId || n.invoiceId === f.invoiceId) &&
           (!f.recipientPartyId || n.recipientPartyId === f.recipientPartyId)
         );
       }),

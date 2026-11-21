@@ -47,6 +47,15 @@ export const failed = (n: number, o: Partial<Delivery> = {}): Delivery => ({
 
 export function noticeStoreSuite(name: string, make: () => Promise<{ store: NoticeStore }>) {
   describe(name, () => {
+    test('an invoice notice has the invoice instead of a policy', async () => {
+      const { store } = await make();
+      const inv = notice(7, { type: 'invoice', schema: 'invoice.v1', invoiceId: 'inv_7', content: { invoiceNo: 'SE-2026-000007' } });
+      delete (inv as { policyId?: string }).policyId;
+      assert.equal(await store.add(inv, []), true);
+      assert.deepEqual(await store.get('ntc_7'), inv);
+      assert.deepEqual((await store.list({ invoiceId: 'inv_7' })).map((n) => n.id), ['ntc_7']);
+    });
+
     test('a notice is stored once per event and type, and read back as it was', async () => {
       const { store } = await make();
       assert.equal(await store.add(notice(), []), true);
