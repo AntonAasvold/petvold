@@ -25,7 +25,7 @@ test('a party is erased with four eyes: asked by one officer, approved by anothe
   const search = page.getByRole('searchbox', { name: 'Search for a claim, policy, animal or customer' });
   await search.fill(partyId);
   await search.press('Enter');
-  await page.getByRole('textbox', { name: 'Reason, without personal data' }).fill('The person asked by letter');
+  await page.getByRole('region', { name: 'Ask for erasure' }).getByRole('textbox', { name: 'Reason, without personal data' }).fill('The person asked by letter');
   await page.getByRole('region', { name: 'Ask for erasure' }).getByRole('button', { name: 'Ask for erasure' }).click();
   await expect(page.getByRole('status')).toContainText('The request waits for another privacy officer.');
 

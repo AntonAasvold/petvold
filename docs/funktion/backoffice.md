@@ -44,7 +44,7 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 
 Avsnittet Parter (rätten `parties:read`) gäller personer och organisationer (ADR 0026):
 
-- **Hitta en part** med personnummer, organisationsnummer eller part-id. Ett nummer skickas i sökningens innehåll och hamnar aldrig i en adress. Ett `pty_`-id i sökfältet i toppraden öppnar parten direkt.
+- **Hitta en part** med en del av namnet eller e-postadressen, med personnummer, organisationsnummer eller med part-id. En sökning på namn visar upp till 50 parter i en lista med namn, typ, marknad, e-post, ort och status (Aktiv, Begränsad eller Avslutad). Det som söks skickas i sökningens innehåll och hamnar aldrig i en adress. Ett `pty_`-id i sökfältet i toppraden öppnar parten direkt.
 - **Registrera en part** (rätten `parties:write`): person eller organisation, marknad, namn, kontaktuppgifter, adress, språk och ett nummer om det finns. Appen säger vad som saknas innan något skickas, till exempel en adress som bara delvis är ifylld.
 - **Partens sida:**
   - uppgifterna och numren, där personnummer visas maskade
@@ -52,7 +52,9 @@ Avsnittet Parter (rätten `parties:read`) gäller personer och organisationer (A
   - **dokumenten** (ADR 0038): alla dokument om kunden i en lista, nyast först, med typ, vad de gäller och var de finns. Det gäller filer i Petvolds arkiv, brev som bolagets dokumentsystem har skickat och bilagor i bolagets arkiv. "Öppna" ger en länk som gäller i 15 minuter för en fil i Petvolds arkiv, och går till adressen för en fil i bolagets arkiv. Ett brev från bolaget visar sitt id i bolagets arkiv. Listan visar bara det man får se.
   - historiken med varje revision
 - **Ändra uppgifterna** (rätten `parties:write`): formuläret börjar på de nuvarande uppgifterna och kräver ett skäl. Varje ändring blir en ny revision.
-- **Lägg till ett nummer** (rätten `parties:write`).
+- **Lägg till ett nummer** (rätten `parties:write`), och **ta bort** ett nummer med ett skäl. Borttagna nummer visas under "Borttagna nummer". Ett nummer rättas genom att det tas bort och det rätta läggs till (ADR 0039).
+- **Avsluta parten** (rätten `parties:write`) med orsak, datum och skäl, och **öppna den igen**. En avslutad part är märkt "Avslutad", och knapparna för att teckna en försäkring och registrera ett djur försvinner.
+- **Begränsa behandlingen** och **häv begränsningen** (rätten `parties:privacy`) med datum och skäl.
 - **Begär radering** (rätten `parties:privacy`) med ett skäl utan personuppgifter. En annan dataskyddsansvarig beslutar (ADR 0028).
 
 En anonymiserad part kan inte ändras.

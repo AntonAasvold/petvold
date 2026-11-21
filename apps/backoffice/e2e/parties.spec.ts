@@ -32,11 +32,74 @@ test('a party is registered, changed with a reason, and every change is in the h
   await detail.getByRole('textbox', { name: 'City' }).fill('Uppsala');
   await detail.getByRole('button', { name: 'Save the change' }).click();
   await expect(detail.getByRole('alert')).toContainText('Give a reason for the change.');
-  await detail.getByRole('textbox', { name: 'Reason' }).fill('Moved, the customer called');
+  await detail.getByRole('textbox', { name: 'Reason', exact: true }).fill('Moved, the customer called');
   await detail.getByRole('button', { name: 'Save the change' }).click();
   await expect(detail.getByRole('status')).toContainText('The details are changed.');
   await expect(detail.getByText('Storgatan 1, 111 22 Uppsala, SE')).toBeVisible();
   const history = page.getByRole('region', { name: 'History' });
   await expect(history.getByRole('listitem')).toHaveCount(2);
   await expect(history.getByRole('listitem').first()).toContainText('Moved, the customer called');
+});
+
+async function signInAs(page: import('@playwright/test').Page, token: string) {
+  await page.goto('/');
+  await page.getByRole('combobox', { name: 'Token' }).click();
+  await page.getByRole('option', { name: token, exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Parties/ }).click();
+}
+
+// ADR 0039: a party is found by name, a number is removed, the processing restricted and lifted, and the party ended and reopened.
+test('a party is found by name, and its number removed, its processing restricted and the party ended and reopened', async ({ page }) => {
+  await signInAs(page, 'dev-all');
+  await page.getByRole('textbox', { name: 'Name or email' }).fill('erik');
+  await page.getByRole('button', { name: 'Search' }).click();
+  const found = page.getByRole('grid', { name: 'Parties found' });
+  await expect(found.getByRole('row').filter({ hasText: 'Erik' })).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Register a party' }).click();
+  const form = page.locator('pv-party-register');
+  await form.getByRole('textbox', { name: 'Given name' }).fill('Nils');
+  await form.getByRole('textbox', { name: 'Family name' }).fill('Testsson');
+  await form.getByRole('button', { name: 'Register the party' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Nils Testsson' })).toBeVisible();
+  const detail = page.locator('pv-party-detail');
+
+  // A number added by mistake is removed with a reason and stays as history.
+  await detail.getByRole('textbox', { name: 'Value' }).fill('20990303-1004');
+  await detail.getByRole('button', { name: 'Add the number' }).click();
+  await expect(detail.getByRole('status')).toContainText('The number is added.');
+  await detail.getByRole('button', { name: 'Remove', exact: true }).click();
+  await detail.getByRole('button', { name: 'Remove the number' }).click();
+  await expect(detail.getByRole('alert')).toContainText('reason');
+  await detail.getByRole('textbox', { name: 'Reason, without personal data' }).first().fill('Added to the wrong party');
+  await detail.getByRole('button', { name: 'Remove the number' }).click();
+  await expect(detail.getByRole('status')).toContainText('The number is removed.');
+  await expect(detail.getByText('No numbers.')).toBeVisible();
+  await expect(detail.getByText('Removed numbers (1)')).toBeVisible();
+
+  // Restricted and lifted (GDPR article 18).
+  const restriction = detail.getByRole('region', { name: 'Restriction' });
+  await restriction.getByLabel('Restricted until').fill('2099-01-31');
+  await restriction.getByRole('textbox', { name: 'Reason, without personal data' }).fill('The customer contests the details');
+  await restriction.getByRole('button', { name: 'Restrict the processing' }).click();
+  await expect(detail.getByRole('status')).toContainText('The processing is restricted.');
+  await restriction.getByRole('textbox', { name: 'Reason, without personal data' }).fill('Checked with the customer');
+  await restriction.getByRole('button', { name: 'Lift the restriction' }).click();
+  await expect(detail.getByRole('status')).toContainText('The restriction is lifted.');
+
+  // Ended, then reopened.
+  const ending = detail.getByRole('region', { name: 'End the party' });
+  await ending.getByRole('combobox', { name: 'Cause' }).click();
+  await page.getByRole('option', { name: 'Deceased' }).click();
+  await ending.getByLabel('Date').fill('2026-01-02');
+  await ending.getByRole('textbox', { name: 'Reason, without personal data' }).fill('Death certificate received');
+  await ending.getByRole('button', { name: 'End the party' }).click();
+  await expect(detail.getByRole('status')).toContainText('The party is ended.');
+  await expect(page.getByText('Ended 2026-01-02')).toBeVisible();
+  const ended = detail.getByRole('region', { name: 'Ended' });
+  await ended.getByRole('textbox', { name: 'Reason for reopening' }).fill('Ended by mistake');
+  await ended.getByRole('button', { name: 'Reopen the party' }).click();
+  await expect(detail.getByRole('status')).toContainText('The party is reopened.');
+  await expect(detail.getByRole('region', { name: 'End the party' })).toBeVisible();
 });

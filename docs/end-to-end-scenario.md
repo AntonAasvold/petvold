@@ -42,7 +42,8 @@ Petvold är headless. Kunden har inget eget gränssnitt, utan bolagets kanaler (
 
 | # | Gör (token) | Förväntat |
 | --- | --- | --- |
-| 1 | `dev-registrar`: Parter → **Registrera part**. En person med namn, adress och språk sv. | Partens sida öppnas med ett nytt `pty_`-id. |
+| 1 | `dev-registrar`: Parter → **Registrera part**. En person med namn, adress och språk sv. Knappen syns bara med rättigheten `parties:write`. | Partens sida öppnas med ett nytt `pty_`-id. |
+| 1b | Parter → sök på en del av namnet, "Namn eller e-post". | Parten finns i listan över träffar med status Aktiv, och en rad öppnar partens sida. |
 | 2 | Djur → **Registrera djur**: hund, ras, kön, födelsedag, chipnummer och den nya parten som ägare. | Djurets sida visar ägaren. Partens sida visar djuret under "Djur som parten äger i dag". |
 | 3 | `dev-seller`: Policyer → **Teckna försäkring**. Välj djuret, parten, ett startdatum och en produkt utan hälsofrågor, till exempel `SE-HUND-BAS@2026.1`. | Under "Pris" syns premien per år och per termin. Ett startdatum som ligger för långt fram nekas (`maxStartAheadDays`). |
 | 4 | Prova kampanjkoden `PUPPY2026`. | Priset ändras, och koden syns i prisets underlag. |
@@ -103,6 +104,10 @@ Petvold är headless. Kunden har inget eget gränssnitt, utan bolagets kanaler (
 
 | # | Gör (token) | Förväntat |
 | --- | --- | --- |
+| 0a | `dev-registrar`: lägg till ett personnummer på fel part. Tryck **Ta bort** vid numret, ange ett skäl och tryck **Ta bort numret**. Lägg sedan till numret på rätt part. | Numret visas under "Borttagna nummer", maskerat och med skälet. Det går att lägga till på den andra parten. |
+| 0b | `dev-privacy`: partens sida → **Begränsning**. Ange ett datum och ett skäl och tryck **Begränsa behandlingen**. Häv sedan med **Häv begränsningen**. | Parten är märkt "Begränsad till". Den syns inte för `dev-registrar` vid sökning, men syns igen när begränsningen hävts. |
+| 0c | `dev-registrar`: för Bellas ägare Anna (`pty_owner001`), **Avsluta parten** med orsaken Avliden. | Nekas, eftersom Anna är försäkringstagare på `pol_bella`. Svaret anger policyn. |
+| 0d | Avsluta en part som inte har någon policy som löper, till exempel parten från 0a, med orsak, datum och skäl. Gör sedan **Öppna parten igen**. | Parten är märkt "Avslutad" med datumet, och Teckna försäkring och Registrera djur försvinner. När den öppnats igen är den aktiv. En policy som sagts upp löper till slutdatumet, och fram till dess kan försäkringstagaren inte avslutas. |
 | 1 | `dev-privacy`: partens sida → **Begär radering**. | Begäran väntar på en andra person. Det som lagen kräver att bolaget sparar raderas inte. |
 | 2 | `dev-privacy-2`: Radering → öppna begäran och godkänn den. | Parten anonymiseras. Namn och adress försvinner, men beslut och belopp finns kvar. |
 | 3 | `dev-operations`: Körningar → gallringen → **Prova körningen**. | Listan visar vad som skulle gallras enligt inställningen för gallring per marknad. |

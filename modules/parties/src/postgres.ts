@@ -18,6 +18,10 @@ import {
   type PartyIdentifierType,
   type PartyRecord,
   type PartyStore,
+  type RestrictionEvent,
+  type StatusEvent,
+  endingFrom,
+  restrictionFrom,
 } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
@@ -32,19 +36,51 @@ export class PostgresPartyStore implements PartyStore {
     const { rows } = await this.pool.query(`select ${REVISION} from parties.party_revision where party_id = $1 order by revision desc limit 1`, [id]);
     if (!rows[0]) return null;
     const ids = await this.pool.query(
-      `select type, country, value, added_by, added_at from parties.party_identifier where party_id = $1 order by added_at, type, country, value`,
+      `select identifier_id, type, country, value, added_by, added_at, removed_by, removed_at, removal_reason
+       from parties.party_identifier where party_id = $1 order by added_at, type, country, value`,
       [id],
     );
-    const restricted = await this.pool.query(
-      `select max(d.restrict_until)::text as until from parties.erasure_request r join parties.erasure_decision d using (request_id)
-       where r.party_id = $1`,
+    // The restriction in force: the latest of a rejected erasure request and a restriction set or lifted directly (ADR 0039).
+    const restrictions = await this.pool.query(
+      `select d.decided_at as at, d.restrict_until::text as until from parties.erasure_request r join parties.erasure_decision d using (request_id)
+        where r.party_id = $1 and d.restrict_until is not null
+       union all
+       select decided_at, until::text from parties.restriction where party_id = $1`,
       [id],
     );
-    const until = restricted.rows[0]?.until ?? null;
+    const until = restrictionFrom(restrictions.rows.map((r) => ({ at: iso(r.at), ...(r.until ? { until: r.until } : {}) })));
+    const statuses = await this.pool.query(
+      `select status_id, party_id, action, cause, ended_on::text as ended_on, reason, decided_by, decided_at from parties.party_status where party_id = $1`,
+      [id],
+    );
+    const ended = endingFrom(
+      statuses.rows.map((r) => ({
+        id: r.status_id,
+        partyId: r.party_id,
+        action: r.action,
+        ...(r.cause ? { cause: r.cause } : {}),
+        ...(r.ended_on ? { on: r.ended_on } : {}),
+        ...(r.reason ? { reason: r.reason } : {}),
+        decidedBy: r.decided_by,
+        decidedAt: iso(r.decided_at),
+      })),
+    );
+    const all: PartyIdentifier[] = ids.rows.map((r) => ({
+      id: r.identifier_id,
+      type: r.type,
+      country: r.country,
+      value: r.value,
+      addedBy: r.added_by,
+      addedAt: iso(r.added_at),
+      ...(r.removed_at ? { removedBy: r.removed_by, removedAt: iso(r.removed_at), removalReason: r.removal_reason } : {}),
+    }));
+    const removed = all.filter((i) => i.removedAt);
     return {
       ...toParty(rows[0]),
-      ...(until === null ? {} : { restrictedUntil: until }),
-      identifiers: ids.rows.map((r) => ({ type: r.type, country: r.country, value: r.value, addedBy: r.added_by, addedAt: iso(r.added_at) })),
+      ...(until === undefined ? {} : { restrictedUntil: until }),
+      ...(ended ? { ended } : {}),
+      identifiers: all.filter((i) => !i.removedAt),
+      ...(removed.length ? { removedIdentifiers: removed } : {}),
     };
   }
 
@@ -59,12 +95,52 @@ export class PostgresPartyStore implements PartyStore {
   }
 
   async findByIdentifier(type: PartyIdentifierType, country: string, value: string): Promise<string | null> {
-    const { rows } = await this.pool.query(`select party_id from parties.party_identifier where type = $1 and country = $2 and value = $3`, [
+    const { rows } = await this.pool.query(`select party_id from parties.party_identifier where type = $1 and country = $2 and value = $3 and removed_at is null`, [
       type,
       country,
       value,
     ]);
     return rows[0]?.party_id ?? null;
+  }
+
+  async search(q: { text: string; markets: string[] | '*'; limit: number }): Promise<string[]> {
+    // The text is a pattern of its own: % and _ are escaped.
+    const like = `%${q.text.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+    const { rows } = await this.pool.query(
+      `select party_id, kind, given_name, family_name, name from (
+         select distinct on (party_id) * from parties.party_revision order by party_id, revision desc
+       ) r
+       where not anonymized
+         and ($2::text[] is null or market = any($2))
+         and (coalesce(given_name || ' ' || family_name, name) ilike $1 or email ilike $1)
+       order by coalesce(given_name || ' ' || family_name, name), party_id
+       limit $3`,
+      [like, q.markets === '*' ? null : q.markets, q.limit],
+    );
+    return rows.map((r) => r.party_id);
+  }
+
+  async removeIdentifier(partyId: string, identifierId: string, removal: { removedBy: string; removedAt: string; reason: string }): Promise<void> {
+    const res = await this.pool.query(
+      `update parties.party_identifier set removed_by = $3, removed_at = $4, removal_reason = $5
+        where identifier_id = $1 and party_id = $2 and removed_at is null`,
+      [identifierId, partyId, removal.removedBy, removal.removedAt, removal.reason],
+    );
+    if (res.rowCount !== 1) throw new PartyConflictError(`Identifier ${identifierId} is not the party's or is removed already`);
+  }
+
+  async addRestriction(e: RestrictionEvent): Promise<void> {
+    await this.pool.query(
+      `insert into parties.restriction (restriction_id, party_id, action, until, reason, decided_by, decided_at) values ($1, $2, $3, $4, $5, $6, $7)`,
+      [e.id, e.partyId, e.action, e.until ?? null, e.reason ?? null, e.decidedBy, e.decidedAt],
+    );
+  }
+
+  async addStatus(e: StatusEvent): Promise<void> {
+    await this.pool.query(
+      `insert into parties.party_status (status_id, party_id, action, cause, ended_on, reason, decided_by, decided_at) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [e.id, e.partyId, e.action, e.cause ?? null, e.on ?? null, e.reason ?? null, e.decidedBy, e.decidedAt],
+    );
   }
 
   async register(party: Party, identifiers: PartyIdentifier[]): Promise<void> {
@@ -200,7 +276,8 @@ function params(p: Party) {
 
 async function insertIdentifier(db: Pick<pg.Pool, 'query'>, partyId: string, i: PartyIdentifier) {
   await db
-    .query(`insert into parties.party_identifier (type, country, value, party_id, added_by, added_at) values ($1, $2, $3, $4, $5, $6)`, [
+    .query(`insert into parties.party_identifier (identifier_id, type, country, value, party_id, added_by, added_at) values ($1, $2, $3, $4, $5, $6, $7)`, [
+      i.id,
       i.type,
       i.country,
       i.value,

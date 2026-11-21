@@ -33,7 +33,8 @@ export const organization = (overrides: Partial<Party> = {}): Party => ({
   ...overrides,
 });
 /** Born 2099: no living person can have this number. */
-export const personalNumber = (value = '209901011230'): PartyIdentifier => ({
+export const personalNumber = (value = '209901011230', id = `pid_${value}`): PartyIdentifier => ({
+  id,
   type: 'personal-number',
   country: 'SE',
   value,
@@ -70,7 +71,7 @@ export function partyStoreSuite(name: string, factory: PartyStoreFactory): void 
       await assert.rejects(store.register(person(), []), PartyConflictError);
       const second = personalNumber('209903154566');
       await store.addIdentifier('pty_anna', second);
-      await assert.rejects(store.addIdentifier('pty_anna', second), PartyIdentifierTakenError);
+      await assert.rejects(store.addIdentifier('pty_anna', { ...second, id: 'pid_again' }), PartyIdentifierTakenError);
       assert.equal((await store.get('pty_anna'))!.identifiers.length, 2);
     });
 
@@ -114,6 +115,49 @@ export function partyStoreSuite(name: string, factory: PartyStoreFactory): void 
       const p = (await store.get('pty_anna'))!;
       assert.deepEqual([p.restrictedUntil, p.givenName, p.anonymized, p.identifiers.length], ['2036-11-15', 'Anna', undefined, 1]);
       assert.equal(await store.getErasureRequest('era_none'), null);
+    });
+
+    it('a removed identifier stays as history and may be added to another party (ADR 0039)', async (store) => {
+      await store.register(person(), [personalNumber()]);
+      await store.register(person({ id: 'pty_bo', givenName: 'Bo' }), []);
+      const removal = { removedBy: 'registrar@example.test', removedAt: '2026-11-16T10:00:00.000Z', reason: 'Added to the wrong party' };
+      await assert.rejects(store.removeIdentifier('pty_bo', 'pid_209901011230', removal), PartyConflictError, 'not the party\'s');
+      await store.removeIdentifier('pty_anna', 'pid_209901011230', removal);
+      await assert.rejects(store.removeIdentifier('pty_anna', 'pid_209901011230', removal), PartyConflictError, 'removed already');
+      const anna = (await store.get('pty_anna'))!;
+      assert.deepEqual(anna.identifiers, []);
+      assert.deepEqual(anna.removedIdentifiers, [{ ...personalNumber(), removedBy: removal.removedBy, removedAt: removal.removedAt, removalReason: removal.reason }]);
+      assert.equal(await store.findByIdentifier('personal-number', 'SE', '209901011230'), null);
+      await store.addIdentifier('pty_bo', personalNumber('209901011230', 'pid_bo'));
+      assert.equal(await store.findByIdentifier('personal-number', 'SE', '209901011230'), 'pty_bo');
+    });
+
+    it('parties are found by a part of the name or email, in the markets, sorted by name (ADR 0039)', async (store) => {
+      await store.register(person(), []);
+      await store.register(person({ id: 'pty_bo', givenName: 'Bo', familyName: 'Annasson', market: 'YY', email: 'bo@example.test' }), []);
+      await store.register(organization(), []);
+      await store.register(person({ id: 'pty_100', givenName: 'Per', familyName: '100%_x', email: 'per@example.test' }), []);
+      assert.deepEqual(await store.search({ text: 'anna', markets: '*', limit: 50 }), ['pty_anna', 'pty_bo']);
+      assert.deepEqual(await store.search({ text: 'ANNA', markets: ['XX'], limit: 50 }), ['pty_anna']);
+      assert.deepEqual(await store.search({ text: 'anna@', markets: '*', limit: 50 }), ['pty_anna']);
+      assert.deepEqual(await store.search({ text: 'kennel', markets: '*', limit: 50 }), ['pty_kennel']);
+      assert.deepEqual(await store.search({ text: 'anna', markets: '*', limit: 1 }), ['pty_anna']);
+      assert.deepEqual(await store.search({ text: '%_', markets: '*', limit: 50 }), ['pty_100'], '% and _ are text');
+    });
+
+    it('restriction and ending are events; the latest is in force (ADR 0039)', async (store) => {
+      await store.register(person(), []);
+      await store.addErasureRequest({ id: 'era_1', partyId: 'pty_anna', market: 'XX', basis: 'subject-request', reason: 'Asked', requestedBy: 'a', requestedAt: at });
+      await store.decideErasure('era_1', { outcome: 'rejected', reason: 'Open claim', restrictUntil: '2036-11-15', decidedBy: 'a', decidedAt: '2026-11-15T11:00:00.000Z' });
+      await store.addRestriction({ id: 'prs_1', partyId: 'pty_anna', action: 'lift', reason: 'Checked', decidedBy: 'b', decidedAt: '2026-11-16T10:00:00.000Z' });
+      assert.equal((await store.get('pty_anna'))!.restrictedUntil, undefined);
+      await store.addRestriction({ id: 'prs_2', partyId: 'pty_anna', action: 'restrict', until: '2027-01-31', reason: 'Accuracy contested', decidedBy: 'b', decidedAt: '2026-11-17T10:00:00.000Z' });
+      assert.equal((await store.get('pty_anna'))!.restrictedUntil, '2027-01-31');
+
+      await store.addStatus({ id: 'pst_1', partyId: 'pty_anna', action: 'end', cause: 'deceased', on: '2026-11-10', reason: 'Death certificate', decidedBy: 'c', decidedAt: '2026-11-17T11:00:00.000Z' });
+      assert.deepEqual((await store.get('pty_anna'))!.ended, { cause: 'deceased', on: '2026-11-10', reason: 'Death certificate', endedBy: 'c', endedAt: '2026-11-17T11:00:00.000Z' });
+      await store.addStatus({ id: 'pst_2', partyId: 'pty_anna', action: 'reopen', reason: 'Wrong party', decidedBy: 'c', decidedAt: '2026-11-17T12:00:00.000Z' });
+      assert.equal((await store.get('pty_anna'))!.ended, undefined);
     });
 
     it('revisions follow each other and keep the history', async (store) => {

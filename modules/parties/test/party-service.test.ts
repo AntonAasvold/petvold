@@ -153,3 +153,58 @@ test('Swedish numbers are checked; other countries only for form', () => {
   assert.ok(luhnValid('2021005448'));
   assert.ok(!luhnValid('2021005447'));
 });
+
+test('a party is found by a part of the name or email, with 2-100 characters (ADR 0039)', async () => {
+  const s = setup();
+  await s.register(anna(), by);
+  await s.register({ kind: 'organization', market: 'NO', name: 'Example Kennel' }, by);
+  assert.deepEqual((await s.search(' anna ', '*')).map((p) => p.givenName), ['Anna']);
+  assert.deepEqual((await s.search('kennel', '*')).map((p) => p.name), ['Example Kennel']);
+  assert.deepEqual(await s.search('kennel', ['SE']), [], 'only the markets given');
+  await rejects(s.search('a', '*'), 'validation', /2-100/);
+});
+
+test('an identifier is removed with a reason, stays as history and may then be added to the right party (ADR 0039)', async () => {
+  const s = setup();
+  const a = await s.register(anna(), by);
+  const bo = await s.register(anna({ givenName: 'Bo', identifiers: [] }), by);
+  const pid = a.identifiers[0]!.id;
+  assert.match(pid, /^pid_/);
+  await rejects(s.removeIdentifier(a.id, pid, { reason: ' ' }, by), 'validation', /reason/);
+  await rejects(s.removeIdentifier(bo.id, pid, { reason: 'x' }, by), 'not_found');
+  const after = await s.removeIdentifier(a.id, pid, { reason: 'Added to the wrong party' }, by);
+  assert.deepEqual([after.identifiers.length, after.removedIdentifiers?.[0]?.removalReason], [0, 'Added to the wrong party']);
+  assert.equal(publicView(after).removedIdentifiers?.[0]?.masked, true, 'a removed personal number is masked too');
+  await rejects(s.removeIdentifier(a.id, pid, { reason: 'again' }, by), 'conflict', /already/);
+  const moved = await s.addIdentifier(bo.id, { type: 'personal-number', country: 'SE', value: PNR }, by);
+  assert.equal(moved.identifiers.length, 1);
+  assert.deepEqual((await s.findByIdentifier({ type: 'personal-number', country: 'SE', value: PNR })).map((p) => p.id), [bo.id]);
+});
+
+test('a restriction is set and lifted directly; while restricted or ended nothing new points at the party (ADR 0039)', async () => {
+  const s = setup();
+  const a = await s.register(anna(), by);
+  await rejects(s.restrict(a.id, { until: '2026-11-15', reason: 'x' }, by), 'validation', /after today/);
+  await rejects(s.restrict(a.id, { until: '2027-01-31', reason: '' }, by), 'validation', /reason/);
+  await rejects(s.liftRestriction(a.id, { reason: 'x' }, by), 'conflict', /not restricted/);
+  const r = await s.restrict(a.id, { until: '2027-01-31', reason: 'The customer contests the address' }, by);
+  assert.deepEqual([r.restrictedUntil, await s.marketOf(a.id)], ['2027-01-31', null]);
+  const l = await s.liftRestriction(a.id, { reason: 'The address is checked' }, by);
+  assert.deepEqual([l.restrictedUntil, await s.marketOf(a.id)], [undefined, 'SE']);
+});
+
+test('a party is ended with a cause that fits its kind, may still change, and can be reopened (ADR 0039)', async () => {
+  const s = setup();
+  const a = await s.register(anna(), by);
+  await rejects(s.end(a.id, { cause: 'dissolved', on: '2026-11-10', reason: 'x' }, by), 'validation', /organization/);
+  await rejects(s.end(a.id, { cause: 'deceased', on: '2026-11-16', reason: 'x' }, by), 'validation', /not after today/);
+  await rejects(s.end(a.id, { cause: 'gone' as never, on: '2026-11-10', reason: 'x' }, by), 'validation', /cause/);
+  await rejects(s.reopen(a.id, { reason: 'x' }, by), 'conflict', /not ended/);
+  const e = await s.end(a.id, { cause: 'deceased', on: '2026-11-10', reason: 'Death certificate received' }, by);
+  assert.deepEqual([e.ended?.cause, e.ended?.on, await s.marketOf(a.id), await s.postalCodeOf(a.id)], ['deceased', '2026-11-10', null, null]);
+  await rejects(s.end(a.id, { cause: 'deceased', on: '2026-11-10', reason: 'x' }, by), 'conflict', /already/);
+  const estate = await s.change(a.id, { ...anna(), basedOnRevision: 1, reason: 'The estate\'s address', identifiers: undefined } as never, by);
+  assert.equal(estate.revision, 2);
+  const o = await s.reopen(a.id, { reason: 'Ended by mistake' }, by);
+  assert.deepEqual([o.ended, await s.marketOf(a.id)], [undefined, 'SE']);
+});

@@ -185,3 +185,71 @@ test('retention: settings as versions, and a run asks for anonymization of parti
   assert.equal((await call('GET', `/v1/parties/${old.id}`, 'handler')).body.anonymized, true);
   assert.equal((await call('POST', '/v1/retention-runs', 'handler', {})).status, 403);
 });
+
+test('a party is found by name or email in the body, within the markets; a restricted one only with parties:privacy (ADR 0039)', async () => {
+  const call = setup();
+  const a = (await call('POST', '/v1/parties', 'registrar', anna)).body;
+  await call('POST', '/v1/parties', 'registrarDe', { ...anna, market: 'DE', identifiers: [], email: 'anna@example.de' });
+  const found = await call('POST', '/v1/parties/searches', 'registrar', { text: 'anna' });
+  assert.equal(found.status, 200);
+  assert.deepEqual(found.body.items.map((p: any) => p.id), [a.id], 'only the caller\'s markets');
+  found.body.items.forEach(valid);
+  assert.equal((await call('POST', '/v1/parties/searches', 'registrar', { text: 'a' })).status, 422);
+  assert.equal((await call('POST', '/v1/parties/searches', 'registrar', { text: 'anna', type: 'personal-number' })).status, 422, 'a text or a number');
+
+  assert.equal((await call('POST', `/v1/parties/${a.id}/restrictions`, 'registrar', { until: '2027-01-31', reason: 'x' })).status, 403);
+  const r = await call('POST', `/v1/parties/${a.id}/restrictions`, 'officerA', { until: '2027-01-31', reason: 'The customer contests the details' });
+  assert.equal(r.status, 201);
+  valid(r.body);
+  assert.equal(r.body.restrictedUntil, '2027-01-31');
+  assert.deepEqual((await call('POST', '/v1/parties/searches', 'registrar', { text: 'anna' })).body.items, [], 'hidden while restricted');
+  assert.equal((await call('POST', '/v1/parties/searches', 'officerA', { text: 'anna' })).body.items.length, 1);
+  const l = await call('POST', `/v1/parties/${a.id}/restriction-liftings`, 'officerB', { reason: 'Checked' });
+  assert.deepEqual([l.status, l.body.restrictedUntil], [201, undefined]);
+  assert.equal((await call('POST', `/v1/parties/${a.id}/restriction-liftings`, 'officerB', { reason: 'Again' })).status, 409);
+});
+
+test('a number is removed by its id with a reason and may then be added to another party (ADR 0039)', async () => {
+  const call = setup();
+  const a = (await call('POST', '/v1/parties', 'registrar', anna)).body;
+  const bo = (await call('POST', '/v1/parties', 'registrar', { ...anna, givenName: 'Bo', identifiers: [] })).body;
+  assert.equal((await call('POST', `/v1/parties/${bo.id}/identifiers`, 'registrar', PNR)).status, 409, 'Anna has it');
+  const pid = a.identifiers[0].id;
+  assert.equal((await call('POST', `/v1/parties/${a.id}/identifiers/${pid}/removals`, 'handler', { reason: 'x' })).status, 403);
+  const removed = await call('POST', `/v1/parties/${a.id}/identifiers/${pid}/removals`, 'registrar', { reason: 'Added to the wrong party' });
+  assert.equal(removed.status, 201);
+  valid(removed.body);
+  assert.deepEqual([removed.body.identifiers, removed.body.removedIdentifiers[0].masked, removed.body.removedIdentifiers[0].removalReason], [[], true, 'Added to the wrong party']);
+  assert.ok(!JSON.stringify(removed.body).includes('209901011230'), 'never the whole number');
+  assert.equal((await call('POST', `/v1/parties/${bo.id}/identifiers`, 'registrar', PNR)).status, 201);
+  assert.equal((await call('POST', `/v1/parties/${a.id}/identifiers/pid_none/removals`, 'registrar', { reason: 'x' })).status, 404);
+});
+
+test('a party without policies in force is ended and reopened (ADR 0039)', async () => {
+  const call = setup();
+  const a = (await call('POST', '/v1/parties', 'registrar', anna)).body;
+  assert.equal((await call('POST', `/v1/parties/${a.id}/endings`, 'registrar', { cause: 'deceased', on: '2026-11-16', reason: 'x' })).status, 422, 'not after today');
+  const e = await call('POST', `/v1/parties/${a.id}/endings`, 'registrar', { cause: 'deceased', on: '2026-11-10', reason: 'Death certificate received' });
+  assert.equal(e.status, 201);
+  valid(e.body);
+  assert.deepEqual([e.body.ended.cause, e.body.ended.on, e.body.ended.endedBy], ['deceased', '2026-11-10', 'cs@example.test']);
+  assert.equal((await call('POST', `/v1/parties/${a.id}/endings`, 'registrar', { cause: 'deceased', on: '2026-11-10', reason: 'y' })).status, 409);
+  const o = await call('POST', `/v1/parties/${a.id}/reopenings`, 'registrar', { reason: 'Ended by mistake' });
+  assert.deepEqual([o.status, o.body.ended], [201, undefined]);
+});
+
+test('the policyholder of a policy in force is not ended: the answer names the policy (ADR 0039)', async () => {
+  const { compose } = await import('../src/composition.ts');
+  const { seedSampleData } = await import('../src/seed.ts');
+  const clock = { now: () => '2026-11-20T10:00:00.000Z' };
+  const inst = await compose({ databases: {}, engineVersion: 'test', clock });
+  await seedSampleData(inst, clock);
+  const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
+  const res = await app.request('/v1/parties/pty_owner001/endings', {
+    method: 'POST',
+    headers: { authorization: 'Bearer registrar', 'content-type': 'application/json', 'idempotency-key': 'end-anna' },
+    body: JSON.stringify({ cause: 'deceased', on: '2026-11-19', reason: 'Death certificate received' }),
+  });
+  assert.equal(res.status, 409);
+  assert.match(((await res.json()) as any).detail, /pol_bella/);
+});
