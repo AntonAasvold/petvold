@@ -95,3 +95,40 @@ test('the invoicing job makes invoices, the relay sends invoice.issued, and the 
   assert.equal((await call('/v1/invoices', 'clinic')).status, 403);
   assert.equal((await call('/v1/invoices/inv_nope', 'clerk')).status, 404);
 });
+
+test('a cancellation through the policy module: the relay credits what is no longer owed, and the API shows the credit note', async () => {
+  let now = '2026-11-15T10:00:00.000Z';
+  const clock = { now: () => now };
+  const inst = await compose({ databases: {}, engineVersion: 'test', clock });
+  await seedSampleData(inst, clock);
+  while ((await inst.relay.tick()) > 0);
+  const billing = inst.deps.billing!;
+  // Invoice what is due a year ahead, then end one invoiced policy from the start of its current term: the animal died.
+  await billing.invoicingRun({ market: 'SE', onDate: '2027-11-01', dryRun: false }, 'scheduler');
+  while ((await inst.relay.tick()) > 0);
+  const invoice = (await billing.invoices({ market: 'SE' }))[0]!;
+  const policyId = invoice.lines[0]!.policyId;
+  const policy = await inst.deps.policies!.get(policyId);
+  now = '2026-11-16T10:00:00.000Z';
+  const term = policy.terms.at(-1)!;
+  await inst.deps.policies!.cancel(policyId, { reason: 'need-ceased', effectiveDate: term.startDate < '2026-11-16' ? '2026-11-16' : term.startDate, note: 'The animal died' }, 'handler');
+  while ((await inst.relay.tick()) > 0);
+
+  const credits = await billing.creditNotes({ policyId });
+  assert.ok(credits.length > 0, 'something invoiced is no longer owed');
+  const tokens: Record<string, Principal> = { clerk: { subject: 'finance@example.test', roles: ['billing-clerk'], markets: ['SE'] }, clerkDe: { subject: 'de', roles: ['billing-clerk'], markets: ['DE'] } };
+  const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
+  const call = async (path: string, token: string) => {
+    const res = await app.request(path, { headers: { authorization: `Bearer ${token}` } });
+    return { status: res.status, body: (await res.json()) as any };
+  };
+  const list = await call(`/v1/credit-notes?policyId=${policyId}`, 'clerk');
+  for (const c of list.body.items) assert.ok(validatorFor('CreditNote')(structuredClone(c)), JSON.stringify(validatorFor('CreditNote').errors));
+  assert.deepEqual((await call(`/v1/credit-notes/${credits[0]!.id}`, 'clerk')).body.id, credits[0]!.id);
+  assert.equal((await call(`/v1/credit-notes/${credits[0]!.id}`, 'clerkDe')).status, 404);
+  const plans = (await call(`/v1/premium-plans?policyId=${policyId}`, 'clerk')).body.items;
+  for (const p of plans) assert.ok(validatorFor('PremiumPlanRecord')(structuredClone(p)), JSON.stringify(validatorFor('PremiumPlanRecord').errors));
+  assert.ok(plans.some((p: any) => p.adjustment?.kind === 'cancellation'));
+  // invoice.credited went to the relay and was published.
+  assert.equal((await inst.stores.billing.pendingEvents(100)).length, 0);
+});

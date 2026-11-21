@@ -238,6 +238,114 @@ export function distributeAdjustment(adjustment: number, uninvoicedSeqs: readonl
   return { kind: 'spread', parts: seqs.map((seq, i) => ({ seq, amount: amounts[i]! })) };
 }
 
+/**
+ * A premium reduction during a term (ADR 0040, punkt 4, beslut 2026-11-21):
+ * taken off the installments not yet invoiced, equally, the rest of the
+ * division on the first, never below zero on any of them. What they cannot
+ * take is `rest`, to be credited on what is invoiced.
+ */
+export function reduceInstallments(reduction: number, uninvoiced: readonly { seq: number; premium: number }[]): { parts: { seq: number; amount: number }[]; rest: number } {
+  assertAmount(reduction, 'reduction');
+  const left = new Map([...uninvoiced].sort((a, b) => a.seq - b.seq).map((u) => [u.seq, u.premium]));
+  for (const u of uninvoiced) assertAmount(u.premium, `uninvoiced[${u.seq}].premium`);
+  const taken = new Map<number, number>();
+  let rest = reduction;
+  // Each round splits what is left over the installments that still have premium; a capped one drops out.
+  while (rest > 0) {
+    const open = [...left].filter(([, p]) => p > 0).map(([seq]) => seq);
+    if (open.length === 0) break;
+    const shares = split(rest, open.length, 0, 1);
+    let used = 0;
+    open.forEach((seq, i) => {
+      const take = Math.min(shares[i]!, left.get(seq)!);
+      left.set(seq, left.get(seq)! - take);
+      taken.set(seq, (taken.get(seq) ?? 0) + take);
+      used += take;
+    });
+    rest -= used;
+    if (used === 0) break;
+  }
+  return { parts: [...taken].filter(([, a]) => a > 0).map(([seq, amount]) => ({ seq, amount })).sort((a, b) => a.seq - b.seq), rest };
+}
+
+/** A line of a term as billing sees it when the premium is reduced: invoiced, or still in the plan. */
+export interface TermLine {
+  key: string;
+  dueDate: ISODate;
+  premium: number;
+  tax: number;
+  fee: number;
+  /** What is still owed on it: for an invoiced line, its amount less what is credited. */
+  open: number;
+  invoiced: boolean;
+}
+
+export interface TermSettlement {
+  /** What the term costs from now: owed on invoiced lines and the new charge. */
+  newTotal: number;
+  /** Not invoiced: taken out of the plan. */
+  removed: string[];
+  /** Invoiced and still owed, oldest first. */
+  kept: { key: string; open: number }[];
+  /** Invoiced but no longer owed: credited. */
+  credited: { key: string; amount: number }[];
+  /** Owed beyond what is invoiced: a new charge. */
+  newCharge: number;
+}
+
+/**
+ * A cancellation or a transfer against what is invoiced (ADR 0040, punkt 4):
+ * the term costs what it did, less the premium back and its tax, and without
+ * the fees of installments that are no longer taken. Installments not yet
+ * invoiced are removed. What is still owed stays on the invoiced lines, oldest
+ * first, and the rest of them is credited; if they are not enough, the rest
+ * is a new charge. Nothing is paid before the payments module (ADR 0040, steg
+ * 3), so nothing becomes a credit balance here.
+ *
+ * Always: kept + newCharge = newTotal, and kept + credited = what was owed on the invoiced lines.
+ */
+export function settleTerm(input: { lines: readonly TermLine[]; premiumReduction: number; taxReduction: number }): TermSettlement {
+  assertAmount(input.premiumReduction, 'premiumReduction');
+  assertAmount(input.taxReduction, 'taxReduction');
+  for (const l of input.lines) {
+    for (const f of ['premium', 'tax', 'fee', 'open'] as const) assertAmount(l[f], `lines[${l.key}].${f}`);
+    assertDate(l.dueDate, `lines[${l.key}].dueDate`);
+  }
+  const owed = input.lines.reduce((s, l) => s + l.open, 0);
+  const droppedFees = input.lines.filter((l) => !l.invoiced).reduce((s, l) => s + l.fee, 0);
+  const newTotal = Math.max(0, owed - input.premiumReduction - input.taxReduction - droppedFees);
+  let need = newTotal;
+  const kept: { key: string; open: number }[] = [];
+  const credited: { key: string; amount: number }[] = [];
+  const invoiced = input.lines.filter((l) => l.invoiced).sort((a, b) => (a.dueDate === b.dueDate ? (a.key < b.key ? -1 : 1) : a.dueDate < b.dueDate ? -1 : 1));
+  for (const l of invoiced) {
+    if (l.open === 0) continue;
+    const keep = Math.min(l.open, need);
+    need -= keep;
+    if (keep > 0) kept.push({ key: l.key, open: keep });
+    if (l.open - keep > 0) credited.push({ key: l.key, amount: l.open - keep });
+  }
+  return { newTotal, removed: input.lines.filter((l) => !l.invoiced).map((l) => l.key), kept, credited, newCharge: need };
+}
+
+/**
+ * Splits an amount over parts in proportion to their weights, with the rest
+ * of the division on the last part that has a weight, so the parts add up to
+ * exactly the amount. All weights zero: everything on the last part.
+ */
+export function splitByWeight(amount: number, weights: readonly number[]): number[] {
+  assertAmount(amount, 'amount');
+  if (weights.length === 0) throw new BillingError('weights: at least one');
+  for (const w of weights) assertAmount(w, 'weight');
+  const total = weights.reduce((s, w) => s + w, 0);
+  if (total === 0) return weights.map((_, i) => (i === weights.length - 1 ? amount : 0));
+  const out = weights.map((w) => Number((BigInt(amount) * BigInt(w)) / BigInt(total)));
+  let last = weights.length - 1;
+  while (weights[last] === 0) last--;
+  out[last]! += amount - out.reduce((s, x) => s + x, 0);
+  return out;
+}
+
 // --- Settlement at cancellation (ADR 0040, punkt 4) ---
 
 export interface InstallmentState {

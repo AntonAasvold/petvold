@@ -177,7 +177,8 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
     - [x] 2b-1: fakturering som körning, nummerserie, betalningsreferens (OCR och RF) och `invoice.issued`
     - [x] 2b-2: fakturan som meddelande till kunden
     - [x] 2c-1: kundens val av intervall vid tecknandet
-    - [ ] 2c-2: ändring, avslut, återkallelse och överlåtelse mot planen och fakturorna
+    - [x] 2c-2a: ändring, avslut och överlåtelse mot planen och fakturorna, med kreditnotor
+    - [ ] 2c-2b: återkallelse av ett avslut
   - [ ] `payments` med `fake`-adapter: inbetalningar, koppling till faktura och utbetalningar
   - [ ] Obetald premie: påminnelse, uppsägning och avslut
   - [ ] Tillgodohavanden, återbetalningar och kreditnotor med attest

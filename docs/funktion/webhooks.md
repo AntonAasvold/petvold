@@ -19,7 +19,7 @@ Bolagets system kan få veta när något händer i Petvold, utan att fråga. En 
 | Skador | `claim.registered`, `claim.decision_proposed`, `claim.proposal_returned`, `claim.decided`, `claim.payout_ordered`, `claim.review_requested`, `claim.withdrawn`, `claim.dismissed`, `claim.corrected`, `claim.attachment_added`, `claim.information_requested`, `claim.information_reminded`, `claim.information_received`, `claim.information_expired`, `claim.information_cancelled` | skadans id |
 | Djur | `animal.ownership_changed`, `animal.died` | djurets id |
 | Kundmeddelanden | `notice.created`, `notice.document_made`, `notice.delivered`, `notice.failed` | meddelandets id |
-| Fakturor | `invoice.issued`: nummer, konto, part, datum, belopp, valuta, betalningsreferens och policyer (ADR 0040) | fakturans id |
+| Fakturor | `invoice.issued`: nummer, konto, part, datum, belopp, valuta, betalningsreferens och policyer. `invoice.credited`: kreditnotans id och nummer, konto, part, belopp, valuta och policyhändelsen den kom av (ADR 0040) | fakturans id |
 | Körningar | `job.failed`: körning, startsätt och start, aldrig felet (ADR 0037) | körningens id |
 
 En prenumeration anger typer som `*` (alla), en grupp (`policy.*`) eller en enskild typ (`application.declined`).

@@ -44,6 +44,7 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'notice.document_made': { source: 'communications', subject: 'noticeId', fields: ['noticeType', 'documentId', 'sha256'] },
   'notice.delivered': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel', 'sentAt', 'documentId', 'late'] },
   'notice.failed': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel'] },
+  'invoice.credited': { source: 'billing', subject: 'invoiceId', fields: ['creditNoteId', 'creditNoteNo', 'accountId', 'partyId', 'total', 'currency', 'reason'] },
   'invoice.issued': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'issueDate', 'dueDate', 'total', 'currency', 'reference', 'policyIds'] },
   // A run failed (ADR 0037), for the insurer's operations to alert on. The error stays inside Petvold.
   'job.failed': { source: 'scheduling', subject: 'runId', fields: ['job', 'trigger', 'startedAt'] },

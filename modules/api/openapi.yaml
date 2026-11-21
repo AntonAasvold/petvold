@@ -3767,6 +3767,59 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Invoice' }
 
+  /v1/credit-notes:
+    get:
+      tags: [billing]
+      operationId: listCreditNotes
+      x-permission: billing:read
+      summary: Credit notes, oldest first
+      description: |
+        Requires the permission `billing:read` (ADR 0040). A change that lowers
+        the premium when everything is invoiced, a cancellation and a transfer
+        credit what is invoiced but no longer owed, one credit note per invoice,
+        numbered from the invoice series. Scope as for invoices.
+      parameters:
+        - { name: invoiceId, in: query, schema: { type: string } }
+        - { name: accountId, in: query, schema: { type: string } }
+        - { name: policyId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The credit notes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/CreditNote' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/credit-notes/{creditNoteId}:
+    get:
+      tags: [billing]
+      operationId: getCreditNote
+      x-permission: billing:read
+      summary: A credit note
+      description: Requires the permission `billing:read`. A credit note outside the caller's scope answers 404.
+      parameters:
+        - { name: creditNoteId, in: path, required: true, schema: { type: string, pattern: '^crn_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The credit note
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreditNote' }
+
   /v1/premium-plans:
     get:
       tags: [billing]
@@ -6443,6 +6496,42 @@ components:
         createdBy: { type: string, description: "Who ran the invoicing: 'scheduler' or a person." }
         createdAt: { type: string, format: date-time }
 
+    CreditNote:
+      type: object
+      additionalProperties: false
+      required: [id, number, invoiceId, accountId, partyId, market, currency, issueDate, lines, total, source, createdAt]
+      description: What is taken off an invoice (ADR 0040). Never changes.
+      properties:
+        id: { type: string, pattern: '^crn_[A-Za-z0-9]+$' }
+        number: { type: string, description: From the invoice series. }
+        invoiceId: { type: string }
+        accountId: { type: string }
+        partyId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        issueDate: { type: string, format: date }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [planId, policyId, seq, amount]
+            properties:
+              planId: { type: string }
+              policyId: { type: string }
+              seq: { type: integer, minimum: 1, description: "The invoice line's installment in its plan." }
+              amount: { type: integer, minimum: 1 }
+        total: { type: integer, minimum: 1 }
+        source:
+          type: object
+          additionalProperties: false
+          required: [eventId, eventType]
+          properties:
+            eventId: { type: string }
+            eventType: { type: string }
+        createdAt: { type: string, format: date-time }
+
     PremiumPlanRecord:
       type: object
       additionalProperties: false
@@ -6487,6 +6576,17 @@ components:
                 payWithinDays: { type: integer, minimum: 0 }
         plan: { $ref: '#/components/schemas/PremiumPlan' }
         invoiceLeadDays: { type: integer, minimum: 1, maximum: 60, description: "The product's lead time when the plan was made. Omitted: 31." }
+        replaces: { type: string, description: 'The plan this one replaces after a change, a cancellation or a transfer. Its installments are what is left to invoice of the term; what the replaced plan invoiced stays on its invoices.' }
+        adjustment:
+          type: object
+          additionalProperties: false
+          required: [kind, transactionId, from, premium, tax]
+          properties:
+            kind: { type: string, enum: [change, cancellation, transfer-from, transfer-to] }
+            transactionId: { type: string }
+            from: { type: string, format: date }
+            premium: { type: integer, description: The premium added (positive) or taken off (negative) for the term. }
+            tax: { type: integer }
         createdAt: { type: string, format: date-time }
 
     PremiumPlan:
@@ -6506,7 +6606,7 @@ components:
         total: { type: integer, minimum: 0, description: termPremium + tax + fees. }
         installments:
           type: array
-          minItems: 1
+          description: Empty in a plan that replaces another when nothing is left to invoice, e.g. after a cancellation.
           items:
             type: object
             additionalProperties: false

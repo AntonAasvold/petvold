@@ -184,6 +184,7 @@ Distribution och provision (färdplanen, M5) får en egen ADR.
 3. **Betaltjänster:** bankfiler, Autogiro, Swish och kort, med en adapter per tjänst. Stripe eller Surfboard Payments för kort och Swish (punkt 12).
 4. **Dagsavslutet:** CSV först och SIE 4 senare (punkt 9).
 5. **Dröjsmålsränta:** väntar till ett senare steg (punkt 7).
+6. **En lägre premie under termen** dras av från delbetalningarna som inte fakturerats än, lika mycket på var och en och aldrig under noll. Bara det som de inte räcker till krediteras på det som är fakturerat (punkt 4). Krediteringar från en policyhändelse görs automatiskt, utan attest. Attest gäller kreditnotor som en person gör (steg 5).
 
 ## Rättelse 2026-11-21
 

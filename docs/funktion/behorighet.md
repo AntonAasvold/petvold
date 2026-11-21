@@ -74,7 +74,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `documents:read` | Läsa dokument och öppna dem med en länk som gäller i 15 minuter. Dessutom krävs rätten till det dokumentet hör till (ADR 0038). | `GET /v1/documents`, `GET /v1/documents/{id}`, `GET` och `POST …/links` |
 | `documents:share` | Ge kunden en länk som gäller upp till 7 dagar, och spärra en länk | `POST …/links` med `audience: customer`, `POST …/links/{linkId}/revocations` |
 | `claims:request-information` | Begära komplettering av kunden eller kliniken, och återkalla en begäran (ADR 0036). Svaret registreras med `claims:register`. | `POST /v1/claims/{id}/information-requests`, `POST …/information-requests/{requestId}/cancellations` |
-| `billing:read` | Läsa betalarkonton, premieplaner och fakturor (ADR 0040) | `GET /v1/payer-accounts`, `.../{id}`, `GET /v1/premium-plans`, `GET /v1/invoices`, `.../{id}` |
+| `billing:read` | Läsa betalarkonton, premieplaner och fakturor (ADR 0040) | `GET /v1/payer-accounts`, `.../{id}`, `GET /v1/premium-plans`, `GET /v1/invoices`, `.../{id}`, `GET /v1/credit-notes`, `.../{id}` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
 | `limits:read` | Se förbrukat och återstående försäkringsbelopp | `GET /v1/policies/{p}/limits` |
 
