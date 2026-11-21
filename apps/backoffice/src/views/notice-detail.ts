@@ -1,8 +1,11 @@
-/** <pv-notice-detail>: a notice with its content, legal basis and deliveries, and reporting a delivery (ADR 0032). */
+/**
+ * <pv-notice-detail>: a notice as the design system lays out a detail page
+ * (docs/teknik/designsystem.md, "Detaljsidan"): its content, legal basis and
+ * deliveries beside reporting a delivery, the PDF and the history (ADR 0032, 0038).
+ */
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { msg, updateWhenLocaleChanges } from '@lit/localize';
-import '@awesome.me/webawesome/dist/components/card/card.js';
 import '@awesome.me/webawesome/dist/components/badge/badge.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/callout/callout.js';
@@ -11,12 +14,14 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/input/input.js';
 import '@awesome.me/webawesome/dist/components/select/select.js';
 import '@awesome.me/webawesome/dist/components/option/option.js';
-import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js';
-import '@awesome.me/webawesome/dist/components/radio/radio.js';
 import { unwrap, type Api, type Problem } from '../api/client.ts';
 import type { components } from '../api/schema';
 import { act, type Notice as ActionNotice } from '../actions.ts';
 import '../components/data-grid.ts';
+import '../components/event-log.ts';
+import type { LogEntry } from '../components/event-log.ts';
+import { pvComponents } from '../styles/pv-components.ts';
+import { partyName } from '../policy-logic.ts';
 import type { Column } from '../components/data-grid.ts';
 import { IdempotencyKeys } from '../decide.ts';
 import { formatDate, formatDateTime } from '../format.ts';
@@ -54,6 +59,8 @@ export class NoticeDetail extends LitElement {
   /** The notice's documents in Petvold's archive (ADR 0038). */
   @state() private documents: StoredDocument[] = [];
   @state() private rendering = false;
+  /** The recipient by name, for the head; left as an id without parties:read. */
+  @state() private recipient: components['schemas']['Party'] | null = null;
   private keys = new IdempotencyKeys();
 
   constructor() {
@@ -61,60 +68,134 @@ export class NoticeDetail extends LitElement {
     updateWhenLocaleChanges(this);
   }
 
-  static styles = css`
-    ul.docs {
-      list-style: none;
-      margin: 0 0 var(--wa-space-m);
-      padding: 0;
-    }
-    ul.docs li {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: var(--wa-space-s);
-      padding: var(--wa-space-xs) 0;
-    }
-    .head {
-      display: flex;
-      align-items: center;
-      gap: var(--wa-space-m);
-      flex-wrap: wrap;
-    }
-    .head h2 {
-      margin: 0;
-    }
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
-      gap: var(--wa-space-l);
-      margin-top: var(--wa-space-l);
-    }
-    .wide {
-      grid-column: 1 / -1;
-    }
-    dl {
-      display: grid;
-      grid-template-columns: max-content 1fr;
-      gap: var(--wa-space-2xs) var(--wa-space-m);
-      margin: 0;
-    }
-    dt {
-      color: var(--wa-color-text-quiet);
-    }
-    dd {
-      margin: 0;
-      overflow-wrap: anywhere;
-    }
-    form {
-      display: grid;
-      gap: var(--wa-space-m);
-    }
-    pre {
-      margin: 0;
-      white-space: pre-wrap;
-      font-size: var(--wa-font-size-s);
-    }
-  `;
+  static styles = [
+    pvComponents,
+    css`
+      :host {
+        display: block;
+      }
+      .crumbs {
+        display: flex;
+        gap: var(--space-2);
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+      .crumbs a {
+        color: var(--text-secondary);
+      }
+      a {
+        color: var(--ink);
+      }
+      .title {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-3);
+        margin: var(--space-2) 0 var(--space-3);
+      }
+      h1 {
+        margin: 0;
+        font: 700 36px/1.1 var(--font-display);
+        letter-spacing: -0.02em;
+      }
+      .facts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2) var(--space-6);
+        margin: 0 0 var(--space-8);
+        padding: 0;
+        list-style: none;
+        font-size: 14px;
+        color: var(--text-secondary);
+      }
+      .facts strong {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .cols {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: var(--space-6);
+      }
+      .basis {
+        flex: 999 1 520px;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-6);
+      }
+      .side {
+        flex: 1 1 340px;
+        max-width: 420px;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-6);
+      }
+      .pv-card__body p {
+        margin: 0;
+      }
+      .pv-dl__row dd {
+        overflow-wrap: anywhere;
+      }
+      ul.docs {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      ul.docs li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-2) 0;
+      }
+      ul.law {
+        margin: 0;
+        padding-left: var(--space-5);
+      }
+      form {
+        display: grid;
+        gap: var(--space-4);
+      }
+      fieldset {
+        display: grid;
+        gap: var(--space-3);
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+      legend {
+        padding: 0 0 var(--space-2);
+        font: 500 13px/1.4 var(--font-sans);
+        color: var(--text-secondary);
+      }
+      .pv-choice:focus-within {
+        outline: var(--border-strong) solid var(--focus);
+        outline-offset: 2px;
+      }
+      /* A structured value takes the whole row, under its label, left-aligned. */
+      .pv-dl__row:has(pre) {
+        flex-direction: column;
+      }
+      .pv-dl__row:has(pre) dd {
+        text-align: left;
+        font-weight: 400;
+      }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        font: 12px/1.5 var(--font-mono);
+        text-align: left;
+      }
+      @media (max-width: 900px) {
+        .side {
+          max-width: none;
+        }
+      }
+    `,
+  ];
 
   protected updated(changed: Map<string, unknown>): void {
     if (changed.has('noticeId') || changed.has('api')) void this.load();
@@ -126,7 +207,10 @@ export class NoticeDetail extends LitElement {
       this.notice = await unwrap(this.api.GET('/v1/notices/{noticeId}', { params: { path: { noticeId: this.noticeId } } }));
     } catch (e) {
       this.problem = e as Problem;
+      return;
     }
+    const partyId = this.notice.recipientPartyId;
+    void this.api.GET('/v1/parties/{partyId}', { params: { path: { partyId } } }).then((r) => (this.recipient = r.data ?? null), () => undefined);
     if (this.me?.permissions.includes('documents:read')) {
       const { data } = await this.api.GET('/v1/documents', { params: { query: { noticeId: this.noticeId } } });
       this.documents = data?.items ?? [];
@@ -161,113 +245,153 @@ export class NoticeDetail extends LitElement {
     const may = this.me?.permissions.includes('notices:deliver') && TEMPLATED.includes(n.type);
     if (!this.documents.length && !may) return nothing;
     const lang = getLocale();
-    return html`<wa-card>
-      <h3 slot="header">${msg('PDF from Petvold', { id: 'notice.pdfTitle' })}</h3>
-      ${this.documents.length
-        ? html`<ul class="docs">
-            ${this.documents.map(
-              (d) => html`<li>
-                <span>${formatDateTime(d.createdAt, lang)} · ${formatSize(d.size)}${d.template ? html` · <span class="pv-mono">${d.template.name} v${d.template.version}</span>` : nothing}</span>
-                <wa-button size="small" appearance="outlined" @click=${() => this.openDocument(d.id)}>${msg('Open', { id: 'history.open' })}</wa-button>
-              </li>`,
-            )}
-          </ul>`
-        : html`<p>${msg("No PDF yet. The insurer's document system makes the letter, unless Petvold makes it here.", { id: 'notice.noPdf' })}</p>`}
-      ${may
-        ? html`<wa-button appearance="outlined" ?loading=${this.rendering} @click=${() => this.renderPdf()}>${msg('Make a PDF', { id: 'notice.makePdf' })}</wa-button>`
-        : nothing}
-    </wa-card>`;
+    return html`<section class="pv-card" aria-labelledby="pdf">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="pdf">${msg('PDF from Petvold', { id: 'notice.pdfTitle' })}</h2></div>
+      <div class="pv-card__body">
+        ${this.documents.length
+          ? html`<ul class="docs">
+              ${this.documents.map(
+                (d) => html`<li>
+                  <span>${formatDateTime(d.createdAt, lang)} · ${formatSize(d.size)}${d.template ? html` · <span class="pv-mono">${d.template.name} v${d.template.version}</span>` : nothing}</span>
+                  <wa-button size="small" appearance="outlined" @click=${() => this.openDocument(d.id)}>${msg('Open', { id: 'history.open' })}</wa-button>
+                </li>`,
+              )}
+            </ul>`
+          : html`<p>${msg("No PDF yet. The insurer's document system makes the letter, unless Petvold makes it here.", { id: 'notice.noPdf' })}</p>`}
+        ${may
+          ? html`<wa-button appearance="outlined" ?loading=${this.rendering} @click=${() => this.renderPdf()}>${msg('Make a PDF', { id: 'notice.makePdf' })}</wa-button>`
+          : nothing}
+      </div>
+    </section>`;
   }
 
   render() {
-    const back = html`<wa-button appearance="plain" size="small" @click=${() => navigate('/notices')}
-      ><wa-icon slot="start" name="arrow-left"></wa-icon>${msg('Back', { id: 'common.back' })}</wa-button
-    >`;
+    const crumbs = html`<nav class="crumbs" aria-label=${msg('Breadcrumb', { id: 'common.breadcrumb' })}>
+      <a href="/notices" @click=${(e: Event) => (e.preventDefault(), navigate('/notices'))}>${msg('Notices', { id: 'notices.title' })}</a>
+      <span aria-hidden="true">/</span>
+      <span aria-current="page">${this.noticeId}</span>
+    </nav>`;
     if (this.problem) {
       const text = this.problem.status === 404 ? msg('Does not exist, or lies outside what you may see.', { id: 'common.notFound' }) : this.problem.title;
-      return html`${back}<wa-callout variant=${this.problem.status === 404 ? 'neutral' : 'danger'}>${text}</wa-callout>`;
+      return html`${crumbs}<wa-callout variant=${this.problem.status === 404 ? 'neutral' : 'danger'}>${text}</wa-callout>`;
     }
     const n = this.notice;
-    if (!n) return html`${back}<wa-spinner></wa-spinner>`;
+    if (!n) return html`${crumbs}<wa-spinner></wa-spinner>`;
     const lang = getLocale();
+    const link = (href: string, text: string, mono = false) =>
+      html`<a href=${href} @click=${(e: Event) => (e.preventDefault(), navigate(href))}><strong class=${mono ? 'pv-mono' : ''}>${text}</strong></a>`;
+    const row = (label: string, value: unknown, mono = false) => html`<div class="pv-dl__row"><dt>${label}</dt><dd class=${mono ? 'pv-mono' : ''}>${value}</dd></div>`;
     return html`
-      ${back}
-      <div class="head">
-        <h2>${noticeTypeLabel(n.type)}</h2>
-        <wa-badge variant=${n.status === 'sent' ? 'success' : n.status === 'failed' ? 'danger' : 'brand'}>${noticeStatusLabel(n.status)}</wa-badge>
-        ${noticeFlags(n).map((f) => html`<wa-badge variant=${f === 'late' ? 'warning' : 'danger'}>${noticeFlagLabel(f)}</wa-badge>`)}
+      ${crumbs}
+      <div class="title">
+        <h1>${noticeTypeLabel(n.type)}</h1>
+        <span class="pv-badge pv-badge--id">${n.id}</span>
+        <span class="pv-badge ${n.status === 'pending' ? 'pv-badge--pending' : 'pv-badge--solid'}">${noticeStatusLabel(n.status)}</span>
+        ${noticeFlags(n).map((f) => html`<span class="pv-badge pv-badge--pending">${noticeFlagLabel(f)}</span>`)}
       </div>
+      <ul class="facts">
+        <li>${msg('Recipient', { id: 'notices.recipient' })}: ${link(`/parties/${n.recipientPartyId}`, partyName(this.recipient) || n.recipientPartyId)} (${n.language})</li>
+        ${n.policyId ? html`<li>${msg('Policy', { id: 'claims.col.policy' })}: ${link(`/policies/${n.policyId}`, n.policyId, true)}</li>` : nothing}
+        ${n.applicationId ? html`<li>${msg('Application', { id: 'application.title' })}: ${link(`/applications/${n.applicationId}`, n.applicationId, true)}</li>` : nothing}
+        ${typeof n.content.claimId === 'string'
+          ? html`<li>${msg('Claim', { id: 'claim.title' })}: ${link(`/claims/${n.content.claimId}`, String(n.content.claimNo ?? n.content.claimId), true)}</li>`
+          : nothing}
+        <li>${msg('Send by', { id: 'notices.dueBy' })}: <strong>${formatDate(n.dueBy, lang)}</strong></li>
+      </ul>
       ${this.result ? html`<wa-callout variant=${this.result.variant} role=${this.result.variant === 'danger' ? 'alert' : 'status'}>${this.result.text}</wa-callout>` : nothing}
       ${n.incomplete?.length && n.status !== 'sent'
         ? html`<wa-callout variant="danger"
             >${msg("The insurer's settings lack a text the law requires:", { id: 'notice.incompleteHelp' })} ${n.incomplete.join(', ')}</wa-callout
           >`
         : nothing}
-      <div class="cards">
-        ${this.documentsCard(n)}
-        <wa-card>
-          <h3 slot="header">${msg('Details', { id: 'claim.facts' })}</h3>
-          <dl>
-            <dt>${msg('Recipient', { id: 'notices.recipient' })}</dt>
-            <dd>${n.recipientPartyId} (${n.language})</dd>
-            ${n.policyId
-              ? html`<dt>${msg('Policy', { id: 'claims.col.policy' })}</dt>
-                  <dd><a href="/policies/${n.policyId}" @click=${(e: Event) => (e.preventDefault(), navigate(`/policies/${n.policyId}`))}>${n.policyId}</a></dd>`
-              : nothing}
-            ${n.applicationId
-              ? html`<dt>${msg('Application', { id: 'application.title' })}</dt>
-                  <dd><a href="/applications/${n.applicationId}" @click=${(e: Event) => (e.preventDefault(), navigate(`/applications/${n.applicationId}`))}>${n.applicationId}</a></dd>`
-              : nothing}
-            <dt>${msg('Send by', { id: 'notices.dueBy' })}</dt>
-            <dd>${formatDate(n.dueBy, lang)}</dd>
-            <dt>${msg('Made from', { id: 'notice.source' })}</dt>
-            <dd>${n.source.eventType}, ${formatDateTime(n.source.occurredAt, lang)}</dd>
-            <dt>${msg('Schema', { id: 'notice.schema' })}</dt>
-            <dd>${n.schema}</dd>
-            <dt>${msg('The document is made by', { id: 'notice.documentMaker' })}</dt>
-            <dd>
-              ${n.documentMaker === 'petvold' ? msg('Petvold', { id: 'settings.makerPetvold' }) : msg("The insurer's document system", { id: 'settings.makerInsurer' })}
-              ${n.documentMaker === 'petvold' && !n.document ? html`<span class="pv-badge pv-badge--pending">${msg('Not made yet', { id: 'notice.pdfPending' })}</span>` : nothing}
-            </dd>
-          </dl>
-        </wa-card>
-        <wa-card>
-          <h3 slot="header">${msg('Legal basis', { id: 'notice.legalBasis' })}</h3>
-          ${n.legalBasis.length ? html`<ul>${n.legalBasis.map((l) => html`<li>${l}</li>`)}</ul>` : html`<p>${msg('Not required by law.', { id: 'notice.noLaw' })}</p>`}
-        </wa-card>
-        ${mayReportDelivery(this.me) ? this.reportForm() : nothing}
-        <div class="wide">
-          <h3>${msg('Content', { id: 'notice.content' })}</h3>
-          <wa-card>
-            <dl>
-              ${Object.entries(n.content).map(
-                ([k, v]) => html`<dt>${k}</dt>
-                  <dd>${typeof v === 'object' ? html`<pre>${JSON.stringify(v, null, 2)}</pre>` : String(v)}</dd>`,
-              )}
-            </dl>
-          </wa-card>
+      <div class="cols">
+        <div class="basis">
+          <section class="pv-card" aria-labelledby="content">
+            <div class="pv-card__head">
+              <h2 class="pv-card__title" id="content">${msg('Content', { id: 'notice.content' })}</h2>
+              <span class="pv-card__meta pv-mono">${n.schema}</span>
+            </div>
+            <div class="pv-card__body">
+              <dl class="pv-dl">
+                ${Object.entries(n.content).map(([k, v]) => row(k, typeof v === 'object' ? html`<pre>${JSON.stringify(v, null, 2)}</pre>` : String(v)))}
+              </dl>
+            </div>
+          </section>
+          <section class="pv-card" aria-labelledby="law">
+            <div class="pv-card__head"><h2 class="pv-card__title" id="law">${msg('Legal basis', { id: 'notice.legalBasis' })}</h2></div>
+            <div class="pv-card__body">
+              ${n.legalBasis.length ? html`<ul class="law">${n.legalBasis.map((l) => html`<li>${l}</li>`)}</ul>` : html`<p>${msg('Not required by law.', { id: 'notice.noLaw' })}</p>`}
+            </div>
+          </section>
+          <section class="pv-card" aria-labelledby="deliveries">
+            <div class="pv-card__head"><h2 class="pv-card__title" id="deliveries">${msg('Deliveries', { id: 'notice.deliveries' })}</h2></div>
+            <pv-data-grid
+              .columns=${this.deliveryColumns()}
+              .rows=${n.deliveries}
+              label=${msg('Deliveries', { id: 'notice.deliveries' })}
+              empty-text=${msg('Not sent yet.', { id: 'notice.notSent' })}
+            ></pv-data-grid>
+          </section>
+          <section class="pv-card" aria-labelledby="details">
+            <div class="pv-card__head"><h2 class="pv-card__title" id="details">${msg('Details', { id: 'claim.facts' })}</h2></div>
+            <div class="pv-card__body">
+              <dl class="pv-dl">
+                ${row(msg('Made from', { id: 'notice.source' }), `${n.source.eventType}, ${formatDateTime(n.source.occurredAt, lang)}`)}
+                ${row(
+                  msg('The document is made by', { id: 'notice.documentMaker' }),
+                  html`${n.documentMaker === 'petvold' ? msg('Petvold', { id: 'settings.makerPetvold' }) : msg("The insurer's document system", { id: 'settings.makerInsurer' })}
+                  ${n.documentMaker === 'petvold' && !n.document ? html`<span class="pv-badge pv-badge--pending">${msg('Not made yet', { id: 'notice.pdfPending' })}</span>` : nothing}`,
+                )}
+                ${n.settingsVersion ? row(msg('Settings version', { id: 'notice.settingsVersion' }), n.settingsVersion) : nothing}
+              </dl>
+            </div>
+          </section>
         </div>
-        <div class="wide">
-          <h3>${msg('Deliveries', { id: 'notice.deliveries' })}</h3>
-          <pv-data-grid
-            .columns=${this.deliveryColumns()}
-            .rows=${n.deliveries}
-            label=${msg('Deliveries', { id: 'notice.deliveries' })}
-            empty-text=${msg('Not sent yet.', { id: 'notice.notSent' })}
-          ></pv-data-grid>
+        <div class="side">
+          ${this.documentsCard(n)} ${mayReportDelivery(this.me) ? this.reportForm() : nothing}
+          <pv-event-log heading=${msg('History', { id: 'claim.history' })} .entries=${this.historyEntries(n)}></pv-event-log>
         </div>
       </div>
     `;
   }
 
+  /** Made, the PDF, and every delivery report: newest first. */
+  private historyEntries(n: Notice): LogEntry[] {
+    const out: LogEntry[] = [
+      { key: 'created', at: n.createdAt, state: 'solid', badge: msg('Made', { id: 'notice.made' }), line: n.source.eventType, status: 'notice.created' },
+    ];
+    if (n.document) {
+      out.push({ key: 'document', at: n.document.madeAt, state: 'solid', badge: 'PDF', line: n.document.id, status: `notice.document_made · ${n.document.madeBy}` });
+    }
+    for (const d of n.deliveries) {
+      out.push({
+        key: d.id,
+        at: d.reportedAt,
+        state: d.outcome === 'sent' ? 'solid' : 'pending',
+        badge: d.outcome === 'sent' ? msg('Sent', { id: 'notices.tab.sent' }) : msg('Failed', { id: 'notice.failed' }),
+        line: d.outcome === 'sent' ? `${d.channel ?? ''}${d.documentId ? ` · ${d.documentId}` : ''}` : (d.reason ?? ''),
+        status: `notice.${d.outcome === 'sent' ? 'delivered' : 'failed'} · ${d.reportedBy}`,
+      });
+    }
+    return out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  }
+
   private reportForm() {
-    return html`<wa-card>
-      <h3 slot="header">${msg('Report a delivery', { id: 'notice.report' })}</h3>
-      <form @submit=${this.report}>
-        <wa-radio-group label=${msg('Result', { id: 'claim.result' })} value=${this.outcome} @change=${(e: Event) => (this.outcome = (e.target as HTMLInputElement).value as 'sent' | 'failed')}>
-          <wa-radio value="sent">${msg('Sent', { id: 'notices.tab.sent' })}</wa-radio>
-          <wa-radio value="failed">${msg('Failed', { id: 'notice.failed' })}</wa-radio>
-        </wa-radio-group>
+    const choice = (value: 'sent' | 'failed', title: string, desc: string) => html`<label class="pv-choice">
+      <input type="radio" name="outcome" value=${value} .checked=${this.outcome === value} @change=${() => (this.outcome = value)} />
+      <span>
+        <span class="pv-choice__title">${title}</span>
+        <span class="pv-choice__desc">${desc}</span>
+      </span>
+    </label>`;
+    return html`<section class="pv-card ${this.notice?.status === 'sent' ? '' : 'pv-card--strong'}" aria-labelledby="report">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="report">${msg('Report a delivery', { id: 'notice.report' })}</h2></div>
+      <form class="pv-card__body" @submit=${this.report}>
+        <fieldset>
+          <legend>${msg('Result', { id: 'claim.result' })}</legend>
+          ${choice('sent', msg('Sent', { id: 'notices.tab.sent' }), msg('The customer got it: with the channel and, unless Petvold made it, the document in the archive.', { id: 'notice.sentDesc' }))}
+          ${choice('failed', msg('Failed', { id: 'notice.failed' }), msg('It could not be sent, e.g. no address. The notice stays in the queue.', { id: 'notice.failedDesc' }))}
+        </fieldset>
         <wa-select label=${msg('Channel', { id: 'claims.col.channel' })} value=${this.channel} @change=${(e: Event) => (this.channel = (e.target as HTMLSelectElement).value as Channel)}>
           ${CHANNELS.map((c) => html`<wa-option value=${c}>${c}</wa-option>`)}
         </wa-select>
@@ -281,7 +405,7 @@ export class NoticeDetail extends LitElement {
           : html`<wa-input label=${msg('Why it failed, without personal data', { id: 'notice.failReason' })} .value=${this.reason} @input=${(e: Event) => (this.reason = (e.target as HTMLInputElement).value)}></wa-input>`}
         <wa-button type="submit" variant="brand" ?loading=${this.busy}>${msg('Report', { id: 'notice.reportSubmit' })}</wa-button>
       </form>
-    </wa-card>`;
+    </section>`;
   }
 
   private async report(e: Event) {

@@ -395,6 +395,8 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 
 - Ansökans sida enligt designsystemet (PR #123): rubrik och fakta som på skadan, reglerna och svaren till vänster, och prövningen med val, beslutet och historiken till höger.
 
+- Meddelandets sida enligt designsystemet (PR #124): innehåll, lagrum och utskick till vänster, och PDF, rapport om utskick och historik till höger.
+
 **Nästa steg**
 1. ADR 0038, steg 5: gallring av dokument som en körning.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
