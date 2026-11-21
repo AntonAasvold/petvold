@@ -52,7 +52,7 @@ Hade körningen stått still och den andra månaden fakturerats först den 10 de
 | `GET /v1/invoices?accountId=…&policyId=…&market=…` | Fakturor, äldst först |
 | `GET /v1/invoices/{invoiceId}` | En faktura med rader, förfallodag och referens |
 
-Händelsen `invoice.issued` går till bolagets system med webhooks ([Webhooks](webhooks.md)). Kundportalen ser en faktura bara om alla rader gäller dess egna policyer.
+Händelsen `invoice.issued` går till bolagets system med webhooks ([Webhooks](webhooks.md)), och fakturan går till kunden som meddelandet `invoice` ([Meddelanden](meddelanden.md)). Den ska skickas samma dag som fakturan görs, eftersom tiden att betala räknas därifrån. Kundportalen ser en faktura bara om alla rader gäller dess egna policyer.
 
 ## Premieplanen
 

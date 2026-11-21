@@ -68,6 +68,10 @@ test('the invoicing job makes invoices, the relay sends invoice.issued, and the 
   assert.deepEqual(events.map((e) => e.type), run.invoices.map(() => 'invoice.issued'));
   while ((await inst.relay.tick()) > 0);
   assert.equal((await inst.stores.billing.pendingEvents(100)).length, 0, 'the relay published them');
+  // Each invoice went to the customer as a notice, due to be sent on its issue date.
+  const notices = await inst.deps.communications!.list({ type: 'invoice' });
+  assert.deepEqual(notices.map((n) => n.invoiceId).sort(), run.invoices.map((i) => i.invoiceId).sort());
+  assert.ok(notices.every((n) => n.dueBy === '2027-11-01' && n.content.reference !== undefined));
 
   const tokens: Record<string, Principal> = {
     clerk: { subject: 'finance@example.test', roles: ['billing-clerk'], markets: ['SE'] },

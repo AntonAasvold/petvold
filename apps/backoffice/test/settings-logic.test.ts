@@ -27,10 +27,10 @@ test('retention needs markets, whole years and a reason', () => {
 });
 
 test('notice settings: days 1-30, a reason, and empty fields left out', () => {
-  const f = { promptlyDays: '5', disabledTypes: ['transfer-offer'], texts: { sv: { sender: ' Exempelbolaget ', review: '' }, en: { sender: '', review: '' } } };
+  const f = { promptlyDays: '5', disabledTypes: ['transfer-offer'], texts: { sv: { sender: ' Exempelbolaget ', review: '', payment: ' Bankgiro 123-4567 ' }, en: { sender: '', review: '' } } };
   assert.deepEqual(noticeSettingsProblems(f, 'Texts'), []);
   assert.deepEqual(noticeSettingsProblems({ ...f, promptlyDays: '31' }, ''), ['settings.badPromptly', 'settings.needReason']);
-  assert.deepEqual(noticeMarketSettings(f), { promptlyDays: 5, disabledTypes: ['transfer-offer'], texts: { sv: { sender: 'Exempelbolaget' } } });
+  assert.deepEqual(noticeMarketSettings(f), { promptlyDays: 5, disabledTypes: ['transfer-offer'], texts: { sv: { sender: 'Exempelbolaget', payment: 'Bankgiro 123-4567' } } });
   assert.deepEqual(noticeMarketSettings({ promptlyDays: '', disabledTypes: [], texts: {} }), {});
   // The insurer's document system is the default and is left out (ADR 0038).
   assert.deepEqual(noticeMarketSettings({ documentMaker: 'insurer', promptlyDays: '', disabledTypes: [], texts: {} }), {});

@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-21 | [Pengar, steg 2b-2: fakturan som meddelande](2026-11-21-fakturan-som-meddelande.md) | #133 |
 | 2026-11-21 | [Testerna och arbetssättet: egenskapstest för faktureringen och lagens månad](2026-11-21-tester-och-arbetssatt.md) | #132 |
 | 2026-11-21 | [Pengar, steg 2b: fakturor, nummerserie och betalningsreferens](2026-11-21-billing-fakturor.md) | #131 |
 | 2026-11-21 | [Pengar, steg 2a: betalarkonton och premieplaner](2026-11-21-billing-premieplaner.md) | #130 |

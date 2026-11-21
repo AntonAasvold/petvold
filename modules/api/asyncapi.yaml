@@ -897,6 +897,7 @@ components:
         language: { type: string, pattern: '^[a-z]{2}$' }
         policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
         applicationId: { type: string, pattern: '^app_[A-Za-z0-9]+$' }
+        invoiceId: { type: string, pattern: '^inv_[A-Za-z0-9]+$' }
         dueBy: { $ref: '#/components/schemas/Date' }
         documentMaker: { type: string, enum: [insurer, petvold], description: 'Who makes the document. petvold: wait for notice.document_made.' }
     NoticeDocumentMadeData:

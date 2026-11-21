@@ -9,7 +9,7 @@ import { NoticeConflictError, type Delivery, type NoticeDocument, type Notice, t
 const UNIQUE_VIOLATION = '23505';
 const FOREIGN_KEY_VIOLATION = '23503';
 
-const NOTICE = `n.notice_id, n.type, n.schema, n.market, n.recipient_party_id, n.language, n.policy_id, n.application_id,
+const NOTICE = `n.notice_id, n.type, n.schema, n.market, n.recipient_party_id, n.language, n.policy_id, n.application_id, n.invoice_id,
   n.source_event_id, n.source_event_type, n.source_occurred_at, n.legal_basis, n.due_by::text as due_by, n.content, n.settings_version, n.document_maker, n.created_at,
   (select json_build_object('id', x.document_id, 'sha256', x.sha256, 'madeBy', x.made_by, 'madeAt', x.made_at)
     from communications.notice_document x where x.notice_id = n.notice_id) as document,
@@ -51,8 +51,8 @@ export class PostgresNoticeStore implements NoticeStore {
   private async insertNotice(db: pg.PoolClient, n: Notice): Promise<boolean> {
     const r = await db.query(
       `insert into communications.notice (notice_id, type, schema, market, recipient_party_id, language, policy_id, application_id,
-         source_event_id, source_event_type, source_occurred_at, legal_basis, due_by, content, settings_version, document_maker, created_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+         source_event_id, source_event_type, source_occurred_at, legal_basis, due_by, content, settings_version, document_maker, created_at, invoice_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        on conflict (source_event_id, type) do nothing`,
       [
         n.id,
@@ -72,6 +72,7 @@ export class PostgresNoticeStore implements NoticeStore {
         n.settingsVersion ?? null,
         n.documentMaker ?? 'insurer',
         n.createdAt,
+        n.invoiceId ?? null,
       ],
     );
     return r.rowCount === 1;
@@ -94,6 +95,7 @@ export class PostgresNoticeStore implements NoticeStore {
     eq('market', f.market);
     eq('policy_id', f.policyId);
     eq('application_id', f.applicationId);
+    eq('invoice_id', f.invoiceId);
     eq('recipient_party_id', f.recipientPartyId);
     const sent = `exists (select 1 from communications.delivery d where d.notice_id = n.notice_id and d.outcome = 'sent')`;
     const any = `exists (select 1 from communications.delivery d where d.notice_id = n.notice_id)`;
@@ -176,6 +178,7 @@ function toNotice(r: Record<string, any>): Notice {
     language: r.language,
     ...(r.policy_id ? { policyId: r.policy_id } : {}),
     ...(r.application_id ? { applicationId: r.application_id } : {}),
+    ...(r.invoice_id ? { invoiceId: r.invoice_id } : {}),
     source: { eventId: r.source_event_id, eventType: r.source_event_type, occurredAt: iso(r.source_occurred_at) },
     legalBasis: r.legal_basis,
     dueBy: r.due_by,

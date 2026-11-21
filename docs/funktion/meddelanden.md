@@ -28,8 +28,10 @@ Samma händelse ger aldrig två meddelanden av samma typ, även om den levereras
 | `claim-information-request` | En handläggare begär komplettering av kunden | Tre dagar efter begäran | FAL 7 kap. 1 § |
 | `claim-information-reminder` | En öppen begäran till kunden når sin påminnelsedag | Tre dagar efter påminnelsedagen | FAL 7 kap. 1 § |
 | `claim-information-expired` | En begäran till kunden går ut utan svar | Tre dagar efter utgången | Ingen lag (ADR 0036) |
+| `invoice` | Faktureringen gör en faktura ([Premier och betalningar](premier.md#fakturor)) | Fakturans dag, eftersom tiden att betala räknas från den dag kravet skickades | FAL 5 kap. 1 § |
 
 - **Tre dagar** är Petvolds tolkning av "snarast", eftersom lagen inte anger något antal dagar. Bolaget kan ändra det i [inställningarna](#bolagets-inställningar).
+- **Fakturan** har fakturans id (`invoiceId`) i stället för en policy, eftersom en faktura kan samla flera policyer. Den görs av bolagets dokumentsystem, också när Petvold gör andra dokument, tills Petvold har en mall för fakturor. Skickas den sent blir den `late`, och då bör någon kontrollera förfallodagen, som räknas från fakturans dag.
 - **Mottagaren** är försäkringstagaren när beskedet gäller, vid en uppsägning den sista dagen policyn gällde. Vid ett avslag är det den sökande, och vid ett erbjudande den nya ägaren. För en skada är det försäkringstagaren på den första behandlingsdagen.
 - **En begäran om komplettering till kliniken** ger inget meddelande. Kliniken är inte kund, och bolaget når den på annat sätt.
 - **Språket** är partens språk, annars marknadens, i Sverige svenska.
@@ -51,6 +53,7 @@ Innehållet är fält, inte text. Varje typ har ett schema med versionsnummer, t
 | `claim-decision.v1` | `claimId`, `claimNo`, `policyId`, `animalId`, `decisionId`, `seq`, `outcome`, `payout`, `automated`, `mainReason` och `steps` (nycklar och värden, som i beslutets förklaring), `deviation` när handläggaren gick mot förslaget, `reviewAvailable` (kunden kan begära att en person prövar beslutet) och `review`, bolagets text om hur beslutet prövas |
 | `claim-information-request.v1`, `claim-information-reminder.v1` | `claimId`, `claimNo`, `policyId`, `animalId`, `requestId`, `items` (vad som saknas), `note` (handläggarens beskrivning) och `dueDate` (sista dagen att svara) |
 | `claim-information-expired.v1` | Samma fält utan `note`, och `decidedOnAvailableBasis`: en handläggare beslutar på det underlag som finns |
+| `invoice.v1` | `invoiceId`, `invoiceNo`, `issueDate`, `dueDate`, `total`, `reference` (`ocr` eller `rf` och värdet), `lines` (policy, period, premie, skatt, avgift och belopp) och `payment`, bolagets text om vart kunden betalar |
 
 Varje typ får också `sender` från inställningarna när bolaget har angett en avsändare. Meddelandet anger vilken version av inställningarna det skapades med (`settingsVersion`).
 
@@ -127,7 +130,7 @@ Bolagets val och texter ligger i en versionerad inställning per marknad (ADR 00
 | `documentMaker` | Vem som gör dokumenten: `insurer` (förval, bolagets dokumentsystem) eller `petvold` (Petvold gör PDF av skadebesked och försäkringsbrev när meddelandet skapas). `petvold` kräver Gotenberg. | `"petvold"` |
 | `promptlyDays` | Dagar som "snarast" ger, 1–30. Utelämnat: Petvolds förval, i Sverige 3. | 5 |
 | `disabledTypes` | Typer som lagen inte kräver och som inte ska skapas. En typ som lagen kräver kan inte stängas av. | `["cancellation-confirmation"]` |
-| `texts` | Texter per språk: `sender` (avsändaren) och `review` (hur ett beslut prövas). Ett meddelande får texterna på sitt språk, annars på marknadens. | se nedan |
+| `texts` | Texter per språk: `sender` (avsändaren), `review` (hur ett beslut prövas) och `payment` (vart fakturor betalas, till exempel bankgironumret). Ett meddelande får texterna på sitt språk, annars på marknadens. | se nedan |
 
 ```http
 POST /v1/settings/notices/versions
@@ -150,6 +153,7 @@ POST /v1/settings/notices/versions
 
 - **Version 1 är tom.** Petvolds lagregler gäller, och bolaget skriver sina egna texter. Petvold skriver inga texter åt bolaget.
 - **Utan `review`** blir ett avslag `incomplete` och hamnar i kön. Lagen kräver att avslaget anger hur sökanden får beslutet prövat (FAL 7 kap. 6 §).
+- **Utan `payment`** blir en faktura `incomplete` och hamnar i kön, eftersom kunden inte kan betala den.
 - **Skadebeskedet** kräver också `review`. Kunden ska veta hur ett beslut om ersättning prövas, och för ett automatiskt beslut att en person kan pröva det (dataskyddsförordningen artikel 22.3).
 - **`basedOnVersion`** måste vara versionen som gäller, annars `409`. Två samtidiga ändringar ger en vinnare.
 - **Läsa:** `GET /v1/settings/notices` och `.../versions` med `notices:read`. **Ändra:** `notices:configure`, till exempel rollen `communications-manager`.

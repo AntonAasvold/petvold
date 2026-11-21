@@ -4265,9 +4265,10 @@ export interface components {
          *     - claim-information-request: what the customer must send (FAL 7 kap. 1 §), claim-information-request.v1. Only for a request to the customer.
          *     - claim-information-reminder: the reminder of an open request, claim-information-reminder.v1
          *     - claim-information-expired: the request expired; a handler decides on what there is (not required by law), claim-information-expired.v1
+         *     - invoice: the demand for premium (ADR 0040; SE: FAL 5 kap. 1 §), invoice.v1. To be sent on its issue date, since the time to pay counts from it.
          * @enum {string}
          */
-        NoticeType: "policy-confirmation" | "renewal-notice" | "insurer-termination" | "cancellation-confirmation" | "application-declined" | "transfer-offer" | "claim-decision" | "claim-information-request" | "claim-information-reminder" | "claim-information-expired";
+        NoticeType: "policy-confirmation" | "renewal-notice" | "insurer-termination" | "cancellation-confirmation" | "application-declined" | "transfer-offer" | "claim-decision" | "claim-information-request" | "claim-information-reminder" | "claim-information-expired" | "invoice";
         WebhookSubscriptionRequest: {
             /** @description https, e.g. https://hooks.example.com/petvold. Not a local or private address. */
             url: string;
@@ -4370,6 +4371,8 @@ export interface components {
                     sender?: string;
                     /** @description How a decision is reviewed (SE: FAL 7 kap. 6 §). Copied to application-declined as content.review; without it the notice is incomplete. */
                     review?: string;
+                    /** @description Where and how an invoice is paid, e.g. the bankgiro number. Copied to invoice as content.payment; without it the notice is incomplete. */
+                    payment?: string;
                 };
             };
         };
@@ -4546,6 +4549,8 @@ export interface components {
             language: string;
             policyId?: string;
             applicationId?: string;
+            /** @description An invoice (ADR 0040). It may hold several policies, so the notice has no policyId. */
+            invoiceId?: string;
             /** @description The event the notice was made from. One notice of a type per event. */
             source: {
                 eventId: string;
@@ -4554,7 +4559,7 @@ export interface components {
             };
             /** @description The provisions that require it. Empty for a notice the law does not require. */
             legalBasis: string[];
-            /** @description The last day to send it: promptly after the event, the first day of a renewed term, or for the insurer's cancellation the day it says it sent it. */
+            /** @description The last day to send it: promptly after the event, the first day of a renewed term, or for the insurer's cancellation the day it says it sent it, and for an invoice its issue date. */
             dueBy: components["schemas"]["Date"];
             /**
              * @description What the law requires, as fields, per schema. No names or addresses.
@@ -4565,6 +4570,7 @@ export interface components {
              *     - claim-decision.v1: claimId, claimNo, policyId, animalId, decisionId, seq, outcome, payout, automated, mainReason and steps (keys and values, as the decision's explanation), deviation when a handler decided against the proposal, reviewAvailable, and review from the settings.
              *     - claim-information-request.v1 and claim-information-reminder.v1: claimId, claimNo, policyId, animalId, requestId, items, note, dueDate.
              *     - claim-information-expired.v1: the same without note, and decidedOnAvailableBasis.
+             *     - invoice.v1: invoiceId, invoiceNo, issueDate, dueDate, total, reference (type and value), lines (policyId, periodStart, periodEnd, premium, tax, fee, amount), and payment from the settings.
              *     Every type gets sender from the settings when it is set.
              */
             content: {
@@ -9779,6 +9785,7 @@ export interface operations {
                 market?: components["schemas"]["Market"];
                 policyId?: string;
                 applicationId?: string;
+                invoiceId?: string;
                 recipientPartyId?: string;
                 attention?: boolean;
                 overdue?: boolean;

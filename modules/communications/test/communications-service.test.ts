@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_RULES, type ClaimSource, type PolicyView, type SourceEvent, type TermView, type TransactionView } from '../src/index.ts';
+import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_RULES, type ClaimSource, type InvoiceSource, type InvoiceView, type PolicyView, type SourceEvent, type TermView, type TransactionView } from '../src/index.ts';
 
 const vetCare = { code: 'vet_care', annualLimit: 6_000_000, waitingPeriodDays: 30 };
 const term = (termNo: number, o: Partial<TermView> = {}): TermView => ({
@@ -16,7 +16,7 @@ const term = (termNo: number, o: Partial<TermView> = {}): TermView => ({
   ...o,
 });
 
-function setup(o: { language?: string; policy?: Partial<PolicyView>; transactions?: Record<string, TransactionView>; claims?: ClaimSource; petvoldTemplates?: (type: string, market: string) => boolean } = {}) {
+function setup(o: { language?: string; policy?: Partial<PolicyView>; transactions?: Record<string, TransactionView>; claims?: ClaimSource; invoices?: InvoiceSource; petvoldTemplates?: (type: string, market: string) => boolean } = {}) {
   let n = 0;
   let now = '2026-11-16T10:00:00.000Z';
   const store = new InMemoryNoticeStore();
@@ -46,6 +46,7 @@ function setup(o: { language?: string; policy?: Partial<PolicyView>; transaction
     },
     settings: new InMemoryNoticeSettingsStore(),
     ...(o.claims ? { claims: o.claims } : {}),
+    ...(o.invoices ? { invoices: o.invoices } : {}),
     ...(o.petvoldTemplates ? { petvoldTemplates: o.petvoldTemplates } : {}),
     parties: { languageOf: async (id) => (id === 'pty_anna' ? o.language : undefined) },
     clock: { now: () => now },
@@ -299,4 +300,55 @@ test('the setting petvold is refused where Petvold cannot make documents', async
   await rejects(s.changeSettings({ markets: { SE: { documentMaker: 'petvold' } }, basedOnVersion: 1, reason: 'x' }, 'u'), 'validation', /PETVOLD_GOTENBERG_URL/);
   await s.changeSettings({ markets: { SE: { documentMaker: 'insurer' } }, basedOnVersion: 1, reason: 'x' }, 'u');
   assert.equal((await s.settings()).markets.SE!.documentMaker, undefined);
+});
+
+
+const invoice: InvoiceView = {
+  id: 'inv_1',
+  number: 'SE-2026-000001',
+  partyId: 'pty_anna',
+  market: 'SE',
+  currency: 'SEK',
+  issueDate: '2026-11-22',
+  dueDate: '2026-12-06',
+  reference: { type: 'ocr', value: '202600000121' },
+  total: 40_000,
+  lines: [{ policyId: 'pol_1', periodStart: '2026-12-01', periodEnd: '2027-01-01', premium: 40_000, tax: 0, fee: 0, amount: 40_000 }],
+};
+const issuedEvent = { id: 'bev_1', type: 'invoice.issued', invoiceId: 'inv_1', occurredAt: '2026-11-22T03:00:00.000Z', data: {} };
+
+test('invoice.issued gives the invoice, to be sent on its issue date, incomplete without where to pay', async () => {
+  const { s, at } = setup({ invoices: { invoice: async (id) => (id === 'inv_1' ? structuredClone(invoice) : null) } });
+  const n = (await s.handleBillingEvent(issuedEvent))!;
+  assert.deepEqual([n.type, n.schema, n.recipientPartyId, n.invoiceId, n.policyId, n.dueBy, n.language], ['invoice', 'invoice.v1', 'pty_anna', 'inv_1', undefined, '2026-11-22', 'sv']);
+  assert.deepEqual(n.content, {
+    invoiceId: 'inv_1',
+    invoiceNo: 'SE-2026-000001',
+    issueDate: '2026-11-22',
+    dueDate: '2026-12-06',
+    total: { amount: 40_000, currency: 'SEK' },
+    reference: { type: 'ocr', value: '202600000121' },
+    lines: invoice.lines,
+  });
+  assert.match(n.legalBasis[0]!, /chapter 5 section 1/);
+  assert.deepEqual((await s.get(n.id)).incomplete, ['payment']);
+  assert.equal(await s.handleBillingEvent(issuedEvent), null, 'the same event again');
+  assert.deepEqual((await s.list({ invoiceId: 'inv_1' })).map((x) => x.id), [n.id]);
+
+  // With the insurer's text it is complete; sent the day after, it is late.
+  await s.changeSettings({ markets: { SE: { texts: { sv: { payment: 'Bankgiro 123-4567' } } } }, basedOnVersion: 1, reason: 'Bankgiro' }, 'comms');
+  const second = (await s.handleBillingEvent({ ...issuedEvent, id: 'bev_2' }))!;
+  assert.equal(second.content.payment, 'Bankgiro 123-4567');
+  assert.equal((await s.get(second.id)).incomplete, undefined);
+  at('2026-11-23T10:00:00.000Z');
+  const late = await s.addDelivery(second.id, { outcome: 'sent', channel: 'email', sentAt: '2026-11-23T09:00:00Z', documentId: 'd1', sha256: 'b'.repeat(64) }, 'docs');
+  assert.equal(late.late, true);
+});
+
+test('billing events: other types and no billing give nothing, an unknown invoice is an error', async () => {
+  assert.equal(await setup().s.handleBillingEvent(issuedEvent), null);
+  const { s } = setup({ invoices: { invoice: async () => null } });
+  assert.equal(await s.handleBillingEvent({ ...issuedEvent, type: 'invoice.paid' }), null);
+  await assert.rejects(s.handleBillingEvent(issuedEvent), /invoice inv_1/);
+  await assert.rejects(s.changeSettings({ markets: { SE: { texts: { sv: { payment: ' ' } } } }, basedOnVersion: 1, reason: 'x' }, 'c'), /payment/);
 });

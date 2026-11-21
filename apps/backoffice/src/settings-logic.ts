@@ -44,7 +44,7 @@ export interface NoticeMarketForm {
   documentMaker?: 'insurer' | 'petvold';
   promptlyDays: string;
   disabledTypes: string[];
-  texts: Record<string, { sender: string; review: string }>;
+  texts: Record<string, { sender: string; review: string; payment?: string }>;
 }
 
 /** What stops a change of the notice settings, as message ids. */
@@ -56,10 +56,13 @@ export function noticeSettingsProblems(f: NoticeMarketForm, reason: string): str
 }
 
 /** A market's notice settings from the form: empty fields are left out. */
-export function noticeMarketSettings(f: NoticeMarketForm): { documentMaker?: 'petvold'; promptlyDays?: number; disabledTypes?: string[]; texts?: Record<string, { sender?: string; review?: string }> } {
+export function noticeMarketSettings(f: NoticeMarketForm): { documentMaker?: 'petvold'; promptlyDays?: number; disabledTypes?: string[]; texts?: Record<string, { sender?: string; review?: string; payment?: string }> } {
   const texts = Object.fromEntries(
     Object.entries(f.texts)
-      .map(([lang, t]) => [lang, { ...(t.sender.trim() ? { sender: t.sender.trim() } : {}), ...(t.review.trim() ? { review: t.review.trim() } : {}) }] as const)
+      .map(
+        ([lang, t]) =>
+          [lang, { ...(t.sender.trim() ? { sender: t.sender.trim() } : {}), ...(t.review.trim() ? { review: t.review.trim() } : {}), ...(t.payment?.trim() ? { payment: t.payment.trim() } : {}) }] as const,
+      )
       .filter(([, t]) => Object.keys(t).length),
   );
   return {
