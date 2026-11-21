@@ -544,13 +544,21 @@ components:
       properties:
         specversion: { const: '1.0' }
         id: { type: string, description: Unique per source. Use it to recognize repeats. }
-        source: { type: string, enum: [/petvold/claims, /petvold/animals, /petvold/policies, /petvold/communications] }
+        source: { type: string, enum: [/petvold/claims, /petvold/animals, /petvold/policies, /petvold/communications, /petvold/scheduling] }
         type: { type: string, pattern: '^petvold\.[a-z]+\.[a-z_]+\.v[0-9]+$' }
         subject: { type: string, description: The id of the resource the event concerns. }
         time: { type: string, format: date-time }
         datacontenttype: { const: application/json }
         market: { type: string, pattern: '^[A-Z]{2}$' }
         data: { type: object }
+        sequence:
+          type: string
+          pattern: '^[0-9]{20}$'
+          description: |
+            CloudEvents extension: the event's position in its source's outbox,
+            zero-padded so that it orders as a string. Increasing per `source`.
+            A gap does not mean an event is missing (a transaction that rolled
+            back leaves one). Omitted for events without an outbox, e.g. job.failed.
     Date: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
     PartyId: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' }
     Money:
@@ -604,7 +612,7 @@ components:
         decisionId: { type: string }
         seq: { type: integer, minimum: 1 }
         outcome: { type: string }
-        payout: { type: integer, minimum: 0, description: Minor units. }
+        payout: { type: integer, minimum: 0, description: "Minor units. The claim's whole payout after this decision, not the change. An increase over the previous decision gives a claim.payout_ordered with the difference." }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
         automated: { type: boolean, description: No person judged the outcome. }
         deviatesFromProposal: { type: boolean }

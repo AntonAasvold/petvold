@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-21 | [Händelsekontraktet: ordningsnummer, källor och ersättningens betydelse](2026-11-21-handelsekontraktet.md) | #128 |
 | 2026-11-21 | [ADR 0040: pengar](2026-11-21-adr-0040-pengar.md) | #127 |
 | 2026-11-21 | [Produktens och regeluppsättningens sidor enligt designsystemet](2026-11-21-katalogsidorna.md) | #126 |
 | 2026-11-21 | [Webhookens sida enligt designsystemet](2026-11-21-webhooksidan.md) | #125 |

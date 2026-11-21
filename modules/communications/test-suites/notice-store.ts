@@ -67,7 +67,11 @@ export function noticeStoreSuite(name: string, make: () => Promise<{ store: Noti
       assert.equal(await store.add(notice(2, { source: notice().source }), [ev('nev_2', 'notice.created', 'ntc_2')]), false);
       await store.addDelivery('ntc_1', sent(1), [ev('nev_3', 'notice.delivered')]);
       assert.deepEqual((await store.pendingEvents(10)).map((e) => [e.id, e.type, e.noticeId]), [['nev_1', 'notice.created', 'ntc_1'], ['nev_3', 'notice.delivered', 'ntc_1']]);
-      assert.deepEqual((await store.pendingEvents(10))[0], ev('nev_1', 'notice.created'));
+      const [one, two] = await store.pendingEvents(10);
+      const { sequence: first, ...created } = one!;
+      const second = two!.sequence;
+      assert.deepEqual(created, ev('nev_1', 'notice.created'));
+      assert.ok(first! < second!, 'the outbox position increases');
       await store.markPublished(['nev_1'], '2026-11-16T10:00:02.000Z');
       assert.deepEqual((await store.pendingEvents(10)).map((e) => e.id), ['nev_3']);
     });

@@ -33,8 +33,6 @@ Några exempel på vad som stannar i Petvold:
 
 Mottagaren hämtar sådant med API:t om den har rätt till det.
 
-*Inte byggt än:* ordningsnumret `sequence` som ADR 0033 nämner. Mottagaren sorterar på `time`.
-
 ## Hur en händelse ser ut
 
 ```http
@@ -53,6 +51,7 @@ webhook-signature: v1,K5oZfzN95Z9UVu1EsfQmfVNQhnkZ2pj9o9NDN/H/pI4=
   "time": "2026-11-16T09:12:04Z",
   "datacontenttype": "application/json",
   "market": "SE",
+  "sequence": "00000000000000000412",
   "data": {
     "policyId": "pol_91c2…", "transactionId": "ptx_…", "animalId": "ani_kajsa",
     "policyholderPartyId": "pty_owner004", "productVersion": "SE-HUND-PLUS@2026.1",
@@ -65,7 +64,11 @@ webhook-signature: v1,K5oZfzN95Z9UVu1EsfQmfVNQhnkZ2pj9o9NDN/H/pI4=
 - **Tunna händelser.** `data` har id:n och fält som inte är personuppgifter. Det kan vara status, belopp, datum och skälskoder. Det är aldrig namn, adresser, anteckningar eller vem som gjorde något. Mottagaren hämtar resten med API:t och sin egen token, så samma behörighet gäller som annars.
 - **Versionerade typer.** En ändring som bryter mot innehållet blir en ny typ, till exempel `.v2`.
 - **`id` är samma vid varje försök.** Mottagaren använder det för att känna igen en händelse som kommer två gånger.
-- **Ingen ordning lovas.** Mottagaren sorterar på `time` om ordningen spelar roll.
+- **Ingen ordning lovas.** Mottagaren sorterar om ordningen spelar roll:
+  - **`sequence`** (tillägg i CloudEvents) är händelsens plats i modulens outbox. Det ökar per `source` och är utfyllt med nollor till 20 siffror, så att det sorterar rätt som text. Ett glapp betyder inte att en händelse saknas, eftersom en transaktion som rullats tillbaka lämnar ett.
+  - **`time`** sorterar mellan moduler.
+  - `job.failed` kommer inte från någon outbox och har ingen `sequence`.
+- **Belopp i skadebeslut.** `payout` i `claim.decided` är skadans hela ersättning efter beslutet, inte förändringen. En höjning jämfört med förra beslutet ger `claim.payout_ordered` med skillnaden.
 
 ## Signaturen
 

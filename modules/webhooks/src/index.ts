@@ -74,6 +74,8 @@ export interface SourceEvent {
   market: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;
+  /** The event's position in its module's outbox. Omitted for events that do not come from an outbox, e.g. job.failed. */
+  sequence?: number;
 }
 
 /** CloudEvents 1.0 in structured JSON mode, with the extension `market`. */
@@ -87,6 +89,12 @@ export interface CloudEvent {
   datacontenttype: 'application/json';
   market: string;
   data: Record<string, unknown>;
+  /**
+   * The CloudEvents extension `sequence`: the position in the source's outbox,
+   * zero-padded to 20 digits so that it orders as a string. Increasing per
+   * source; a gap does not mean an event is missing.
+   */
+  sequence?: string;
 }
 
 /** The public form of an event, or null if it is not public. Pure. */
@@ -99,7 +107,18 @@ export function toCloudEvent(e: SourceEvent): CloudEvent | null {
   for (const f of spec.fields) if (e.data[f] !== undefined) data[f] = structuredClone(e.data[f]);
   // An application that led to a policy names it.
   if (spec.subject === 'applicationId' && e.policyId) data.policyId = e.policyId;
-  return { specversion: '1.0', id: e.id, source: `/petvold/${spec.source}`, type: `petvold.${e.type}.v1`, subject, time: e.occurredAt, datacontenttype: 'application/json', market: e.market, data };
+  return {
+    specversion: '1.0',
+    id: e.id,
+    source: `/petvold/${spec.source}`,
+    type: `petvold.${e.type}.v1`,
+    subject,
+    time: e.occurredAt,
+    datacontenttype: 'application/json',
+    market: e.market,
+    data,
+    ...(e.sequence === undefined ? {} : { sequence: String(e.sequence).padStart(20, '0') }),
+  };
 }
 
 /** Whether a subscription pattern ('*', 'policy.*' or an exact type) covers an event type. Pure. */

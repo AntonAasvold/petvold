@@ -108,7 +108,9 @@ export function animalStoreSuite(name: string, factory: AnimalStoreFactory): voi
       const next = owner({ seq: 2, partyId: 'pty_bo', validFrom: '2026-06-01', reason: 'Sold' });
       const event = { id: 'aev_1', type: 'animal.ownership_changed' as const, animalId: 'ani_rex', occurredAt: at, data: { toPartyId: 'pty_bo', from: '2026-06-01' } };
       await store.transfer('ani_rex', 1, next, [event]);
-      assert.deepEqual(await store.pendingEvents(10), [event]);
+      const { sequence, ...pending } = (await store.pendingEvents(10))[0]!;
+      assert.deepEqual(pending, event);
+      assert.ok(Number.isInteger(sequence) && sequence! > 0, 'the outbox position comes along');
       await store.markPublished(['aev_1'], at);
       assert.deepEqual(await store.pendingEvents(10), []);
       await assert.rejects(store.transfer('ani_rex', 1, owner({ seq: 3, partyId: 'pty_cy', validFrom: '2026-07-01' })), AnimalConflictError);

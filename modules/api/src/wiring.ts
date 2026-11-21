@@ -236,7 +236,7 @@ export async function claimsEventForWebhooks(
   const e = entry.event;
   const claimId = eventClaimId(e);
   const claim = e.type === 'claim.registered' ? { market: e.claim.market, currency: e.claim.currency } : await marketOf(claimId);
-  const base = { id: entry.id, type: e.type, claimId, market: claim.market, occurredAt: e.occurredAt };
+  const base = { id: entry.id, type: e.type, claimId, market: claim.market, occurredAt: e.occurredAt, sequence: Number(entry.id) };
   switch (e.type) {
     case 'claim.registered': {
       const c = e.claim;

@@ -431,6 +431,8 @@ export interface PolicyEvent {
   applicationId?: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;
+  /** Its position in the module's outbox, set when read from it. Increasing, with gaps where a transaction rolled back. */
+  sequence?: number;
 }
 
 /** A policy with its terms and current versions (what is known now). */
@@ -2340,7 +2342,7 @@ export class InMemoryPolicyStore implements PolicyStore {
   }
 
   async pendingEvents(limit: number) {
-    return structuredClone(this.outbox.filter((e) => !e.publishedAt).slice(0, limit)).map(({ publishedAt: _p, ...e }) => e);
+    return structuredClone(this.outbox.map((e, i) => ({ ...e, sequence: i + 1 })).filter((e) => !e.publishedAt).slice(0, limit)).map(({ publishedAt: _p, ...e }) => e);
   }
 
   async markPublished(ids: string[], at: string) {

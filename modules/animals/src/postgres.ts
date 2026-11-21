@@ -146,10 +146,10 @@ export class PostgresAnimalStore implements AnimalStore {
 
   async pendingEvents(limit: number): Promise<AnimalEvent[]> {
     const { rows } = await this.pool.query(
-      `select event_id, type, animal_id, occurred_at, data from animals.outbox where published_at is null order by seq limit $1`,
+      `select seq, event_id, type, animal_id, occurred_at, data from animals.outbox where published_at is null order by seq limit $1`,
       [limit],
     );
-    return rows.map((r) => ({ id: r.event_id, type: r.type, animalId: r.animal_id, occurredAt: iso(r.occurred_at), data: r.data }));
+    return rows.map((r) => ({ id: r.event_id, type: r.type, animalId: r.animal_id, occurredAt: iso(r.occurred_at), data: r.data, sequence: Number(r.seq) }));
   }
 
   async markPublished(ids: string[], at: string): Promise<void> {

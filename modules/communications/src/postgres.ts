@@ -142,10 +142,10 @@ export class PostgresNoticeStore implements NoticeStore {
 
   async pendingEvents(limit: number): Promise<NoticeEvent[]> {
     const { rows } = await this.pool.query(
-      `select event_id, type, notice_id, market, occurred_at, data from communications.outbox where published_at is null order by seq limit $1`,
+      `select seq, event_id, type, notice_id, market, occurred_at, data from communications.outbox where published_at is null order by seq limit $1`,
       [limit],
     );
-    return rows.map((r) => ({ id: r.event_id, type: r.type, noticeId: r.notice_id, market: r.market, occurredAt: iso(r.occurred_at), data: r.data }));
+    return rows.map((r) => ({ id: r.event_id, type: r.type, noticeId: r.notice_id, market: r.market, occurredAt: iso(r.occurred_at), data: r.data, sequence: Number(r.seq) }));
   }
 
   async markPublished(ids: string[], at: string): Promise<void> {

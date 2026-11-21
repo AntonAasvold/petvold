@@ -410,8 +410,16 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **En adapter per betaltjänst:** bankfiler först, sedan Stripe eller Surfboard (kort och Swish), Autogiro och SEPA, och Swish direkt.
   - **Dagsavslutet som CSV** först. Dröjsmålsränta väntar.
 
+- Spec för en fristående demotjänst (`apps/demo`) som tar emot händelserna, spelar bank och kontrollerar att allt stämmer, som ett dokument. Den byggs separat.
+
+- Händelsekontraktet (PR #128):
+  - **`sequence`** på varje webhook: platsen i modulens outbox, som ADR 0033 lovar.
+  - **`/petvold/scheduling`** bland källorna, så att `job.failed` följer schemat.
+  - **`payout` i `claim.decided`** är beskriven som skadans hela ersättning efter beslutet.
+  - 559 tester och 163 databastester.
+
 **Nästa steg**
-1. ADR 0041 om en fristående demotjänst som tar emot händelserna, spelar bank och kontrollerar att allt stämmer.
+1. ADR 0041 om demotjänsten som tar emot händelserna, spelar bank och kontrollerar att allt stämmer.
 2. ADR 0040, steg 1: `billing-core`.
 3. ADR 0038, steg 5: gallring av dokument som en körning.
 4. Back office: översikten på startsidan och omräkning av beslut.
