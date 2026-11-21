@@ -52,3 +52,13 @@ test("communications writes the insurer's text on how a decision is reviewed", a
   await expect(saved(page)).toContainText('Saved as a new version.');
   await expect(page.getByRole('textbox', { name: 'How a decision is reviewed (en)' })).toHaveValue('Contact our complaints function first.');
 });
+
+test('communications may let Petvold make the documents; without Gotenberg the setting is refused (ADR 0038)', async ({ page }) => {
+  await signIn(page, 'dev-communications');
+  await expect(page.getByRole('radio', { name: "The insurer's document system" })).toBeChecked();
+  await page.getByRole('radio', { name: 'Petvold' }).click();
+  await page.getByRole('textbox', { name: 'Reason for the change' }).fill('Petvold makes the letters');
+  await page.getByRole('button', { name: 'Save a new version' }).click();
+  // The flow tests run without Gotenberg: the answer names what is missing.
+  await expect(page.getByRole('alert')).toContainText('PETVOLD_GOTENBERG_URL');
+});

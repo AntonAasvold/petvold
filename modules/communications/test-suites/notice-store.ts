@@ -17,6 +17,7 @@ export function notice(n = 1, o: Partial<Notice> = {}): Notice {
     dueBy: '2026-11-19',
     content: { policyId: `pol_${n}`, premium: { amount: 480_000, currency: 'SEK' } },
     settingsVersion: 1,
+    documentMaker: 'insurer',
     createdAt: '2026-11-16T10:00:01.000Z',
     deliveries: [],
     ...o,
@@ -87,6 +88,18 @@ export function noticeStoreSuite(name: string, make: () => Promise<{ store: Noti
       assert.deepEqual(await ids({ policyId: 'pol_2' }), ['ntc_2']);
       assert.deepEqual(await ids({ recipientPartyId: 'pty_bo' }), []);
       assert.deepEqual(await ids({ type: 'policy-confirmation', market: 'SE' }), ['ntc_1', 'ntc_2', 'ntc_3']);
+    });
+
+    test("Petvold's PDF is stored once per notice, with its event (ADR 0038)", async () => {
+      const { store } = await make();
+      await store.add(notice(1, { documentMaker: 'petvold' }), []);
+      const doc = { id: 'doc_abc', sha256: 'b'.repeat(64), madeBy: 'petvold', madeAt: '2026-11-16T10:00:03.000Z' };
+      const ev = { id: 'nev_9', type: 'notice.document_made' as const, noticeId: 'ntc_1', market: 'SE', occurredAt: doc.madeAt, data: { documentId: 'doc_abc' } };
+      await store.addDocument('ntc_1', doc, [ev]);
+      await assert.rejects(store.addDocument('ntc_1', { ...doc, id: 'doc_other' }, []), NoticeConflictError);
+      await assert.rejects(store.addDocument('ntc_none', doc, []), NoticeConflictError);
+      assert.deepEqual(await store.get('ntc_1'), notice(1, { documentMaker: 'petvold', document: doc }));
+      assert.deepEqual((await store.pendingEvents(10)).map((e) => e.type), ['notice.document_made']);
     });
   });
 }

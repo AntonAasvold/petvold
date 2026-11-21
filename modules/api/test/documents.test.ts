@@ -152,3 +152,49 @@ test('a notice becomes a PDF from the template, with the recipient and the reaso
   const [m] = (await without.call('GET', '/v1/notices?type=claim-decision', 'docs')).body.items;
   assert.equal((await without.call('POST', `/v1/notices/${m.id}/documents`, 'docs', {})).status, 503, 'no renderer');
 });
+
+test('with the setting petvold the relay makes the PDF when the notice is made; the report names only channel and time (ADR 0038 step 4)', async () => {
+  let rendered = 0;
+  let now = '2026-11-20T10:00:00.000Z';
+  const clock = { now: () => now };
+  const inst = await compose({
+    databases: {},
+    engineVersion: 'test',
+    clock,
+    documents: { key: Buffer.alloc(32, 1).toString('base64'), renderer: { render: async () => (rendered++, new TextEncoder().encode('%PDF-1.7 rendered')) } },
+  });
+  const communications = inst.deps.communications!;
+  const v = (await communications.settings()).version;
+  await communications.changeSettings({ markets: { SE: { documentMaker: 'petvold' } }, basedOnVersion: v, reason: 'Petvold makes the letters' }, 'compliance');
+  await seedSampleData(inst, clock);
+  while ((await inst.relay.tick()) > 0);
+  const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
+  const get = async (path: string) => (await app.request(path, { headers: { authorization: 'Bearer docs' } })).json() as Promise<any>;
+
+  const notices = (await get('/v1/notices')).items as any[];
+  const made = notices.filter((x) => x.documentMaker === 'petvold');
+  assert.ok(made.length >= 2, 'claims decisions and policy confirmations');
+  assert.ok(made.every((x) => ['claim-decision', 'policy-confirmation'].includes(x.type) && x.document?.madeBy === 'petvold'));
+  assert.ok(notices.filter((x) => !['claim-decision', 'policy-confirmation'].includes(x.type)).every((x) => x.documentMaker === 'insurer' && !x.document));
+  assert.equal(rendered, made.length, 'one PDF per notice, also when the relay runs again');
+  const n = made[0];
+  valid('Notice', n);
+  const doc = await get(`/v1/documents/${n.document.id}`);
+  assert.deepEqual([doc.owner.noticeId, doc.sha256], [n.id, n.document.sha256]);
+
+  now = '2026-11-20T11:00:00.000Z';
+  const report = (body: unknown) =>
+    app.request(`/v1/notices/${n.id}/deliveries`, { method: 'POST', headers: { authorization: 'Bearer docs', 'content-type': 'application/json', 'idempotency-key': `k-${JSON.stringify(body)}` }, body: JSON.stringify(body) });
+  const sent = { outcome: 'sent', channel: 'digital-mailbox', sentAt: '2026-11-20T10:30:00Z' };
+  assert.equal((await report({ ...sent, documentId: 'arch-1', sha256: 'a'.repeat(64) })).status, 422, 'another document than Petvold made');
+  const res = await report(sent);
+  assert.equal(res.status, 201);
+  const after = (await res.json()) as any;
+  assert.deepEqual([after.status, after.deliveries[0].documentId, after.deliveries[0].sha256], ['sent', n.document.id, n.document.sha256]);
+
+  // The customer's list has the PDF once, from Petvold's archive.
+  const list = (await (await app.request(`/v1/parties/${n.recipientPartyId}/documents`, { headers: { authorization: 'Bearer handler' } })).json()) as any;
+  const rows = list.items.filter((x: any) => x.noticeId === n.id);
+  assert.deepEqual(rows.map((x: any) => [x.source, x.documentId, x.noticeType]), [['petvold', n.document.id, n.type]]);
+  rows.forEach((x: any) => valid('CustomerDocument', x));
+});

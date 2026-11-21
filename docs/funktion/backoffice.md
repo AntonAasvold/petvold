@@ -179,7 +179,7 @@ Den som har rätten `claims:request-information` kan begära underlag som saknas
 - **"Underlaget har kommit in"** (rätten `claims:register`). Ärendet går tillbaka till kön.
 - **"Återkalla begäran"**, med en anteckning om varför.
 
-Ett meddelandes sida har kortet "PDF från Petvold" (ADR 0038). Den som har `notices:deliver` kan göra ett skadebesked eller försäkringsbrev till en PDF med Petvolds mall, och de PDF:er som gjorts öppnas med en länk som gäller i 15 minuter.
+Ett meddelandes sida har kortet "PDF från Petvold" (ADR 0038). Den som har `notices:deliver` kan göra ett skadebesked eller försäkringsbrev till en PDF med Petvolds mall, och de PDF:er som gjorts öppnas med en länk som gäller i 15 minuter. Sidan visar också vem som gör dokumentet. När det är Petvold frågar rapporten om utskick bara efter kanal och tid. Under Inställningar → Meddelanden väljer den som har `notices:configure` om Petvold eller bolagets dokumentsystem gör dokumenten för marknaden.
 
 Historiken visar meddelandena till kunden om ärendet, med typ och läge, och "Öppna" går till meddelandet. Det gäller skadebeskedet och meddelandena om komplettering. Under Inställningar kan meddelandet om utgång stängas av.
 

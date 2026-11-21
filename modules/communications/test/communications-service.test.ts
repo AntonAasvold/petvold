@@ -16,7 +16,7 @@ const term = (termNo: number, o: Partial<TermView> = {}): TermView => ({
   ...o,
 });
 
-function setup(o: { language?: string; policy?: Partial<PolicyView>; transactions?: Record<string, TransactionView>; claims?: ClaimSource } = {}) {
+function setup(o: { language?: string; policy?: Partial<PolicyView>; transactions?: Record<string, TransactionView>; claims?: ClaimSource; petvoldTemplates?: (type: string, market: string) => boolean } = {}) {
   let n = 0;
   let now = '2026-11-16T10:00:00.000Z';
   const store = new InMemoryNoticeStore();
@@ -46,6 +46,7 @@ function setup(o: { language?: string; policy?: Partial<PolicyView>; transaction
     },
     settings: new InMemoryNoticeSettingsStore(),
     ...(o.claims ? { claims: o.claims } : {}),
+    ...(o.petvoldTemplates ? { petvoldTemplates: o.petvoldTemplates } : {}),
     parties: { languageOf: async (id) => (id === 'pty_anna' ? o.language : undefined) },
     clock: { now: () => now },
     ids: { next: (p) => `${p}_${++n}` },
@@ -265,4 +266,37 @@ test('a request to the clinic, other claims events and an installation without t
   const without = setup();
   assert.equal(await without.s.handleClaimEvent(claimEvent('claim.decided', { seq: 1 })), null);
   await assert.rejects(s.handleClaimEvent(claimEvent('claim.decided', { seq: 9 })), /does not exist/);
+});
+
+test('with the setting petvold, Petvold makes the PDF of the types it has templates for; the report then names only channel and time (ADR 0038)', async () => {
+  const { s, at } = setup({ petvoldTemplates: (type) => type === 'policy-confirmation' });
+  await rejects(s.changeSettings({ markets: { SE: { documentMaker: 'pigeon' as never } }, basedOnVersion: 1, reason: 'x' }, 'u'), 'validation', /documentMaker/);
+  await s.changeSettings({ markets: { SE: { documentMaker: 'petvold' } }, basedOnVersion: 1, reason: 'Petvold makes the letters' }, 'u');
+  assert.equal((await s.settings()).markets.SE!.documentMaker, 'petvold');
+
+  const n = (await s.handlePolicyEvent(event('policy.issued', { transactionId: 'ptx_issue' })))!;
+  assert.equal(n.documentMaker, 'petvold');
+  // Petvold has no template for the refusal here: the insurer's document system makes it.
+  const c = (await s.handlePolicyEvent(event('application.declined', {}, { id: 'pev_d', policyId: undefined, applicationId: 'app_1' })))!;
+  assert.equal(c.documentMaker, 'insurer');
+
+  at('2026-11-17T09:00:00.000Z');
+  const ok = { outcome: 'sent' as const, channel: 'digital-mailbox', sentAt: '2026-11-17T08:00:00Z' };
+  await rejects(s.addDelivery(n.id, ok, 'ds'), 'conflict', /not made the document/);
+  await rejects(s.addDocument(n.id, { id: 'doc_1', sha256: 'x' }, 'petvold'), 'validation', /sha256/);
+  const made = await s.addDocument(n.id, { id: 'doc_1', sha256: 'c'.repeat(64) }, 'petvold');
+  assert.deepEqual(made.document, { id: 'doc_1', sha256: 'c'.repeat(64), madeBy: 'petvold', madeAt: '2026-11-17T09:00:00.000Z' });
+  await rejects(s.addDocument(n.id, { id: 'doc_2', sha256: 'c'.repeat(64) }, 'petvold'), 'conflict', /already/);
+  await rejects(s.addDocument(c.id, { id: 'doc_3', sha256: 'c'.repeat(64) }, 'petvold'), 'conflict', /insurer/);
+
+  await rejects(s.addDelivery(n.id, { ...ok, documentId: 'arch-1', sha256: 'a'.repeat(64) }, 'ds'), 'validation', /Petvold made/);
+  const done = await s.addDelivery(n.id, ok, 'ds');
+  assert.deepEqual([done.status, done.deliveries[0]!.documentId, done.deliveries[0]!.sha256], ['sent', 'doc_1', 'c'.repeat(64)]);
+});
+
+test('the setting petvold is refused where Petvold cannot make documents', async () => {
+  const { s } = setup();
+  await rejects(s.changeSettings({ markets: { SE: { documentMaker: 'petvold' } }, basedOnVersion: 1, reason: 'x' }, 'u'), 'validation', /PETVOLD_GOTENBERG_URL/);
+  await s.changeSettings({ markets: { SE: { documentMaker: 'insurer' } }, basedOnVersion: 1, reason: 'x' }, 'u');
+  assert.equal((await s.settings()).markets.SE!.documentMaker, undefined);
 });

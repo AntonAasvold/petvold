@@ -373,8 +373,15 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
   - **Back office:** kortet "PDF från Petvold" på meddelandets sida.
   - **Migration 0047.** 143 operationer, 543 tester, 158 databastester och 41 flöden.
 
+- Dokument, steg 4 (ADR 0038), PR #118:
+  - **Inställningen `documentMaker`** per marknad: `insurer` (förval) eller `petvold`. `petvold` kräver Gotenberg.
+  - **Reläet gör PDF:en** av skadebesked och försäkringsbrev efter `notice.created`. Meddelandet får `document`, och `notice.document_made` går till webhooks.
+  - **Utskicket rapporteras** med bara kanal och tid. Petvold fyller i sitt dokument.
+  - **Back office:** valet under Inställningar → Meddelanden, och vem som gör dokumentet på meddelandets sida.
+  - **Migration 0048.** 547 tester, 159 databastester och 42 flöden.
+
 **Nästa steg**
-1. ADR 0038, steg 4: meddelanden som PDF från Petvold eller bolagets dokumentsystem, enligt en inställning.
+1. ADR 0038, steg 5: gallring av dokument som en körning.
 2. ADR om premier och betalningar (M5): fakturering, utbetalning och dröjsmålsränta.
 3. Back office: översikten på startsidan, omräkning av beslut och policyns sida enligt designsystemet.
 

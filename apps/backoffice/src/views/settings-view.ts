@@ -139,7 +139,7 @@ export class SettingsView extends LitElement {
   private fillNoticeForm() {
     const m = this.notices?.markets[this.market] ?? {};
     const text = (lang: string) => ({ sender: m.texts?.[lang]?.sender ?? '', review: m.texts?.[lang]?.review ?? '' });
-    this.form = { promptlyDays: m.promptlyDays ? String(m.promptlyDays) : '', disabledTypes: [...(m.disabledTypes ?? [])], texts: { sv: text('sv'), en: text('en') } };
+    this.form = { documentMaker: m.documentMaker ?? 'insurer', promptlyDays: m.promptlyDays ? String(m.promptlyDays) : '', disabledTypes: [...(m.disabledTypes ?? [])], texts: { sv: text('sv'), en: text('en') } };
   }
 
   private show(tab: Tab) {
@@ -256,6 +256,16 @@ export class SettingsView extends LitElement {
         <wa-select label=${msg('Market', { id: 'policy.market' })} value=${this.market} @change=${(e: Event) => ((this.market = (e.target as HTMLSelectElement).value), this.fillNoticeForm())}>
           ${markets.map((m) => html`<wa-option value=${m}>${m}</wa-option>`)}
         </wa-select>
+        <wa-radio-group
+          label=${msg('Who makes the documents', { id: 'settings.documentMaker' })}
+          hint=${msg('Petvold makes claims decisions and policy confirmations as PDF from its templates; other notices stay with the document system.', { id: 'settings.documentMakerHint' })}
+          value=${this.form.documentMaker ?? 'insurer'}
+          ?disabled=${!edit}
+          @change=${(e: Event) => (this.form = { ...this.form, documentMaker: (e.target as HTMLInputElement).value as 'insurer' | 'petvold' })}
+        >
+          <wa-radio value="insurer">${msg("The insurer's document system", { id: 'settings.makerInsurer' })}</wa-radio>
+          <wa-radio value="petvold">${msg('Petvold', { id: 'settings.makerPetvold' })}</wa-radio>
+        </wa-radio-group>
         <wa-input
           label=${msg('Days that "promptly" gives', { id: 'settings.promptly' })}
           hint=${msg("1-30. Empty: Petvold's default", { id: 'settings.promptlyHint' })}

@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-21 | [Dokument, steg 4: Petvold gör breven automatiskt](2026-11-21-dokument-steg-4.md) | #118 |
 | 2026-11-21 | [Dokument, steg 3: Gotenberg och mallarna](2026-11-21-dokument-steg-3.md) | #117 |
 | 2026-11-20 | [Dokument, steg 2: uppladdning och kundens dokument](2026-11-20-dokument-steg-2.md) | #116 |
 | 2026-11-20 | [Dokument, steg 1: arkivet och länkarna](2026-11-20-dokument-steg-1.md) | #115 |

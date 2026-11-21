@@ -46,8 +46,9 @@ import { underwritingCoverage } from '@petvold/underwriting-core';
 import { InMemoryIdempotencyStore, type AppDeps, type IdempotencyStore } from './app.ts';
 import { assertRoleDefinitions, DEFAULT_ROLES, type RoleDefinitions } from './permissions.ts';
 import { Relay, relaySource } from './relay.ts';
-import { DocumentService, InMemoryBlobStore, InMemoryDocumentStore, type BlobStore, type DocumentStore, type PdfRenderer } from '@petvold/documents';
+import { DocumentService, InMemoryBlobStore, InMemoryDocumentStore, TEMPLATES, type BlobStore, type DocumentStore, type PdfRenderer } from '@petvold/documents';
 import { GotenbergRenderer } from '@petvold/documents/gotenberg';
+import { ensureNoticePdf } from './notice-pdf.ts';
 import { PostgresDocumentStore } from '@petvold/documents/postgres';
 import { S3BlobStore, s3ConfigFromEnv, type S3Config } from '@petvold/documents/s3';
 import { animalPort, claimSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
@@ -245,6 +246,10 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     ids,
   });
 
+  // Petvold's PDFs (ADR 0038): Gotenberg, or a renderer the tests give.
+  const gotenberg = config.documents?.gotenbergUrl ? new GotenbergRenderer(config.documents.gotenbergUrl) : null;
+  const renderer = config.documents?.renderer ?? gotenberg;
+
   // Notices to the customer (ADR 0032), made from the policy module's events below.
   const communicationsPool = pool('communications', 2);
   const noticeStore: NoticeStore = communicationsPool ? new PostgresNoticeStore(communicationsPool) : new InMemoryNoticeStore();
@@ -255,6 +260,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     parties: partySource(parties),
     // The claims engine is made below; the port reads it when an event comes.
     claims: { decision: (id, seq) => claimSource(service).decision(id, seq), informationRequest: (id, r) => claimSource(service).informationRequest(id, r) },
+    // With a renderer, a market may have Petvold make the notices it has templates for (ADR 0038).
+    ...(renderer ? { petvoldTemplates: (type: string, market: string) => TEMPLATES.some((t) => t.name === type && t.market === market) } : {}),
     clock,
     ids,
   });
@@ -383,6 +390,11 @@ export async function compose(config: InstallationConfig): Promise<Installation>
         deliver: async (e) => {
           const queued = await webhooks.enqueue({ ...e });
           if (queued) log(`[webhook] ${e.type} ${e.noticeId} queued for ${queued} subscription(s)`);
+          // Petvold makes the notice's PDF (ADR 0038). A failure, e.g. Gotenberg down, is tried again; the webhook is not queued twice.
+          if (e.type === 'notice.created' && e.data.documentMaker === 'petvold') {
+            const doc = await ensureNoticePdf({ documents, communications, parties, animals, clock }, e.noticeId);
+            if (doc) log(`[document] ${e.noticeId} -> ${doc.id}`);
+          }
         },
         markPublished: (ids, at) => noticeStore.markPublished(ids, at),
       }),
@@ -398,8 +410,6 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   const blobs: BlobStore = s3 ?? new InMemoryBlobStore();
   const documentKey = config.documents?.key ? Buffer.from(config.documents.key, 'base64') : null;
   if (documentsPool && (!documentKey || documentKey.length < 32)) throw new Error('PETVOLD_DOCUMENT_KEY must be at least 32 bytes in base64 when documents are stored in Postgres');
-  const gotenberg = config.documents?.gotenbergUrl ? new GotenbergRenderer(config.documents.gotenbergUrl) : null;
-  const renderer = config.documents?.renderer ?? gotenberg;
   const documents = new DocumentService({
     ...(renderer ? { renderer } : {}),
     store: documentStore,

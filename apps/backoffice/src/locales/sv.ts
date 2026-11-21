@@ -929,4 +929,12 @@ export const templates: Record<string, string> = {
   'notice.pdfTitle': 'PDF från Petvold',
   'notice.noPdf': 'Ingen PDF än. Bolagets dokumentsystem gör brevet, om inte Petvold gör det här.',
   'notice.makePdf': 'Gör PDF',
+  'settings.documentMaker': 'Vem gör dokumenten',
+  'settings.documentMakerHint': 'Petvold gör skadebesked och försäkringsbrev som PDF med sina mallar. Andra meddelanden gör dokumentsystemet som förut.',
+  'settings.makerInsurer': 'Bolagets dokumentsystem',
+  'settings.makerPetvold': 'Petvold',
+  'notice.documentMaker': 'Dokumentet görs av',
+  'notice.pdfPending': 'Inte gjort än',
+  'notice.petvoldDocument': 'Petvold har gjort dokumentet. Rapporten anger bara kanal och tid.',
+  'notice.petvoldPending': 'Petvold har inte gjort PDF:en än. Gör den ovan och rapportera sedan.',
 };

@@ -58,6 +58,7 @@ channels:
       applicationExpired: { $ref: '#/components/messages/applicationExpired' }
       proposalCreated: { $ref: '#/components/messages/proposalCreated' }
       noticeCreated: { $ref: '#/components/messages/noticeCreated' }
+      noticeDocumentMade: { $ref: '#/components/messages/noticeDocumentMade' }
       noticeDelivered: { $ref: '#/components/messages/noticeDelivered' }
       noticeFailed: { $ref: '#/components/messages/noticeFailed' }
 
@@ -99,6 +100,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/applicationExpired' }
       - { $ref: '#/channels/subscription/messages/proposalCreated' }
       - { $ref: '#/channels/subscription/messages/noticeCreated' }
+      - { $ref: '#/channels/subscription/messages/noticeDocumentMade' }
       - { $ref: '#/channels/subscription/messages/noticeDelivered' }
       - { $ref: '#/channels/subscription/messages/noticeFailed' }
 
@@ -498,6 +500,18 @@ components:
             properties:
               type: { const: petvold.notice.created.v1 }
               data: { $ref: '#/components/schemas/NoticeCreatedData' }
+    noticeDocumentMade:
+      name: petvold.notice.document_made.v1
+      title: notice.document_made
+      summary: 'Petvold made the notice''s PDF (ADR 0038), for a market where Petvold makes the documents. Fetch it with GET /v1/documents/{documentId}, send it, and report the delivery without documentId and sha256.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.notice.document_made.v1 }
+              data: { $ref: '#/components/schemas/NoticeDocumentMadeData' }
     noticeDelivered:
       name: petvold.notice.delivered.v1
       title: notice.delivered
@@ -845,6 +859,16 @@ components:
         policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
         applicationId: { type: string, pattern: '^app_[A-Za-z0-9]+$' }
         dueBy: { $ref: '#/components/schemas/Date' }
+        documentMaker: { type: string, enum: [insurer, petvold], description: 'Who makes the document. petvold: wait for notice.document_made.' }
+    NoticeDocumentMadeData:
+      type: object
+      additionalProperties: false
+      required: [noticeId, noticeType, documentId, sha256]
+      properties:
+        noticeId: { type: string, pattern: '^ntc_[A-Za-z0-9]+$' }
+        noticeType: { type: string }
+        documentId: { type: string, pattern: '^doc_[A-Za-z0-9_]+$', description: The PDF in Petvold's archive. }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
     NoticeDeliveredData:
       type: object
       additionalProperties: false
@@ -854,7 +878,7 @@ components:
         deliveryId: { type: string }
         channel: { type: string }
         sentAt: { type: string, format: date-time }
-        documentId: { type: string, description: The document's id in the insurer's archive. }
+        documentId: { type: string, description: 'The document''s id in the insurer''s archive, or in Petvold''s when Petvold made it.' }
         late: { type: boolean, description: Sent after dueBy. }
     NoticeFailedData:
       type: object
