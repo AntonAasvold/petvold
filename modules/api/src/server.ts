@@ -22,6 +22,8 @@
  * - PORT: default 8080.
  * - PETVOLD_CORS_ORIGINS: browser applications allowed to call the API, comma-separated. Default none.
  * - Authentication: see auth.ts. Without it the server does not start.
+ * - PETVOLD_AUTH=demo: the dev server's fixed tokens instead, for the demo behind
+ *   its password (ADR 0041). Logged at start and shown by /healthz. Never with real data.
  *
  * Migrations run before the server starts (dbmate, as the owner role); the
  * server's roles cannot change the schema.
@@ -29,6 +31,8 @@
 import { serve } from '@hono/node-server';
 import { claimNumberPrefixFromEnv, compose, fakeBankFromEnv, DATABASE_ENV, DATABASES, databasesFromEnv, documentsFromEnv, webhooksFromEnv } from './composition.ts';
 import { authenticatorFromEnv } from './auth.ts';
+import { demoAuthenticator } from './demo-tokens.ts';
+import { docsPage } from './docs.ts';
 import { corsOriginsFromEnv, createApp } from './index.ts';
 
 const log = (line: string) => console.log(line);
@@ -41,7 +45,13 @@ if (missing.length) {
   console.error(`Missing configuration: ${missing.join(', ')}`);
   process.exit(1);
 }
-const auth = await authenticatorFromEnv(process.env).catch((err: Error) => {
+const authMode = process.env.PETVOLD_AUTH ?? 'jwt';
+if (authMode !== 'jwt' && authMode !== 'demo') {
+  console.error(`PETVOLD_AUTH must be jwt or demo, not '${authMode}'`);
+  process.exit(1);
+}
+const demo = authMode === 'demo';
+const auth = demo ? demoAuthenticator() : await authenticatorFromEnv(process.env).catch((err: Error) => {
   console.error(err.message);
   process.exit(1);
 });
@@ -85,7 +95,7 @@ async function health(): Promise<Response> {
     const degraded = dead.length || jobs.failed.length || jobs.late.length || jobs.paused.length;
     // relay: 'leading' on the one server that delivers events, 'standby' on the others.
     return Response.json(
-      { status: degraded ? 'degraded' : 'ok', deadLetters: dead.length, relay: inst.relay.isLeading() ? 'leading' : 'standby', jobs },
+      { status: degraded ? 'degraded' : 'ok', deadLetters: dead.length, relay: inst.relay.isLeading() ? 'leading' : 'standby', jobs, ...(demo ? { auth: 'demo' } : {}) },
       { status: 200 },
     );
   } catch (err) {
@@ -94,8 +104,19 @@ async function health(): Promise<Response> {
 }
 
 const port = Number(process.env.PORT ?? 8080);
-const server = serve({ port, fetch: (req) => (new URL(req.url).pathname === '/healthz' ? health() : app.fetch(req)) });
+// The demo has the API page, signed in with a demo token (ADR 0041).
+const docs = demo ? docsPage({ specUrl: '/openapi.yaml', defaultToken: 'dev-handler' }) : null;
+const server = serve({
+  port,
+  fetch: (req) => {
+    const path = new URL(req.url).pathname;
+    if (path === '/healthz') return health();
+    if (docs && path === '/docs') return new Response(docs, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    return app.fetch(req);
+  },
+});
 log(`Petvold ${process.env.PETVOLD_VERSION} listening on port ${port}`);
+if (demo) log('DEMO: signing in with the fixed demo tokens (PETVOLD_AUTH=demo). Anyone who has read the repository can sign in. Keep it behind a password, and never use it with real data.');
 
 let stopping = false;
 async function shutdown(signal: string) {

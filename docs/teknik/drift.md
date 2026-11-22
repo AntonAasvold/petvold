@@ -42,8 +42,9 @@ docker run --rm -e DATABASE_URL=postgres://… petvold-api node_modules/.bin/dbm
 | `PETVOLD_GOTENBERG_URL` | Nej | Gotenberg på det interna nätet, till exempel `http://gotenberg:3000`. Behövs för att göra PDF av meddelanden och för inställningen `documentMaker: petvold` (ADR 0038). Kör Gotenberg utan nätåtkomst för Chromium, med samma flaggor som i `compose.yaml`. |
 | `PETVOLD_VERSION` | Ja | Versionen som sparas med varje beslut (ADR 0018) |
 | `PETVOLD_CLAIM_NUMBER_PREFIX` | Nej | Skadenumrets prefix per marknad, till exempel `SE=S,NO=N` (ADR 0036). Förval `S`. Ett prefix är versaler och siffror, högst åtta tecken. Ett felaktigt värde stoppar starten. |
-| `PETVOLD_AUTH_ISSUER` | Ja | Utfärdaren av tokens, till exempel bolagets identitetstjänst |
-| `PETVOLD_AUTH_AUDIENCE` | Ja | Petvolds `aud` i tokens |
+| `PETVOLD_AUTH` | Nej | `jwt` (förval) eller `demo`. Med `demo` loggar man in med dev-serverns fasta token i stället för bolagets identitetstjänst, och `PETVOLD_AUTH_*` behövs inte (ADR 0041). Servern skriver en varning vid start, `/healthz` visar `"auth": "demo"` och API-sidan finns på `/docs`. Tokenen står i repot, så demoläget får bara användas bakom ett lösenord och aldrig med riktiga uppgifter. |
+| `PETVOLD_AUTH_ISSUER` | Ja, utom med `PETVOLD_AUTH=demo` | Utfärdaren av tokens, till exempel bolagets identitetstjänst |
+| `PETVOLD_AUTH_AUDIENCE` | Ja, utom med `PETVOLD_AUTH=demo` | Petvolds `aud` i tokens |
 | `PETVOLD_AUTH_JWKS_URL` | Om utfärdaren saknar OpenID-konfiguration | Var de publika nycklarna finns. Annars läses de från `{issuer}/.well-known/openid-configuration`. |
 | `PETVOLD_AUTH_ALGORITHMS` | Nej | Tillåtna algoritmer, förval `RS256,ES256`. Bara asymmetriska algoritmer godtas. |
 | `PETVOLD_AUTH_ROLES_CLAIM`, `PETVOLD_AUTH_MARKETS_CLAIM`, `PETVOLD_AUTH_CLINIC_CLAIM`, `PETVOLD_AUTH_POLICIES_CLAIM` | Nej | Var i token roller, marknader, klinik och försäkringar finns. Förval `roles`, `petvold_markets`, `petvold_clinic_id` och `petvold_policy_ids`. |
