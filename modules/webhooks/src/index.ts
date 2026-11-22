@@ -17,7 +17,7 @@ export type Timestamp = string;
  * and 6). Anything else in a module's event stays inside Petvold: names, notes,
  * who did it. Types are versioned: a breaking change is a new `.vN`.
  */
-export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId' | 'invoiceId';
+export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId' | 'invoiceId' | 'paymentId';
 
 /** A request for information (ADR 0036): what was asked for and when it is due, never the note. */
 const INFORMATION_FIELDS = ['requestId', 'recipient', 'items', 'dueDate', 'status'];
@@ -45,6 +45,8 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'notice.delivered': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel', 'sentAt', 'documentId', 'late'] },
   'notice.failed': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel'] },
   'invoice.credited': { source: 'billing', subject: 'invoiceId', fields: ['creditNoteId', 'creditNoteNo', 'accountId', 'partyId', 'total', 'currency', 'reason'] },
+  // A payment into the insurer's account (ADR 0017). The payer's details stay inside Petvold.
+  'payment.succeeded': { source: 'payments', subject: 'paymentId', fields: ['direction', 'provider', 'amount', 'currency', 'reference', 'bookedOn'] },
   'invoice.issued': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'issueDate', 'dueDate', 'total', 'currency', 'reference', 'policyIds'] },
   // A run failed (ADR 0037), for the insurer's operations to alert on. The error stays inside Petvold.
   'job.failed': { source: 'scheduling', subject: 'runId', fields: ['job', 'trigger', 'startedAt'] },
@@ -74,6 +76,7 @@ export interface SourceEvent {
   noticeId?: string;
   runId?: string;
   invoiceId?: string;
+  paymentId?: string;
   market: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;

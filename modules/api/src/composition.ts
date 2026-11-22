@@ -53,9 +53,11 @@ import { PostgresDocumentStore } from '@petvold/documents/postgres';
 import { S3BlobStore, s3ConfigFromEnv, type S3Config } from '@petvold/documents/s3';
 import { BillingService, InMemoryBillingStore, type BillingStore } from '@petvold/billing';
 import { PostgresBillingStore } from '@petvold/billing/postgres';
+import { FakeProvider, InMemoryPaymentsStore, PaymentsService, type PaymentProvider, type PaymentsStore } from '@petvold/payments';
+import { PostgresPaymentsStore } from '@petvold/payments/postgres';
 import { animalPort, billingProductSource, billingPolicySource, claimSource, invoiceSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
 
-export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling', 'documents', 'billing'] as const;
+export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling', 'documents', 'billing', 'payments'] as const;
 export type DatabaseName = (typeof DATABASES)[number];
 
 export interface InstallationConfig {
@@ -92,6 +94,13 @@ export interface InstallationConfig {
   };
   /** The claim number's prefix per market, e.g. { SE: 'S', NO: 'N' } (PETVOLD_CLAIM_NUMBER_PREFIX). 'S' when a market has none. */
   claimNumberPrefix?: Record<string, string>;
+  /** Payment services (ADR 0017). Omitted: none, so no payments come in. */
+  payments?: {
+    /** The fake bank, for the dev server and the demo (PETVOLD_FAKE_BANK_SECRET, PETVOLD_FAKE_BANK_MARKETS). */
+    fake?: { secret: string; markets: { market: string; currency: string }[] };
+    /** Adapters instead of or beside the fake bank, e.g. in tests. */
+    providers?: PaymentProvider[];
+  };
 }
 
 /** The environment variables a module's database URL is read from. */
@@ -108,6 +117,7 @@ export const DATABASE_ENV: Record<DatabaseName, string> = {
   scheduling: 'SCHEDULING_DATABASE_URL',
   documents: 'DOCUMENTS_DATABASE_URL',
   billing: 'BILLING_DATABASE_URL',
+  payments: 'PAYMENTS_DATABASE_URL',
 };
 
 /** The database URLs from the environment, skipping empty ones. */
@@ -148,6 +158,22 @@ export function claimNumberPrefixFromEnv(env: Record<string, string | undefined>
   return out;
 }
 
+/**
+ * The fake bank from PETVOLD_FAKE_BANK_SECRET ('whsec_' and base64) and
+ * PETVOLD_FAKE_BANK_MARKETS, e.g. "SE:SEK,FI:EUR" (ADR 0017). Without the
+ * secret there is no fake bank.
+ */
+export function fakeBankFromEnv(env: Record<string, string | undefined>): { secret: string; markets: { market: string; currency: string }[] } | undefined {
+  const secret = env.PETVOLD_FAKE_BANK_SECRET;
+  if (!secret) return undefined;
+  const markets = (env.PETVOLD_FAKE_BANK_MARKETS ?? 'SE:SEK').split(',').map((p) => p.trim()).filter(Boolean).map((part) => {
+    const m = /^([A-Z]{2}):([A-Z]{3})$/.exec(part);
+    if (!m) throw new Error(`PETVOLD_FAKE_BANK_MARKETS: '${part}' is not MARKET:CURRENCY, e.g. SE:SEK`);
+    return { market: m[1]!, currency: m[2]! };
+  });
+  return { secret, markets };
+}
+
 /** Everything a running Petvold needs, connected. */
 export interface Installation {
   /** For createApp; add `auth`. */
@@ -166,6 +192,7 @@ export interface Installation {
     scheduling: SchedulingStore;
     documents: DocumentStore;
     billing: BillingStore;
+    payments: PaymentsStore;
   };
   relay: Relay;
   /** Runs the daily jobs when they are due (ADR 0037). Start it next to the relay. */
@@ -316,6 +343,12 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   const billingStore: BillingStore = billingPool ? new PostgresBillingStore(billingPool) : new InMemoryBillingStore();
   const billing = new BillingService({ store: billingStore, products: billingProductSource(products), policies: billingPolicySource(policies), clock, ids });
 
+  // Payments (ADR 0017, 0040): payments in from the payment services' adapters.
+  const paymentsPool = pool('payments', 2);
+  const paymentsStore: PaymentsStore = paymentsPool ? new PostgresPaymentsStore(paymentsPool) : new InMemoryPaymentsStore();
+  const providers: PaymentProvider[] = [...(config.payments?.fake ? [new FakeProvider(config.payments.fake)] : []), ...(config.payments?.providers ?? [])];
+  const payments = new PaymentsService({ store: paymentsStore, providers, clock, ids });
+
   const retention = new RetentionService({
     parties,
     settings: partiesPool ? new PostgresRetentionStore(partiesPool) : new InMemoryRetentionStore(),
@@ -411,6 +444,16 @@ export async function compose(config: InstallationConfig): Promise<Installation>
         markPublished: (ids, at) => billingStore.markPublished(ids, at),
       }),
       relaySource({
+        name: 'payments',
+        pending: (limit) => paymentsStore.pendingEvents(limit),
+        deliver: async (e) => {
+          log(`[event] ${e.type} ${e.paymentId} ${e.data.amount} ${e.data.currency}`);
+          const queued = await webhooks.enqueue({ ...e });
+          if (queued) log(`[webhook] ${e.type} ${e.paymentId} queued for ${queued} subscription(s)`);
+        },
+        markPublished: (ids, at) => paymentsStore.markPublished(ids, at),
+      }),
+      relaySource({
         name: 'communications',
         pending: (limit) => noticeStore.pendingEvents(limit),
         deliver: async (e) => {
@@ -447,7 +490,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   });
 
   return {
-    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks, scheduler, relay, documents, billing },
+    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks, scheduler, relay, documents, billing, payments },
     stores: {
       claims: claimsStore,
       roles: roleStore,
@@ -462,6 +505,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
       scheduling: schedulingStore,
       documents: documentStore,
       billing: billingStore,
+      payments: paymentsStore,
     },
     relay,
     scheduler,

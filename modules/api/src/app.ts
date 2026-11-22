@@ -16,6 +16,7 @@ import {
 import { InMemoryPolicyStore, PolicyError, PolicyService, type Application, type ApplicationStatus, type PolicyGroup, type PolicyRecord, type Proposal } from '@petvold/policies';
 import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_TYPES, type NoticeType, type NoticeView } from '@petvold/communications';
 import { BillingError, BillingService, InMemoryBillingStore } from '@petvold/billing';
+import { InMemoryPaymentsStore, PaymentsError, PaymentsService, ProviderNotificationError } from '@petvold/payments';
 import { InMemoryWebhookStore, SecretBox, WebhookError, WebhookService, type Subscription } from '@petvold/webhooks';
 import { animalPort, billingPolicySource, billingProductSource, claimSource, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
 import { tariffCoverage } from '@petvold/pricing-core';
@@ -138,6 +139,8 @@ export interface AppDeps {
   documents?: DocumentService;
   /** Billing (ADR 0040). Omitted: kept in memory; the installation's relay feeds it the policy events. */
   billing?: BillingService;
+  /** Payments (ADR 0017, 0040). Omitted: kept in memory with no payment providers. */
+  payments?: PaymentsService;
   /** Runs (ADR 0037). Omitted: the four jobs over these services, with history in memory. */
   scheduler?: Scheduler;
   /** The relay, to send a dead letter again (ADR 0037). Omitted: the dead letter is only removed from the store. */
@@ -177,7 +180,7 @@ type Env = { Variables: { principal: Principal; scope: Scope; roles: RoleDefinit
 
 const PROBLEM = 'application/problem+json';
 
-function problem(c: Context, status: 400 | 401 | 403 | 404 | 409 | 410 | 422 | 500, title: string, detail?: string, errors?: FieldError[]) {
+function problem(c: Context, status: 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 500, title: string, detail?: string, errors?: FieldError[]) {
   return c.body(
     JSON.stringify({ type: `https://errors.petvold.dev/${status}`, title, status, ...(detail ? { detail } : {}), ...(errors ? { errors } : {}) }),
     status,
@@ -1138,6 +1141,27 @@ export function createApp(d: AppDeps) {
     return sendPage(c, items.filter((p) => seesPlan(c.get('scope'), p)));
   });
 
+  // Payments (ADR 0017, 0040). Scope: the caller's markets; a role bound to a
+  // clinic or to policies sees none, since a payment is not yet tied to a policy.
+  const payments =
+    d.payments ??
+    new PaymentsService({ store: new InMemoryPaymentsStore(), providers: [], clock: d.clock, ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` } });
+  const seesPayment = (scope: Scope, market: string) => !scope.clinicId && !scope.policyIds && inBillingMarket(scope, market);
+
+  app.get('/v1/payments', async (c) => {
+    const market = c.req.query('market');
+    const reference = c.req.query('reference');
+    const items = await payments.payments({ ...(market ? { market } : {}), ...(reference ? { reference } : {}) });
+    return sendPage(c, items.filter((p) => seesPayment(c.get('scope'), p.market)));
+  });
+
+  app.get('/v1/payments/:paymentId', async (c) => {
+    const id = c.req.param('paymentId');
+    const p = await payments.payment(id);
+    if (!seesPayment(c.get('scope'), p.market)) throw new PaymentsError('not_found', `Payment ${id} does not exist`);
+    return send(c, p);
+  });
+
   // Webhook subscriptions (ADR 0033). A subscription's markets must lie within the caller's;
   // only a caller with every market may subscribe to '*'.
   const webhooks =
@@ -1731,6 +1755,26 @@ export function createApp(d: AppDeps) {
     }
   });
 
+  // A payment service tells Petvold of payments (ADR 0017). Without a token: the
+  // adapter checks the service's signature, which is the permission. Outside the
+  // contract, like /d/:token, since the body is the service's own format.
+  app.post('/provider-notifications/:provider', async (c) => {
+    const length = Number(c.req.header('content-length') ?? 0);
+    if (length > 1_000_000) return problem(c, 413, 'The notification is too large');
+    const body = await c.req.text();
+    if (body.length > 1_000_000) return problem(c, 413, 'The notification is too large');
+    const headers: Record<string, string> = {};
+    c.req.raw.headers.forEach((v, k) => (headers[k.toLowerCase()] = v));
+    try {
+      const r = await payments.receive(c.req.param('provider'), { headers, body });
+      return c.json({ received: r.received.length, duplicates: r.duplicates.length }, 200);
+    } catch (e) {
+      if (e instanceof PaymentsError && e.code === 'unknown_provider') return problem(c, 404, 'The resource does not exist');
+      if (e instanceof ProviderNotificationError) return problem(c, e.code === 'unauthenticated' ? 401 : 400, e.message);
+      throw e;
+    }
+  });
+
   app.notFound((c) => problem(c, 404, 'The resource does not exist'));
 
   app.onError((err, c) => {
@@ -1747,6 +1791,9 @@ export function createApp(d: AppDeps) {
       return problem(c, status, err.message);
     }
     if (err instanceof BillingError) {
+      return problem(c, err.code === 'not_found' ? 404 : 422, err.message);
+    }
+    if (err instanceof PaymentsError) {
       return problem(c, err.code === 'not_found' ? 404 : 422, err.message);
     }
     if (err instanceof CommunicationsError) {

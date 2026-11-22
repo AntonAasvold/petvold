@@ -2624,6 +2624,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Payments, oldest first
+         * @description Requires the permission `payments:read` (ADR 0017). A payment service tells
+         *     Petvold of a payment through its adapter, and the payment is stored once,
+         *     however many times the notification comes. A payment never changes. Only
+         *     payments in the caller's markets; a role bound to a clinic or to policies
+         *     sees none.
+         */
+        get: operations["listPayments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payments/{paymentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A payment
+         * @description Requires the permission `payments:read`. A payment outside the caller's scope answers 404.
+         */
+        get: operations["getPayment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/premium-plans": {
         parameters: {
             query?: never;
@@ -4450,6 +4494,34 @@ export interface components {
             paymentMethod: "invoice";
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @description A payment Petvold has received (ADR 0017). Never changes. */
+        Payment: {
+            id: string;
+            /** @enum {string} */
+            direction: "incoming";
+            /**
+             * @description An incoming payment is settled when Petvold hears of it.
+             * @enum {string}
+             */
+            status: "succeeded";
+            /** @description The adapter that reported it, e.g. fake. */
+            provider: string;
+            /** @description The payment service's id for the payment. */
+            providerRef: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            /** @description In minor units of currency. */
+            amount: number;
+            /** @description The payment reference the payer gave (OCR or RF) */
+            reference: string | null;
+            /**
+             * Format: date
+             * @description The day the money reached the account.
+             */
+            bookedOn: string;
+            /** Format: date-time */
+            receivedAt: string;
         };
         /** @description An invoice (ADR 0040). Never changes; a correction is a credit note. */
         Invoice: {
@@ -9886,6 +9958,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreditNote"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPayments: {
+        parameters: {
+            query?: {
+                market?: components["schemas"]["Market"];
+                /** @description The payment reference the payer gave */
+                reference?: string;
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Payment"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getPayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payment"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

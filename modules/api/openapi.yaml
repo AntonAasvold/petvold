@@ -62,6 +62,8 @@ tags:
     description: Notices the law requires the customer to get, for the insurer's document system (ADR 0032).
   - name: billing
     description: Payer accounts and premium plans, made from the policies' events (ADR 0040).
+  - name: payments
+    description: Payments into the insurer's account, reported by the payment services' adapters (ADR 0017, 0040).
   - name: webhooks
     x-displayName: webhook subscriptions
     description: |
@@ -3820,6 +3822,59 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CreditNote' }
 
+  /v1/payments:
+    get:
+      tags: [payments]
+      operationId: listPayments
+      x-permission: payments:read
+      summary: Payments, oldest first
+      description: |
+        Requires the permission `payments:read` (ADR 0017). A payment service tells
+        Petvold of a payment through its adapter, and the payment is stored once,
+        however many times the notification comes. A payment never changes. Only
+        payments in the caller's markets; a role bound to a clinic or to policies
+        sees none.
+      parameters:
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - { name: reference, in: query, schema: { type: string }, description: The payment reference the payer gave, e.g. an invoice's OCR. }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The payments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Payment' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/payments/{paymentId}:
+    get:
+      tags: [payments]
+      operationId: getPayment
+      x-permission: payments:read
+      summary: A payment
+      description: Requires the permission `payments:read`. A payment outside the caller's scope answers 404.
+      parameters:
+        - { name: paymentId, in: path, required: true, schema: { type: string, pattern: '^pay_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+
   /v1/premium-plans:
     get:
       tags: [billing]
@@ -6453,6 +6508,23 @@ components:
         paymentMethod: { type: string, enum: [invoice], description: 'How the payer pays. Autogiro, direct debit, Swish and card come with the payments module.' }
         createdAt: { type: string, format: date-time }
 
+    Payment:
+      type: object
+      additionalProperties: false
+      required: [id, direction, status, provider, providerRef, market, currency, amount, reference, bookedOn, receivedAt]
+      description: A payment Petvold has received (ADR 0017). Never changes.
+      properties:
+        id: { type: string, pattern: '^pay_[A-Za-z0-9]+$' }
+        direction: { type: string, enum: [incoming] }
+        status: { type: string, enum: [succeeded], description: An incoming payment is settled when Petvold hears of it. }
+        provider: { type: string, description: 'The adapter that reported it, e.g. fake.' }
+        providerRef: { type: string, description: "The payment service's id for the payment." }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        amount: { type: integer, minimum: 1, description: In minor units of currency. }
+        reference: { type: [string, 'null'], description: The payment reference the payer gave (OCR or RF), or null when there was none. }
+        bookedOn: { type: string, format: date, description: The day the money reached the account. }
+        receivedAt: { type: string, format: date-time }
     Invoice:
       type: object
       additionalProperties: false

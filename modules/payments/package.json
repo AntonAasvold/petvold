@@ -1,0 +1,16 @@
+{
+  "name": "@petvold/payments",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./postgres": "./src/postgres.ts",
+    "./test-suites/payments-store": "./test-suites/payments-store.ts",
+    "./test-suites/provider": "./test-suites/provider.ts"
+  },
+  "dependencies": {
+    "@petvold/common": "^0.1.0",
+    "pg": "^8.23.1"
+  }
+}

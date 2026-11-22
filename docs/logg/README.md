@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-22 | [Pengar, steg 3a: inbetalningar och låtsasbanken](2026-11-22-inbetalningar.md) | #138 |
 | 2026-11-21 | [Återkallelse av ett avslut mot fakturorna](2026-11-21-aterkallelse.md) | #137 |
 | 2026-11-21 | [Ändring, avslut och överlåtelse mot fakturorna](2026-11-21-avrakning-mot-fakturor.md) | #136 |
 | 2026-11-21 | [Betalningsintervall vid tecknandet](2026-11-21-betalningsintervall.md) | #135 |
