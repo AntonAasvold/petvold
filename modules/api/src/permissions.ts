@@ -103,6 +103,8 @@ export const PERMISSIONS = [
   'documents:share',
   /** Read payer accounts and premium plans (ADR 0040). */
   'billing:read',
+  /** Read payments into and out of the insurer's accounts (ADR 0017, 0040). */
+  'payments:read',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -209,7 +211,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** The insurer's customer portal or app, acting for a signed-in customer. */
   'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read', 'documents:read', 'documents:share', 'billing:read'], bindsTo: 'policies' },
   /** Follows the premiums: payer accounts, premium plans and later invoices and payments (ADR 0040), e.g. the finance team. */
-  'billing-clerk': { permissions: ['billing:read', 'policies:read', 'parties:read', 'catalog:read'] },
+  'billing-clerk': { permissions: ['billing:read', 'payments:read', 'policies:read', 'parties:read', 'catalog:read'] },
 };
 
 export function isPermission(value: unknown): value is Permission {

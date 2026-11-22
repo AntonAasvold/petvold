@@ -63,6 +63,7 @@ channels:
       noticeFailed: { $ref: '#/components/messages/noticeFailed' }
       invoiceIssued: { $ref: '#/components/messages/invoiceIssued' }
       invoiceCredited: { $ref: '#/components/messages/invoiceCredited' }
+      paymentSucceeded: { $ref: '#/components/messages/paymentSucceeded' }
 
 operations:
   sendEvent:
@@ -107,6 +108,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/noticeFailed' }
       - { $ref: '#/channels/subscription/messages/invoiceIssued' }
       - { $ref: '#/channels/subscription/messages/invoiceCredited' }
+      - { $ref: '#/channels/subscription/messages/paymentSucceeded' }
 
 components:
   messageTraits:
@@ -516,6 +518,18 @@ components:
             properties:
               type: { const: petvold.invoice.credited.v1 }
               data: { $ref: '#/components/schemas/InvoiceCreditedData' }
+    paymentSucceeded:
+      name: petvold.payment.succeeded.v1
+      title: payment.succeeded
+      summary: 'A payment reached the insurer''s account, as the payment service reported it (ADR 0017). Fetch it with GET /v1/payments/{id}.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.payment.succeeded.v1 }
+              data: { $ref: '#/components/schemas/PaymentSucceededData' }
     noticeCreated:
       name: petvold.notice.created.v1
       title: notice.created
@@ -572,7 +586,7 @@ components:
       properties:
         specversion: { const: '1.0' }
         id: { type: string, description: Unique per source. Use it to recognize repeats. }
-        source: { type: string, enum: [/petvold/claims, /petvold/animals, /petvold/policies, /petvold/communications, /petvold/scheduling, /petvold/billing] }
+        source: { type: string, enum: [/petvold/claims, /petvold/animals, /petvold/policies, /petvold/communications, /petvold/scheduling, /petvold/billing, /petvold/payments] }
         type: { type: string, pattern: '^petvold\.[a-z]+\.[a-z_]+\.v[0-9]+$' }
         subject: { type: string, description: The id of the resource the event concerns. }
         time: { type: string, format: date-time }
@@ -883,6 +897,18 @@ components:
         from: { $ref: '#/components/schemas/Date' }
         deadline: { $ref: '#/components/schemas/Date' }
         deceasedOn: { $ref: '#/components/schemas/Date' }
+    PaymentSucceededData:
+      type: object
+      additionalProperties: false
+      required: [paymentId, direction, provider, amount, currency, reference, bookedOn]
+      properties:
+        paymentId: { type: string, pattern: '^pay_[A-Za-z0-9]+$' }
+        direction: { type: string, enum: [incoming] }
+        provider: { type: string, description: "The adapter that reported it, e.g. fake." }
+        amount: { type: integer, minimum: 1, description: In minor units of currency. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        reference: { type: [string, 'null'], description: 'The payment reference the payer gave (OCR or RF), or null.' }
+        bookedOn: { $ref: '#/components/schemas/Date' }
     InvoiceIssuedData:
       type: object
       additionalProperties: false

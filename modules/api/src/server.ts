@@ -7,7 +7,7 @@
  * - CLAIMS_DATABASE_URL, ACCESS_DATABASE_URL, DECISIONING_DATABASE_URL,
  *   CATALOG_DATABASE_URL, ANIMALS_DATABASE_URL, PARTIES_DATABASE_URL,
  *   POLICIES_DATABASE_URL, COMMUNICATIONS_DATABASE_URL, WEBHOOKS_DATABASE_URL,
- *   SCHEDULING_DATABASE_URL, DOCUMENTS_DATABASE_URL and BILLING_DATABASE_URL:
+ *   SCHEDULING_DATABASE_URL, DOCUMENTS_DATABASE_URL, BILLING_DATABASE_URL and PAYMENTS_DATABASE_URL:
  *   every one is required, each with the module's own role.
  * - PETVOLD_WEBHOOK_KEY: 32 bytes in base64 that seal the webhook secrets (ADR 0033). Required.
  * - PETVOLD_DOCUMENT_KEY: at least 32 bytes in base64 that sign the documents' links (ADR 0038). Required.
@@ -18,6 +18,7 @@
  * - PETVOLD_WEBHOOK_ALLOW_HOSTS: hosts a webhook may name although local or http, comma-separated. Default none.
  * - PETVOLD_VERSION: stored with every decision (ADR 0018). Required.
  * - PETVOLD_CLAIM_NUMBER_PREFIX: the claim number's prefix per market, e.g. SE=S,NO=N (ADR 0036). Default S.
+ * - PETVOLD_FAKE_BANK_SECRET and PETVOLD_FAKE_BANK_MARKETS: the fake bank, for a demo (ADR 0017). Never with real money.
  * - PORT: default 8080.
  * - PETVOLD_CORS_ORIGINS: browser applications allowed to call the API, comma-separated. Default none.
  * - Authentication: see auth.ts. Without it the server does not start.
@@ -26,7 +27,7 @@
  * server's roles cannot change the schema.
  */
 import { serve } from '@hono/node-server';
-import { claimNumberPrefixFromEnv, compose, DATABASE_ENV, DATABASES, databasesFromEnv, documentsFromEnv, webhooksFromEnv } from './composition.ts';
+import { claimNumberPrefixFromEnv, compose, fakeBankFromEnv, DATABASE_ENV, DATABASES, databasesFromEnv, documentsFromEnv, webhooksFromEnv } from './composition.ts';
 import { authenticatorFromEnv } from './auth.ts';
 import { corsOriginsFromEnv, createApp } from './index.ts';
 
@@ -46,8 +47,10 @@ const auth = await authenticatorFromEnv(process.env).catch((err: Error) => {
 });
 
 let claimNumberPrefix: Record<string, string>;
+let fake: ReturnType<typeof fakeBankFromEnv>;
 try {
   claimNumberPrefix = claimNumberPrefixFromEnv(process.env);
+  fake = fakeBankFromEnv(process.env);
 } catch (err) {
   console.error((err as Error).message);
   process.exit(1);
@@ -59,7 +62,9 @@ const inst = await compose({
   webhooks: webhooksFromEnv(process.env),
   documents: documentsFromEnv(process.env),
   claimNumberPrefix,
+  ...(fake ? { payments: { fake } } : {}),
 });
+if (fake) log(`The fake bank takes payments in ${fake.markets.map((m) => `${m.market}:${m.currency}`).join(', ')} at POST /provider-notifications/fake. Not for real money.`);
 await inst.ping().catch((err: Error) => {
   console.error(`A database does not answer: ${err.message}`);
   process.exit(1);

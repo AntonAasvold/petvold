@@ -14,7 +14,7 @@ npm start            # node --import tsx modules/api/src/server.ts
 
 | Variabel | Krävs | Betyder |
 | --- | --- | --- |
-| `CLAIMS_DATABASE_URL`, `ACCESS_DATABASE_URL`, `DECISIONING_DATABASE_URL`, `CATALOG_DATABASE_URL`, `ANIMALS_DATABASE_URL`, `PARTIES_DATABASE_URL`, `POLICIES_DATABASE_URL`, `COMMUNICATIONS_DATABASE_URL`, `WEBHOOKS_DATABASE_URL`, `SCHEDULING_DATABASE_URL`, `BILLING_DATABASE_URL` | Ja, alla | En databasadress per modul, med modulens egen tjänsteroll (ADR 0001) |
+| `CLAIMS_DATABASE_URL`, `ACCESS_DATABASE_URL`, `DECISIONING_DATABASE_URL`, `CATALOG_DATABASE_URL`, `ANIMALS_DATABASE_URL`, `PARTIES_DATABASE_URL`, `POLICIES_DATABASE_URL`, `COMMUNICATIONS_DATABASE_URL`, `WEBHOOKS_DATABASE_URL`, `SCHEDULING_DATABASE_URL`, `BILLING_DATABASE_URL`, `PAYMENTS_DATABASE_URL` | Ja, alla | En databasadress per modul, med modulens egen tjänsteroll (ADR 0001) |
 | `DOCUMENTS_DATABASE_URL` | Ja | Dokumentens uppgifter och länkar, med rollen `documents_service` (ADR 0038) |
 | `PETVOLD_DOCUMENT_KEY` | Ja | Minst 32 slumpade byte i base64, till exempel från `openssl rand -base64 32`. Signerar dokumentens länkar. Byts den slutar alla länkar att fungera, men dokumenten finns kvar. |
 | `PETVOLD_PUBLIC_URL` | Ja | Var länkarna öppnas, till exempel `https://petvold.bolaget.se`. Länken blir `{adress}/d/{token}`. |
@@ -30,6 +30,7 @@ npm start            # node --import tsx modules/api/src/server.ts
 | `PETVOLD_AUTH_ROLES_CLAIM`, `PETVOLD_AUTH_MARKETS_CLAIM`, `PETVOLD_AUTH_CLINIC_CLAIM`, `PETVOLD_AUTH_POLICIES_CLAIM` | Nej | Var i token roller, marknader, klinik och försäkringar finns. Förval `roles`, `petvold_markets`, `petvold_clinic_id` och `petvold_policy_ids`. |
 | `PETVOLD_WEBHOOK_KEY` | Ja | 32 slumpade byte i base64, till exempel från `openssl rand -base64 32`. Krypterar hemligheterna för webhooks (ADR 0033). Förvara den som en hemlighet. Om den byts kan sparade hemligheter inte läsas, och varje prenumeration behöver en ny hemlighet. |
 | `PETVOLD_WEBHOOK_ALLOW_HOSTS` | Nej | Värdar som en webhook får peka på fast de är lokala eller använder `http`, kommaseparerat. Förval inga. |
+| `PETVOLD_FAKE_BANK_SECRET`, `PETVOLD_FAKE_BANK_MARKETS` | Nej | Låtsasbanken för en demo (ADR 0017): hemligheten (`whsec_` och base64) som banken signerar med, och marknaderna, till exempel `SE:SEK,FI:EUR` (förval `SE:SEK`). Utan hemligheten finns ingen låtsasbank. Aldrig i en installation med riktiga pengar. |
 | `PORT` | Nej | Förval 8080 |
 | `PETVOLD_CORS_ORIGINS` | Om ett gränssnitt i webbläsaren anropar API:t från en annan adress | Tillåtna ursprung, kommaseparerat, till exempel `https://portal.bolaget.se`. Varje värde måste vara ett exakt ursprung. `*` godtas inte. Förval inga. |
 
@@ -54,7 +55,7 @@ Ur token läses `sub` (vem), roller, marknader (en lista eller `*`), och för ro
 ## Databasen
 
 - **Migreringar** körs före start med dbmate, som ägarrollen (`npm run db:migrate` eller motsvarande i installationen). Tjänsterollerna kan inte ändra schemat.
-- **Tjänsteroller** skapas av installationen, till exempel med CloudNativePG `spec.managed.roles`. Lokalt skapas de av `db/init/`. Rollen måste finnas innan migreringen som ger den rättigheter körs. Migration 0031 kräver till exempel `communications_service`, och migration 0050 kräver `billing_service`.
+- **Tjänsteroller** skapas av installationen, till exempel med CloudNativePG `spec.managed.roles`. Lokalt skapas de av `db/init/`. Rollen måste finnas innan migreringen som ger den rättigheter körs. Migration 0031 kräver till exempel `communications_service`, migration 0050 kräver `billing_service` och migration 0054 kräver `payments_service`.
 - **Efter en återställning** från säkerhetskopia körs `npm run erasures:reapply` innan servern startar (ADR 0028).
 - **Efter en uppgradering** visar `npm run roles:sync` nya standardroller, och `-- --apply` sparar dem (ADR 0020).
 

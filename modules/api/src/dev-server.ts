@@ -15,7 +15,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { serve } from '@hono/node-server';
-import { compose, databasesFromEnv, documentsFromEnv, webhooksFromEnv } from './composition.ts';
+import { compose, databasesFromEnv, documentsFromEnv, fakeBankFromEnv, webhooksFromEnv } from './composition.ts';
 import { seedSampleData, SAMPLE_RULE_SERIES } from './seed.ts';
 import { corsOriginsFromEnv, createApp, type Principal } from './index.ts';
 import { docsPage } from './docs.ts';
@@ -43,6 +43,9 @@ const webhookEnv = webhooksFromEnv(process.env);
 // The same for the documents' links: a link made before a restart still opens.
 const DEV_DOCUMENT_KEY = Buffer.alloc(32, 'petvold-dev-documents').toString('base64');
 const documentEnv = documentsFromEnv(process.env);
+// The fake bank (ADR 0017) with a fixed secret for development, so a demo bank can sign its notifications.
+const DEV_FAKE_BANK_SECRET = `whsec_${Buffer.alloc(32, 'petvold-dev-fake-bank').toString('base64')}`;
+const fakeBank = fakeBankFromEnv(process.env) ?? { secret: DEV_FAKE_BANK_SECRET, markets: [{ market: 'SE', currency: 'SEK' }] };
 const inst = await compose({
   databases: databasesFromEnv(process.env),
   engineVersion: engineVersion(),
@@ -50,6 +53,7 @@ const inst = await compose({
   log: (l) => console.log(l),
   webhooks: { key: webhookEnv.key ?? DEV_WEBHOOK_KEY, allowHosts: webhookEnv.allowHosts.length ? webhookEnv.allowHosts : ['localhost', '127.0.0.1'] },
   documents: { ...documentEnv, key: documentEnv.key ?? DEV_DOCUMENT_KEY, publicBaseUrl: documentEnv.publicBaseUrl ?? `http://localhost:${process.env.PORT ?? 8787}` },
+  payments: { fake: fakeBank },
 });
 await inst.ping().catch((err: Error) => {
   console.error(`Cannot reach Postgres or the document archive (${err.message}). Run npm run dev:up, or remove the database URLs and PETVOLD_DOCUMENTS_BUCKET from .env to run in memory.`);
@@ -122,6 +126,7 @@ console.log(`  Parties:   ${where('parties')} (GET /v1/parties/pty_owner001)`);
 console.log(`  Policies:  ${where('policies')} (GET /v1/policies/pol_bella)`);
 console.log(`  Notices:   ${where('communications')} (GET /v1/notices?status=pending, token dev-documents)`);
 console.log(`  Billing:   ${where('billing')} (GET /v1/premium-plans?policyId=pol_bella)`);
+console.log(`  Payments:  ${where('payments')} (POST /provider-notifications/fake, signed with PETVOLD_FAKE_BANK_SECRET or the dev secret)`);
 console.log(`  Webhooks:  ${where('webhooks')} (POST /v1/webhook-subscriptions, token dev-integration; http://localhost is allowed)`);
 console.log(`  Roles:     ${where('access')}, versioned (GET /v1/settings/roles)`);
 console.log(`  API page:  http://localhost:${port}/docs`);

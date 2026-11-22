@@ -11,6 +11,7 @@
     "@petvold/access": "^0.1.0",
     "@petvold/animals": "^0.1.0",
     "@petvold/billing": "^0.1.0",
+    "@petvold/payments": "^0.1.0",
     "@petvold/catalog": "^0.1.0",
     "@petvold/claims-core": "^0.1.0",
     "@petvold/claims-store-memory": "^0.1.0",
