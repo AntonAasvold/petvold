@@ -1,0 +1,47 @@
+# The demo's front (ADR 0041): HTTPS from Let's Encrypt, one shared password,
+# and the API beside the back office.
+#
+# The password is asked for once, at /login, which then sets a cookie. Every
+# other page and call needs the cookie. Basic authentication on every request
+# would clash with the back office, which sends its demo token in the same
+# Authorization header.
+{
+	admin off
+}
+
+{$DEMO_DOMAIN} {
+	encode zstd gzip
+	header -Server
+
+	# Signed already: document links (ADR 0038) and the fake bank (ADR 0017). And the health check.
+	@open path /d/* /provider-notifications/* /health
+	handle @open {
+		reverse_proxy api:8080
+	}
+
+	# route keeps the order as written: the password first, then the cookie and the redirect.
+	handle /login {
+		route {
+			basic_auth {
+				{$DEMO_USER} {$DEMO_PASSWORD_HASH}
+			}
+			header Set-Cookie "petvold_demo={$DEMO_GATE}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000"
+			redir * / 302
+		}
+	}
+
+	@signedIn header Cookie *petvold_demo={$DEMO_GATE}*
+	handle @signedIn {
+		@api path /v1/* /openapi.yaml /docs /healthz
+		handle @api {
+			reverse_proxy api:8080
+		}
+		handle {
+			reverse_proxy web:8080
+		}
+	}
+
+	handle {
+		redir * /login 302
+	}
+}
