@@ -1,0 +1,12 @@
+{
+  "sv": {
+    "sender": "Petvold Demoförsäkring, ett påhittat bolag för demon. Inga riktiga försäkringar.",
+    "review": "Är du inte nöjd med beslutet kan du begära att vi prövar det igen. Skriv till vår klagomålsansvarige inom sex månader. Du kan också vända dig till Konsumenternas försäkringsbyrå för råd, eller till Allmänna reklamationsnämnden.",
+    "payment": "Betala till bankgiro 0000-0000 (demo) och ange OCR-numret. Betalningen kommer fram samma bankdag."
+  },
+  "en": {
+    "sender": "Petvold Demo Insurance, a made-up company for the demo. No real insurance.",
+    "review": "If you are not satisfied with the decision, you can ask us to review it. Write to our complaints officer within six months. You can also contact Konsumenternas försäkringsbyrå for advice, or Allmänna reklamationsnämnden.",
+    "payment": "Pay to bankgiro 0000-0000 (demo) and give the OCR number. The payment arrives the same banking day."
+  }
+}

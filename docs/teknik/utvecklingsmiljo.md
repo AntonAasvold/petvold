@@ -69,6 +69,7 @@ Exemplen finns i kontraktet (`components/examples`). Testerna kontrollerar att d
 | `npm run db:migrate` | Kör nya migreringar mot båda databaserna |
 | `npm run db:new <namn>` | Skapar en ny migreringsfil i `db/migrations/` |
 | `npm run test:db` | Databastester mot `TEST_DATABASE_URL` |
+| `npm run demo:seed` | Fyller en ny installation med sex månaders testdata genom API:t. Se [Demon](demo.md). |
 | `npm start` | Startar servern för drift (`server.ts`). Kräver alla databasadresser, `PETVOLD_VERSION` och inloggning. Se [Drift](drift.md). |
 | `npm run roles:sync` | Visar standardroller och standardrättigheter som saknas i den sparade rollinställningen. Med `-- --apply` sparas de som en ny version. |
 | `npm run erasures:reapply` | Kör alla godkända anonymiseringar igen, efter en återställning från säkerhetskopia (ADR 0028) |
