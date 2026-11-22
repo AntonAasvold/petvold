@@ -7,7 +7,7 @@
 import type { Authenticator, Principal } from './app.ts';
 
 /** The back office's roles for dev-all: not the jobs, and not the clinic or the customer channel, which bind the caller to their own claims or policies. */
-export const ALL_ROLES = ['handler', 'approver', 'underwriter', 'policy-registrar', 'animal-registrar', 'party-registrar', 'privacy-officer', 'catalog-manager', 'catalog-publisher', 'rules-author', 'rules-publisher', 'communications-manager', 'integration-admin', 'operations', 'admin', 'document-service'];
+export const ALL_ROLES = ['handler', 'approver', 'underwriter', 'policy-registrar', 'animal-registrar', 'party-registrar', 'privacy-officer', 'catalog-manager', 'catalog-publisher', 'rules-author', 'rules-publisher', 'communications-manager', 'integration-admin', 'operations', 'admin', 'document-service', 'billing-clerk'];
 
 export const DEMO_TOKENS: Record<string, Principal> = {
   'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler'], markets: '*' },
@@ -25,6 +25,7 @@ export const DEMO_TOKENS: Record<string, Principal> = {
   'dev-underwriter': { subject: 'underwriter@example.test', roles: ['underwriter'], markets: ['SE'] },
   'dev-documents': { subject: 'document-service', roles: ['document-service'], markets: ['SE'] },
   'dev-communications': { subject: 'communications@example.test', roles: ['communications-manager'], markets: ['SE'] },
+  'dev-billing': { subject: 'ekonomi@example.test', roles: ['billing-clerk'], markets: ['SE'] },
   'dev-integration': { subject: 'integration@example.test', roles: ['integration-admin'], markets: '*' },
   'dev-operations': { subject: 'drift@example.test', roles: ['operations'], markets: '*' },
   'dev-operations-2': { subject: 'drift2@example.test', roles: ['operations'], markets: '*' },

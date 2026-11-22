@@ -25,42 +25,10 @@ import type { Installation } from './composition.ts';
 export const SAMPLE_RULE_SERIES = 'SE-HUND-VV';
 
 export async function seedSampleData(inst: Installation, clock: { now(): string }): Promise<void> {
+  await seedInstallation(inst, clock);
   const { stores } = inst;
   const now = clock.now();
   const by = 'petvold-seed';
-
-  // Rules, tariff and price terms: published at once. An installation seed, not a
-  // review; in production the first version goes through draft, review and publication.
-  const { rulesVersion: _v, ...rules } = fixtures.RULES_SE_DOG;
-  await publishSeries(stores.rules, SAMPLE_RULE_SERIES, rules, CALCULATION_MODEL, now);
-  await publishSeries(stores.rules, 'SE-HUND-TARIFF', TARIFF, 'tariff.v1', now);
-  await publishSeries(stores.rules, 'SE-HUND-TERMS', PRICE_TERMS, 'price-terms.v1', now);
-  await publishSeries(stores.rules, 'SE-HUND-UW', underwritingSeed, 'underwriting.v1', now);
-
-  // Reference data: parents come first in the file.
-  for (const [kind, items] of Object.entries(referenceSeed)) {
-    if (!isReferenceKind(kind)) continue;
-    for (const i of items as { code: string; parent?: string; labels: Record<string, string> }[]) {
-      if (await stores.references.get(kind, i.code)) continue;
-      await inst.deps.catalog!.putReference(kind, i.code, { labels: i.labels, ...(i.parent ? { parent: i.parent } : {}) }, by);
-    }
-  }
-
-  for (const p of productSeed as Pick<ProductVersion, 'product' | 'version' | 'salesFrom' | 'content'>[]) {
-    if (await stores.products.get(p.product, p.version)) continue;
-    const draft: ProductVersion = { ...p, status: 'draft', revision: 1, createdBy: by, createdAt: now };
-    await stores.products.create(draft);
-    await stores.products.update({
-      ...draft,
-      status: 'published',
-      checksum: productChecksum(draft),
-      revision: 2,
-      submittedBy: by,
-      submittedAt: now,
-      publishedBy: 'petvold-install',
-      publishedAt: now,
-    });
-  }
 
   // Bella's owner, without a personal number.
   if (!(await stores.parties.get('pty_owner001'))) {
@@ -129,6 +97,50 @@ export async function seedSampleData(inst: Installation, clock: { now(): string 
   await seedClaims(inst);
   await seedHouseholds(inst, now, by);
   await seedApplications(inst, now, by);
+}
+
+/**
+ * What an installation starts from: the sample rules, tariff, price terms,
+ * underwriting rules, reference data and products, published at once. The
+ * demo's test data (demo-data.ts) starts from this too.
+ */
+export async function seedInstallation(inst: Installation, clock: { now(): string }): Promise<void> {
+  const { stores } = inst;
+  const now = clock.now();
+  const by = 'petvold-seed';
+
+  // Rules, tariff and price terms: published at once. An installation seed, not a
+  // review; in production the first version goes through draft, review and publication.
+  const { rulesVersion: _v, ...rules } = fixtures.RULES_SE_DOG;
+  await publishSeries(stores.rules, SAMPLE_RULE_SERIES, rules, CALCULATION_MODEL, now);
+  await publishSeries(stores.rules, 'SE-HUND-TARIFF', TARIFF, 'tariff.v1', now);
+  await publishSeries(stores.rules, 'SE-HUND-TERMS', PRICE_TERMS, 'price-terms.v1', now);
+  await publishSeries(stores.rules, 'SE-HUND-UW', underwritingSeed, 'underwriting.v1', now);
+
+  // Reference data: parents come first in the file.
+  for (const [kind, items] of Object.entries(referenceSeed)) {
+    if (!isReferenceKind(kind)) continue;
+    for (const i of items as { code: string; parent?: string; labels: Record<string, string> }[]) {
+      if (await stores.references.get(kind, i.code)) continue;
+      await inst.deps.catalog!.putReference(kind, i.code, { labels: i.labels, ...(i.parent ? { parent: i.parent } : {}) }, by);
+    }
+  }
+
+  for (const p of productSeed as Pick<ProductVersion, 'product' | 'version' | 'salesFrom' | 'content'>[]) {
+    if (await stores.products.get(p.product, p.version)) continue;
+    const draft: ProductVersion = { ...p, status: 'draft', revision: 1, createdBy: by, createdAt: now };
+    await stores.products.create(draft);
+    await stores.products.update({
+      ...draft,
+      status: 'published',
+      checksum: productChecksum(draft),
+      revision: 2,
+      submittedBy: by,
+      submittedAt: now,
+      publishedBy: 'petvold-install',
+      publishedAt: now,
+    });
+  }
 }
 
 /**

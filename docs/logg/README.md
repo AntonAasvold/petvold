@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-22 | [Testdata för demon](2026-11-22-demo-testdata.md) | #142 |
 | 2026-11-22 | [Demoläget för inloggningen](2026-11-22-demolage-inloggning.md) | #141 |
 | 2026-11-22 | [Avbildningar för demon](2026-11-22-avbildningar.md) | #140 |
 | 2026-11-22 | [ADR 0041: demon](2026-11-22-adr-0041-demo.md) | #139 |

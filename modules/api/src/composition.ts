@@ -94,6 +94,8 @@ export interface InstallationConfig {
   };
   /** The claim number's prefix per market, e.g. { SE: 'S', NO: 'N' } (PETVOLD_CLAIM_NUMBER_PREFIX). 'S' when a market has none. */
   claimNumberPrefix?: Record<string, string>;
+  /** Makes the ids of everything stored, e.g. pol_… Omitted: random. The demo gives its own, so the same seed gives the same ids (ADR 0041). */
+  ids?: { next(prefix: string): string };
   /** Payment services (ADR 0017). Omitted: none, so no payments come in. */
   payments?: {
     /** The fake bank, for the dev server and the demo (PETVOLD_FAKE_BANK_SECRET, PETVOLD_FAKE_BANK_MARKETS). */
@@ -209,7 +211,7 @@ export interface Installation {
 export async function compose(config: InstallationConfig): Promise<Installation> {
   const clock = config.clock ?? { now: () => new Date().toISOString() };
   const log = config.log ?? (() => {});
-  const ids = { next: (prefix: string) => `${prefix}_${randomUUID().replaceAll('-', '')}` };
+  const ids = config.ids ?? { next: (prefix: string) => `${prefix}_${randomUUID().replaceAll('-', '')}` };
   const pools: pg.Pool[] = [];
   const pool = (name: DatabaseName, max: number) => {
     const url = config.databases[name];
