@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-22 | [Avbildningar för demon](2026-11-22-avbildningar.md) | #140 |
 | 2026-11-22 | [ADR 0041: demon](2026-11-22-adr-0041-demo.md) | #139 |
 | 2026-11-22 | [Pengar, steg 3a: inbetalningar och låtsasbanken](2026-11-22-inbetalningar.md) | #138 |
 | 2026-11-21 | [Återkallelse av ett avslut mot fakturorna](2026-11-21-aterkallelse.md) | #137 |
