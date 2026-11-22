@@ -169,6 +169,14 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 
 ## Senare
 
+**Demo** (ADR 0041)
+- [x] ADR 0041: en egen server med Docker Compose, demoanvändare bakom ett lösenord, och testdata genom API:t med en klocka som går
+- [ ] `Dockerfile` med målen `api` och `web`, byggd i CI
+- [ ] Demoläget för inloggningen (`PETVOLD_AUTH=demo`)
+- [ ] Testdata: `npm run demo:seed`, sex månader dag för dag
+- [ ] `deploy/demo/` med Compose, Caddy och återställning
+- [ ] Demotjänsten, fas 1: ta emot och visa händelserna
+
 **M5 – Pengar**
 - [x] ADR 0040: premieplaner, fakturor, inbetalningar, utbetalningar och bokföring (beslutad 2026-11-21). Byggs i åtta steg:
   - [x] `billing-core`: premieplan, fördelning av betalningar och avräkning vid avslut
