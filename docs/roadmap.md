@@ -175,6 +175,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [x] Demoläget för inloggningen (`PETVOLD_AUTH=demo`)
 - [x] Testdata: `npm run demo:seed`, sex månader dag för dag
 - [x] `deploy/demo/` med Compose, Caddy och återställning
+- [x] Demon på en annan port, med certifikat från DuckDNS
 - [ ] Demotjänsten, fas 1: ta emot och visa händelserna
 
 **M5 – Pengar**
