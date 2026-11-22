@@ -1,6 +1,43 @@
 # Demon
 
-Demon är en installation av Petvold på en egen server, med demoanvändare och testdata (ADR 0041). Sidan växer med stegen i ADR:en. Nu beskriver den testdatan, och uppsättningen på servern kommer i nästa steg.
+Demon är en installation av Petvold på en egen server, med demoanvändare och testdata (ADR 0041). Allt för servern finns i `deploy/demo/`.
+
+## Sätta upp demon
+
+Det som behövs är en server med Docker och Docker Compose, och ett domännamn som pekar på den. Portarna 80 och 443 ska vara öppna, så att Caddy kan hämta ett certifikat från Let's Encrypt.
+
+```
+git clone https://github.com/AntonAasvold/petvold.git && cd petvold/deploy/demo
+./setup.sh demo.example.com 'ett långt lösenord'   # skriver .env med nya hemligheter
+./reset.sh                                          # hämtar avbildningarna, fyller med testdata och startar
+```
+
+- **`setup.sh`** skriver `deploy/demo/.env` med domänen, lösenordets hash och nya slumpade hemligheter: databasens lösenord, nycklarna för webhooks och dokument, låtsasbankens hemlighet och kakan. Filen får bara ägaren läsa. Den ska aldrig in i git, och `.gitignore` håller den utanför.
+- **`reset.sh`** tömmer demon och fyller den igen. Den hämtar avbildningarna från GitHubs register, stoppar Petvold, tar bort databasen och arkivet och kör migreringarna och testdatan. Sedan startar den allt. Caddys certifikat behålls. Med `--build` byggs avbildningarna från repot i stället.
+- **Avbildningarna** i GitHubs register är privata från början. Gör paketen `petvold-api` och `petvold-web` publika, logga in med `docker login ghcr.io` på servern, eller använd `./reset.sh --build`.
+- **En annan version:** sätt `PETVOLD_TAG` i `.env` till en commit, till exempel `PETVOLD_TAG=922336f…`, och kör `./reset.sh`.
+- **Längre historik eller ett annat frö:** `DEMO_MONTHS=13 DEMO_SEED=2 ./reset.sh`.
+
+| Tjänst | Vad |
+| --- | --- |
+| `caddy` | HTTPS, lösenordet och vidarekopplingen |
+| `api` | Petvold (`server.ts` med `PETVOLD_AUTH=demo` och låtsasbanken) |
+| `web` | Back office |
+| `migrate` | Migreringarna, före `api` |
+| `seed` | Testdatan, bara från `reset.sh` |
+| `postgres`, `seaweedfs`, `gotenberg` | Databasen, arkivet och PDF:erna, bara på det interna nätet |
+
+### Lösenordet
+
+Adressen frågar efter lösenordet en gång, på `/login`, och sätter då en kaka som gäller i 30 dagar. Alla andra sidor och anrop kräver kakan, och utan den skickas man till `/login`.
+
+- **Lösenordet frågas bara efter på `/login`.** Basic-inloggning på varje anrop hade krockat med back office, som skickar sin token i samma rubrik (`Authorization`).
+- **Utan kakan** fungerar bara det som redan är signerat: dokumentlänkarna (`/d/`), låtsasbankens aviseringar (`/provider-notifications/`) och `/health`.
+- **Ett nytt lösenord:** ta bort `.env` och kör `setup.sh` igen. Det ger också nya hemligheter, så kör `reset.sh` efteråt.
+
+### Lokalt
+
+`./setup.sh localhost lösenord` och `./reset.sh --build` kör samma demo på den egna datorn, med Caddys egna certifikat i stället för Let's Encrypt. `docker compose down` i `deploy/demo/` stoppar den.
 
 ## Testdata
 
@@ -56,4 +93,4 @@ Alla uppgifter är påhittade (ADR 0009):
 
 ## Inloggning
 
-Demon startar med `PETVOLD_AUTH=demo` ([Drift](drift.md)) och har samma token som dev-servern. `dev-all` har alla roller som back office använder, och `dev-billing` följer premierna och inbetalningarna.
+Bakom lösenordet loggar man in i back office med en av dev-serverns token, eftersom demon startar med `PETVOLD_AUTH=demo` ([Drift](drift.md)). `dev-all` har alla roller som back office använder, och `dev-billing` följer premierna och inbetalningarna. Tokenen finns bara i minnet, så en ny flik eller en omladdning ber om den igen. API-sidan finns på `/docs`.

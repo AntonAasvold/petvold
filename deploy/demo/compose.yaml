@@ -1,0 +1,148 @@
+# The demo (ADR 0041): Petvold on one server with Docker Compose, behind Caddy
+# with HTTPS and one shared password. Set up with ./setup.sh, fill with
+# ./reset.sh. See docs/teknik/demo.md.
+#
+# The images come from the GitHub container registry, or are built here from
+# the repository with `docker compose build`.
+
+name: petvold-demo
+
+x-petvold: &petvold
+  image: ghcr.io/antonaasvold/petvold-api:${PETVOLD_TAG:-main}
+  build: { context: ../.., target: api }
+  restart: unless-stopped
+  environment: &petvold-env
+    CLAIMS_DATABASE_URL: postgres://claims_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    ACCESS_DATABASE_URL: postgres://access_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    DECISIONING_DATABASE_URL: postgres://decisioning_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    CATALOG_DATABASE_URL: postgres://catalog_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    ANIMALS_DATABASE_URL: postgres://animals_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    PARTIES_DATABASE_URL: postgres://parties_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    POLICIES_DATABASE_URL: postgres://policies_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    COMMUNICATIONS_DATABASE_URL: postgres://communications_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    WEBHOOKS_DATABASE_URL: postgres://webhooks_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    SCHEDULING_DATABASE_URL: postgres://scheduling_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    DOCUMENTS_DATABASE_URL: postgres://documents_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    BILLING_DATABASE_URL: postgres://billing_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    PAYMENTS_DATABASE_URL: postgres://payments_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    PETVOLD_VERSION: demo-${PETVOLD_TAG:-main}
+    PETVOLD_AUTH: demo
+    PETVOLD_PUBLIC_URL: https://${DEMO_DOMAIN}
+    PETVOLD_WEBHOOK_KEY: ${PETVOLD_WEBHOOK_KEY}
+    PETVOLD_DOCUMENT_KEY: ${PETVOLD_DOCUMENT_KEY}
+    PETVOLD_FAKE_BANK_SECRET: ${PETVOLD_FAKE_BANK_SECRET}
+    PETVOLD_FAKE_BANK_MARKETS: SE:SEK
+    PETVOLD_DOCUMENTS_BUCKET: petvold-documents
+    PETVOLD_DOCUMENTS_S3_ENDPOINT: http://seaweedfs:8333
+    PETVOLD_DOCUMENTS_S3_ACCESS_KEY: petvold
+    PETVOLD_DOCUMENTS_S3_SECRET_KEY: ${S3_SECRET_KEY}
+    PETVOLD_GOTENBERG_URL: http://gotenberg:3000
+    # The demo service, when it runs here, receives webhooks over http on the internal network.
+    PETVOLD_WEBHOOK_ALLOW_HOSTS: demo
+
+services:
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DEMO_DOMAIN: ${DEMO_DOMAIN}
+      DEMO_USER: ${DEMO_USER:-demo}
+      DEMO_PASSWORD_HASH: ${DEMO_PASSWORD_HASH}
+      DEMO_GATE: ${DEMO_GATE}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [api, web]
+
+  api:
+    <<: *petvold
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      seaweedfs: { condition: service_healthy }
+      gotenberg: { condition: service_healthy }
+
+  # Runs the migrations as the owner, then stops. The api starts after it.
+  migrate:
+    <<: *petvold
+    restart: "no"
+    command: ["node_modules/.bin/dbmate", "--wait", "--no-dump-schema", "up"]
+    environment:
+      DATABASE_URL: postgres://petvold:${POSTGRES_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # The test data (npm run demo:seed). Only run by reset.sh, with the api stopped.
+  seed:
+    <<: *petvold
+    restart: "no"
+    profiles: [seed]
+    command: ["node", "--import", "tsx", "modules/api/scripts/demo-seed.ts", "--months", "${DEMO_MONTHS:-6}", "--seed", "${DEMO_SEED:-1}"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      seaweedfs: { condition: service_healthy }
+      gotenberg: { condition: service_healthy }
+
+  web:
+    image: ghcr.io/antonaasvold/petvold-web:${PETVOLD_TAG:-main}
+    build: { context: ../.., target: web }
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18.7-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: petvold
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: petvold
+      SERVICE_DB_PASSWORD: ${SERVICE_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U petvold -d petvold"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.52
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    # The access key's secret comes from the environment, so it is not in the repository.
+    command:
+      - >-
+        printf '{"identities":[{"name":"petvold","credentials":[{"accessKey":"petvold","secretKey":"%s"}],"actions":["Read","Write","List","Tagging","Admin"]}]}' "$$S3_SECRET_KEY" > /tmp/s3.json &&
+        exec weed mini -dir=/data -s3.config=/tmp/s3.json -bucket=petvold-documents
+    environment:
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - s3data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/healthz || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  # PDFs (ADR 0038). Chromium may reach no address, and nothing is downloaded.
+  gotenberg:
+    image: gotenberg/gotenberg:9.1.0
+    restart: unless-stopped
+    command:
+      - gotenberg
+      - --chromium-deny-private-ips=true
+      - --chromium-deny-public-ips=true
+      - --chromium-disable-javascript=true
+      - --api-disable-download-from=true
+      - --webhook-disable=true
+      - --libreoffice-disable-routes=true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3000/health >/dev/null || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+volumes:
+  pgdata:
+  s3data:
+  caddy-data:

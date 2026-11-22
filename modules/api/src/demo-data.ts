@@ -141,7 +141,11 @@ interface Dog {
   animalId: string;
   partyId: string;
   policyId?: string;
+  /** The day it was issued, from which the 14 days of withdrawal count. */
+  issuedOn?: string;
   startDate?: string;
+  /** The products' deductibles are standard (the default) and high. */
+  deductible?: 'standard' | 'high';
 }
 
 interface Bank {
@@ -215,7 +219,7 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
 
   const dogs: Dog[] = [];
   const bank: Bank = { plan: new Map(), paid: new Set(), n: 0 };
-  const pendingDecisions = new Map<string, string>(); // claimId -> the day a handler looks at it
+  const pendingDecisions = new Map<string, { on: string; proposed: 'approved' | 'rejected' }>(); // claimId -> the day a handler looks at it
   const pendingApprovals = new Map<string, string>();
   const referred = new Map<string, string>(); // applicationId -> the day an underwriter looks at it
 
@@ -290,7 +294,9 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
           });
           if (r.status < 300) {
             dog.policyId = r.body.id;
+            dog.issuedOn = day;
             dog.startDate = startDate;
+            dog.deductible = 'standard';
             sum.policies++;
           }
         } else {
@@ -314,7 +320,9 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
             const a = r.body;
             if (a.policyId) {
               dog.policyId = a.policyId;
+              dog.issuedOn = day;
               dog.startDate = startDate;
+              dog.deductible = 'standard';
               sum.policies++;
             } else if (a.status === 'referred') {
               referred.set(a.id, addDays(day, between(1, 4)));
@@ -337,7 +345,9 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
         const dog = dogs.find((d) => d.animalId === r.body.animalId);
         if (dog && policyId) {
           dog.policyId = policyId;
-          dog.startDate = day;
+          dog.issuedOn = day;
+          dog.startDate = r.body.startDate ?? day;
+          dog.deductible = 'standard';
           sum.policies++;
         }
       }
@@ -364,18 +374,25 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
       });
       if (r.status >= 300) continue;
       sum.claims++;
-      // No decision: the rules left it to a person.
-      if (!r.body.decision) pendingDecisions.set(r.body.claim.id, addDays(day, between(1, 5)));
+      // No decision: the rules left it to a person, with their proposal.
+      if (!r.body.decision) pendingDecisions.set(r.body.claim.id, { on: addDays(day, between(1, 5)), proposed: r.body.assessment.proposedOutcome });
     }
 
     // A handler decides; above the handler's limit, an approver approves.
-    for (const [id, on] of pendingDecisions) {
+    for (const [id, { on, proposed }] of pendingDecisions) {
       if (on > day) continue;
       at(12);
       pendingDecisions.delete(id);
-      const accept = chance(0.85);
-      const r = await call('POST', `/v1/claims/${id}/decisions`, 'dev-handler', accept ? { action: 'accept', reason: 'Treatment covered by the policy.' } : { action: 'reject', reason: 'The condition started before the policy.', reasonCode: 'other' });
-      if (r.status >= 300) continue;
+      // The handler mostly follows the proposal, e.g. a rejection below the deductible. Now and then not, with a reason.
+      const follow = chance(0.9);
+      const body =
+        proposed === 'rejected'
+          ? { action: 'reject', reason: 'The costs are below the deductible.' }
+          : follow
+            ? { action: 'accept', reason: 'Treatment covered by the policy.' }
+            : { action: 'reject', reason: 'The journal shows the condition started before the policy.', reasonCode: 'pre_existing_condition' };
+      const r = await call('POST', `/v1/claims/${id}/decisions`, 'dev-handler', body);
+      if (r.status >= 300) throw new Error(`The decision on ${id} gave ${r.status}: ${JSON.stringify(r.body)}`);
       sum.decisions++;
       // 202: above the handler's limit, a proposal for an approver.
       if (r.status === 202) pendingApprovals.set(`${id}/${r.body.id}`, addDays(day, between(1, 3)));
@@ -394,11 +411,13 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
       if (!dog.policyId || !dog.startDate || dog.startDate > day) continue;
       if (chance(1 / 900)) {
         at(14);
-        const r = await call('POST', `/v1/policies/${dog.policyId}/changes`, 'dev-all', { from: addDays(day, 1), vetCare: { deductible: pick(['low', 'standard', 'high']) }, reason: 'The customer chose another deductible.' });
-        if (r.status < 300) sum.changes++;
+        const deductible = dog.deductible === 'high' ? 'standard' : 'high';
+        await must('POST', `/v1/policies/${dog.policyId}/changes`, 'dev-all', { from: addDays(day, 1), vetCare: { deductible }, reason: 'The customer chose another deductible.' });
+        dog.deductible = deductible;
+        sum.changes++;
       } else if (chance(1 / 1500)) {
         at(14);
-        const withdrawal = addDays(dog.startDate, 14) >= day;
+        const withdrawal = !!dog.issuedOn && addDays(dog.issuedOn, 13) >= day;
         const r = await call(
           'POST',
           `/v1/policies/${dog.policyId}/cancellations`,
