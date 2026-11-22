@@ -8,10 +8,11 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 - Pengar, steg 3a: inbetalningar (ADR 0017, 0040), PR #138. Modulen `payments` med porten `PaymentProvider`, låtsasbanken `fake` (signerad som Petvolds webhooks) och en gemensam svit för adaptrar.
   - `POST /provider-notifications/{provider}` sparar varje inbetalning en gång och ger `payment.succeeded`. Läsning med `GET /v1/payments` och `payments:read`.
   - Migration 0054 med rollen `payments_service`. 642 tester och 177 databastester.
+- Avbildningar för demon, PR #140: `Dockerfile` med målen `api` och `web`, byggda i CI och lagda i GitHubs register från `main`. `tsx` och `dbmate` är vanliga beroenden, eftersom servern och migreringarna behöver dem.
 - ADR 0041 om demon, PR #139: en egen server med Docker Compose och Caddy, demoanvändare (`PETVOLD_AUTH=demo`) bakom ett gemensamt lösenord, och testdata som skapas genom API:t sex månader bakåt, dag för dag.
 
 **Nästa steg**
-1. Demon enligt ADR 0041: `Dockerfile`, demoläget för inloggningen, testdatan, `deploy/demo/` och demotjänstens fas 1.
+1. Demon enligt ADR 0041: demoläget för inloggningen, testdatan, `deploy/demo/` och demotjänstens fas 1.
 2. ADR 0040, steg 3b: koppla inbetalningar till fakturor, okopplade inbetalningar och `invoice.paid`. Steg 3c: utbetalningar från `claim.payout_ordered`.
 3. ADR 0038, steg 5: gallring av dokument som en körning.
 4. Back office: översikten på startsidan och omräkning av beslut.

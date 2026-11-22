@@ -32,14 +32,16 @@
     "ui:e2e": "npm run e2e -w @petvold/backoffice",
     "ui:types": "npm run types -w @petvold/backoffice"
   },
+  "dependencies": {
+    "dbmate": "^2.38.1",
+    "tsx": "^4"
+  },
   "devDependencies": {
     "@types/node": "^24.19.2",
     "@types/pg": "^8.23.1",
-    "dbmate": "^2.38.1",
     "fast-check": "^4.10.2",
     "marked": "18.1.2",
     "pg": "^8.23.1",
-    "tsx": "^4",
     "typescript": "^5.9",
     "yaml": "^2.9.1"
   }

@@ -10,6 +10,25 @@ npm start            # node --import tsx modules/api/src/server.ts
 
 `server.ts` kopplar ihop alla moduler med kompositionsroten (`composition.ts`). Den lägger inte in exempeldata, och den läser aldrig `.env`. All konfiguration kommer från miljön.
 
+## Avbildningar
+
+`Dockerfile` har två mål (ADR 0041). CI bygger båda i varje PR och lägger dem i GitHubs register från `main`, märkta med commit och `main`:
+
+| Mål | Avbildning | Vad |
+| --- | --- | --- |
+| `api` | `ghcr.io/antonaasvold/petvold-api` | Servern på port 8080, med en hälsokontroll mot `/health`. Har också migreringarna och dbmate. |
+| `web` | `ghcr.io/antonaasvold/petvold-web` | Back office som statiska filer, serverade av Caddy på port 8080. Byggd utan OIDC och mot API:t på samma adress. |
+
+```
+docker build --target api -t petvold-api .
+docker build --target web -t petvold-web .
+# Migreringarna, som ägarrollen, före servern:
+docker run --rm -e DATABASE_URL=postgres://… petvold-api node_modules/.bin/dbmate --wait --no-dump-schema up
+```
+
+- Avbildningen `api` kör som användaren `node` och har bara det som behövs vid körning. `tsx` och `dbmate` är därför vanliga beroenden i `package.json`.
+- Back office i avbildningen `web` loggar in med dev-serverns token, eftersom den byggs utan `VITE_OIDC_ISSUER`. Den passar en demo bakom ett lösenord (ADR 0041). En installation hos ett bolag bygger sin egen med OIDC.
+
 ## Konfiguration
 
 | Variabel | Krävs | Betyder |
@@ -54,7 +73,7 @@ Ur token läses `sub` (vem), roller, marknader (en lista eller `*`), och för ro
 
 ## Databasen
 
-- **Migreringar** körs före start med dbmate, som ägarrollen (`npm run db:migrate` eller motsvarande i installationen). Tjänsterollerna kan inte ändra schemat.
+- **Migreringar** körs före start med dbmate, som ägarrollen (`npm run db:migrate`, eller avbildningen `api` som ovan). Tjänsterollerna kan inte ändra schemat.
 - **Tjänsteroller** skapas av installationen, till exempel med CloudNativePG `spec.managed.roles`. Lokalt skapas de av `db/init/`. Rollen måste finnas innan migreringen som ger den rättigheter körs. Migration 0031 kräver till exempel `communications_service`, migration 0050 kräver `billing_service` och migration 0054 kräver `payments_service`.
 - **Efter en återställning** från säkerhetskopia körs `npm run erasures:reapply` innan servern startar (ADR 0028).
 - **Efter en uppgradering** visar `npm run roles:sync` nya standardroller, och `-- --apply` sparar dem (ADR 0020).
