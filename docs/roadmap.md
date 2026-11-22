@@ -172,7 +172,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 **Demo** (ADR 0041)
 - [x] ADR 0041: en egen server med Docker Compose, demoanvändare bakom ett lösenord, och testdata genom API:t med en klocka som går
 - [x] `Dockerfile` med målen `api` och `web`, byggd i CI
-- [ ] Demoläget för inloggningen (`PETVOLD_AUTH=demo`)
+- [x] Demoläget för inloggningen (`PETVOLD_AUTH=demo`)
 - [ ] Testdata: `npm run demo:seed`, sex månader dag för dag
 - [ ] `deploy/demo/` med Compose, Caddy och återställning
 - [ ] Demotjänsten, fas 1: ta emot och visa händelserna
