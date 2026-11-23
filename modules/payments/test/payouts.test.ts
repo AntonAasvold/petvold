@@ -32,7 +32,7 @@ const bank = { market: 'SE', method: 'se-bank' as const, details: { clearing: '8
 
 test('a payout order with the payee\'s details is paid at once, once, with payout.paid', async () => {
   const { service, store } = setup();
-  await service.addPayeeAccount('pty_anna', bank, 'kundservice@example.test');
+  await service.addPayeeAccount({ partyId: 'pty_anna' }, bank, 'kundservice@example.test');
   const p = await service.handleClaimEvent(ordered());
   assert.equal(p?.status, 'paid');
   assert.deepEqual(p?.steps.map((s) => s.status), ['pending', 'paid']);
@@ -50,14 +50,14 @@ test('without details it waits; the details send it', async () => {
   const p = await service.handleClaimEvent(ordered());
   assert.equal(p?.status, 'awaiting-details');
   assert.deepEqual((await service.payouts({ status: 'awaiting-details' })).map((x) => x.id), [p?.id]);
-  await service.addPayeeAccount('pty_anna', bank, 'kundservice@example.test');
+  await service.addPayeeAccount({ partyId: 'pty_anna' }, bank, 'kundservice@example.test');
   const after = await service.payout(p!.id);
   assert.deepEqual(after.steps.map((s) => s.status), ['awaiting-details', 'pending', 'paid']);
 });
 
 test('new details hold the payout; another person releases it', async () => {
   const { service } = setup({ holdDays: 3 });
-  await service.addPayeeAccount('pty_anna', bank, 'kundservice@example.test');
+  await service.addPayeeAccount({ partyId: 'pty_anna' }, bank, 'kundservice@example.test');
   const p = await service.handleClaimEvent(ordered());
   assert.equal(p?.status, 'held');
   const code = (x: Promise<unknown>) => x.then(() => 'ok', (e) => (e instanceof PaymentsError ? e.code : String(e)));
@@ -73,9 +73,9 @@ test('new details hold the payout; another person releases it', async () => {
 
 test('details changed while held hold the payout again, on the new details', async () => {
   const { service } = setup({ holdDays: 3 });
-  await service.addPayeeAccount('pty_anna', bank, 'a@example.test');
+  await service.addPayeeAccount({ partyId: 'pty_anna' }, bank, 'a@example.test');
   const p = await service.handleClaimEvent(ordered());
-  const second = await service.addPayeeAccount('pty_anna', { ...bank, details: { clearing: '6000', account: '123456789' } }, 'b@example.test');
+  const second = await service.addPayeeAccount({ partyId: 'pty_anna' }, { ...bank, details: { clearing: '6000', account: '123456789' } }, 'b@example.test');
   const held = await service.payout(p!.id);
   assert.deepEqual(held.steps.map((s) => [s.status, s.note]), [['held', 'The payee details are new'], ['held', 'The payee details changed']]);
   assert.equal(held.steps.at(-1)?.payeeAccountId, second.id);
@@ -95,7 +95,7 @@ test('a payment service that fails or answers later', async () => {
     payout: async (r) => ({ status: answer, providerRef: `bf-${r.payoutId}`, ...(answer === 'failed' ? { reason: 'Account closed' } : {}) }),
   };
   const { service, store } = setup({ provider });
-  await service.addPayeeAccount('pty_anna', bank, 'a@example.test');
+  await service.addPayeeAccount({ partyId: 'pty_anna' }, bank, 'a@example.test');
   const failed = await service.handleClaimEvent(ordered());
   assert.deepEqual([failed?.status, failed?.steps.at(-1)?.note], ['failed', 'Account closed']);
   assert.ok((await store.pendingEvents(10)).some((e) => e.type === 'payout.failed'));
@@ -106,12 +106,12 @@ test('a payment service that fails or answers later', async () => {
 test('details are checked, and shown masked', async () => {
   const { service } = setup();
   for (const bad of [{ clearing: '83', account: '9412345678' }, { clearing: '8327', account: '12' }, { clearing: '8327', account: '9412345678', extra: 1 }]) {
-    await assert.rejects(service.addPayeeAccount('pty_anna', { market: 'SE', method: 'se-bank', details: bad }, 'x'), (e) => e instanceof PaymentsError && e.code === 'validation');
+    await assert.rejects(service.addPayeeAccount({ partyId: 'pty_anna' }, { market: 'SE', method: 'se-bank', details: bad }, 'x'), (e) => e instanceof PaymentsError && e.code === 'validation');
   }
-  await assert.rejects(service.addPayeeAccount('pty_anna', { market: 'SE', method: 'iban', details: { iban: 'SE4550000000058398257465' } }, 'x'), (e) => e instanceof PaymentsError);
-  await service.addPayeeAccount('pty_anna', { market: 'SE', method: 'iban', details: { iban: 'se45 5000 0000 0583 9825 7466' } }, 'x');
-  await service.addPayeeAccount('pty_anna', bank, 'y');
-  const shown = await service.payeeAccounts('pty_anna');
+  await assert.rejects(service.addPayeeAccount({ partyId: 'pty_anna' }, { market: 'SE', method: 'iban', details: { iban: 'SE4550000000058398257465' } }, 'x'), (e) => e instanceof PaymentsError);
+  await service.addPayeeAccount({ partyId: 'pty_anna' }, { market: 'SE', method: 'iban', details: { iban: 'se45 5000 0000 0583 9825 7466' } }, 'x');
+  await service.addPayeeAccount({ partyId: 'pty_anna' }, bank, 'y');
+  const shown = await service.payeeAccounts({ partyId: 'pty_anna' });
   assert.deepEqual(shown.map((a) => [a.details, a.current]), [
     [{ iban: '********************7466' }, false],
     [{ clearing: '8327', account: '******5678' }, true],
@@ -136,7 +136,7 @@ test('retention sees an unfinished payout as ongoing', async () => {
   assert.equal(await service.activityOf('pty_anna'), null);
   await service.handleClaimEvent(ordered());
   assert.deepEqual(await service.activityOf('pty_anna'), { ongoing: true });
-  await service.addPayeeAccount('pty_anna', bank, 'x');
+  await service.addPayeeAccount({ partyId: 'pty_anna' }, bank, 'x');
   assert.deepEqual(await service.activityOf('pty_anna'), { lastDate: '2026-12-01' });
 });
 
@@ -151,4 +151,47 @@ test('without an adapter that pays out, Petvold makes no payout and the order st
   const { service } = setup({ provider });
   assert.equal(await service.handleClaimEvent(ordered()), null);
   assert.equal((await service.payouts()).length, 0);
+});
+
+const clinicOrder = (orderId: string, at = '2026-12-01T09:00:00.000Z') => ({ ...ordered(orderId), occurredAt: at, data: { ...ordered(orderId).data, channel: 'clinic_direct', clinicId: 'clinic_001' } });
+
+test('with an agreement in force the clinic in the order is paid; without one, the policyholder', async () => {
+  const { service } = setup();
+  await service.addPayeeAccount({ partyId: 'pty_anna' }, bank, 'a@example.test');
+  await service.addPayeeAccount({ clinicId: 'clinic_001' }, { ...bank, details: { clearing: '5000', account: '1234567890' } }, 'a@example.test');
+  // No agreement yet: the policyholder.
+  assert.deepEqual(await service.handleClaimEvent(clinicOrder('ord_1')).then((p) => [p?.partyId, p?.clinicId]), ['pty_anna', undefined]);
+  const a = await service.addAgreement({ clinicId: 'clinic_001', market: 'SE', validFrom: '2026-12-01' }, 'avtal@example.test');
+  const toClinic = await service.handleClaimEvent(clinicOrder('ord_2'));
+  assert.deepEqual([toClinic?.clinicId, toClinic?.partyId, toClinic?.status], ['clinic_001', undefined, 'paid']);
+  assert.deepEqual((await service.payouts({ clinicId: 'clinic_001' })).map((p) => p.orderId), ['ord_2']);
+  // An order without the clinic goes to the policyholder, agreement or not.
+  assert.equal((await service.handleClaimEvent(ordered('ord_3')))?.partyId, 'pty_anna');
+  // Ended from 1 February: orders from then go to the policyholder.
+  const ended = await service.endAgreement(a.id, { validTo: '2027-02-01', reason: 'The clinic left the agreement' }, 'avtal@example.test');
+  assert.equal(ended.ended?.validTo, '2027-02-01');
+  assert.equal((await service.handleClaimEvent(clinicOrder('ord_4', '2027-01-31T10:00:00.000Z')))?.clinicId, 'clinic_001');
+  assert.equal((await service.handleClaimEvent(clinicOrder('ord_5', '2027-02-01T10:00:00.000Z')))?.partyId, 'pty_anna');
+  await assert.rejects(service.endAgreement(a.id, { validTo: '2027-03-01', reason: 'again' }, 'x'), (e) => e instanceof PaymentsError && e.code === 'conflict');
+});
+
+test('agreements may not overlap, and their dates are checked', async () => {
+  const { service } = setup();
+  await service.addAgreement({ clinicId: 'clinic_001', market: 'SE', validFrom: '2026-01-01', validTo: '2026-07-01' }, 'x');
+  const code = (p: Promise<unknown>) => p.then(() => 'ok', (e) => (e instanceof PaymentsError ? e.code : String(e)));
+  assert.equal(await code(service.addAgreement({ clinicId: 'clinic_001', market: 'SE', validFrom: '2026-06-01' }, 'x')), 'conflict');
+  assert.equal(await code(service.addAgreement({ clinicId: 'clinic_001', market: 'SE', validFrom: '2026-07-01' }, 'x')), 'ok', 'from the day the first ends');
+  assert.equal(await code(service.addAgreement({ clinicId: 'clinic_002', market: 'SE', validFrom: '2026-07-01', validTo: '2026-07-01' }, 'x')), 'validation');
+  assert.equal(await code(service.addAgreement({ clinicId: 'clinic_001', market: 'NO', validFrom: '2026-06-01' }, 'x')), 'ok', 'another market');
+});
+
+test('a clinic without details waits like a party, and gets paid when it gives them', async () => {
+  const { service } = setup();
+  await service.addAgreement({ clinicId: 'clinic_001', market: 'SE', validFrom: '2026-01-01' }, 'x');
+  const p = await service.handleClaimEvent(clinicOrder('ord_1'));
+  assert.equal(p?.status, 'awaiting-details');
+  await service.addPayeeAccount({ clinicId: 'clinic_001' }, bank, 'x');
+  assert.equal((await service.payout(p!.id)).status, 'paid');
+  assert.deepEqual((await service.payeeAccounts({ clinicId: 'clinic_001' })).map((a) => [a.clinicId, a.current]), [['clinic_001', true]]);
+  assert.deepEqual(await service.payeeAccounts({ partyId: 'pty_anna' }), []);
 });

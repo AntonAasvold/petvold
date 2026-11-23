@@ -2762,6 +2762,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/clinics/{clinicId}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                clinicId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A clinic's account details, oldest first
+         * @description Requires the permission `payments:read` (ADR 0040). Masked but for the last four. The newest in a market is `current`.
+         */
+        get: operations["listClinicAccounts"];
+        put?: never;
+        /**
+         * Give a clinic's account details
+         * @description Requires the permission `payments:payee-write` (ADR 0040). As for a party: the
+         *     details replace the clinic's earlier ones in the market, payouts waiting for
+         *     them go on, and new details may hold a payout for a person.
+         */
+        post: operations["addClinicAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/clinic-agreements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agreements on direct settlement, oldest first
+         * @description Requires the permission `payments:read` (ADR 0040). Only in the caller's markets.
+         */
+        get: operations["listClinicAgreements"];
+        put?: never;
+        /**
+         * Make an agreement on direct settlement with a clinic
+         * @description Requires the permission `payments:agreements` (ADR 0040). From `validFrom`, and
+         *     to `validTo` if given, a payout order that names the clinic is paid to the
+         *     clinic instead of the policyholder. Two agreements for the same clinic and
+         *     market may not overlap (409).
+         */
+        post: operations["addClinicAgreement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/clinic-agreements/{agreementId}/endings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End an agreement on direct settlement
+         * @description Requires the permission `payments:agreements`. From `validTo` payout orders go to the policyholder. An agreement is ended once (409).
+         */
+        post: operations["endClinicAgreement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/payouts": {
         parameters: {
             query?: never;
@@ -4669,7 +4744,12 @@ export interface components {
          * @enum {string}
          */
         PayoutStatus: "awaiting-details" | "held" | "pending" | "paid" | "failed";
-        /** @description A claim's payout order on its way to the policyholder (ADR 0040). One per order, so an order is never paid twice. */
+        /**
+         * @description A claim's payout order on its way to the payee (ADR 0040): the clinic in the
+         *     order if it has an agreement on direct settlement in force that day
+         *     (clinicId), else the policyholder (partyId). One per order, so an order
+         *     is never paid twice.
+         */
         Payout: {
             id: string;
             /** @description The payout order in claim.payout_ordered. */
@@ -4680,8 +4760,10 @@ export interface components {
             market: components["schemas"]["Market"];
             currency: string;
             amount: number;
-            /** @description The payee */
-            partyId: string;
+            /** @description The payee when it is the policyholder, on the day of the order. */
+            partyId?: string;
+            /** @description The payee when it is a clinic with an agreement. */
+            clinicId?: string;
             provider: string;
             sourceEventId: string;
             /** Format: date-time */
@@ -4700,10 +4782,11 @@ export interface components {
             providerRef?: string;
             note?: string;
         };
-        /** @description Where a payee is paid (ADR 0040). Never changes; new details replace the old. The number is masked but for the last four. */
+        /** @description Where a payee, a party or a clinic, is paid (ADR 0040). Never changes; new details replace the old. The number is masked but for the last four. */
         PayeeAccount: {
             id: string;
-            partyId: string;
+            partyId?: string;
+            clinicId?: string;
             market: components["schemas"]["Market"];
             /** @enum {string} */
             method: "se-bank" | "iban";
@@ -4730,6 +4813,52 @@ export interface components {
                 iban?: string;
                 bic?: string;
             };
+        };
+        /** @description An agreement on direct settlement (ADR 0040). While in force, payout orders that name the clinic are paid to it. Never changes; an ending is added beside it. */
+        ClinicAgreement: {
+            id: string;
+            clinicId: string;
+            market: components["schemas"]["Market"];
+            /** Format: date */
+            validFrom: string;
+            /**
+             * Format: date
+             * @description Exclusive. Omitted until ended.
+             */
+            validTo?: string;
+            createdBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            ended?: {
+                /**
+                 * Format: date
+                 * @description Exclusive: payout orders from this day go to the policyholder.
+                 */
+                validTo: string;
+                by: string;
+                /** Format: date-time */
+                at: string;
+                reason: string;
+            };
+        };
+        ClinicAgreementInput: {
+            clinicId: string;
+            market: components["schemas"]["Market"];
+            /** Format: date */
+            validFrom: string;
+            /**
+             * Format: date
+             * @description Exclusive.
+             */
+            validTo?: string;
+        };
+        EndClinicAgreementRequest: {
+            /**
+             * Format: date
+             * @description Exclusive.
+             */
+            validTo: string;
+            reason: string;
         };
         ReleasePayoutRequest: {
             /** @description How the details were checked, e.g. a call to the customer's number in the register. */
@@ -10481,12 +10610,175 @@ export interface operations {
             422: components["responses"]["Unprocessable"];
         };
     };
+    listClinicAccounts: {
+        parameters: {
+            query?: {
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                clinicId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["PayeeAccount"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    addClinicAccount: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                clinicId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayeeAccountInput"];
+            };
+        };
+        responses: {
+            /** @description The details, masked */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayeeAccount"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listClinicAgreements: {
+        parameters: {
+            query?: {
+                clinicId?: string;
+                market?: components["schemas"]["Market"];
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The agreements */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ClinicAgreement"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    addClinicAgreement: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClinicAgreementInput"];
+            };
+        };
+        responses: {
+            /** @description The agreement */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClinicAgreement"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    endClinicAgreement: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                agreementId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EndClinicAgreementRequest"];
+            };
+        };
+        responses: {
+            /** @description The agreement with its ending */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClinicAgreement"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
     listPayouts: {
         parameters: {
             query?: {
                 status?: components["schemas"]["PayoutStatus"];
                 claimId?: string;
                 partyId?: string;
+                clinicId?: string;
                 market?: components["schemas"]["Market"];
                 /** @description Items per page, 1-200. Default 50. */
                 limit?: components["parameters"]["Limit"];

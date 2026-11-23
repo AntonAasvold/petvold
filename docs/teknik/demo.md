@@ -85,7 +85,7 @@ Programmet behöver samma konfiguration som `server.ts` (databaser, nycklar, ark
    - En handläggare beslutar om de andra, och en attestant attesterar dem över handläggarens gräns.
 5. **Ibland** ändrar en kund självrisken, ångrar sig inom fjorton dagar eller avslutar för att hunden dött.
 6. **Låtsasbanken** betalar fakturorna. De flesta betalas i tid, var tionde för sent och var tjugonde inte alls. Tre av hundra betalningar saknar OCR och hamnar bland de okopplade inbetalningarna.
-7. **Utbetalningar:** fyra av fem kunder ger betaluppgifter när de tecknar. De andra ger dem några dagar efter att en ersättning väntar. Demon spärrar nya uppgifter i två dagar (`PETVOLD_NEW_PAYEE_HOLD_DAYS=2`), och `dev-billing` släpper dem dagen efter.
+7. **Utbetalningar:** fyra av fem kunder ger betaluppgifter när de tecknar. De andra ger dem några dagar efter att en ersättning väntar. Demon spärrar nya uppgifter i två dagar (`PETVOLD_NEW_PAYEE_HOLD_DAYS=2`), och `dev-billing` släpper dem dagen efter. Klinik 001, som `dev-clinic` är, har avtal om direktreglering, så dess skador betalas till kliniken.
 
 Sist läggs exempeldatan från dev-servern in: Bella, Doris, hushållet i Malmö och ansökningarna i Uppsala. Då fungerar tokenen och guiderna som nämner dem, till exempel `dev-customer`.
 

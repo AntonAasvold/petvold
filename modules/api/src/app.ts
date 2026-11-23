@@ -1189,7 +1189,7 @@ export function createApp(d: AppDeps) {
 
   // Payees and payouts (ADR 0040, punkt 8). Same scope as payments.
   app.get('/v1/payees/:partyId/accounts', async (c) => {
-    const items = await payments.payeeAccounts(c.req.param('partyId'));
+    const items = await payments.payeeAccounts({ partyId: c.req.param('partyId') });
     return sendPage(c, items.filter((a) => seesPayment(c.get('scope'), a.market)));
   });
 
@@ -1199,15 +1199,60 @@ export function createApp(d: AppDeps) {
     if (!r.ok) return r.res;
     if (!seesPayment(c.get('scope'), r.body.market)) return problem(c, 403, 'Not permitted', "The market is outside the caller's scope");
     return idempotent(c, r.body, async () => {
-      const a = await payments.addPayeeAccount(partyId, r.body, c.get('principal').subject);
-      return { status: 201, body: (await payments.payeeAccounts(partyId)).find((x) => x.id === a.id)! };
+      const a = await payments.addPayeeAccount({ partyId }, r.body, c.get('principal').subject);
+      return { status: 201, body: (await payments.payeeAccounts({ partyId })).find((x) => x.id === a.id)! };
     });
+  });
+
+  // A clinic with an agreement on direct settlement is paid like a party (ADR 0040, punkt 8).
+  app.get('/v1/clinics/:clinicId/accounts', async (c) => {
+    const items = await payments.payeeAccounts({ clinicId: c.req.param('clinicId') });
+    return sendPage(c, items.filter((a) => seesPayment(c.get('scope'), a.market)));
+  });
+
+  app.post('/v1/clinics/:clinicId/accounts', async (c) => {
+    const clinicId = c.req.param('clinicId');
+    const r = await readJson(c, 'PayeeAccountInput');
+    if (!r.ok) return r.res;
+    if (!seesPayment(c.get('scope'), r.body.market)) return problem(c, 403, 'Not permitted', "The market is outside the caller's scope");
+    return idempotent(c, r.body, async () => {
+      const a = await payments.addPayeeAccount({ clinicId }, r.body, c.get('principal').subject);
+      return { status: 201, body: (await payments.payeeAccounts({ clinicId })).find((x) => x.id === a.id)! };
+    });
+  });
+
+  app.get('/v1/clinic-agreements', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const items = await payments.agreements({ ...(q('clinicId') ? { clinicId: q('clinicId') } : {}), ...(q('market') ? { market: q('market') } : {}) });
+    return sendPage(c, items.filter((a) => seesPayment(c.get('scope'), a.market)));
+  });
+
+  app.post('/v1/clinic-agreements', async (c) => {
+    const r = await readJson(c, 'ClinicAgreementInput');
+    if (!r.ok) return r.res;
+    if (!seesPayment(c.get('scope'), r.body.market)) return problem(c, 403, 'Not permitted', "The market is outside the caller's scope");
+    return idempotent(c, r.body, async () => ({ status: 201, body: await payments.addAgreement(r.body, c.get('principal').subject) }));
+  });
+
+  app.post('/v1/clinic-agreements/:agreementId/endings', async (c) => {
+    const id = c.req.param('agreementId');
+    const a = await payments.agreement(id);
+    if (!seesPayment(c.get('scope'), a.market)) throw new PaymentsError('not_found', `Agreement ${id} does not exist`);
+    const r = await readJson(c, 'EndClinicAgreementRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await payments.endAgreement(id, r.body, c.get('principal').subject) }));
   });
 
   app.get('/v1/payouts', async (c) => {
     const q = (k: string) => c.req.query(k);
     const status = q('status') as 'awaiting-details' | 'held' | 'pending' | 'paid' | 'failed' | undefined;
-    const items = await payments.payouts({ ...(status ? { status } : {}), ...(q('claimId') ? { claimId: q('claimId') } : {}), ...(q('partyId') ? { partyId: q('partyId') } : {}), ...(q('market') ? { market: q('market') } : {}) });
+    const items = await payments.payouts({
+      ...(status ? { status } : {}),
+      ...(q('claimId') ? { claimId: q('claimId') } : {}),
+      ...(q('partyId') ? { partyId: q('partyId') } : {}),
+      ...(q('clinicId') ? { clinicId: q('clinicId') } : {}),
+      ...(q('market') ? { market: q('market') } : {}),
+    });
     return sendPage(c, items.filter((p) => seesPayment(c.get('scope'), p.market)));
   });
 

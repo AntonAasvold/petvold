@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-23 | [Pengar, steg 3c-2: direktreglering till kliniker](2026-11-23-direktreglering.md) | #147 |
 | 2026-11-23 | [Pengar, steg 3c-1: utbetalningar till försäkringstagaren](2026-11-23-utbetalningar.md) | #146 |
 | 2026-11-23 | [Pengar, steg 3b: inbetalningar kopplas till fakturorna](2026-11-23-koppling-av-inbetalningar.md) | #145 |
 | 2026-11-22 | [Demon på en annan port, med certifikat från DuckDNS](2026-11-22-demo-duckdns.md) | #144 |

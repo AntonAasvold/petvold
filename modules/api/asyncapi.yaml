@@ -955,12 +955,14 @@ components:
     PayoutData:
       type: object
       additionalProperties: false
-      required: [payoutId, claimId, policyId, partyId, orderId, amount, currency]
+      required: [payoutId, claimId, policyId, orderId, amount, currency]
+      description: To the policyholder (partyId), or to a clinic with an agreement on direct settlement (clinicId).
       properties:
         payoutId: { type: string, pattern: '^pyo_[A-Za-z0-9]+$' }
         claimId: { type: string }
         policyId: { type: string }
         partyId: { $ref: '#/components/schemas/PartyId' }
+        clinicId: { type: string }
         orderId: { type: string, description: The payout order in claim.payout_ordered. }
         amount: { type: integer, minimum: 1, description: In minor units of currency. }
         currency: { type: string, pattern: '^[A-Z]{3}$' }

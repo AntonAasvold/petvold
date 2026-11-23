@@ -212,6 +212,9 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
     reason: 'The demo insurer\'s texts',
     markets: { SE: { texts: noticeTexts, ...(o.petvoldDocuments ? { documentMaker: 'petvold' } : {}) } },
   });
+  // The demo clinic (dev-clinic) has an agreement on direct settlement: its claims are paid to it (ADR 0040, punkt 8).
+  await must('POST', '/v1/clinic-agreements', 'dev-billing', { clinicId: 'clinic_001', market: 'SE', validFrom: o.from });
+  await must('POST', '/v1/clinics/clinic_001/accounts', 'dev-billing', { market: 'SE', method: 'se-bank', details: { clearing: '5000', account: '1234567890' } });
   const shown = (
     ((await must('GET', '/v1/products/SE-HUND-PLUS/versions/2026.1', 'dev-all')).content?.documents ?? []) as { type: string; language: string; sha256: string }[]
   )

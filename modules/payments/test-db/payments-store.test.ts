@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import { PostgresPaymentsStore } from '../src/postgres.ts';
 import { succeeded } from '../src/index.ts';
-import { payeeOf, paymentOf, paymentsStoreSuite, payoutOf } from '../test-suites/payments-store.ts';
+import { payeeAccountOf, paymentOf, paymentsStoreSuite, payoutOf } from '../test-suites/payments-store.ts';
 
 const ownerUrl = process.env.TEST_DATABASE_URL;
 const serviceUrl = process.env.PAYMENTS_TEST_DATABASE_URL;
@@ -16,7 +16,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate payments.outbox, payments.payout_step, payments.payout, payments.payee_account, payments.payment cascade');
+const clean = () => admin.query('truncate payments.clinic_agreement_ending, payments.clinic_agreement, payments.outbox, payments.payout_step, payments.payout, payments.payee_account, payments.payment cascade');
 
 paymentsStoreSuite('PostgresPaymentsStore', async () => {
   await clean();
@@ -38,7 +38,7 @@ test('a payment never changes, and the amount is above zero', async () => {
 test('payee accounts, payouts and their steps never change', async () => {
   await clean();
   const store = new PostgresPaymentsStore(pool);
-  await store.addPayeeAccount(payeeOf(1));
+  await store.addPayeeAccount(payeeAccountOf(1));
   await store.addPayout(payoutOf(1), { status: 'awaiting-details', at: '2026-12-01T10:00:00.000Z', by: 'payments' }, []);
   await assert.rejects(pool.query(`update payments.payee_account set details = '{}'`), /permission denied/);
   await assert.rejects(pool.query(`update payments.payout set amount = 1`), /permission denied/);

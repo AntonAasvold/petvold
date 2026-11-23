@@ -47,8 +47,8 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'invoice.credited': { source: 'billing', subject: 'invoiceId', fields: ['creditNoteId', 'creditNoteNo', 'accountId', 'partyId', 'total', 'currency', 'reason'] },
   // A payment into the insurer's account (ADR 0017). The payer's details stay inside Petvold.
   // A claim's payout reached the payee, or could not (ADR 0040). Never the account number.
-  'payout.paid': { source: 'payments', subject: 'payoutId', fields: ['claimId', 'policyId', 'partyId', 'orderId', 'amount', 'currency'] },
-  'payout.failed': { source: 'payments', subject: 'payoutId', fields: ['claimId', 'policyId', 'partyId', 'orderId', 'amount', 'currency'] },
+  'payout.paid': { source: 'payments', subject: 'payoutId', fields: ['claimId', 'policyId', 'partyId', 'clinicId', 'orderId', 'amount', 'currency'] },
+  'payout.failed': { source: 'payments', subject: 'payoutId', fields: ['claimId', 'policyId', 'partyId', 'clinicId', 'orderId', 'amount', 'currency'] },
   'payment.succeeded': { source: 'payments', subject: 'paymentId', fields: ['direction', 'provider', 'amount', 'currency', 'reference', 'bookedOn'] },
   'invoice.paid': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'total', 'currency', 'paymentId', 'paidOn'] },
   'invoice.issued': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'issueDate', 'dueDate', 'total', 'currency', 'reference', 'policyIds'] },

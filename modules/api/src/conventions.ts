@@ -29,6 +29,9 @@ export interface ConventionProblem {
 }
 
 /** Every break of the conventions in the contract. */
+/** Ids that the insurer's systems give, not Petvold, and so have no prefix: a clinic's id comes with its token and its claims. */
+const EXTERNAL_IDS = ['clinicId'];
+
 export function conventionProblems(doc: ContractLike): ConventionProblem[] {
   const out: ConventionProblem[] = [];
   const add = (where: string, rule: string, message: string) => out.push({ where, rule, message });
@@ -73,7 +76,7 @@ export function conventionProblems(doc: ContractLike): ConventionProblem[] {
       for (const p0 of [...shared, ...(op.parameters ?? [])]) {
         const p = '$ref' in p0 ? doc.components?.parameters?.[p0.$ref.split('/').at(-1)!] : p0;
         if (!p) continue;
-        if (p.in === 'path' && p.name.endsWith('Id') && !/^\^[a-z]{2,4}_/.test(p.schema?.pattern ?? '')) {
+        if (p.in === 'path' && p.name.endsWith('Id') && !EXTERNAL_IDS.includes(p.name) && !/^\^[a-z]{2,4}_/.test(p.schema?.pattern ?? '')) {
           add(where, 'id-pattern', `{${p.name}} needs a pattern with its id prefix, e.g. '^pol_[A-Za-z0-9]+$'`);
         }
         if (p.in !== 'query') continue;
