@@ -7,9 +7,28 @@
 # Authorization header.
 {
 	admin off
+	# No HTTP/3: Compose publishes TCP only, and behind a forwarded port
+	# Caddy would advertise UDP on the wrong port.
+	servers {
+		protocols h1 h2
+	}
+}
+
+# How Let's Encrypt checks the domain, chosen with DEMO_TLS.
+# http: on port 80 or 443 (the default).
+(tls-http) {
+}
+
+# duckdns: with a TXT record at DuckDNS, so ports 80 and 443 may lead to
+# another machine and the demo can be reached on, for example, port 8443.
+(tls-duckdns) {
+	tls {
+		dns duckdns {$DUCKDNS_TOKEN}
+	}
 }
 
 {$DEMO_DOMAIN} {
+	import tls-{$DEMO_TLS:http}
 	encode zstd gzip
 	header -Server
 
