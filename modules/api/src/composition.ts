@@ -55,7 +55,7 @@ import { BillingService, InMemoryBillingStore, type BillingStore } from '@petvol
 import { PostgresBillingStore } from '@petvold/billing/postgres';
 import { FakeProvider, InMemoryPaymentsStore, PaymentsService, type PaymentProvider, type PaymentsStore } from '@petvold/payments';
 import { PostgresPaymentsStore } from '@petvold/payments/postgres';
-import { animalPort, billingProductSource, billingPolicySource, claimSource, invoiceSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
+import { animalPort, billingPolicyActions, billingProductSource, billingPolicySource, claimSource, invoiceSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
 
 export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling', 'documents', 'billing', 'payments'] as const;
 export type DatabaseName = (typeof DATABASES)[number];
@@ -352,7 +352,15 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   // Billing (ADR 0040): payer accounts and premium plans from the policy events below.
   const billingPool = pool('billing', 2);
   const billingStore: BillingStore = billingPool ? new PostgresBillingStore(billingPool) : new InMemoryBillingStore();
-  const billing = new BillingService({ store: billingStore, products: billingProductSource(products), policies: billingPolicySource(policies), clock, ids });
+  const billing = new BillingService({
+    store: billingStore,
+    products: billingProductSource(products),
+    policies: billingPolicySource(policies),
+    // Unpaid premium: notice of cancellation, and its reversal when paid in time (ADR 0040, punkt 7).
+    policyActions: billingPolicyActions(policies),
+    clock,
+    ids,
+  });
 
   // Payments (ADR 0017, 0040): payments in from the payment services' adapters.
   const paymentsPool = pool('payments', 2);

@@ -15,7 +15,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate billing.allocation, billing.payment_match, billing.payment_receipt, billing.outbox, billing.credit_note_line, billing.credit_note, billing.invoice_line, billing.invoice, billing.invoice_number_series, billing.premium_plan, billing.payer_account cascade');
+const clean = () => admin.query('truncate billing.invoice_dunning, billing.allocation, billing.payment_match, billing.payment_receipt, billing.outbox, billing.credit_note_line, billing.credit_note, billing.invoice_line, billing.invoice, billing.invoice_number_series, billing.premium_plan, billing.payer_account cascade');
 
 billingStoreSuite('PostgresBillingStore', async () => {
   await clean();

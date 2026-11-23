@@ -2,7 +2,7 @@
 
 Hur Petvold delar en terms premie i delbetalningar, fördelar en betalning och räknar ut vad ett avslut betyder i pengar (ADR 0040).
 
-**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör premieplaner, fakturor och kreditnotor (steg 2). Modulen `payments` tar emot inbetalningar (steg 3a), och `billing` kopplar dem till fakturorna (steg 3b). `payments` betalar ut skadornas ersättning till försäkringstagaren, eller till kliniken vid direktreglering (steg 3c).
+**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör premieplaner, fakturor och kreditnotor (steg 2). Modulen `payments` tar emot inbetalningar (steg 3a), och `billing` kopplar dem till fakturorna (steg 3b). `payments` betalar ut skadornas ersättning till försäkringstagaren, eller till kliniken vid direktreglering (steg 3c). Körningen `billing.dunning` påminner om obetalda fakturor och säger upp för obetald premie (steg 4).
 
 ## Betalarkonto och premieplan
 
@@ -168,6 +168,33 @@ Läsningen kräver `billing:read`, och kopplingen `billing:write`. Båda har rol
 ```
 POST /v1/received-payments/pay_7f3…/matches
 { "invoiceId": "inv_2c1…", "note": "Betalaren angav policynumret i meddelandet." }
+```
+
+## Obetald premie
+
+En faktura som inte betalas får en påminnelse, och om den inte hjälper en uppsägning av policyerna på fakturan (ADR 0040, punkt 7). Körningen `billing.dunning` gör båda varje morgon klockan 05:00 ([Körningar](korningar.md)).
+
+| Dag efter förfallodagen (Sverige) | Vad som händer |
+| --- | --- |
+| 7 | **Påminnelse:** händelsen `invoice.overdue` och meddelandet `payment-reminder` med det som är obetalt |
+| 21 | **Uppsägning för obetald premie** av varje policy på fakturan (`policy.cancelled` med skälet `unpaid-premium`). Meddelandet `insurer-termination` säger att den inte gäller om premien betalas före uppsägningsdagen. |
+| 35 | **Uppsägningen får verkan**, fjorton dagar efter att den skickades (FAL 5 kap. 2 §) |
+
+- **Betalning före uppsägningsdagen:** uppsägningen har ingen verkan, och `billing` återkallar den själv (`policy.reinstated`). Delbetalningarna som avslutet tog bort kommer tillbaka. En betalning på uppsägningsdagen eller senare ändrar inget, men en handläggare kan återkalla avslutet.
+- **Om policymodulen inte kan återkalla**, till exempel för att något hänt med policyn efter uppsägningen, sparas det som `cancellation-void-failed`, och en person får ta det.
+- **En policy som inte kan sägas upp**, till exempel för att den redan är avslutad, hoppas över med skälet.
+- **En sen påminnelse** ger kunden samma tid: uppsägningen kommer aldrig tidigare än fjorton dagar efter påminnelsen.
+- **Dagarna** kommer från marknadens regler (`BILLING_MARKET_RULES`). Påminnelseavgift tas inte ut än.
+
+Fakturan visar i `dunning` vad körningen gjort, i ordning:
+
+```json
+"dunning": [
+  { "step": "reminded", "on": "2026-12-12", "at": "…", "by": "scheduler" },
+  { "step": "cancellation-noticed", "on": "2026-12-26", "at": "…", "by": "scheduler",
+    "cancellations": [{ "policyId": "pol_…", "transactionId": "ptx_…", "effectiveDate": "2027-01-09" }], "skipped": [] },
+  { "step": "cancellation-voided", "on": "2027-01-02", "at": "…", "by": "billing", "policyId": "pol_…", "transactionId": "ptx_…" }
+]
 ```
 
 ## Utbetalning av ersättning

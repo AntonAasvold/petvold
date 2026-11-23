@@ -64,6 +64,7 @@ channels:
       invoiceIssued: { $ref: '#/components/messages/invoiceIssued' }
       invoiceCredited: { $ref: '#/components/messages/invoiceCredited' }
       invoicePaid: { $ref: '#/components/messages/invoicePaid' }
+      invoiceOverdue: { $ref: '#/components/messages/invoiceOverdue' }
       paymentSucceeded: { $ref: '#/components/messages/paymentSucceeded' }
       payoutPaid: { $ref: '#/components/messages/payoutPaid' }
       payoutFailed: { $ref: '#/components/messages/payoutFailed' }
@@ -112,6 +113,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/invoiceIssued' }
       - { $ref: '#/channels/subscription/messages/invoiceCredited' }
       - { $ref: '#/channels/subscription/messages/invoicePaid' }
+      - { $ref: '#/channels/subscription/messages/invoiceOverdue' }
       - { $ref: '#/channels/subscription/messages/paymentSucceeded' }
       - { $ref: '#/channels/subscription/messages/payoutPaid' }
       - { $ref: '#/channels/subscription/messages/payoutFailed' }
@@ -524,6 +526,18 @@ components:
             properties:
               type: { const: petvold.invoice.credited.v1 }
               data: { $ref: '#/components/schemas/InvoiceCreditedData' }
+    invoiceOverdue:
+      name: petvold.invoice.overdue.v1
+      title: invoice.overdue
+      summary: 'An invoice is still open after the market''s days past its due date, and the payer is reminded (ADR 0040). Notice of cancellation may follow as policy.cancelled with the reason unpaid-premium.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.invoice.overdue.v1 }
+              data: { $ref: '#/components/schemas/InvoiceOverdueData' }
     invoicePaid:
       name: petvold.invoice.paid.v1
       title: invoice.paid
@@ -939,6 +953,20 @@ components:
         from: { $ref: '#/components/schemas/Date' }
         deadline: { $ref: '#/components/schemas/Date' }
         deceasedOn: { $ref: '#/components/schemas/Date' }
+    InvoiceOverdueData:
+      type: object
+      additionalProperties: false
+      required: [invoiceId, invoiceNo, accountId, partyId, dueDate, open, currency, reference, reminderNo]
+      properties:
+        invoiceId: { type: string, pattern: '^inv_[A-Za-z0-9]+$' }
+        invoiceNo: { type: string }
+        accountId: { type: string, pattern: '^bac_[A-Za-z0-9]+$' }
+        partyId: { $ref: '#/components/schemas/PartyId' }
+        dueDate: { $ref: '#/components/schemas/Date' }
+        open: { type: integer, minimum: 1, description: Still to pay, in minor units. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        reference: { type: string }
+        reminderNo: { type: integer, minimum: 1 }
     InvoicePaidData:
       type: object
       additionalProperties: false

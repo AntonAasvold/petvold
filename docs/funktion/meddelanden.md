@@ -29,6 +29,7 @@ Samma händelse ger aldrig två meddelanden av samma typ, även om den levereras
 | `claim-information-reminder` | En öppen begäran till kunden når sin påminnelsedag | Tre dagar efter påminnelsedagen | FAL 7 kap. 1 § |
 | `claim-information-expired` | En begäran till kunden går ut utan svar | Tre dagar efter utgången | Ingen lag (ADR 0036) |
 | `invoice` | Faktureringen gör en faktura ([Premier och betalningar](premier.md#fakturor)) | Fakturans dag, eftersom tiden att betala räknas från den dag kravet skickades | FAL 5 kap. 1 § |
+| `payment-reminder` | En faktura är förfallen och påmind ([Premier och betalningar](premier.md#obetald-premie)). Kräver bolagets text `payment`. | Snarast | Inget krav i lag. Bolaget kan stänga av den. |
 
 - **Tre dagar** är Petvolds tolkning av "snarast", eftersom lagen inte anger något antal dagar. Bolaget kan ändra det i [inställningarna](#bolagets-inställningar).
 - **Fakturan** har fakturans id (`invoiceId`) i stället för en policy, eftersom en faktura kan samla flera policyer. Med `documentMaker: petvold` gör Petvold PDF:en med sin mall för fakturor ([Dokument](dokument.md)). Skickas den sent blir den `late`, och då bör någon kontrollera förfallodagen, som räknas från fakturans dag.

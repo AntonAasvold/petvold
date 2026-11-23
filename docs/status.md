@@ -7,6 +7,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 **Gjort**
 - Demon på en annan port, PR #144: `DEMO_PORT` och `DUCKDNS_TOKEN` i `setup.sh` ger certifikat med en TXT-post hos DuckDNS, när 80 och 443 leder till en annan maskin.
   - Caddy byggs i `deploy/demo/caddy/` med `caddy-dns/duckdns`. `DEMO_PUBLIC_URL` ger dokumentlänkarna rätt port. HTTP/3 är avstängt.
+- Pengar, steg 4: obetald premie, PR #149: körningen `billing.dunning` påminner sju dagar efter förfallodagen (`invoice.overdue`, meddelandet `payment-reminder`) och säger upp policyerna på fakturan efter 21 dagar. Betalning före uppsägningsdagen återkallar uppsägningen (FAL 5 kap. 2 §). Egenskapstest för dagarna. Migration 0058 och 0059.
 - Specen för demotjänsten i repot, PR #148: [Demotjänsten](teknik/demotjanst.md), uppdaterad med inbetalningar, utbetalningar och händelserna. `DEMO_WEBHOOK_URL` låter testdatan prenumerera på demotjänsten först, så att den får hela historiken.
 - Pengar, steg 3c-2: direktreglering, PR #147: kliniker med avtal (per klinik och marknad, med giltighetstid och avslut) får ersättningen för skadorna de anmält. Betaluppgifter per klinik. Steg 3 i ADR 0040 är klart. Migration 0057.
 - Pengar, steg 3c-1: utbetalningar, PR #146: `claim.payout_ordered` blir en utbetalning till försäkringstagaren, en gång per order. Betaluppgifter per part (maskade), väntan utan uppgifter, spärr för nya uppgifter (`PETVOLD_NEW_PAYEE_HOLD_DAYS`) och frisläppning av en annan person. `payout.paid` och `payout.failed`. Migration 0056.
@@ -14,7 +15,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 
 **Nästa steg**
 1. Demotjänstens fas 1 enligt [specen](teknik/demotjanst.md): ta emot och visa händelserna, och lägga den i demons Compose. Demon kör i Proxmox med DuckDNS sedan 2026-11-23.
-2. ADR 0040, steg 4: obetald premie, med påminnelse, uppsägning och avslut enligt FAL 5 kap. 2 §.
+2. ADR 0040, steg 5: tillgodohavanden dras av på nästa faktura eller betalas tillbaka, och kreditnotor och avskrivningar med attest.
 3. ADR 0038, steg 5: gallring av dokument som en körning.
 4. Back office: översikten på startsidan och omräkning av beslut.
 

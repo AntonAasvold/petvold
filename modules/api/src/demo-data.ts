@@ -432,7 +432,13 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
       if (chance(1 / 900)) {
         at(14);
         const deductible = dog.deductible === 'high' ? 'standard' : 'high';
-        await must('POST', `/v1/policies/${dog.policyId}/changes`, 'dev-all', { from: addDays(day, 1), vetCare: { deductible }, reason: 'The customer chose another deductible.' });
+        const r = await call('POST', `/v1/policies/${dog.policyId}/changes`, 'dev-all', { from: addDays(day, 1), vetCare: { deductible }, reason: 'The customer chose another deductible.' });
+        if (r.status === 409) {
+          // Cancelled meanwhile, e.g. for unpaid premium: nothing more to do for it.
+          dog.policyId = undefined;
+          continue;
+        }
+        if (r.status >= 300) throw new Error(`The change of ${dog.policyId} gave ${r.status}: ${JSON.stringify(r.body)}`);
         dog.deductible = deductible;
         sum.changes++;
       } else if (chance(1 / 1500)) {
@@ -444,10 +450,9 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
           'dev-all',
           withdrawal ? { reason: 'withdrawal', receivedOn: day } : { reason: 'need-ceased', receivedOn: day, effectiveDate: day, note: 'The dog has died.' },
         );
-        if (r.status < 300) {
-          sum.cancellations++;
-          dog.policyId = undefined;
-        }
+        if (r.status < 300) sum.cancellations++;
+        // Done, or cancelled already, e.g. for unpaid premium.
+        if (r.status < 300 || r.status === 409) dog.policyId = undefined;
       }
     }
 
@@ -471,12 +476,13 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
     sum.payouts = (await all('/v1/payouts?status=paid', 'dev-billing')).length;
     await drain();
 
-    // The bank: customers pay their invoices, most on time, some late and a few never.
+    // The bank: customers pay their invoices, most on time, some late and a few never. Late ones get a
+    // reminder, and after three weeks notice of cancellation, which paying within it reverses (ADR 0040, punkt 7).
     at(15);
     for (const inv of await all('/v1/invoices?market=SE', 'dev-all')) {
       if (!bank.plan.has(inv.id)) {
         const r = rnd();
-        const on = r < 0.85 ? addDays(inv.issueDate, between(2, Math.max(2, daysBetween(inv.issueDate, inv.dueDate)))) : r < 0.95 ? addDays(inv.dueDate, between(3, 20)) : null;
+        const on = r < 0.85 ? addDays(inv.issueDate, between(2, Math.max(2, daysBetween(inv.issueDate, inv.dueDate)))) : r < 0.95 ? addDays(inv.dueDate, between(3, 30)) : null;
         // A few forget the OCR number: they wait among the unmatched payments for a person.
         bank.plan.set(inv.id, { on, amount: inv.total, reference: rnd() < 0.03 ? null : inv.reference.value });
       }

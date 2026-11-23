@@ -30,6 +30,8 @@ import {
 export { PAYMENT_INTERVALS, type PaymentInterval, type PlanInput, type PremiumPlan, type ReferenceType } from '@petvold/billing-core';
 import { accountBalance, allocate, invoiceBalances, type AccountLedger, type Allocation, type InvoiceBalance, type PaymentMatch, type PaymentReceipt, type ReceivedPayment } from './receipts.ts';
 export * from './receipts.ts';
+import { cancellationsToVoid, nextDunningAction, type DunningRules, type DunningStep, type NoticedCancellation } from './dunning.ts';
+export * from './dunning.ts';
 
 /** Days before an installment is due that it goes on an invoice, when the plan does not say (ADR 0040, punkt 5). */
 export const DEFAULT_INVOICE_LEAD_DAYS = 31;
@@ -49,6 +51,8 @@ export interface BillingMarketRules {
   premiumTaxBp: number;
   /** The invoice's payment reference: OCR for Bankgirot, or RF (ISO 11649) in EUR markets. */
   paymentReference: ReferenceType;
+  /** Unpaid premium (ADR 0040, punkt 7): days after the due date for the reminder and for notice of cancellation. */
+  dunning: DunningRules;
   sources: string[];
 }
 
@@ -59,12 +63,15 @@ export const BILLING_MARKET_RULES: Record<string, BillingMarketRules> = {
     laterPremiumMonths: 1,
     premiumTaxBp: 0,
     paymentReference: 'ocr',
+    // A reminder a week after the due date, and notice of cancellation two weeks after that.
+    dunning: { reminderAfterDays: 7, cancellationNoticeAfterDays: 21 },
     sources: [
       'Insurance Contracts Act (2005:104) chapter 5 section 1 first paragraph: the first premium need not be paid earlier than fourteen days after the demand was sent',
       'Insurance Contracts Act chapter 5 section 1 second and third paragraphs: a later premium period, and a renewal, need not be paid earlier than a month after the demand was sent',
       'Sweden has no tax on non-life insurance premiums for pets',
       'Bankgirot, OCR reference control: a reference with a length digit and a mod 10 check digit',
       'Accounting Act (1999:1078) chapter 5 section 7: invoices numbered in an unbroken series',
+      'Insurance Contracts Act chapter 5 section 2: the insurer may cancel for unpaid premium; it takes effect fourteen days after it was sent, and not at all if the premium is paid within that time',
     ],
   },
 };
@@ -190,7 +197,7 @@ export interface Invoice {
 /** What the module tells others (ADR 0008, 0033). Written with the change. */
 export interface BillingEvent {
   id: string;
-  type: 'invoice.issued' | 'invoice.credited' | 'invoice.paid';
+  type: 'invoice.issued' | 'invoice.credited' | 'invoice.paid' | 'invoice.overdue';
   invoiceId: string;
   market: string;
   occurredAt: Timestamp;
@@ -316,6 +323,13 @@ export interface BillingStore {
   ledger(accountId: string): Promise<AccountLedger>;
   /** Allocations to these invoices, or all. */
   allocations(filter: { accountId?: string }): Promise<Allocation[]>;
+  /** What the dunning run did to each invoice, in order. */
+  dunning(invoiceIds: string[]): Promise<Map<string, DunningStep[]>>;
+  /**
+   * Adds a dunning step as step number `seq` (1 is the first) with its events.
+   * Throws InvoiceConflictError, and stores nothing, if that step is taken.
+   */
+  addDunningStep(invoiceId: string, seq: number, step: DunningStep, events: BillingEvent[]): Promise<void>;
   /** Unpublished events, oldest first. */
   pendingEvents(limit: number): Promise<BillingEvent[]>;
   markPublished(ids: string[], at: Timestamp): Promise<void>;
@@ -335,8 +349,30 @@ export class MatchConflictError extends Error {
   }
 }
 
-/** An invoice with what has been credited and paid of it. */
-export type InvoiceView = Invoice & InvoiceBalance;
+/** An invoice with what has been credited and paid of it, and what the dunning run did. */
+export type InvoiceView = Invoice & InvoiceBalance & { dunning: DunningStep[] };
+
+/** What billing asks of the policy module for unpaid premium (ADR 0040, punkt 7). */
+export interface PolicyActions {
+  /**
+   * Gives notice of cancellation for unpaid premium, sent on the day. The same
+   * policy and day again gives the same cancellation. A policy that cannot be
+   * cancelled, e.g. already cancelled, gives the reason.
+   */
+  cancelForUnpaidPremium(policyId: string, sentOn: ISODate, note: string, by: string): Promise<{ transactionId: string; effectiveDate: ISODate } | { skipped: string }>;
+  /** Reverses the cancellation, because the premium was paid in time. A reason when the policy module cannot. */
+  reverseCancellation(policyId: string, transactionId: string, note: string, by: string): Promise<{ reversed: true } | { failed: string }>;
+}
+
+export interface DunningRunResult {
+  market: string;
+  onDate: ISODate;
+  dryRun: boolean;
+  /** Open invoices looked at. */
+  checked: number;
+  reminded: string[];
+  noticed: { invoiceId: string; cancellations: NoticedCancellation[]; skipped: { policyId: string; reason: string }[] }[];
+}
 
 /** A payer account with what the payer owes and has to their credit. */
 export type AccountView = PayerAccount & { balance: { open: number; credit: number } };
@@ -361,6 +397,8 @@ export interface BillingDeps {
   ids: { next(prefix: string): string };
   /** Defaults to BILLING_MARKET_RULES. */
   rules?: Record<string, BillingMarketRules>;
+  /** The policy module, for unpaid premium. Omitted: no notices of cancellation. */
+  policyActions?: PolicyActions;
 }
 
 export class BillingService {
@@ -721,7 +759,8 @@ export class BillingService {
     const i = await this.d.store.invoice(id);
     if (!i) throw new BillingError('not_found', `Invoice ${id} does not exist`);
     const ledger = await this.d.store.ledger(i.accountId);
-    return { ...i, ...invoiceBalances([i], ledger.creditNotes, ledger.allocations).get(i.id)! };
+    const dunning = (await this.d.store.dunning([i.id])).get(i.id) ?? [];
+    return { ...i, ...invoiceBalances([i], ledger.creditNotes, ledger.allocations).get(i.id)!, dunning };
   }
 
   /** With status: only the invoices in it. */
@@ -731,7 +770,88 @@ export class BillingService {
     const credits = await this.d.store.creditNotes(f.accountId ? { accountId: f.accountId } : {});
     const allocations = await this.d.store.allocations(f.accountId ? { accountId: f.accountId } : {});
     const balances = invoiceBalances(invoices, credits, allocations);
-    return invoices.map((i) => ({ ...i, ...balances.get(i.id)! })).filter((i) => !status || i.status === status);
+    const dunning = await this.d.store.dunning(invoices.map((i) => i.id));
+    return invoices.map((i) => ({ ...i, ...balances.get(i.id)!, dunning: dunning.get(i.id) ?? [] })).filter((i) => !status || i.status === status);
+  }
+
+  /**
+   * The dunning run for one market (ADR 0040, punkt 7), daily: a reminder for
+   * each invoice overdue by the market's days, with invoice.overdue, and notice
+   * of cancellation for the policies on an invoice the reminder did not help.
+   * A dry run says what it would do and changes nothing.
+   */
+  async dunningRun(input: { market: string; onDate: ISODate; dryRun: boolean }, by: string): Promise<DunningRunResult> {
+    const rules = (this.d.rules ?? BILLING_MARKET_RULES)[input.market];
+    if (!rules) throw new BillingError('validation', `No billing rules for the market ${input.market}`);
+    const open = (await this.invoices({ market: input.market })).filter((i) => i.open > 0);
+    const out: DunningRunResult = { market: input.market, onDate: input.onDate, dryRun: input.dryRun, checked: open.length, reminded: [], noticed: [] };
+    for (const i of open) {
+      const action = nextDunningAction(i, i.dunning, input.onDate, rules.dunning);
+      if (!action) continue;
+      const at = this.d.clock.now();
+      if (action === 'remind') {
+        out.reminded.push(i.id);
+        if (input.dryRun) continue;
+        const event: BillingEvent = {
+          id: this.d.ids.next('bev'),
+          type: 'invoice.overdue',
+          invoiceId: i.id,
+          market: i.market,
+          occurredAt: at,
+          data: { invoiceNo: i.number, accountId: i.accountId, partyId: i.partyId, dueDate: i.dueDate, open: i.open, currency: i.currency, reference: i.reference.value, reminderNo: 1 },
+        };
+        await this.addStep(i.id, i.dunning.length + 1, { step: 'reminded', on: input.onDate, at, by }, [event]);
+        continue;
+      }
+      if (!this.d.policyActions) continue;
+      const policyIds = [...new Set(i.lines.map((l) => l.policyId))].sort();
+      if (input.dryRun) {
+        out.noticed.push({ invoiceId: i.id, cancellations: [], skipped: [] });
+        continue;
+      }
+      const cancellations: NoticedCancellation[] = [];
+      const skipped: { policyId: string; reason: string }[] = [];
+      const note = `Unpaid premium on invoice ${i.number}, due ${i.dueDate}`;
+      for (const policyId of policyIds) {
+        const r = await this.d.policyActions.cancelForUnpaidPremium(policyId, input.onDate, note, by);
+        if ('skipped' in r) skipped.push({ policyId, reason: r.skipped });
+        else cancellations.push({ policyId, ...r });
+      }
+      await this.addStep(i.id, i.dunning.length + 1, { step: 'cancellation-noticed', on: input.onDate, at, by, cancellations, skipped }, []);
+      out.noticed.push({ invoiceId: i.id, cancellations, skipped });
+    }
+    return out;
+  }
+
+  /**
+   * The premium was paid before the cancellation took effect (FAL 5 kap. 2 §):
+   * the cancellation has no effect, so billing reverses it. Looks at every paid
+   * invoice on the account with notices, so a retry finishes what a failure left.
+   */
+  private async voidPaidNotices(accountId: string, paidOn: ISODate): Promise<void> {
+    if (!this.d.policyActions) return;
+    const invoices = (await this.invoices({ accountId })).filter((i) => i.open === 0 && i.dunning.some((s) => s.step === 'cancellation-noticed'));
+    for (const i of invoices) {
+      let seq = i.dunning.length;
+      for (const c of cancellationsToVoid(i.dunning, paidOn)) {
+        const at = this.d.clock.now();
+        const r = await this.d.policyActions.reverseCancellation(c.policyId, c.transactionId, `Invoice ${i.number} was paid on ${paidOn}, before the cancellation took effect on ${c.effectiveDate}`, 'billing');
+        const step: DunningStep =
+          'reversed' in r
+            ? { step: 'cancellation-voided', on: paidOn, at, by: 'billing', policyId: c.policyId, transactionId: c.transactionId }
+            : { step: 'cancellation-void-failed', on: paidOn, at, by: 'billing', policyId: c.policyId, transactionId: c.transactionId, reason: r.failed };
+        await this.addStep(i.id, ++seq, step, []);
+      }
+    }
+  }
+
+  private async addStep(invoiceId: string, seq: number, step: DunningStep, events: BillingEvent[]) {
+    try {
+      await this.d.store.addDunningStep(invoiceId, seq, step, events);
+    } catch (err) {
+      if (err instanceof InvoiceConflictError) throw new BillingError('conflict', `Invoice ${invoiceId} was moved by another run`);
+      throw err;
+    }
   }
 
   /**
@@ -759,7 +879,10 @@ export class BillingService {
         ? { paymentId: receipt.paymentId, accountId: invoice.accountId, invoiceId: invoice.id, how: 'reference', matchedBy: 'billing', matchedAt: this.d.clock.now() }
         : null;
     await this.d.store.addReceipt(receipt, match ? { match, plan: (ledger) => this.settle(receipt, match, ledger) } : null);
-    return this.receivedPayment(receipt.paymentId);
+    const stored = await this.receivedPayment(receipt.paymentId);
+    // Also on a repeat: what a failed attempt left is done now.
+    if (stored.match) await this.voidPaidNotices(stored.match.accountId, stored.bookedOn);
+    return stored;
   }
 
   /**
@@ -795,6 +918,7 @@ export class BillingService {
       if (err instanceof MatchConflictError) throw new BillingError('conflict', `Payment ${paymentId} is matched already`);
       throw err;
     }
+    await this.voidPaidNotices(accountId, r.receipt.bookedOn);
     return this.receivedPayment(paymentId);
   }
 
@@ -956,6 +1080,18 @@ export class InMemoryBillingStore implements BillingStore {
   private readonly receiptList: PaymentReceipt[] = [];
   private readonly matches = new Map<string, PaymentMatch>();
   private readonly allocationList: Allocation[] = [];
+  private readonly dunningSteps = new Map<string, DunningStep[]>();
+
+  async dunning(invoiceIds: string[]) {
+    return new Map(invoiceIds.map((id) => [id, structuredClone(this.dunningSteps.get(id) ?? [])]));
+  }
+
+  async addDunningStep(invoiceId: string, seq: number, step: DunningStep, events: BillingEvent[]) {
+    const steps = this.dunningSteps.get(invoiceId) ?? [];
+    if (steps.length !== seq - 1) throw new InvoiceConflictError(`Dunning step ${seq} of invoice ${invoiceId} is taken`);
+    this.dunningSteps.set(invoiceId, [...steps, structuredClone(step)]);
+    this.outbox.push(...structuredClone(events));
+  }
 
   async invoiceByReference(market: string, reference: string) {
     const i = this.invoiceList.find((x) => x.market === market && x.reference.value === reference);
