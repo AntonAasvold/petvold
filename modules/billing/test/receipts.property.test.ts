@@ -41,7 +41,7 @@ test('every payment is allocated or credit, no invoice is overpaid, and the bala
           const i = invoices[s.invoice % invoices.length]!;
           const already = creditNotes.filter((c) => c.invoiceId === i.id).reduce((a, c) => a + c.total, 0);
           const amount = Math.floor((i.total - already) * s.share);
-          if (amount > 0) creditNotes.push({ id: `crn_${k}`, number: `C${k}`, invoiceId: i.id, accountId: 'bac_1', partyId: 'pty_1', market: 'SE', currency: 'SEK', issueDate: '2026-01-02', lines: [], total: amount, source: { eventId: `e${k}`, eventType: 'policy.changed' }, createdAt: '2026-01-02T00:00:00.000Z' });
+          if (amount > 0) creditNotes.push({ id: `crn_${k}`, number: `C${k}`, kind: 'credit', invoiceId: i.id, accountId: 'bac_1', partyId: 'pty_1', market: 'SE', currency: 'SEK', issueDate: '2026-01-02', lines: [], total: amount, source: { eventId: `e${k}`, eventType: 'policy.changed' }, createdAt: '2026-01-02T00:00:00.000Z' });
           continue;
         }
         const before = invoiceBalances(invoices, creditNotes, allocations);

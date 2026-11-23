@@ -142,6 +142,10 @@ export interface CreditNoteLine {
 export interface CreditNote {
   id: string;
   number: string;
+  /** 'credit': less to pay. 'write-off': an unpaid amount the insurer gives up, a loss in its accounts. */
+  kind: 'credit' | 'write-off';
+  /** Why, for one a person made. */
+  reason?: string;
   invoiceId: string;
   accountId: string;
   partyId: string;
@@ -335,6 +339,12 @@ export interface BillingStore {
   creditApplications(filter: { accountId?: string }): Promise<CreditApplication[]>;
   /** Oldest first. */
   refunds(filter: { accountId?: string; market?: string }): Promise<Refund[]>;
+  addCreditProposal(p: CreditProposal): Promise<void>;
+  /** Stores the decision once. Throws InvoiceConflictError if the proposal is decided already. */
+  decideCreditProposal(id: string, decision: Pick<CreditProposal, 'status' | 'decidedBy' | 'decidedAt' | 'creditNoteId' | 'returnReason'>): Promise<void>;
+  creditProposal(id: string): Promise<CreditProposal | null>;
+  /** Oldest first. */
+  creditProposals(filter: { status?: CreditProposal['status']; invoiceId?: string; market?: string }): Promise<CreditProposal[]>;
   /** What the dunning run did to each invoice, in order. */
   dunning(invoiceIds: string[]): Promise<Map<string, DunningStep[]>>;
   /**
@@ -376,6 +386,31 @@ export interface PolicyActions {
   reverseCancellation(policyId: string, transactionId: string, note: string, by: string): Promise<{ reversed: true } | { failed: string }>;
 }
 
+/**
+ * A credit note or a write-off a person asked for above their limit (ADR 0040,
+ * punkt 10): someone else with a high enough limit approves or returns it.
+ */
+export interface CreditProposal {
+  id: string;
+  invoiceId: string;
+  accountId: string;
+  market: string;
+  currency: string;
+  kind: CreditNote['kind'];
+  amount: number;
+  reason: string;
+  proposedBy: string;
+  proposedAt: Timestamp;
+  status: 'proposed' | 'approved' | 'returned';
+  decidedBy?: string;
+  decidedAt?: Timestamp;
+  creditNoteId?: string;
+  returnReason?: string;
+}
+
+/** A person's limit per currency for credit notes and write-offs alone. null: no limit. */
+export type CreditLimits = Record<string, number> | null;
+
 export interface CreditsRunResult {
   market: string;
   onDate: ISODate;
@@ -399,7 +434,7 @@ export interface DunningRunResult {
 /** A payer account with what the payer owes and has to their credit. */
 export type AccountView = PayerAccount & { balance: { open: number; credit: number } };
 
-export type BillingErrorCode = 'validation' | 'not_found' | 'conflict';
+export type BillingErrorCode = 'validation' | 'not_found' | 'conflict' | 'forbidden';
 
 export class BillingError extends Error {
   constructor(
@@ -721,6 +756,7 @@ export class BillingService {
       const inv = (await this.d.store.invoice(invoiceId))!;
       credits.push({
         id: this.d.ids.next('crn'),
+        kind: 'credit',
         invoiceId,
         accountId: inv.accountId,
         partyId: inv.partyId,
@@ -748,6 +784,125 @@ export class BillingService {
         })),
     );
     return stored ? plans : [];
+  }
+
+  /**
+   * A credit note or a write-off a person makes on an invoice (ADR 0040, punkt
+   * 5 and 10). A credit note takes off at most what is left after earlier credit
+   * notes, also of a paid invoice, whose paid part then becomes credit. A
+   * write-off gives up at most what is unpaid. Within the person's limit it is
+   * made at once; above it, it is a proposal for someone else.
+   */
+  async credit(invoiceId: string, input: { kind: CreditNote['kind']; amount: number; reason: string }, by: string, limits: CreditLimits): Promise<{ creditNote: CreditNote } | { proposal: CreditProposal }> {
+    const i = await this.invoice(invoiceId);
+    this.checkCredit(i, input);
+    if (withinLimit(limits, i.currency, input.amount)) return { creditNote: await this.makeCredit(i, input, by, this.d.ids.next('man')) };
+    const p: CreditProposal = {
+      id: this.d.ids.next('cpr'),
+      invoiceId: i.id,
+      accountId: i.accountId,
+      market: i.market,
+      currency: i.currency,
+      kind: input.kind,
+      amount: input.amount,
+      reason: input.reason,
+      proposedBy: by,
+      proposedAt: this.d.clock.now(),
+      status: 'proposed',
+    };
+    await this.d.store.addCreditProposal(p);
+    return { proposal: p };
+  }
+
+  /** Someone else approves a proposal within their limit: the credit note is made, if the invoice still allows it. */
+  async approveCreditProposal(id: string, by: string, limits: CreditLimits): Promise<CreditNote> {
+    const p = await this.creditProposal(id);
+    if (p.status !== 'proposed') throw new BillingError('conflict', `Proposal ${id} is ${p.status}`);
+    if (p.proposedBy === by) throw new BillingError('forbidden', 'The one who proposed it cannot approve it');
+    if (!withinLimit(limits, p.currency, p.amount)) throw new BillingError('forbidden', `The amount is above your limit in ${p.currency}`);
+    const i = await this.invoice(p.invoiceId);
+    this.checkCredit(i, p);
+    // The proposal's id makes the credit note once, however many times this runs.
+    const note = await this.makeCredit(i, p, by, p.id, p.proposedBy);
+    try {
+      await this.d.store.decideCreditProposal(id, { status: 'approved', decidedBy: by, decidedAt: this.d.clock.now(), creditNoteId: note.id });
+    } catch (err) {
+      if (err instanceof InvoiceConflictError) throw new BillingError('conflict', `Proposal ${id} is decided already`);
+      throw err;
+    }
+    return note;
+  }
+
+  async returnCreditProposal(id: string, reason: string, by: string): Promise<CreditProposal> {
+    const p = await this.creditProposal(id);
+    if (p.status !== 'proposed') throw new BillingError('conflict', `Proposal ${id} is ${p.status}`);
+    try {
+      await this.d.store.decideCreditProposal(id, { status: 'returned', decidedBy: by, decidedAt: this.d.clock.now(), returnReason: reason });
+    } catch (err) {
+      if (err instanceof InvoiceConflictError) throw new BillingError('conflict', `Proposal ${id} is decided already`);
+      throw err;
+    }
+    return this.creditProposal(id);
+  }
+
+  async creditProposal(id: string): Promise<CreditProposal> {
+    const p = await this.d.store.creditProposal(id);
+    if (!p) throw new BillingError('not_found', `Proposal ${id} does not exist`);
+    return p;
+  }
+
+  async creditProposals(filter: { status?: CreditProposal['status']; invoiceId?: string; market?: string } = {}): Promise<CreditProposal[]> {
+    return this.d.store.creditProposals(filter);
+  }
+
+  private checkCredit(i: InvoiceView, input: { kind: CreditNote['kind']; amount: number; reason: string }) {
+    if (!Number.isSafeInteger(input.amount) || input.amount <= 0) throw new BillingError('validation', 'amount must be a whole number of minor units above zero');
+    if (!input.reason?.trim()) throw new BillingError('validation', 'A reason is required');
+    const max = input.kind === 'write-off' ? i.open : i.total - i.credited;
+    if (input.amount > max) {
+      throw new BillingError('conflict', input.kind === 'write-off' ? `Only ${max} is unpaid on invoice ${i.number}` : `Only ${max} is left to credit on invoice ${i.number}`);
+    }
+  }
+
+  /** The credit note, spread over the invoice's lines by what is left on each, numbered from the invoice series. */
+  private async makeCredit(i: InvoiceView, input: { kind: CreditNote['kind']; amount: number; reason: string }, by: string, sourceId: string, proposedBy?: string): Promise<CreditNote> {
+    const existing = (await this.d.store.creditNotes({ invoiceId: i.id })).find((c) => c.source.eventId === sourceId);
+    if (existing) return existing;
+    const credited = new Map<string, number>();
+    for (const c of await this.d.store.creditNotes({ invoiceId: i.id })) for (const l of c.lines) credited.set(`${l.planId}#${l.seq}`, (credited.get(`${l.planId}#${l.seq}`) ?? 0) + l.amount);
+    const left = i.lines.map((l) => Math.max(0, l.amount - (credited.get(`${l.planId}#${l.seq}`) ?? 0)));
+    const shares = splitByWeight(input.amount, left);
+    const lines: CreditNoteLine[] = i.lines.flatMap((l, n) => (shares[n]! > 0 ? [{ planId: l.planId, policyId: l.policyId, seq: l.seq, amount: shares[n]! }] : []));
+    const now = this.d.clock.now();
+    const note: Omit<CreditNote, 'number'> = {
+      id: this.d.ids.next('crn'),
+      kind: input.kind,
+      reason: input.reason,
+      invoiceId: i.id,
+      accountId: i.accountId,
+      partyId: i.partyId,
+      market: i.market,
+      currency: i.currency,
+      issueDate: marketDate(i.market, now),
+      lines,
+      total: input.amount,
+      source: { eventId: sourceId, eventType: proposedBy ? 'credit-proposal' : 'manual' },
+      createdAt: now,
+    };
+    await this.d.store.addAdjustment(
+      { market: i.market, year: Number(note.issueDate.slice(0, 4)), accounts: [], plans: [], credits: [note] },
+      (c, no) => ({ ...c, number: `${i.market}-${note.issueDate.slice(0, 4)}-${String(no).padStart(6, '0')}` }),
+      (made) =>
+        made.map((c) => ({
+          id: this.d.ids.next('bev'),
+          type: 'invoice.credited' as const,
+          invoiceId: c.invoiceId,
+          market: c.market,
+          occurredAt: now,
+          data: { creditNoteId: c.id, creditNoteNo: c.number, accountId: c.accountId, partyId: c.partyId, total: c.total, currency: c.currency, reason: c.kind === 'write-off' ? 'write-off' : 'manual', kind: c.kind },
+        })),
+    );
+    return (await this.d.store.creditNotes({ invoiceId: i.id })).find((c) => c.source.eventId === sourceId)!;
   }
 
   async creditNotes(filter: { invoiceId?: string; accountId?: string; policyId?: string }): Promise<CreditNote[]> {
@@ -1248,6 +1403,27 @@ export class InMemoryBillingStore implements BillingStore {
 
   private readonly applicationList: CreditApplication[] = [];
   private readonly refundList: Refund[] = [];
+  private readonly proposalList: CreditProposal[] = [];
+
+  async addCreditProposal(p: CreditProposal) {
+    this.proposalList.push(structuredClone(p));
+  }
+
+  async decideCreditProposal(id: string, d: Pick<CreditProposal, 'status' | 'decidedBy' | 'decidedAt' | 'creditNoteId' | 'returnReason'>) {
+    const p = this.proposalList.find((x) => x.id === id);
+    if (!p) throw new Error(`Proposal ${id} does not exist`);
+    if (p.status !== 'proposed') throw new InvoiceConflictError(`Proposal ${id} is decided already`);
+    Object.assign(p, Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined)));
+  }
+
+  async creditProposal(id: string) {
+    const p = this.proposalList.find((x) => x.id === id);
+    return p ? structuredClone(p) : null;
+  }
+
+  async creditProposals(filter: { status?: CreditProposal['status']; invoiceId?: string; market?: string }) {
+    return structuredClone(this.proposalList.filter((p) => (!filter.status || p.status === filter.status) && (!filter.invoiceId || p.invoiceId === filter.invoiceId) && (!filter.market || p.market === filter.market)));
+  }
 
   async settleCredit(accountId: string, plan: (ledger: AccountLedger) => { applications: CreditApplication[]; refunds: Refund[]; events: BillingEvent[] }) {
     const done = plan(await this.ledger(accountId));
@@ -1439,6 +1615,11 @@ function receivedView(r: { receipt: PaymentReceipt; match: PaymentMatch | null; 
     allocations: r.allocations.map((a) => ({ invoiceId: a.invoiceId, amount: a.amount })),
     unallocated: r.match ? r.receipt.amount - allocated : 0,
   };
+}
+
+/** Whether an amount is within a person's limit in a currency. null: no limit; a currency not in the limits: 0. Pure. */
+export function withinLimit(limits: CreditLimits, currency: string, amount: number): boolean {
+  return limits === null || amount <= (limits[currency] ?? 0);
 }
 
 const maxDate = (a: ISODate, b: ISODate) => (a > b ? a : b);

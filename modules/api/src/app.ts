@@ -1119,6 +1119,51 @@ export function createApp(d: AppDeps) {
     return send(c, i);
   });
 
+  // Credit notes and write-offs a person makes (ADR 0040, punkt 5 and 10): alone within the limit, else a proposal.
+  app.post('/v1/invoices/:invoiceId/credit-notes', async (c) => {
+    const id = c.req.param('invoiceId');
+    const inv = await billing.invoice(id);
+    if (!seesInvoice(c.get('scope'), inv)) throw new BillingError('not_found', `Invoice ${id} does not exist`);
+    const r = await readJson(c, 'CreditInvoiceRequest');
+    if (!r.ok) return r.res;
+    const p = c.get('principal');
+    return idempotent(c, r.body, async () => {
+      const out = await billing.credit(id, r.body, p.subject, amountLimitsOf(p.roles, c.get('roles'), 'credit'));
+      return 'creditNote' in out ? { status: 201, body: out.creditNote } : { status: 202, body: out.proposal };
+    });
+  });
+
+  app.get('/v1/credit-proposals', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const status = q('status') as 'proposed' | 'approved' | 'returned' | undefined;
+    const items = await billing.creditProposals({ ...(status ? { status } : {}), ...(q('invoiceId') ? { invoiceId: q('invoiceId') } : {}), ...(q('market') ? { market: q('market') } : {}) });
+    return sendPage(c, items.filter((x) => seesAccount(c.get('scope'), x.market)));
+  });
+
+  const visibleCreditProposal = async (c: Context<Env>) => {
+    const id = c.req.param('proposalId')!;
+    const p = await billing.creditProposal(id);
+    if (!seesAccount(c.get('scope'), p.market)) throw new BillingError('not_found', `Proposal ${id} does not exist`);
+    return p;
+  };
+
+  app.get('/v1/credit-proposals/:proposalId', async (c) => send(c, await visibleCreditProposal(c)));
+
+  app.post('/v1/credit-proposals/:proposalId/approvals', async (c) => {
+    const proposal = await visibleCreditProposal(c);
+    const r = await readJson(c, 'Empty');
+    if (!r.ok) return r.res;
+    const p = c.get('principal');
+    return idempotent(c, r.body, async () => ({ status: 201, body: await billing.approveCreditProposal(proposal.id, p.subject, amountLimitsOf(p.roles, c.get('roles'), 'credit')) }));
+  });
+
+  app.post('/v1/credit-proposals/:proposalId/returns', async (c) => {
+    const proposal = await visibleCreditProposal(c);
+    const r = await readJson(c, 'ReturnCreditProposalRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await billing.returnCreditProposal(proposal.id, r.body.reason, c.get('principal').subject) }));
+  });
+
   // A credit note follows its invoice's scope.
   const seesCredit = (scope: Scope, c: { market: string; lines: { policyId: string }[] }) => seesInvoice(scope, c);
 
@@ -1649,6 +1694,7 @@ export function createApp(d: AppDeps) {
       },
       ...(permissions.has('claims:decide') ? { decisionLimits: amountLimitsOf(p.roles, roles, 'decide') } : {}),
       ...(permissions.has('claims:approve') ? { approvalLimits: amountLimitsOf(p.roles, roles, 'approve') } : {}),
+      ...(permissions.has('billing:credit') ? { creditLimits: amountLimitsOf(p.roles, roles, 'credit') } : {}),
     });
   });
 
@@ -1917,7 +1963,7 @@ export function createApp(d: AppDeps) {
       return problem(c, status, err.message);
     }
     if (err instanceof BillingError) {
-      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
+      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);
     }
     if (err instanceof PaymentsError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;

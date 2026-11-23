@@ -111,8 +111,8 @@ export function billingStoreSuite(name: string, make: () => Promise<{ store: Bil
       const replacing: PlanRecord = { ...planRecord(5, { policyId: 'pol_1' }), source: { eventId: 'pev_x', eventType: 'policy.transferred', occurredAt: '2027-05-20T10:00:00.000Z' }, replaces: 'ppl_1', adjustment: { kind: 'transfer-from', transactionId: 'ptx_x', from: '2027-06-01', premium: -240_000, tax: 0 }, plan: { ...p1.plan, installments: [] } };
       const bo = payer(6, { partyId: 'pty_bo' });
       const theirs: PlanRecord = { ...planRecord(6, { policyId: 'pol_1', accountId: 'bac_6' }), source: replacing.source, adjustment: { kind: 'transfer-to', transactionId: 'ptx_x', from: '2027-06-01', premium: 240_000, tax: 0 } };
-      const credit = { id: 'crn_1', invoiceId: 'inv_a', accountId: 'bac_1', partyId: 'pty_anna', market: 'SE', currency: 'SEK', issueDate: '2027-05-20', lines: [{ planId: 'ppl_1', policyId: 'pol_1', seq: 2, amount: 10_000 }], total: 10_000, source: { eventId: 'pev_x', eventType: 'policy.transferred' }, createdAt: '2027-05-20T10:00:01.000Z' };
-      const numbered = (c: typeof credit, no: number) => ({ ...c, number: `SE-2027-${String(no).padStart(6, '0')}` });
+      const credit = { id: 'crn_1', kind: 'credit' as const, invoiceId: 'inv_a', accountId: 'bac_1', partyId: 'pty_anna', market: 'SE', currency: 'SEK', issueDate: '2027-05-20', lines: [{ planId: 'ppl_1', policyId: 'pol_1', seq: 2, amount: 10_000 }], total: 10_000, source: { eventId: 'pev_x', eventType: 'policy.transferred' }, createdAt: '2027-05-20T10:00:01.000Z' };
+      const numbered = (c: Omit<CreditNote, 'number'>, no: number): CreditNote => ({ ...c, number: `SE-2027-${String(no).padStart(6, '0')}` });
       const credited = (cs: CreditNote[]): BillingEvent[] => cs.map((c) => ({ id: `bev_${c.id}`, type: 'invoice.credited', invoiceId: c.invoiceId, market: 'SE', occurredAt: c.createdAt, data: { creditNoteNo: c.number } }));
       assert.equal(await store.addAdjustment({ market: 'SE', year: 2027, accounts: [bo], plans: [replacing, theirs], credits: [credit] }, numbered, credited), true);
       assert.equal(await store.addAdjustment({ market: 'SE', year: 2027, accounts: [bo], plans: [replacing, theirs], credits: [credit] }, numbered, credited), false, 'the same event again');
@@ -230,6 +230,26 @@ export function billingStoreSuite(name: string, make: () => Promise<{ store: Bil
       assert.deepEqual(await store.refunds({ market: 'FI' }), []);
       const [e] = (await store.pendingEvents(50)).filter((x) => x.type === 'refund.ordered');
       assert.deepEqual([e?.refundId, e?.invoiceId], ['ref_1', undefined]);
+    });
+
+    test('a credit proposal is decided once, and a credit note keeps its kind and reason', async () => {
+      const { store } = await make();
+      await store.addPlan(payer(), planRecord());
+      const inv = await store.addInvoice('SE', 2026, (no) => invoiceOf('inv_a', no, planRecord()), () => []);
+      const p = { id: 'cpr_1', invoiceId: inv.id, accountId: 'bac_1', market: 'SE', currency: 'SEK', kind: 'write-off' as const, amount: 500, reason: 'Gone', proposedBy: 'a', proposedAt: '2026-12-01T10:00:00.000Z', status: 'proposed' as const };
+      await store.addCreditProposal(p);
+      await store.addCreditProposal({ ...p, id: 'cpr_2', proposedAt: '2026-12-01T10:00:01.000Z' });
+      assert.deepEqual(await store.creditProposal('cpr_1'), p);
+      const note: CreditNote = { id: 'crn_m', number: 'x', kind: 'write-off', reason: 'Gone', invoiceId: inv.id, accountId: 'bac_1', partyId: 'pty_anna', market: 'SE', currency: 'SEK', issueDate: '2026-12-01', lines: [{ planId: 'ppl_1', policyId: 'pol_1', seq: 1, amount: 500 }], total: 500, source: { eventId: 'cpr_1', eventType: 'credit-proposal' }, createdAt: '2026-12-01T10:05:00.000Z' };
+      await store.addAdjustment({ market: 'SE', year: 2026, accounts: [], plans: [], credits: [note] }, (c, no) => ({ ...c, number: `SE-2026-${String(no).padStart(6, '0')}` }), () => []);
+      await store.decideCreditProposal('cpr_1', { status: 'approved', decidedBy: 'b', decidedAt: '2026-12-01T10:05:00.000Z', creditNoteId: 'crn_m' });
+      await assert.rejects(store.decideCreditProposal('cpr_1', { status: 'returned', decidedBy: 'c', decidedAt: '2026-12-01T10:06:00.000Z', returnReason: 'no' }), (e) => e instanceof InvoiceConflictError);
+      await store.decideCreditProposal('cpr_2', { status: 'returned', decidedBy: 'c', decidedAt: '2026-12-01T10:06:00.000Z', returnReason: 'no' });
+      assert.deepEqual(await store.creditProposal('cpr_1'), { ...p, status: 'approved', decidedBy: 'b', decidedAt: '2026-12-01T10:05:00.000Z', creditNoteId: 'crn_m' });
+      assert.deepEqual((await store.creditProposals({ status: 'returned' })).map((x) => [x.id, x.returnReason]), [['cpr_2', 'no']]);
+      assert.deepEqual((await store.creditProposals({ invoiceId: inv.id })).map((x) => x.id), ['cpr_1', 'cpr_2']);
+      const [stored] = await store.creditNotes({ invoiceId: inv.id });
+      assert.deepEqual([stored?.kind, stored?.reason], ['write-off', 'Gone']);
     });
   });
 }

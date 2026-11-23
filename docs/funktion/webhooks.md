@@ -20,6 +20,7 @@ Bolagets system kan få veta när något händer i Petvold, utan att fråga. En 
 | Djur | `animal.ownership_changed`, `animal.died` | djurets id |
 | Kundmeddelanden | `notice.created`, `notice.document_made`, `notice.delivered`, `notice.failed` | meddelandets id |
 | Fakturor | `invoice.issued`: nummer, konto, part, datum, belopp, valuta, betalningsreferens och policyer. `invoice.credited`: kreditnotans id och nummer, konto, part, belopp, valuta och policyhändelsen den kom av (ADR 0040) | fakturans id |
+| Kreditnotor | `invoice.credited` har `kind` (`credit` eller `write-off`), och `reason` är policyhändelsen, `manual` eller `write-off` | fakturans id |
 | Återbetalningar | `refund.ordered`: konto, part, belopp, valuta och skäl (ADR 0040). `invoice.paid` säger med `paidWith` om en betalning eller tillgodohavandet betalade fakturan. | återbetalningens id |
 | Förfallna fakturor | `invoice.overdue`: nummer, konto, part, förfallodag, obetalt belopp, valuta, referens och påminnelsens nummer (ADR 0040) | fakturans id |
 | Betalda fakturor | `invoice.paid`: nummer, konto, part, belopp, valuta, inbetalningen och dagen (ADR 0040) | fakturans id |

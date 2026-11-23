@@ -1062,7 +1062,8 @@ components:
         partyId: { $ref: '#/components/schemas/PartyId' }
         total: { type: integer, minimum: 1, description: In minor units of currency. }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
-        reason: { type: string, enum: [policy.changed, policy.cancelled, policy.transferred], description: The policy event that led to it. }
+        reason: { type: string, enum: [policy.changed, policy.cancelled, policy.transferred, policy.reinstated, manual, write-off], description: 'The policy event that led to it, or a person: manual for a credit note, write-off for a write-off.' }
+        kind: { type: string, enum: [credit, write-off] }
     NoticeCreatedData:
       type: object
       additionalProperties: false
