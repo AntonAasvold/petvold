@@ -8,7 +8,7 @@
  * Needs the same configuration as server.ts (databases, keys, documents and
  * Gotenberg), and PETVOLD_FAKE_BANK_SECRET.
  */
-import { compose, databasesFromEnv, documentsFromEnv, fakeBankFromEnv, webhooksFromEnv } from '../src/composition.ts';
+import { compose, databasesFromEnv, documentsFromEnv, fakeBankFromEnv, newPayeeHoldDaysFromEnv, webhooksFromEnv } from '../src/composition.ts';
 import { DemoClock, demoIds, runDemo } from '../src/demo-data.ts';
 import { marketDate, addDays } from '@petvold/common';
 
@@ -35,7 +35,7 @@ const inst = await compose({
   log: () => {},
   documents: documentsFromEnv(process.env),
   webhooks: webhooksFromEnv(process.env),
-  payments: { fake },
+  payments: { fake, newPayeeHoldDays: newPayeeHoldDaysFromEnv(process.env) },
 });
 try {
   await inst.ping();

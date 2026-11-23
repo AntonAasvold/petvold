@@ -139,3 +139,63 @@ test('a payment with the invoice\'s OCR pays it; one without waits until a perso
   const account = await call(`/v1/payer-accounts/${a.accountId}`, 'clerk');
   assert.ok(validatorFor('PayerAccount')(structuredClone(account.body)), JSON.stringify(validatorFor('PayerAccount').errors));
 });
+
+test('a decided claim is paid out to the policyholder once the payee has details; new details are held for another person', async () => {
+  const clock = { now: () => NOW };
+  const received: { body: string }[] = [];
+  const inst = await compose({
+    databases: {},
+    engineVersion: 'test',
+    clock,
+    payments: { fake: { secret: SECRET, markets: [{ market: 'SE', currency: 'SEK' }] }, newPayeeHoldDays: 2 },
+    webhooks: { transport: { post: async (_u, _h, body) => (received.push({ body }), { status: 204 }) } },
+  });
+  const tokens: Record<string, Principal> = {
+    clerk: { subject: 'finance@example.test', roles: ['billing-clerk'], markets: ['SE'] },
+    clerk2: { subject: 'finance-2@example.test', roles: ['billing-clerk'], markets: ['SE'] },
+    integration: { subject: 'integration@example.test', roles: ['integration-admin'], markets: '*' },
+    portal: { subject: 'portal', roles: ['customer-channel'], markets: ['SE'], policyIds: ['pol_bella'] },
+  };
+  const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
+  let k = 0;
+  const call = async (method: string, path: string, token: string, body?: unknown) => {
+    const res = await app.request(path, { method, headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'content-type': 'application/json', 'idempotency-key': `key-payout-${String(++k).padStart(4, '0')}` }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    return { status: res.status, body: (await res.json()) as any };
+  };
+  assert.equal((await call('POST', '/v1/webhook-subscriptions', 'integration', { url: 'https://erp.example.com/payouts', eventTypes: ['payout.*'], markets: ['SE'] })).status, 201);
+  const { seedSampleData } = await import('../src/seed.ts');
+  await seedSampleData(inst, clock);
+  while ((await inst.relay.tick()) > 0);
+
+  const waiting = await call('GET', '/v1/payouts?status=awaiting-details', 'clerk');
+  assert.ok(waiting.body.items.length > 0, 'the sample data has decided claims');
+  for (const p of waiting.body.items) assert.ok(validatorFor('Payout')(structuredClone(p)), JSON.stringify(validatorFor('Payout').errors));
+  const first = waiting.body.items[0];
+  assert.equal(first.partyId, 'pty_owner001');
+  assert.equal((await call('GET', '/v1/payouts', 'portal')).status, 403);
+
+  assert.equal((await call('POST', `/v1/payees/${first.partyId}/accounts`, 'clerk', { market: 'SE', method: 'se-bank', details: { clearing: '83', account: '1' } })).status, 422);
+  const acc = await call('POST', `/v1/payees/${first.partyId}/accounts`, 'clerk', { market: 'SE', method: 'se-bank', details: { clearing: '8327', account: '9412345678' } });
+  assert.equal(acc.status, 201);
+  assert.ok(validatorFor('PayeeAccount')(structuredClone(acc.body)), JSON.stringify(validatorFor('PayeeAccount').errors));
+  assert.equal(acc.body.details.account, '******5678');
+
+  const held = await call('GET', '/v1/payouts?status=held', 'clerk');
+  assert.ok(held.body.items.some((p: any) => p.id === first.id), 'new details: held');
+  assert.equal((await call('POST', `/v1/payouts/${first.id}/releases`, 'clerk', {})).status, 403, 'the one who gave the details');
+  const released = await call('POST', `/v1/payouts/${first.id}/releases`, 'clerk2', { note: 'Called the customer on the number in the register.' });
+  assert.equal(released.status, 201);
+  assert.equal(released.body.status, 'paid');
+  assert.equal((await call('POST', `/v1/payouts/${first.id}/releases`, 'clerk2', {})).status, 409);
+
+  while ((await inst.relay.tick()) > 0);
+  while ((await inst.webhookWorker.tick()).delivered > 0);
+  const events = received.map((r) => JSON.parse(r.body)).filter((e) => e.type === 'petvold.payout.paid.v1');
+  assert.ok(events.some((e) => e.subject === first.id));
+  for (const e of events) {
+    assert.ok(eventValidator('payout.paid')(e), JSON.stringify(eventValidator('payout.paid').errors));
+    assert.equal(JSON.stringify(e).includes('9412345678'), false, 'never the account number');
+  }
+  const listed = await call('GET', `/v1/payees/${first.partyId}/accounts`, 'clerk');
+  assert.deepEqual(listed.body.items.map((a: any) => a.current), [true]);
+});

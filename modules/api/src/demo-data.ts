@@ -44,6 +44,7 @@ export interface DemoSummary {
   changes: number;
   cancellations: number;
   payments: number;
+  payouts: number;
 }
 
 /** A mutable clock for the installation, set by the demo day by day. */
@@ -166,7 +167,7 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
   const chance = (p: number) => rnd() < p;
   const between = (lo: number, hi: number) => lo + Math.floor(rnd() * (hi - lo + 1));
   const log = o.log ?? (() => {});
-  const sum: DemoSummary = { days: 0, customers: 0, dogs: 0, policies: 0, applications: 0, claims: 0, decisions: 0, approvals: 0, changes: 0, cancellations: 0, payments: 0 };
+  const sum: DemoSummary = { days: 0, customers: 0, dogs: 0, policies: 0, applications: 0, claims: 0, decisions: 0, approvals: 0, changes: 0, cancellations: 0, payments: 0, payouts: 0 };
 
   const app = createApp({ ...inst.deps, auth: demoAuthenticator() });
   let key = 0;
@@ -221,6 +222,9 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
   const bank: Bank = { plan: new Map(), paid: new Set(), n: 0 };
   const pendingDecisions = new Map<string, { on: string; proposed: 'approved' | 'rejected' }>(); // claimId -> the day a handler looks at it
   const pendingApprovals = new Map<string, string>();
+  const bankAccount = () => ({ market: 'SE', method: 'se-bank', details: { clearing: String(between(8000, 8999)), account: String(between(100_000_000, 999_999_999)) } });
+  const detailsDue = new Map<string, string>(); // partyId -> the day the customer gives an account
+  const releaseDue = new Map<string, string>(); // payoutId -> the day finance releases it
   const referred = new Map<string, string>(); // applicationId -> the day an underwriter looks at it
 
   for (let day = o.from; day <= o.to; day = addDays(day, 1)) {
@@ -255,6 +259,8 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
         language: 'sv',
       });
       sum.customers++;
+      // Most give the account their claims are paid to when they sign up (ADR 0040, punkt 8).
+      if (chance(0.8)) await must('POST', `/v1/payees/${party.id}/accounts`, 'dev-all', bankAccount());
       const count = chance(0.7) ? 1 : chance(0.7) ? 2 : 3;
       const household: Dog[] = [];
       for (let d = 0; d < count; d++) {
@@ -431,6 +437,24 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
       }
     }
 
+    await drain();
+
+    // Payouts: a customer without an account gives one, and finance releases what new details held.
+    at(14);
+    for (const p of await all('/v1/payouts?status=awaiting-details', 'dev-billing')) if (!detailsDue.has(p.partyId)) detailsDue.set(p.partyId, addDays(day, between(1, 4)));
+    for (const [partyId, on] of detailsDue) {
+      if (on > day) continue;
+      detailsDue.delete(partyId);
+      await must('POST', `/v1/payees/${partyId}/accounts`, 'dev-all', bankAccount());
+    }
+    for (const p of await all('/v1/payouts?status=held', 'dev-billing')) if (!releaseDue.has(p.id)) releaseDue.set(p.id, addDays(day, between(1, 2)));
+    for (const [id, on] of releaseDue) {
+      if (on > day) continue;
+      releaseDue.delete(id);
+      const r = await call('POST', `/v1/payouts/${id}/releases`, 'dev-billing', { note: 'Called the customer on the number in the register.' });
+      if (r.status >= 300 && r.status !== 409) throw new Error(`The release of ${id} gave ${r.status}: ${JSON.stringify(r.body)}`);
+    }
+    sum.payouts = (await all('/v1/payouts?status=paid', 'dev-billing')).length;
     await drain();
 
     // The bank: customers pay their invoices, most on time, some late and a few never.

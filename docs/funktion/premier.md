@@ -2,7 +2,7 @@
 
 Hur Petvold delar en terms premie i delbetalningar, fördelar en betalning och räknar ut vad ett avslut betyder i pengar (ADR 0040).
 
-**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör premieplaner, fakturor och kreditnotor (steg 2). Modulen `payments` tar emot inbetalningar (steg 3a), och `billing` kopplar dem till fakturorna (steg 3b). Utbetalningarna kommer i steg 3c.
+**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör premieplaner, fakturor och kreditnotor (steg 2). Modulen `payments` tar emot inbetalningar (steg 3a), och `billing` kopplar dem till fakturorna (steg 3b). `payments` betalar ut skadornas ersättning till försäkringstagaren (steg 3c-1). Direktreglering till kliniker kommer i steg 3c-2.
 
 ## Betalarkonto och premieplan
 
@@ -169,6 +169,48 @@ Läsningen kräver `billing:read`, och kopplingen `billing:write`. Båda har rol
 POST /v1/received-payments/pay_7f3…/matches
 { "invoiceId": "inv_2c1…", "note": "Betalaren angav policynumret i meddelandet." }
 ```
+
+## Utbetalning av ersättning
+
+Ett beslut som ger ersättning blir en utbetalningsorder, `claim.payout_ordered` (ADR 0019). `payments` gör en **utbetalning** av ordern till den som var försäkringstagare den dagen. Varje order betalas en gång (ADR 0040, punkt 8).
+
+```mermaid
+stateDiagram-v2
+    [*] --> awaiting_details: inga betaluppgifter
+    [*] --> held: uppgifterna är nyare än spärren
+    [*] --> pending: uppgifterna finns
+    awaiting_details --> held: kunden ger uppgifter, inom spärren
+    awaiting_details --> pending: kunden ger uppgifter
+    held --> held: kunden ger nya uppgifter
+    held --> pending: en annan person släpper den
+    pending --> paid
+    pending --> failed
+```
+
+- **Betaluppgifterna** (bankkonto med clearingnummer, eller IBAN) ägs av `payments`, per part och marknad. Nya uppgifter ersätter de gamla från den stunden, och det sparas vem som gav dem. API:t visar bara de fyra sista siffrorna.
+- **Utan betaluppgifter** väntar utbetalningen (`awaiting-details`) och skickas när kunden ger dem.
+- **Spärren:** uppgifter som är nyare än `PETVOLD_NEW_PAYEE_HOLD_DAYS` dagar (förval 0, ingen spärr) håller utbetalningen (`held`). En person släpper den, men inte den som gav uppgifterna. Det skyddar mot bedrägeri med ändrade kontouppgifter. Kommer nya uppgifter medan den är spärrad, spärras den om på de nya.
+- **Utan en adapter som betalar ut** i marknaden gör Petvold ingen utbetalning. Ordern finns då bara i `claim.payout_ordered`, för bolagets eget system.
+- **Händelser:** `payout.paid` och `payout.failed`, utan kontonummer.
+
+| Anrop | Vad det ger |
+| --- | --- |
+| `GET /v1/payees/{partyId}/accounts` | Partens betaluppgifter, maskade. Den nyaste i marknaden är `current`. |
+| `POST /v1/payees/{partyId}/accounts` | Nya betaluppgifter (`payments:payee-write`) |
+| `GET /v1/payouts?status=held` | Kön med spärrade utbetalningar. `awaiting-details`, `claimId=…` och `partyId=…` går också. |
+| `GET /v1/payouts/{payoutId}` | En utbetalning med varje steg |
+| `POST /v1/payouts/{payoutId}/releases` | Släpp en spärrad utbetalning (`payments:release`), med en anteckning om hur uppgifterna kontrollerades |
+
+Rollen `billing-clerk` har alla tre rättigheterna, så två personer med den rollen kan ge uppgifter och släppa utbetalningar åt varandra.
+
+```
+POST /v1/payees/pty_owner001/accounts
+{ "market": "SE", "method": "se-bank", "details": { "clearing": "8327", "account": "9412345678" } }
+
+→ 201 { "id": "pya_…", "details": { "clearing": "8327", "account": "******5678" }, "current": true, … }
+```
+
+Låtsasbanken betalar ut direkt. En riktig adapter kan svara att utbetalningen är på väg (`pending`). Den följs då upp av tjänstens avisering, när bankfilerna kommer (steg 7).
 
 ## Fördelning av en betalning
 

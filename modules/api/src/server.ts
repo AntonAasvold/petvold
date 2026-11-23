@@ -19,6 +19,7 @@
  * - PETVOLD_VERSION: stored with every decision (ADR 0018). Required.
  * - PETVOLD_CLAIM_NUMBER_PREFIX: the claim number's prefix per market, e.g. SE=S,NO=N (ADR 0036). Default S.
  * - PETVOLD_FAKE_BANK_SECRET and PETVOLD_FAKE_BANK_MARKETS: the fake bank, for a demo (ADR 0017). Never with real money.
+ * - PETVOLD_NEW_PAYEE_HOLD_DAYS: days that new payee details hold a payout for a person (ADR 0040). Default 0.
  * - PORT: default 8080.
  * - PETVOLD_CORS_ORIGINS: browser applications allowed to call the API, comma-separated. Default none.
  * - Authentication: see auth.ts. Without it the server does not start.
@@ -29,7 +30,7 @@
  * server's roles cannot change the schema.
  */
 import { serve } from '@hono/node-server';
-import { claimNumberPrefixFromEnv, compose, fakeBankFromEnv, DATABASE_ENV, DATABASES, databasesFromEnv, documentsFromEnv, webhooksFromEnv } from './composition.ts';
+import { claimNumberPrefixFromEnv, compose, fakeBankFromEnv, newPayeeHoldDaysFromEnv, DATABASE_ENV, DATABASES, databasesFromEnv, documentsFromEnv, webhooksFromEnv } from './composition.ts';
 import { authenticatorFromEnv } from './auth.ts';
 import { demoAuthenticator } from './demo-tokens.ts';
 import { docsPage } from './docs.ts';
@@ -58,9 +59,11 @@ const auth = demo ? demoAuthenticator() : await authenticatorFromEnv(process.env
 
 let claimNumberPrefix: Record<string, string>;
 let fake: ReturnType<typeof fakeBankFromEnv>;
+let holdDays: number;
 try {
   claimNumberPrefix = claimNumberPrefixFromEnv(process.env);
   fake = fakeBankFromEnv(process.env);
+  holdDays = newPayeeHoldDaysFromEnv(process.env);
 } catch (err) {
   console.error((err as Error).message);
   process.exit(1);
@@ -72,7 +75,7 @@ const inst = await compose({
   webhooks: webhooksFromEnv(process.env),
   documents: documentsFromEnv(process.env),
   claimNumberPrefix,
-  ...(fake ? { payments: { fake } } : {}),
+  payments: { ...(fake ? { fake } : {}), newPayeeHoldDays: holdDays },
 });
 if (fake) log(`The fake bank takes payments in ${fake.markets.map((m) => `${m.market}:${m.currency}`).join(', ')} at POST /provider-notifications/fake. Not for real money.`);
 await inst.ping().catch((err: Error) => {

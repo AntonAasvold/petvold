@@ -8,7 +8,7 @@ const SECRET = `whsec_${Buffer.alloc(32, 'demo-test').toString('base64')}`;
 
 async function run(seed: number) {
   const clock = new DemoClock('2026-06-01T06:00:00.000Z');
-  const inst = await compose({ databases: {}, engineVersion: 'test', clock, ids: demoIds(seed), payments: { fake: { secret: SECRET, markets: [{ market: 'SE', currency: 'SEK' }] } } });
+  const inst = await compose({ databases: {}, engineVersion: 'test', clock, ids: demoIds(seed), payments: { fake: { secret: SECRET, markets: [{ market: 'SE', currency: 'SEK' }] }, newPayeeHoldDays: 2 } });
   const sum = await runDemo(inst, clock, { from: '2026-06-01', to: '2026-08-15', seed, customersPerDay: 0.6, bankSecret: SECRET });
   return { inst, sum };
 }
@@ -17,6 +17,9 @@ test('months of customers, policies, claims, invoices and payments, the same for
   const a = await run(7);
   assert.ok(a.sum.customers > 20 && a.sum.policies > 20, JSON.stringify(a.sum));
   assert.ok(a.sum.claims > 0 && a.sum.payments > 0, JSON.stringify(a.sum));
+  // Decided claims are paid out; none waits for long.
+  const payouts = await a.inst.deps.payments!.payouts();
+  assert.ok(payouts.length > 0 && payouts.filter((p) => p.status === 'paid').length >= payouts.length - 3, JSON.stringify(payouts.map((p) => p.status)));
   assert.equal(a.inst.relay.deadLetters().length, 0);
   const invoices = await a.inst.stores.billing.invoices({});
   assert.ok(invoices.length > a.sum.policies / 2);

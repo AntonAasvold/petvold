@@ -33,6 +33,8 @@ x-petvold: &petvold
     PETVOLD_DOCUMENT_KEY: ${PETVOLD_DOCUMENT_KEY}
     PETVOLD_FAKE_BANK_SECRET: ${PETVOLD_FAKE_BANK_SECRET}
     PETVOLD_FAKE_BANK_MARKETS: SE:SEK
+    # New payee details hold a payout two days for a person (ADR 0040), so the demo shows the queue.
+    PETVOLD_NEW_PAYEE_HOLD_DAYS: "2"
     PETVOLD_DOCUMENTS_BUCKET: petvold-documents
     PETVOLD_DOCUMENTS_S3_ENDPOINT: http://seaweedfs:8333
     PETVOLD_DOCUMENTS_S3_ACCESS_KEY: petvold

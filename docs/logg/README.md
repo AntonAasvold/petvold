@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-23 | [Pengar, steg 3c-1: utbetalningar till försäkringstagaren](2026-11-23-utbetalningar.md) | #146 |
 | 2026-11-23 | [Pengar, steg 3b: inbetalningar kopplas till fakturorna](2026-11-23-koppling-av-inbetalningar.md) | #145 |
 | 2026-11-22 | [Demon på en annan port, med certifikat från DuckDNS](2026-11-22-demo-duckdns.md) | #144 |
 | 2026-11-22 | [Demon på en server](2026-11-22-demo-deploy.md) | #143 |

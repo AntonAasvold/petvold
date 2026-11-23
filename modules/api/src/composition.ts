@@ -102,6 +102,8 @@ export interface InstallationConfig {
     fake?: { secret: string; markets: { market: string; currency: string }[] };
     /** Adapters instead of or beside the fake bank, e.g. in tests. */
     providers?: PaymentProvider[];
+    /** Days that new payee details hold a payout for a person (PETVOLD_NEW_PAYEE_HOLD_DAYS). Default 0. */
+    newPayeeHoldDays?: number;
   };
 }
 
@@ -174,6 +176,13 @@ export function fakeBankFromEnv(env: Record<string, string | undefined>): { secr
     return { market: m[1]!, currency: m[2]! };
   });
   return { secret, markets };
+}
+
+/** PETVOLD_NEW_PAYEE_HOLD_DAYS: days that new payee details hold a payout for a person (ADR 0040). Default 0. */
+export function newPayeeHoldDaysFromEnv(env: Record<string, string | undefined>): number {
+  const v = env.PETVOLD_NEW_PAYEE_HOLD_DAYS ?? '0';
+  if (!/^\d{1,3}$/.test(v)) throw new Error(`PETVOLD_NEW_PAYEE_HOLD_DAYS: '${v}' is not a number of days`);
+  return Number(v);
 }
 
 /** Everything a running Petvold needs, connected. */
@@ -349,7 +358,15 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   const paymentsPool = pool('payments', 2);
   const paymentsStore: PaymentsStore = paymentsPool ? new PostgresPaymentsStore(paymentsPool) : new InMemoryPaymentsStore();
   const providers: PaymentProvider[] = [...(config.payments?.fake ? [new FakeProvider(config.payments.fake)] : []), ...(config.payments?.providers ?? [])];
-  const payments = new PaymentsService({ store: paymentsStore, providers, clock, ids });
+  const payments = new PaymentsService({
+    store: paymentsStore,
+    providers,
+    clock,
+    ids,
+    // The policyholder is paid (ADR 0040, punkt 8).
+    policies: billingPolicySource(policies),
+    newPayeeHoldDays: config.payments?.newPayeeHoldDays ?? 0,
+  });
 
   const retention = new RetentionService({
     parties,
@@ -359,6 +376,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
       { name: 'policies', activityOf: (id) => policies.activityOf(id) },
       claimsActivity(policies, service),
       { name: 'billing', activityOf: (id) => billing.activityOf(id) },
+      { name: 'payments', activityOf: (id) => payments.activityOf(id) },
     ],
     clock,
   });
@@ -397,7 +415,11 @@ export async function compose(config: InstallationConfig): Promise<Installation>
           const forNotices = claimsEventForNotices(entry);
           const notice = forNotices ? await communications.handleClaimEvent(forNotices) : null;
           if (notice) log(`[notice] ${notice.type} ${notice.id} due ${notice.dueBy}`);
-          const queued = await webhooks.enqueue(await claimsEventForWebhooks(entry, (claimId) => service.getClaim(claimId)));
+          const outward = await claimsEventForWebhooks(entry, (claimId) => service.getClaim(claimId));
+          // A payout order becomes a payout to the policyholder (ADR 0040, punkt 8).
+          const payout = await payments.handleClaimEvent(outward);
+          if (payout) log(`[payout] ${payout.id} ${payout.amount} ${payout.currency} for ${payout.claimId}: ${payout.status}`);
+          const queued = await webhooks.enqueue(outward);
           if (queued) log(`[webhook] ${e.type} ${entry.id} queued for ${queued} subscription(s)`);
         },
         markPublished: (ids, at) => claimsStore.markPublished(ids, at),
@@ -449,12 +471,12 @@ export async function compose(config: InstallationConfig): Promise<Installation>
         name: 'payments',
         pending: (limit) => paymentsStore.pendingEvents(limit),
         deliver: async (e) => {
-          log(`[event] ${e.type} ${e.paymentId} ${e.data.amount} ${e.data.currency}`);
+          log(`[event] ${e.type} ${e.paymentId ?? e.payoutId} ${e.data.amount} ${e.data.currency}`);
           // Billing matches it to an invoice, or leaves it among the unmatched (ADR 0040).
           const received = await billing.handlePaymentEvent(e);
           if (received) log(`[billing] ${received.paymentId} ${received.status}${received.match ? ` to ${received.match.accountId}` : ''}`);
           const queued = await webhooks.enqueue({ ...e });
-          if (queued) log(`[webhook] ${e.type} ${e.paymentId} queued for ${queued} subscription(s)`);
+          if (queued) log(`[webhook] ${e.type} ${e.paymentId ?? e.payoutId} queued for ${queued} subscription(s)`);
         },
         markPublished: (ids, at) => paymentsStore.markPublished(ids, at),
       }),
