@@ -13,10 +13,14 @@ if [ "${1:-}" = "--build" ]; then
 else
   docker compose pull api web
 fi
+# Caddy with the DuckDNS module is built here; after the first time it comes from the cache.
+docker compose build caddy
 docker compose stop api caddy web
 docker compose rm -sf api migrate postgres seaweedfs
 docker volume rm -f petvold-demo_pgdata petvold-demo_s3data
 # The test data is made with Petvold stopped: the seed drives the relay and the runs with its own clock.
 docker compose --profile seed run --rm seed
 docker compose up -d
-echo "The demo is up. Sign in at https://$(sed -n 's/^DEMO_DOMAIN=//p' .env)/login"
+url=$(sed -n 's/^DEMO_PUBLIC_URL=//p' .env)
+[ -n "$url" ] || url="https://$(sed -n 's/^DEMO_DOMAIN=//p' .env)"
+echo "The demo is up. Sign in at $url/login"

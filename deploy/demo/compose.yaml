@@ -27,7 +27,8 @@ x-petvold: &petvold
     PAYMENTS_DATABASE_URL: postgres://payments_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
     PETVOLD_VERSION: demo-${PETVOLD_TAG:-main}
     PETVOLD_AUTH: demo
-    PETVOLD_PUBLIC_URL: https://${DEMO_DOMAIN}
+    # With a port when the demo is reached on another port than 443, e.g. https://petvold.example.org:8443.
+    PETVOLD_PUBLIC_URL: ${DEMO_PUBLIC_URL:-https://${DEMO_DOMAIN}}
     PETVOLD_WEBHOOK_KEY: ${PETVOLD_WEBHOOK_KEY}
     PETVOLD_DOCUMENT_KEY: ${PETVOLD_DOCUMENT_KEY}
     PETVOLD_FAKE_BANK_SECRET: ${PETVOLD_FAKE_BANK_SECRET}
@@ -41,12 +42,18 @@ x-petvold: &petvold
     PETVOLD_WEBHOOK_ALLOW_HOSTS: demo
 
 services:
+  # Built here: Caddy with the DuckDNS module (caddy/Dockerfile).
   caddy:
-    image: caddy:2.11.7-alpine
+    image: petvold-demo-caddy:2.11.7
+    build: ./caddy
     restart: unless-stopped
     ports: ["80:80", "443:443"]
     environment:
       DEMO_DOMAIN: ${DEMO_DOMAIN}
+      # http (default): Let's Encrypt checks the domain on port 80 or 443.
+      # duckdns: by a TXT record at DuckDNS, so the ports may lead elsewhere.
+      DEMO_TLS: ${DEMO_TLS:-http}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN:-}
       DEMO_USER: ${DEMO_USER:-demo}
       DEMO_PASSWORD_HASH: ${DEMO_PASSWORD_HASH}
       DEMO_GATE: ${DEMO_GATE}

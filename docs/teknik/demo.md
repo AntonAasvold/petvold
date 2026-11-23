@@ -4,7 +4,7 @@ Demon är en installation av Petvold på en egen server, med demoanvändare och 
 
 ## Sätta upp demon
 
-Det som behövs är en server med Docker och Docker Compose, och ett domännamn som pekar på den. Portarna 80 och 443 ska vara öppna, så att Caddy kan hämta ett certifikat från Let's Encrypt.
+Det som behövs är en server med Docker och Docker Compose, och ett domännamn som pekar på den. Portarna 80 och 443 ska vara öppna, så att Caddy kan hämta ett certifikat från Let's Encrypt. Om de redan används av något annat, se [På en annan port](#på-en-annan-port-med-certifikat-från-duckdns).
 
 ```
 git clone https://github.com/AntonAasvold/petvold.git && cd petvold/deploy/demo
@@ -34,6 +34,22 @@ Adressen frågar efter lösenordet en gång, på `/login`, och sätter då en ka
 - **Lösenordet frågas bara efter på `/login`.** Basic-inloggning på varje anrop hade krockat med back office, som skickar sin token i samma rubrik (`Authorization`).
 - **Utan kakan** fungerar bara det som redan är signerat: dokumentlänkarna (`/d/`), låtsasbankens aviseringar (`/provider-notifications/`) och `/health`.
 - **Ett nytt lösenord:** ta bort `.env` och kör `setup.sh` igen. Det ger också nya hemligheter, så kör `reset.sh` efteråt.
+
+### På en annan port, med certifikat från DuckDNS
+
+Om portarna 80 och 443 redan leder till en annan maskin, till exempel en Home Assistant hemma, kan demon nås på en annan port. Då kan Let's Encrypt inte kontrollera domänen över http, eftersom den kontrollen alltid sker på port 80 eller 443. Caddy gör i stället kontrollen med en TXT-post hos DuckDNS (DNS-01).
+
+```
+read -rs DUCKDNS_TOKEN && export DUCKDNS_TOKEN    # tokenen överst på duckdns.org, utan att den hamnar i historiken
+DEMO_PORT=8443 ./setup.sh petvold.namn.duckdns.org 'ett långt lösenord'
+./reset.sh
+```
+
+- **I routern** vidarebefordras TCP 8443 till port 443 på servern. Inget annat behöver öppnas.
+- **Adressen** blir `https://petvold.namn.duckdns.org:8443`. Underdomäner till ett DuckDNS-namn pekar på samma IP-adress utan att något läggs till hos DuckDNS.
+- **`setup.sh`** skriver `DEMO_TLS=duckdns`, tokenen och `DEMO_PUBLIC_URL` med porten i `.env`. Petvold använder adressen i dokumentens länkar (`PETVOLD_PUBLIC_URL`).
+- **Caddy byggs på servern** med modulen [caddy-dns/duckdns](https://github.com/caddy-dns/duckdns) (`caddy/Dockerfile`), första gången av `reset.sh`. Utan `DEMO_TLS=duckdns` används inte modulen.
+- **DuckDNS har en TXT-post per namn.** Om ett annat system förnyar sitt certifikat för samma DuckDNS-namn i samma stund kan en av förnyelserna misslyckas. Caddy försöker då igen.
 
 ### Lokalt
 

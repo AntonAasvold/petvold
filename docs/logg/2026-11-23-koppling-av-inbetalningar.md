@@ -1,4 +1,4 @@
-# Pengar, steg 3b: inbetalningar kopplas till fakturorna (PR #144)
+# Pengar, steg 3b: inbetalningar kopplas till fakturorna (PR #145)
 
 **Datum:** 2026-11-23 **ADR:** 0040 **Moduler:** `billing`, `api`, `webhooks`
 

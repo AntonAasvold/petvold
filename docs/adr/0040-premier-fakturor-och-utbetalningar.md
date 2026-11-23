@@ -195,7 +195,7 @@ Punkt 3 och 5 nämnde bara lagens regel för den första premien. FAL 5 kap. 1 �
 
 ## Förtydligande 2026-11-23
 
-Punkt 6 säger att en betalning fördelas på den äldsta förfallna skulden först. En inbetalning med en fakturas referens går nu **först till den fakturan**, och bara det som blir över till den äldsta förfallna skulden (PR #144). Annars kunde en kund som betalat en faktura med rätt OCR se den som obetald, medan pengarna gått till en äldre faktura. Med två obetalda fakturor och en betalning utan referens som en person kopplar till kontot gäller fortfarande den äldsta först.
+Punkt 6 säger att en betalning fördelas på den äldsta förfallna skulden först. En inbetalning med en fakturas referens går nu **först till den fakturan**, och bara det som blir över till den äldsta förfallna skulden (PR #145). Annars kunde en kund som betalat en faktura med rätt OCR se den som obetald, medan pengarna gått till en äldre faktura. Med två obetalda fakturor och en betalning utan referens som en person kopplar till kontot gäller fortfarande den äldsta först.
 
 ## Källor
 
