@@ -907,6 +907,7 @@ export const templates: Record<string, string> = {
   'notice.type.claim-information-reminder': 'Påminnelse om komplettering',
   'notice.type.claim-information-expired': 'Underlaget kom inte in',
   'notice.type.invoice': 'Faktura',
+  'notice.type.payment-reminder': 'Betalningspåminnelse',
   'history.toCustomer': 'Till kunden',
   'history.open': 'Öppna',
   'attachment.addressDesc': 'Petvold sparar adressen och kontrollsumman, inte filen.',

@@ -4590,9 +4590,10 @@ export interface components {
          *     - claim-information-reminder: the reminder of an open request, claim-information-reminder.v1
          *     - claim-information-expired: the request expired; a handler decides on what there is (not required by law), claim-information-expired.v1
          *     - invoice: the demand for premium (ADR 0040; SE: FAL 5 kap. 1 §), invoice.v1. To be sent on its issue date, since the time to pay counts from it.
+         *     - payment-reminder: a reminder of an overdue invoice (ADR 0040), payment-reminder.v1. Not required by law.
          * @enum {string}
          */
-        NoticeType: "policy-confirmation" | "renewal-notice" | "insurer-termination" | "cancellation-confirmation" | "application-declined" | "transfer-offer" | "claim-decision" | "claim-information-request" | "claim-information-reminder" | "claim-information-expired" | "invoice";
+        NoticeType: "policy-confirmation" | "renewal-notice" | "insurer-termination" | "cancellation-confirmation" | "application-declined" | "transfer-offer" | "claim-decision" | "claim-information-request" | "claim-information-reminder" | "claim-information-expired" | "invoice" | "payment-reminder";
         WebhookSubscriptionRequest: {
             /** @description https, e.g. https://hooks.example.com/petvold. Not a local or private address. */
             url: string;
@@ -4947,6 +4948,38 @@ export interface components {
             open: number;
             /** @enum {string} */
             status: "open" | "partly-paid" | "paid" | "credited";
+            /**
+             * @description What the dunning run did, in order (ADR 0040): reminded, cancellation-noticed (the
+             *     policies given notice for unpaid premium), and when paid before the cancellation took
+             *     effect cancellation-voided, or cancellation-void-failed when the policy module could not
+             *     reverse it and a person must.
+             */
+            dunning: components["schemas"]["DunningStep"][];
+        };
+        DunningStep: {
+            /** @enum {string} */
+            step: "reminded" | "cancellation-noticed" | "cancellation-voided" | "cancellation-void-failed";
+            /** Format: date */
+            on: string;
+            /** Format: date-time */
+            at: string;
+            by: string;
+            cancellations?: {
+                policyId: string;
+                transactionId: string;
+                /**
+                 * Format: date
+                 * @description It takes effect this day, unless the invoice is paid before.
+                 */
+                effectiveDate: string;
+            }[];
+            skipped?: {
+                policyId: string;
+                reason: string;
+            }[];
+            policyId?: string;
+            transactionId?: string;
+            reason?: string;
         };
         /**
          * @description A payment into the insurer's account as billing has it (ADR 0040). With an
@@ -5153,6 +5186,7 @@ export interface components {
              *     - claim-information-request.v1 and claim-information-reminder.v1: claimId, claimNo, policyId, animalId, requestId, items, note, dueDate.
              *     - claim-information-expired.v1: the same without note, and decidedOnAvailableBasis.
              *     - invoice.v1: invoiceId, invoiceNo, issueDate, dueDate, total, reference (type and value), lines (policyId, periodStart, periodEnd, premium, tax, fee, amount), and payment from the settings.
+             *     - payment-reminder.v1: invoiceId, invoiceNo, dueDate, open (amount and currency), reference (type and value), and payment from the settings.
              *     Every type gets sender from the settings when it is set.
              */
             content: {

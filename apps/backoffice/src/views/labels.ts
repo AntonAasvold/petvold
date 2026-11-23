@@ -407,6 +407,8 @@ export function noticeTypeLabel(t: string): string {
       return msg('The information did not come in', { id: 'notice.type.claim-information-expired' });
     case 'invoice':
       return msg('Invoice', { id: 'notice.type.invoice' });
+    case 'payment-reminder':
+      return msg('Payment reminder', { id: 'notice.type.payment-reminder' });
     default:
       return t;
   }

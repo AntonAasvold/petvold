@@ -4,7 +4,7 @@
  * and by the dev server.
  */
 import { AnimalError, type AnimalService } from '@petvold/animals';
-import { BillingError, type BillingService, type PolicySource as BillingPolicySource, type ProductSource as BillingProductSource } from '@petvold/billing';
+import { BillingError, type BillingService, type PolicyActions, type PolicySource as BillingPolicySource, type ProductSource as BillingProductSource } from '@petvold/billing';
 import { CatalogError, billingSettingsOf, onSale, policySettingsOf, productVersionId, vetCareTermsFor, type ProductService } from '@petvold/catalog';
 import { DomainError, eventClaimId, type ClaimsEvent, type ClaimsService } from '@petvold/claims-core';
 import type { SourceEvent as WebhookSourceEvent } from '@petvold/webhooks';
@@ -354,6 +354,36 @@ export function billingPolicySource(policies: PolicyService): BillingPolicySourc
       if (!p) return null;
       const v = p.versions.find((x) => x.validFrom <= date && date < x.validTo) ?? p.versions.filter((x) => x.validFrom <= date).at(-1) ?? p.versions[0];
       return v?.policyholderPartyId ?? null;
+    },
+  };
+}
+
+/**
+ * What billing asks of the policy module for unpaid premium (ADR 0040, punkt 7).
+ * The same policy and day again gives the cancellation already made, so a run
+ * that stopped halfway can run again.
+ */
+export function billingPolicyActions(policies: PolicyService): PolicyActions {
+  return {
+    async cancelForUnpaidPremium(policyId, sentOn, note, by) {
+      const made = (await policies.transactions(policyId)).find((t) => t.type === 'cancel' && t.cancellation?.reason === 'unpaid-premium' && t.cancellation.receivedOn === sentOn);
+      if (made) return { transactionId: made.id, effectiveDate: made.cancellation!.effectiveDate };
+      try {
+        const tx = await policies.cancel(policyId, { reason: 'unpaid-premium', receivedOn: sentOn, note }, by);
+        return { transactionId: tx.id, effectiveDate: tx.cancellation!.effectiveDate };
+      } catch (e) {
+        if (e instanceof PolicyError) return { skipped: e.message };
+        throw e;
+      }
+    },
+    async reverseCancellation(policyId, transactionId, note, by) {
+      try {
+        await policies.reinstate(policyId, { cancellationId: transactionId, note }, by);
+        return { reversed: true };
+      } catch (e) {
+        if (e instanceof PolicyError) return { failed: e.message };
+        throw e;
+      }
     },
   };
 }

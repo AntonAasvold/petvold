@@ -28,6 +28,7 @@ export const NOTICE_TYPES = [
   'claim-information-reminder',
   'claim-information-expired',
   'invoice',
+  'payment-reminder',
 ] as const;
 export type NoticeType = (typeof NOTICE_TYPES)[number];
 
@@ -44,6 +45,7 @@ export const NOTICE_SCHEMAS: Record<NoticeType, string> = {
   'claim-information-reminder': 'claim-information-reminder.v1',
   'claim-information-expired': 'claim-information-expired.v1',
   invoice: 'invoice.v1',
+  'payment-reminder': 'payment-reminder.v1',
 };
 
 /** Fields an insurer's text fills, per type: a notice without them is incomplete and in the queue. */
@@ -54,6 +56,7 @@ export const REQUIRED_TEXTS: Partial<Record<NoticeType, (keyof NoticeTexts)[]>> 
   'claim-decision': ['review'],
   // Where the customer pays, e.g. the insurer's bankgiro number: an invoice without it cannot be paid.
   invoice: ['payment'],
+  'payment-reminder': ['payment'],
 };
 
 /**
@@ -150,6 +153,9 @@ export const NOTICE_RULES: Record<string, MarketNoticeRules> = {
           'Insurance Contracts Act chapter 5 section 1: the first premium need not be paid earlier than fourteen days, and a later premium a month, after the demand was sent',
         ],
       },
+      // A reminder of an overdue invoice (ADR 0040, punkt 7). Not required by law; the notice of
+      // cancellation that may follow is the insurer-termination, which is.
+      'payment-reminder': { required: false, due: 'promptly', legalBasis: [] },
     },
   },
 };
@@ -545,9 +551,25 @@ export class CommunicationsService {
    * Repeats give nothing new.
    */
   async handleBillingEvent(e: SourceEvent & { invoiceId: string }): Promise<Notice | null> {
-    if (e.type !== 'invoice.issued' || !this.d.invoices) return null;
+    if ((e.type !== 'invoice.issued' && e.type !== 'invoice.overdue') || !this.d.invoices) return null;
     const i = await this.d.invoices.invoice(e.invoiceId);
     if (!i) throw new Error(`The invoice ${e.invoiceId} of event ${e.id} does not exist`);
+    if (e.type === 'invoice.overdue') {
+      // What is still open, as the event says it: the invoice may be paid in part.
+      return this.make(e, {
+        type: 'payment-reminder',
+        market: i.market,
+        recipientPartyId: i.partyId,
+        invoiceId: i.id,
+        content: {
+          invoiceId: i.id,
+          invoiceNo: i.number,
+          dueDate: i.dueDate,
+          open: { amount: Number(e.data.open), currency: i.currency },
+          reference: { ...i.reference },
+        },
+      });
+    }
     return this.make(e, {
       type: 'invoice',
       market: i.market,

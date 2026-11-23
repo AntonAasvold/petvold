@@ -197,6 +197,13 @@ Punkt 3 och 5 nämnde bara lagens regel för den första premien. FAL 5 kap. 1 �
 
 Punkt 6 säger att en betalning fördelas på den äldsta förfallna skulden först. En inbetalning med en fakturas referens går nu **först till den fakturan**, och bara det som blir över till den äldsta förfallna skulden (PR #145). Annars kunde en kund som betalat en faktura med rätt OCR se den som obetald, medan pengarna gått till en äldre faktura. Med två obetalda fakturor och en betalning utan referens som en person kopplar till kontot gäller fortfarande den äldsta först.
 
+## Förtydligande 2026-11-23, steg 4
+
+Punkt 7 byggdes så här (PR #149):
+- **Uppsägningen registreras när den skickas**, med verkan fjorton dagar senare, som policymodulen redan gjorde för skälet `unpaid-premium`. Betalas premien före den dagen återkallar `billing` uppsägningen. Det ger samma resultat som att vänta med avslutet, men kunden och bolagets system ser uppsägningen och dess dag direkt.
+- **Alla policyer på fakturan** sägs upp. En delbetald faktura fördelas inte på policyerna.
+- **Dagarna kommer från marknadens regler** (7 och 21 dagar efter förfallodagen i Sverige). Inställningar per produkt eller installation, och påminnelseavgift, kommer senare.
+
 ## Källor
 
 - Försäkringsavtalslagen (2005:104), 5 kap. 1, 2 och 6 §§. riksdagen.se

@@ -179,6 +179,34 @@ export function billingStoreSuite(name: string, make: () => Promise<{ store: Bil
       assert.deepEqual((await store.receipts({ accountId: 'bac_1' })).map((r) => r.receipt.paymentId), ['pay_1']);
       assert.equal((await store.ledger('bac_1')).received, receipt(1).amount);
     });
+
+    test('dunning steps are added in order, once each, with their events', async () => {
+      const { store } = await make();
+      await store.addPlan(payer(), planRecord());
+      const inv = await store.addInvoice('SE', 2026, (no) => invoiceOf('inv_a', no, planRecord()), () => []);
+      assert.deepEqual((await store.dunning([inv.id, 'inv_x'])).get('inv_x'), []);
+      const overdue = { id: 'bev_overdue', type: 'invoice.overdue' as const, invoiceId: inv.id, market: 'SE', occurredAt: '2026-12-12T04:00:00.000Z', data: { reminderNo: 1 } };
+      await store.addDunningStep(inv.id, 1, { step: 'reminded', on: '2026-12-12', at: '2026-12-12T04:00:00.000Z', by: 'scheduler' }, [overdue]);
+      await assert.rejects(store.addDunningStep(inv.id, 1, { step: 'reminded', on: '2026-12-12', at: '2026-12-12T04:00:00.000Z', by: 'scheduler' }, []), (e) => e instanceof InvoiceConflictError);
+      await assert.rejects(store.addDunningStep(inv.id, 3, { step: 'reminded', on: '2026-12-12', at: '2026-12-12T04:00:00.000Z', by: 'scheduler' }, []), (e) => e instanceof InvoiceConflictError, 'no gaps');
+      const noticed = {
+        step: 'cancellation-noticed' as const,
+        on: '2026-12-26',
+        at: '2026-12-26T04:00:00.000Z',
+        by: 'scheduler',
+        cancellations: [{ policyId: 'pol_1', transactionId: 'ptx_9', effectiveDate: '2027-01-09' }],
+        skipped: [{ policyId: 'pol_2', reason: 'Already cancelled' }],
+      };
+      await store.addDunningStep(inv.id, 2, noticed, []);
+      await store.addDunningStep(inv.id, 3, { step: 'cancellation-void-failed', on: '2027-01-02', at: '2027-01-02T10:00:00.000Z', by: 'billing', policyId: 'pol_1', transactionId: 'ptx_9', reason: 'Not the latest' }, []);
+      const steps = (await store.dunning([inv.id])).get(inv.id)!;
+      assert.deepEqual(steps, [
+        { step: 'reminded', on: '2026-12-12', at: '2026-12-12T04:00:00.000Z', by: 'scheduler' },
+        noticed,
+        { step: 'cancellation-void-failed', on: '2027-01-02', at: '2027-01-02T10:00:00.000Z', by: 'billing', policyId: 'pol_1', transactionId: 'ptx_9', reason: 'Not the latest' },
+      ]);
+      assert.deepEqual((await store.pendingEvents(50)).filter((e) => e.type === 'invoice.overdue').map((e) => e.id), ['bev_overdue']);
+    });
   });
 }
 

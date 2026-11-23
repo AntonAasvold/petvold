@@ -4,7 +4,7 @@
  * plans never change.
  */
 import type pg from 'pg';
-import { InvoiceConflictError, MatchConflictError, type AccountLedger, type Allocation, type BillingEvent, type BillingStore, type CreditNote, type Invoice, type InvoiceFilter, type PayerAccount, type PaymentMatch, type PaymentReceipt, type PlanRecord } from './index.ts';
+import { InvoiceConflictError, MatchConflictError, type AccountLedger, type Allocation, type BillingEvent, type DunningStep, type BillingStore, type CreditNote, type Invoice, type InvoiceFilter, type PayerAccount, type PaymentMatch, type PaymentReceipt, type PlanRecord } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -462,6 +462,55 @@ export class PostgresBillingStore implements BillingStore {
       [filter.accountId ?? null],
     );
     return r.rows.map(allocation);
+  }
+
+  async dunning(invoiceIds: string[]): Promise<Map<string, DunningStep[]>> {
+    const out = new Map<string, DunningStep[]>(invoiceIds.map((id) => [id, []]));
+    if (!invoiceIds.length) return out;
+    const r = await this.pool.query(
+      `select invoice_id, step, on_date::text as on_date, at, by_whom, details from billing.invoice_dunning where invoice_id = any($1) order by invoice_id, seq`,
+      [invoiceIds],
+    );
+    for (const x of r.rows) out.get(x.invoice_id)!.push({ step: x.step, on: x.on_date, at: iso(x.at), by: x.by_whom, ...x.details } as DunningStep);
+    return out;
+  }
+
+  async addDunningStep(invoiceId: string, seq: number, step: DunningStep, events: BillingEvent[]): Promise<void> {
+    const { step: kind, on, at, by, ...details } = step;
+    const db = await this.pool.connect();
+    try {
+      await db.query('begin');
+      const prev = await db.query(`select count(*)::int as n from billing.invoice_dunning where invoice_id = $1`, [invoiceId]);
+      if (prev.rows[0].n !== seq - 1) throw new InvoiceConflictError(`Dunning step ${seq} of invoice ${invoiceId} is taken`);
+      await db.query(`insert into billing.invoice_dunning (invoice_id, seq, step, on_date, at, by_whom, details) values ($1, $2, $3, $4, $5, $6, $7)`, [
+        invoiceId,
+        seq,
+        kind,
+        on,
+        at,
+        by,
+        JSON.stringify(details),
+      ]);
+      for (const e of events) {
+        await db.query(`insert into billing.outbox (event_id, type, invoice_id, market, occurred_at, data) values ($1, $2, $3, $4, $5, $6)`, [
+          e.id,
+          e.type,
+          e.invoiceId,
+          e.market,
+          e.occurredAt,
+          JSON.stringify(e.data),
+        ]);
+      }
+      await db.query('commit');
+    } catch (err) {
+      await db.query('rollback');
+      if ((err as { code?: string }).code === UNIQUE_VIOLATION && (err as { constraint?: string }).constraint === 'invoice_dunning_pkey') {
+        throw new InvoiceConflictError(`Dunning step ${seq} of invoice ${invoiceId} is taken`);
+      }
+      throw err;
+    } finally {
+      db.release();
+    }
   }
 
   async pendingEvents(limit: number): Promise<BillingEvent[]> {

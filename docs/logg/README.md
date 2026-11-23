@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-23 | [Pengar, steg 4: obetald premie](2026-11-23-obetald-premie.md) | #149 |
 | 2026-11-23 | [Specen för demotjänsten i repot](2026-11-23-demotjanst-spec.md) | #148 |
 | 2026-11-23 | [Pengar, steg 3c-2: direktreglering till kliniker](2026-11-23-direktreglering.md) | #147 |
 | 2026-11-23 | [Pengar, steg 3c-1: utbetalningar till försäkringstagaren](2026-11-23-utbetalningar.md) | #146 |

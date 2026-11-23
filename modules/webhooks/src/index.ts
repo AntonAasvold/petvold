@@ -50,6 +50,7 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'payout.paid': { source: 'payments', subject: 'payoutId', fields: ['claimId', 'policyId', 'partyId', 'clinicId', 'orderId', 'amount', 'currency'] },
   'payout.failed': { source: 'payments', subject: 'payoutId', fields: ['claimId', 'policyId', 'partyId', 'clinicId', 'orderId', 'amount', 'currency'] },
   'payment.succeeded': { source: 'payments', subject: 'paymentId', fields: ['direction', 'provider', 'amount', 'currency', 'reference', 'bookedOn'] },
+  'invoice.overdue': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'dueDate', 'open', 'currency', 'reference', 'reminderNo'] },
   'invoice.paid': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'total', 'currency', 'paymentId', 'paidOn'] },
   'invoice.issued': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'issueDate', 'dueDate', 'total', 'currency', 'reference', 'policyIds'] },
   // A run failed (ADR 0037), for the insurer's operations to alert on. The error stays inside Petvold.
