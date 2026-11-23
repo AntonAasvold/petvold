@@ -69,7 +69,8 @@ test('a customer link lasts at most 7 days; a revoked or tampered link does not 
   assert.equal(week.link.expiresAt, '2026-11-27T10:00:00.000Z');
   const token = tokenOf(week.url);
   await assert.rejects(s.open(`${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`), code('gone'), 'another signature');
-  await assert.rejects(s.open(token.replace(/^lnk_./, 'lnk_Z')), code('gone'), 'another link id');
+  // Another first character than the random one, so the id always changes.
+  await assert.rejects(s.open(token.replace(/^lnk_./, token[4] === 'Z' ? 'lnk_Y' : 'lnk_Z')), code('gone'), 'another link id');
   await assert.rejects(s.open('doc_1'), code('gone'));
   const revoked = await s.revokeLink(d.id, week.link.id, 'h2');
   assert.equal(revoked.revokedBy, 'h2');
