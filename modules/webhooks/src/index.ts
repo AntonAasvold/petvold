@@ -44,7 +44,7 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'notice.document_made': { source: 'communications', subject: 'noticeId', fields: ['noticeType', 'documentId', 'sha256'] },
   'notice.delivered': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel', 'sentAt', 'documentId', 'late'] },
   'notice.failed': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel'] },
-  'invoice.credited': { source: 'billing', subject: 'invoiceId', fields: ['creditNoteId', 'creditNoteNo', 'accountId', 'partyId', 'total', 'currency', 'reason'] },
+  'invoice.credited': { source: 'billing', subject: 'invoiceId', fields: ['creditNoteId', 'creditNoteNo', 'accountId', 'partyId', 'total', 'currency', 'reason', 'kind'] },
   // A payment into the insurer's account (ADR 0017). The payer's details stay inside Petvold.
   // A claim's payout reached the payee, or could not (ADR 0040). Never the account number.
   'payout.paid': { source: 'payments', subject: 'payoutId', fields: ['purpose', 'claimId', 'policyId', 'partyId', 'clinicId', 'orderId', 'amount', 'currency'] },

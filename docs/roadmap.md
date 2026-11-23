@@ -195,9 +195,9 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
       - [x] 3c-1: till försäkringstagaren, med betaluppgifter, spärr för nya uppgifter och frisläppning
       - [x] 3c-2: direktreglering till kliniker med avtal
   - [x] Obetald premie: påminnelse, uppsägning och avslut
-  - [ ] Tillgodohavanden, återbetalningar och kreditnotor med attest:
+  - [x] Tillgodohavanden, återbetalningar och kreditnotor med attest:
     - [x] 5a: tillgodohavanden på nästa faktura, och återbetalning som utbetalning
-    - [ ] 5b: kreditnotor och avskrivningar som en person gör, med attest över beloppsgränsen
+    - [x] 5b: kreditnotor och avskrivningar som en person gör, med attest över beloppsgränsen
   - [ ] `accounting`: verifikationer, kontoplan, perioder och dagsavslut
   - [ ] Betaltjänster: bankfiler (ISO 20022), Stripe eller Surfboard (kort och Swish), Autogiro och SEPA, och Swish direkt
   - [ ] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav

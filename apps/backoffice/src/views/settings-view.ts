@@ -56,7 +56,7 @@ export class SettingsView extends LitElement {
   /** Roles: the draft being edited. */
   @state() private draftRoles: RoleDefinitions = {};
   @state() private limitRole = '';
-  @state() private limitKind: 'decisionLimits' | 'approvalLimits' = 'decisionLimits';
+  @state() private limitKind: 'decisionLimits' | 'approvalLimits' | 'creditLimits' = 'decisionLimits';
   @state() private limitCurrency = 'SEK';
   @state() private limitAmount = '';
   /** Retention: rows being edited. */
@@ -188,6 +188,7 @@ export class SettingsView extends LitElement {
       { key: 'binds', header: msg('Bound to', { id: 'settings.binds' }), value: ([, d]) => d.bindsTo ?? '–' },
       { key: 'decide', header: msg('Decides alone up to', { id: 'settings.decisionLimits' }), value: ([, d]) => (d.permissions.includes('claims:decide') ? limits(d.decisionLimits) : '–') },
       { key: 'approve', header: msg('Approves up to', { id: 'settings.approvalLimits' }), value: ([, d]) => (d.permissions.includes('claims:approve') ? limits(d.approvalLimits) : '–') },
+      { key: 'credit', header: msg('Credits up to', { id: 'settings.creditLimits' }), value: ([, d]) => (d.permissions.includes('billing:credit') ? limits(d.creditLimits) : '–') },
       { key: 'permissions', header: msg('Permissions', { id: 'settings.permissions' }), value: ([, d]) => d.permissions.join(', ') },
     ];
     return html`
@@ -200,9 +201,10 @@ export class SettingsView extends LitElement {
                 <wa-select label=${msg('Role', { id: 'settings.role' })} value=${this.limitRole} @change=${(e: Event) => (this.limitRole = (e.target as HTMLSelectElement).value)}>
                   ${roles.map(([r]) => html`<wa-option value=${r}>${r}</wa-option>`)}
                 </wa-select>
-                <wa-select label=${msg('Limit', { id: 'settings.limit' })} value=${this.limitKind} @change=${(e: Event) => (this.limitKind = (e.target as HTMLSelectElement).value as 'decisionLimits' | 'approvalLimits')}>
+                <wa-select label=${msg('Limit', { id: 'settings.limit' })} value=${this.limitKind} @change=${(e: Event) => (this.limitKind = (e.target as HTMLSelectElement).value as 'decisionLimits' | 'approvalLimits' | 'creditLimits')}>
                   <wa-option value="decisionLimits">${msg('Decides alone up to', { id: 'settings.decisionLimits' })}</wa-option>
                   <wa-option value="approvalLimits">${msg('Approves up to', { id: 'settings.approvalLimits' })}</wa-option>
+                  <wa-option value="creditLimits">${msg('Credits up to', { id: 'settings.creditLimits' })}</wa-option>
                 </wa-select>
                 <wa-select label=${msg('Currency', { id: 'settings.currency' })} value=${this.limitCurrency} @change=${(e: Event) => (this.limitCurrency = (e.target as HTMLSelectElement).value)}>
                   ${CURRENCIES.map((c) => html`<wa-option value=${c}>${c}</wa-option>`)}

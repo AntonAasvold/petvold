@@ -28,7 +28,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 
 - **`roles`** är de roller i token som installationen känner till. Okända roller står i `unknownRoles` och ger inget.
 - **`scope`** visar marknaderna och, för bundna roller, kliniken (`clinicId`) eller försäkringarna (`policyIds`).
-- **`decisionLimits` och `approvalLimits`** finns bara med `claims:decide` respektive `claims:approve`. `null` betyder ingen gräns, och en valuta som saknas har gränsen 0.
+- **`decisionLimits`, `approvalLimits` och `creditLimits`** finns bara med `claims:decide`, `claims:approve` respektive `billing:credit`. `null` betyder ingen gräns, och en valuta som saknas har gränsen 0.
 - Svaret följer rollinställningen som gäller, så en ändring syns vid nästa anrop.
 
 ## Rättigheter
@@ -74,11 +74,12 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `documents:read` | Läsa dokument och öppna dem med en länk som gäller i 15 minuter. Dessutom krävs rätten till det dokumentet hör till (ADR 0038). | `GET /v1/documents`, `GET /v1/documents/{id}`, `GET` och `POST …/links` |
 | `documents:share` | Ge kunden en länk som gäller upp till 7 dagar, och spärra en länk | `POST …/links` med `audience: customer`, `POST …/links/{linkId}/revocations` |
 | `claims:request-information` | Begära komplettering av kunden eller kliniken, och återkalla en begäran (ADR 0036). Svaret registreras med `claims:register`. | `POST /v1/claims/{id}/information-requests`, `POST …/information-requests/{requestId}/cancellations` |
-| `billing:read` | Läsa betalarkonton, premieplaner och fakturor (ADR 0040) | `GET /v1/payer-accounts`, `.../{id}`, `GET /v1/premium-plans`, `GET /v1/invoices`, `.../{id}`, `GET /v1/credit-notes`, `.../{id}`, `GET /v1/received-payments`, `.../{id}`, `GET /v1/refunds` |
+| `billing:read` | Läsa betalarkonton, premieplaner och fakturor (ADR 0040) | `GET /v1/payer-accounts`, `.../{id}`, `GET /v1/premium-plans`, `GET /v1/invoices`, `.../{id}`, `GET /v1/credit-notes`, `.../{id}`, `GET /v1/received-payments`, `.../{id}`, `GET /v1/refunds`, `GET /v1/credit-proposals`, `.../{id}` |
 | `payments:read` | Läsa inbetalningar, utbetalningar och maskade betaluppgifter (ADR 0017, 0040) | `GET /v1/payments`, `.../{id}`, `GET /v1/payouts`, `.../{id}`, `GET /v1/payees/{partyId}/accounts`, `GET /v1/clinics/{clinicId}/accounts`, `GET /v1/clinic-agreements` |
 | `payments:payee-write` | Ge en parts betaluppgifter. Det sparas vem som gav dem (ADR 0040) | `POST /v1/payees/{partyId}/accounts`, `POST /v1/clinics/{clinicId}/accounts` |
 | `payments:agreements` | Göra och avsluta avtal om direktreglering med kliniker (ADR 0040) | `POST /v1/clinic-agreements`, `.../{id}/endings` |
 | `payments:release` | Släppa en utbetalning som spärrats för att betaluppgifterna är nya, men inte den man själv gav uppgifterna till | `POST /v1/payouts/{id}/releases` |
+| `billing:credit` | Göra kreditnotor och avskrivningar ensam upp till rollens `creditLimits`, föreslå dem över gränsen, och attestera andras förslag inom gränsen (ADR 0040) | `POST /v1/invoices/{id}/credit-notes`, `POST /v1/credit-proposals/{id}/approvals`, `.../returns` |
 | `billing:write` | Koppla en inbetalning utan användbar referens till ett betalarkonto eller en faktura, och betala tillbaka ett tillgodohavande (ADR 0040) | `POST /v1/received-payments/{id}/matches`, `POST /v1/payer-accounts/{id}/refunds` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
 | `limits:read` | Se förbrukat och återstående försäkringsbelopp | `GET /v1/policies/{p}/limits` |
@@ -109,7 +110,8 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `catalog-publisher` | `catalog:read`, `catalog:publish` | – | Granskar och publicerar produktversioner |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview`, `catalog:read`, `animals:lookup` | klinik | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | – | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
-| `billing-clerk` | `billing:read`, `billing:write`, `payments:read`, `payments:payee-write`, `payments:release`, `payments:agreements`, `policies:read`, `parties:read`, `catalog:read` | – | Följer premierna, till exempel ekonomiavdelningen (ADR 0040) |
+| `billing-clerk` | `billing:read`, `billing:write`, `billing:credit`, `payments:read`, `payments:payee-write`, `payments:release`, `payments:agreements`, `policies:read`, `parties:read`, `catalog:read` | – | Följer premierna, till exempel ekonomiavdelningen (ADR 0040). Krediterar och skriver av ensam upp till 1 000 kr eller 100 EUR (`creditLimits`). |
+| `billing-manager` | `billing:read`, `billing:credit`, `payments:read`, `policies:read`, `parties:read` | – | Attesterar större kreditnotor och avskrivningar, till exempel ekonomichefen. Upp till 50 000 kr eller 5 000 EUR. |
 | `customer-channel` | `claims:read`, `claims:request-review`, `catalog:read`, `policies:read`, `policies:quote`, `notices:read`, `billing:read` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
 
 ## Omfång
@@ -176,6 +178,7 @@ roles: {
 
 - `decisionLimits` gäller rättigheten `claims:decide`. En ersättning över gränsen blir ett beslutsförslag som någon annan måste attestera.
 - `approvalLimits` gäller `claims:approve`. Över gränsen nekas attesten (`403`).
+- `creditLimits` gäller `billing:credit` (ADR 0040, punkt 10). En kreditnota eller avskrivning över gränsen blir ett förslag som någon annan med `billing:credit` och tillräcklig gräns attesterar. Samma gräns gäller för att attestera.
 - **Flera roller.** Bara roller med rättigheten räknas, och den högsta gränsen gäller. En sådan roll utan gränser betyder ingen gräns.
 - **Valuta utan gräns.** En valuta som saknas i en angiven gräns har gränsen 0, så att allt i den valutan kräver attest. Lägg därför till installationens alla valutor.
 - **Fyra ögon.** Den som föreslog får aldrig attestera sitt eget förslag (`403`). Det gäller oavsett roller, och databasen spärrar det också.

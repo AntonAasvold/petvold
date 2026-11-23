@@ -170,6 +170,26 @@ POST /v1/received-payments/pay_7f3…/matches
 { "invoiceId": "inv_2c1…", "note": "Betalaren angav policynumret i meddelandet." }
 ```
 
+## Kreditnotor och avskrivningar
+
+En handläggare kan ta ner en faktura med en **kreditnota**, eller ge upp det som är obetalt med en **avskrivning** (ADR 0040, punkt 5 och 10). Båda blir en kreditnota med nummer ur fakturornas serie, fördelad på fakturans rader efter det som är kvar på varje rad, och med skälet sparat. En avskrivning har `kind: write-off`, så att bokföringen kan skilja den från en vanlig kreditering.
+
+- **En kreditnota** tar högst det som är kvar efter tidigare kreditnotor, också på en betald faktura. Det betalda som fakturan då inte behöver blir ett tillgodohavande.
+- **En avskrivning** tar högst det som är obetalt.
+- **Inom gränsen** görs den direkt (`201`). Gränsen är rollens `creditLimits` per valuta ([Behörighet](behorighet.md#beloppsgränser-och-fyra-ögon)), för `billing-clerk` 1 000 kr.
+- **Över gränsen** blir den ett förslag (`202`) i kön `GET /v1/credit-proposals?status=proposed`. Någon annan med tillräcklig gräns attesterar den, till exempel `billing-manager`, eller skickar tillbaka den med skäl. Den som föreslog får aldrig attestera själv. Kreditnotan görs vid attesten, om fakturan fortfarande tillåter det.
+- `invoice.credited` säger `reason: manual` eller `write-off`, och `kind`.
+
+```
+POST /v1/invoices/inv_…/credit-notes
+{ "kind": "write-off", "amount": 150000, "reason": "Kunden har avlidit, och dödsboet saknar tillgångar." }
+
+→ 202 { "id": "cpr_…", "status": "proposed", … }
+
+POST /v1/credit-proposals/cpr_…/approvals   (en annan person, med billing:credit)
+→ 201 { "id": "crn_…", "kind": "write-off", "number": "SE-2026-000123", … }
+```
+
 ## Tillgodohavanden
 
 Ett tillgodohavande är det kunden betalat som ingen faktura behöver: en överbetalning, eller en betald faktura som en kreditnota tagit ner efter en ändring, ett avslut eller en ånger (ADR 0040, punkt 6). Körningen `billing.credits` går varje morgon klockan 04:30, mellan faktureringen och påminnelserna ([Körningar](korningar.md)):

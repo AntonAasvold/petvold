@@ -26,6 +26,7 @@ export const DEMO_TOKENS: Record<string, Principal> = {
   'dev-documents': { subject: 'document-service', roles: ['document-service'], markets: ['SE'] },
   'dev-communications': { subject: 'communications@example.test', roles: ['communications-manager'], markets: ['SE'] },
   'dev-billing': { subject: 'ekonomi@example.test', roles: ['billing-clerk'], markets: ['SE'] },
+  'dev-billing-manager': { subject: 'ekonomichef@example.test', roles: ['billing-manager'], markets: ['SE'] },
   'dev-integration': { subject: 'integration@example.test', roles: ['integration-admin'], markets: '*' },
   'dev-operations': { subject: 'drift@example.test', roles: ['operations'], markets: '*' },
   'dev-operations-2': { subject: 'drift2@example.test', roles: ['operations'], markets: '*' },

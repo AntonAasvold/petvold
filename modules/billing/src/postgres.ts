@@ -4,7 +4,7 @@
  * plans never change.
  */
 import type pg from 'pg';
-import { InvoiceConflictError, MatchConflictError, type AccountLedger, type Allocation, type BillingEvent, type CreditApplication, type DunningStep, type Refund, type BillingStore, type CreditNote, type Invoice, type InvoiceFilter, type PayerAccount, type PaymentMatch, type PaymentReceipt, type PlanRecord } from './index.ts';
+import { InvoiceConflictError, MatchConflictError, type AccountLedger, type Allocation, type BillingEvent, type CreditApplication, type CreditProposal, type DunningStep, type Refund, type BillingStore, type CreditNote, type Invoice, type InvoiceFilter, type PayerAccount, type PaymentMatch, type PaymentReceipt, type PlanRecord } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -13,7 +13,7 @@ const iso = (t: unknown) => (t instanceof Date ? t.toISOString() : new Date(Stri
 const ACCOUNT = 'account_id, party_id, market, currency, payment_method, created_at';
 const PLAN = `plan_id, account_id, policy_id, term_no, market, product_version, source_event_id, source_event_type, source_occurred_at, input, plan, invoice_lead_days, replaces_plan_id, adjustment, created_at`;
 
-const CREDIT = `c.credit_note_id, c.credit_note_no, c.invoice_id, c.account_id, c.party_id, c.market, c.currency, c.issue_date::text as issue_date, c.total,
+const CREDIT = `c.credit_note_id, c.credit_note_no, c.kind, c.reason, c.invoice_id, c.account_id, c.party_id, c.market, c.currency, c.issue_date::text as issue_date, c.total,
   c.source_event_id, c.source_event_type, c.created_at,
   (select json_agg(json_build_object('planId', l.plan_id, 'policyId', l.policy_id, 'seq', l.seq, 'amount', l.amount) order by l.line_no)
    from billing.credit_note_line l where l.credit_note_id = c.credit_note_id) as lines`;
@@ -22,6 +22,8 @@ function creditNote(r: Record<string, any>): CreditNote {
   return {
     id: r.credit_note_id,
     number: r.credit_note_no,
+    kind: r.kind,
+    ...(r.reason ? { reason: r.reason } : {}),
     invoiceId: r.invoice_id,
     accountId: r.account_id,
     partyId: r.party_id,
@@ -222,9 +224,9 @@ export class PostgresBillingStore implements BillingStore {
         const r = await db.query(`update billing.invoice_number_series set last_no = last_no + 1 where market = $1 and year = $2 returning last_no`, [input.market, input.year]);
         const note = numbered(c, Number(r.rows[0].last_no));
         await db.query(
-          `insert into billing.credit_note (credit_note_id, credit_note_no, invoice_id, account_id, party_id, market, currency, issue_date, total, source_event_id, source_event_type, created_at)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-          [note.id, note.number, note.invoiceId, note.accountId, note.partyId, note.market, note.currency, note.issueDate, note.total, note.source.eventId, note.source.eventType, note.createdAt],
+          `insert into billing.credit_note (credit_note_id, credit_note_no, invoice_id, account_id, party_id, market, currency, issue_date, total, source_event_id, source_event_type, created_at, kind, reason)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          [note.id, note.number, note.invoiceId, note.accountId, note.partyId, note.market, note.currency, note.issueDate, note.total, note.source.eventId, note.source.eventType, note.createdAt, note.kind, note.reason ?? null],
         );
         for (const [n, l] of note.lines.entries()) {
           await db.query(`insert into billing.credit_note_line (credit_note_id, line_no, plan_id, policy_id, seq, amount) values ($1, $2, $3, $4, $5, $6)`, [note.id, n + 1, l.planId, l.policyId, l.seq, l.amount]);
@@ -537,6 +539,60 @@ export class PostgresBillingStore implements BillingStore {
       ...(x.note ? { note: x.note } : {}),
       at: iso(x.at),
       by: x.by_whom,
+    }));
+  }
+
+  async addCreditProposal(p: CreditProposal): Promise<void> {
+    await this.pool.query(
+      `insert into billing.credit_proposal (proposal_id, invoice_id, account_id, market, currency, kind, amount, reason, proposed_by, proposed_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [p.id, p.invoiceId, p.accountId, p.market, p.currency, p.kind, p.amount, p.reason, p.proposedBy, p.proposedAt],
+    );
+  }
+
+  async decideCreditProposal(id: string, d: Pick<CreditProposal, 'status' | 'decidedBy' | 'decidedAt' | 'creditNoteId' | 'returnReason'>): Promise<void> {
+    try {
+      await this.pool.query(
+        `insert into billing.credit_proposal_decision (proposal_id, outcome, decided_by, decided_at, credit_note_id, return_reason) values ($1, $2, $3, $4, $5, $6)`,
+        [id, d.status, d.decidedBy, d.decidedAt, d.creditNoteId ?? null, d.returnReason ?? null],
+      );
+    } catch (err) {
+      if ((err as { code?: string }).code === UNIQUE_VIOLATION) throw new InvoiceConflictError(`Proposal ${id} is decided already`);
+      throw err;
+    }
+  }
+
+  async creditProposal(id: string): Promise<CreditProposal | null> {
+    return (await this.proposalRows(`p.proposal_id = $1`, [id]))[0] ?? null;
+  }
+
+  async creditProposals(filter: { status?: CreditProposal['status']; invoiceId?: string; market?: string }): Promise<CreditProposal[]> {
+    const rows = await this.proposalRows(`($1::text is null or p.invoice_id = $1) and ($2::text is null or p.market = $2)`, [filter.invoiceId ?? null, filter.market ?? null]);
+    return filter.status ? rows.filter((p) => p.status === filter.status) : rows;
+  }
+
+  private async proposalRows(where: string, params: unknown[]): Promise<CreditProposal[]> {
+    const r = await this.pool.query(
+      `select p.proposal_id, p.invoice_id, p.account_id, p.market, p.currency, p.kind, p.amount, p.reason, p.proposed_by, p.proposed_at,
+              d.outcome, d.decided_by, d.decided_at, d.credit_note_id, d.return_reason
+       from billing.credit_proposal p left join billing.credit_proposal_decision d using (proposal_id)
+       where ${where} order by p.proposed_at, p.proposal_id collate "C"`,
+      params,
+    );
+    return r.rows.map((x) => ({
+      id: x.proposal_id,
+      invoiceId: x.invoice_id,
+      accountId: x.account_id,
+      market: x.market,
+      currency: x.currency,
+      kind: x.kind,
+      amount: Number(x.amount),
+      reason: x.reason,
+      proposedBy: x.proposed_by,
+      proposedAt: iso(x.proposed_at),
+      status: x.outcome ?? 'proposed',
+      ...(x.decided_by ? { decidedBy: x.decided_by, decidedAt: iso(x.decided_at) } : {}),
+      ...(x.credit_note_id ? { creditNoteId: x.credit_note_id } : {}),
+      ...(x.return_reason ? { returnReason: x.return_reason } : {}),
     }));
   }
 

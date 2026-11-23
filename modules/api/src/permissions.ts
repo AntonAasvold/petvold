@@ -103,8 +103,13 @@ export const PERMISSIONS = [
   'documents:share',
   /** Read payer accounts and premium plans (ADR 0040). */
   'billing:read',
-  /** Match a payment that came in without a usable reference to a payer account (ADR 0040). */
+  /** Match a payment that came in without a usable reference to a payer account, and pay back credit (ADR 0040). */
   'billing:write',
+  /**
+   * Make credit notes and write-offs alone up to the role's creditLimits, propose
+   * them above, and approve others' proposals within the limits (ADR 0040, punkt 10).
+   */
+  'billing:credit',
   /** Read payments into and out of the insurer's accounts, payouts and payee details masked (ADR 0017, 0040). */
   'payments:read',
   /** Give a payee's account details (ADR 0040, punkt 8). Logged with who gave them. */
@@ -148,6 +153,11 @@ export interface RoleDefinition {
   decisionLimits?: Readonly<Record<string, number>>;
   /** Highest payout per currency the role may approve (claims:approve). Omitted: no limit. */
   approvalLimits?: Readonly<Record<string, number>>;
+  /**
+   * Highest credit note or write-off per currency the role may make alone, or
+   * approve for someone else (billing:credit, ADR 0040 punkt 10). Omitted: no limit.
+   */
+  creditLimits?: Readonly<Record<string, number>>;
 }
 
 /** Role name -> definition. Configured per installation. */
@@ -219,7 +229,13 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** The insurer's customer portal or app, acting for a signed-in customer. */
   'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read', 'documents:read', 'documents:share', 'billing:read'], bindsTo: 'policies' },
   /** Follows the premiums: payer accounts, premium plans and later invoices and payments (ADR 0040), e.g. the finance team. */
-  'billing-clerk': { permissions: ['billing:read', 'billing:write', 'payments:read', 'payments:payee-write', 'payments:release', 'payments:agreements', 'policies:read', 'parties:read', 'catalog:read'] },
+  'billing-clerk': {
+    permissions: ['billing:read', 'billing:write', 'billing:credit', 'payments:read', 'payments:payee-write', 'payments:release', 'payments:agreements', 'policies:read', 'parties:read', 'catalog:read'],
+    // SEK 1,000 and EUR 100 alone; above that, a proposal someone with a higher limit approves.
+    creditLimits: { SEK: 100_000, EUR: 10_000 },
+  },
+  /** Approves larger credit notes and write-offs, e.g. the head of finance (ADR 0040, punkt 10). */
+  'billing-manager': { permissions: ['billing:read', 'billing:credit', 'payments:read', 'policies:read', 'parties:read'], creditLimits: { SEK: 5_000_000, EUR: 500_000 } },
 };
 
 export function isPermission(value: unknown): value is Permission {
@@ -236,7 +252,7 @@ export function assertRoleDefinitions(roles: RoleDefinitions): void {
     if (def.bindsTo !== undefined && def.bindsTo !== 'clinic' && def.bindsTo !== 'policies') {
       throw new Error(`Role '${role}' has an unknown binding '${String(def.bindsTo)}'`);
     }
-    for (const field of ['decisionLimits', 'approvalLimits'] as const) {
+    for (const field of ['decisionLimits', 'approvalLimits', 'creditLimits'] as const) {
       for (const [currency, amount] of Object.entries(def[field] ?? {})) {
         if (!/^[A-Z]{3}$/.test(currency)) throw new Error(`Role '${role}' has ${field} for an invalid currency '${currency}'`);
         if (!Number.isSafeInteger(amount) || amount < 0) {
@@ -262,9 +278,9 @@ export function permissionsOf(roleNames: readonly string[], roles: RoleDefinitio
  * no limit: some role with the permission has none. Callers without the
  * permission never reach the operation, so their limits do not matter.
  */
-export function amountLimitsOf(roleNames: readonly string[], roles: RoleDefinitions, kind: 'decide' | 'approve'): Record<string, number> | null {
-  const permission: Permission = kind === 'decide' ? 'claims:decide' : 'claims:approve';
-  const field = kind === 'decide' ? 'decisionLimits' : 'approvalLimits';
+export function amountLimitsOf(roleNames: readonly string[], roles: RoleDefinitions, kind: 'decide' | 'approve' | 'credit'): Record<string, number> | null {
+  const permission: Permission = kind === 'decide' ? 'claims:decide' : kind === 'approve' ? 'claims:approve' : 'billing:credit';
+  const field = kind === 'decide' ? 'decisionLimits' : kind === 'approve' ? 'approvalLimits' : 'creditLimits';
   const defs = known(roleNames, roles).filter((d) => d.permissions.includes(permission));
   if (defs.length === 0 || defs.some((d) => !d[field])) return defs.length === 0 ? {} : null;
   const out: Record<string, number> = {};

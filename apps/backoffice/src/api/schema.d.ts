@@ -2581,6 +2581,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/invoices/{invoiceId}/credit-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a credit note or a write-off on an invoice
+         * @description Requires the permission `billing:credit` (ADR 0040, punkt 5 and 10). Within the
+         *     caller's `creditLimits` the credit note is made at once (201). Above it, it is a
+         *     proposal (202) that someone else with a high enough limit approves or returns.
+         *     A credit note on a paid invoice turns the paid part it no longer needs into
+         *     credit. More than the invoice allows gives 409.
+         */
+        post: operations["creditInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/credit-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Proposed credit notes and write-offs, oldest first
+         * @description Requires the permission `billing:read`. `status=proposed` is the queue to approve.
+         */
+        get: operations["listCreditProposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/credit-proposals/{proposalId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A proposed credit note or write-off
+         * @description Requires the permission `billing:read`. Outside the caller's scope it answers 404.
+         */
+        get: operations["getCreditProposal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/credit-proposals/{proposalId}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a proposed credit note or write-off
+         * @description Requires the permission `billing:credit` and a `creditLimits` that covers the
+         *     amount (ADR 0040, punkt 10). Not by the one who proposed it (403). The
+         *     credit note is made if the invoice still allows it (409 otherwise).
+         */
+        post: operations["approveCreditProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/credit-proposals/{proposalId}/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Return a proposed credit note or write-off
+         * @description Requires the permission `billing:credit`. With a reason; nothing is credited.
+         */
+        post: operations["returnCreditProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/credit-notes": {
         parameters: {
             query?: never;
@@ -4064,6 +4170,7 @@ export interface components {
             bindsTo?: "clinic" | "policies";
             decisionLimits?: components["schemas"]["AmountLimits"];
             approvalLimits?: components["schemas"]["AmountLimits"];
+            creditLimits?: components["schemas"]["AmountLimits"];
         };
         Me: {
             subject: string;
@@ -4089,6 +4196,10 @@ export interface components {
             };
             /** @description Only with `claims:approve`. As `decisionLimits`, for approving proposals. */
             approvalLimits?: null | {
+                [key: string]: number;
+            };
+            /** @description Only with `billing:credit`. The highest credit note or write-off per currency the caller may make alone or approve (ADR 0040). `null`: no limit. */
+            creditLimits?: null | {
                 [key: string]: number;
             };
         };
@@ -4832,6 +4943,42 @@ export interface components {
             providerRef?: string;
             note?: string;
         };
+        CreditInvoiceRequest: {
+            /**
+             * @description credit: at most what is left after earlier credit notes, also of a paid invoice. write-off: at most what is unpaid.
+             * @enum {string}
+             */
+            kind: "credit" | "write-off";
+            /** @description Minor units. */
+            amount: number;
+            reason: string;
+        };
+        /** @description A credit note or write-off above the proposer's limit, for someone else to approve or return (ADR 0040). */
+        CreditProposal: {
+            id: string;
+            invoiceId: string;
+            accountId: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            /** @enum {string} */
+            kind: "credit" | "write-off";
+            amount: number;
+            reason: string;
+            proposedBy: string;
+            /** Format: date-time */
+            proposedAt: string;
+            /** @enum {string} */
+            status: "proposed" | "approved" | "returned";
+            decidedBy?: string;
+            /** Format: date-time */
+            decidedAt?: string;
+            /** @description The credit note an approval made. */
+            creditNoteId?: string;
+            returnReason?: string;
+        };
+        ReturnCreditProposalRequest: {
+            reason: string;
+        };
         /** @description A payer's credit paid back (ADR 0040). Payments pays it out to the payer as a payout with purpose premium-refund. Never changes. */
         Refund: {
             id: string;
@@ -5102,11 +5249,18 @@ export interface components {
             /** @description Why, e.g. the payer named the policy in the message. No more personal data than needed. */
             note?: string;
         };
-        /** @description What is taken off an invoice (ADR 0040). Never changes. */
+        /** @description What is taken off an invoice (ADR 0040), after a policy event or by a person. Never changes. */
         CreditNote: {
             id: string;
             /** @description From the invoice series. */
             number: string;
+            /**
+             * @description credit: less to pay. write-off: an unpaid amount the insurer gives up.
+             * @enum {string}
+             */
+            kind: "credit" | "write-off";
+            /** @description Why */
+            reason?: string;
             invoiceId: string;
             accountId: string;
             partyId: string;
@@ -10437,6 +10591,174 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    creditInvoice: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                invoiceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditInvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description The credit note, made */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditNote"];
+                };
+            };
+            /** @description A proposal above the caller's limit */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditProposal"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listCreditProposals: {
+        parameters: {
+            query?: {
+                status?: "proposed" | "approved" | "returned";
+                invoiceId?: string;
+                market?: components["schemas"]["Market"];
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The proposals */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["CreditProposal"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getCreditProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditProposal"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    approveCreditProposal: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Empty"];
+            };
+        };
+        responses: {
+            /** @description The credit note */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditNote"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    returnCreditProposal: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnCreditProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description The proposal, returned */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditProposal"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
         };
     };
     listCreditNotes: {

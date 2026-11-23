@@ -52,6 +52,7 @@ export interface DemoSummary {
   cancellations: number;
   payments: number;
   payouts: number;
+  writeOffs: number;
 }
 
 /** A mutable clock for the installation, set by the demo day by day. */
@@ -174,7 +175,7 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
   const chance = (p: number) => rnd() < p;
   const between = (lo: number, hi: number) => lo + Math.floor(rnd() * (hi - lo + 1));
   const log = o.log ?? (() => {});
-  const sum: DemoSummary = { days: 0, customers: 0, dogs: 0, policies: 0, applications: 0, claims: 0, decisions: 0, approvals: 0, changes: 0, cancellations: 0, payments: 0, payouts: 0 };
+  const sum: DemoSummary = { days: 0, customers: 0, dogs: 0, policies: 0, applications: 0, claims: 0, decisions: 0, approvals: 0, changes: 0, cancellations: 0, payments: 0, payouts: 0, writeOffs: 0 };
 
   const app = createApp({ ...inst.deps, auth: demoAuthenticator() });
   let key = 0;
@@ -486,6 +487,18 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
         // A few forget the OCR number: they wait among the unmatched payments for a person.
         bank.plan.set(inv.id, { on, amount: inv.total, reference: rnd() < 0.03 ? null : inv.reference.value });
       }
+    }
+    // Invoices never paid: when the cancellation has taken effect, finance writes off what is left.
+    // Above the clerk's limit it is a proposal the head of finance approves (ADR 0040, punkt 10).
+    for (const [id, p] of bank.plan) {
+      if (p.on !== null || bank.paid.has(id)) continue;
+      const inv = await must('GET', `/v1/invoices/${id}`, 'dev-billing');
+      const noticed = inv.dunning.find((x: any) => x.step === 'cancellation-noticed');
+      if (!noticed || inv.open <= 0 || addDays(noticed.on, 20) !== day) continue;
+      const r = await must('POST', `/v1/invoices/${id}/credit-notes`, 'dev-billing', { kind: 'write-off', amount: inv.open, reason: 'Unpaid after the cancellation; not worth collecting.' });
+      if (r.status === 'proposed') await must('POST', `/v1/credit-proposals/${r.id}/approvals`, 'dev-billing-manager', {});
+      bank.paid.add(id);
+      sum.writeOffs++;
     }
     const today = [...bank.plan.entries()].filter(([id, p]) => p.on === day && !bank.paid.has(id) && p.amount > 0);
     if (today.length > 0) {

@@ -11,13 +11,13 @@ export function toMinorUnits(text: string, currency: string): number | null {
   return Number.isSafeInteger(minor) ? minor : null;
 }
 
-export type RoleDefinitions = Record<string, { permissions: string[]; bindsTo?: 'clinic' | 'policies'; decisionLimits?: Record<string, number>; approvalLimits?: Record<string, number> }>;
+export type RoleDefinitions = Record<string, { permissions: string[]; bindsTo?: 'clinic' | 'policies'; decisionLimits?: Record<string, number>; approvalLimits?: Record<string, number>; creditLimits?: Record<string, number> }>;
 
 /**
  * The roles with one limit changed. null removes the currency; a role that then
  * has no limits of that kind loses the field, which means no limit (ADR 0019).
  */
-export function withLimit(roles: RoleDefinitions, role: string, kind: 'decisionLimits' | 'approvalLimits', currency: string, minor: number | null): RoleDefinitions {
+export function withLimit(roles: RoleDefinitions, role: string, kind: 'decisionLimits' | 'approvalLimits' | 'creditLimits', currency: string, minor: number | null): RoleDefinitions {
   const out = structuredClone(roles);
   const def = out[role];
   if (!def) return out;

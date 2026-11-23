@@ -678,6 +678,7 @@ export const templates: Record<string, string> = {
   'settings.binds': 'Bunden till',
   'settings.decisionLimits': 'Beslutar ensam upp till',
   'settings.approvalLimits': 'Attesterar upp till',
+  'settings.creditLimits': 'Krediterar och skriver av upp till',
   'settings.permissions': 'Rättigheter',
   'settings.noLimit': 'Ingen gräns',
   'settings.changeLimit': 'Ändra en gräns',

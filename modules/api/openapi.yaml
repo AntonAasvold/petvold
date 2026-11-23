@@ -3770,6 +3770,149 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Invoice' }
 
+  /v1/invoices/{invoiceId}/credit-notes:
+    post:
+      tags: [billing]
+      operationId: creditInvoice
+      x-permission: billing:credit
+      summary: Make a credit note or a write-off on an invoice
+      description: |
+        Requires the permission `billing:credit` (ADR 0040, punkt 5 and 10). Within the
+        caller's `creditLimits` the credit note is made at once (201). Above it, it is a
+        proposal (202) that someone else with a high enough limit approves or returns.
+        A credit note on a paid invoice turns the paid part it no longer needs into
+        credit. More than the invoice allows gives 409.
+      parameters:
+        - { name: invoiceId, in: path, required: true, schema: { type: string, pattern: '^inv_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreditInvoiceRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: The credit note, made
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreditNote' }
+        '202':
+          description: A proposal above the caller's limit
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreditProposal' }
+
+  /v1/credit-proposals:
+    get:
+      tags: [billing]
+      operationId: listCreditProposals
+      x-permission: billing:read
+      summary: Proposed credit notes and write-offs, oldest first
+      description: Requires the permission `billing:read`. `status=proposed` is the queue to approve.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [proposed, approved, returned] } }
+        - { name: invoiceId, in: query, schema: { type: string } }
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The proposals
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/CreditProposal' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/credit-proposals/{proposalId}:
+    get:
+      tags: [billing]
+      operationId: getCreditProposal
+      x-permission: billing:read
+      summary: A proposed credit note or write-off
+      description: Requires the permission `billing:read`. Outside the caller's scope it answers 404.
+      parameters:
+        - { name: proposalId, in: path, required: true, schema: { type: string, pattern: '^cpr_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The proposal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreditProposal' }
+
+  /v1/credit-proposals/{proposalId}/approvals:
+    post:
+      tags: [billing]
+      operationId: approveCreditProposal
+      x-permission: billing:credit
+      summary: Approve a proposed credit note or write-off
+      description: |
+        Requires the permission `billing:credit` and a `creditLimits` that covers the
+        amount (ADR 0040, punkt 10). Not by the one who proposed it (403). The
+        credit note is made if the invoice still allows it (409 otherwise).
+      parameters:
+        - { name: proposalId, in: path, required: true, schema: { type: string, pattern: '^cpr_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Empty' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: The credit note
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreditNote' }
+
+  /v1/credit-proposals/{proposalId}/returns:
+    post:
+      tags: [billing]
+      operationId: returnCreditProposal
+      x-permission: billing:credit
+      summary: Return a proposed credit note or write-off
+      description: Requires the permission `billing:credit`. With a reason; nothing is credited.
+      parameters:
+        - { name: proposalId, in: path, required: true, schema: { type: string, pattern: '^cpr_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReturnCreditProposalRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: The proposal, returned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreditProposal' }
+
   /v1/credit-notes:
     get:
       tags: [billing]
@@ -6095,6 +6238,7 @@ components:
         bindsTo: { type: string, enum: [clinic, policies] }
         decisionLimits: { $ref: '#/components/schemas/AmountLimits' }
         approvalLimits: { $ref: '#/components/schemas/AmountLimits' }
+        creditLimits: { $ref: '#/components/schemas/AmountLimits' }
 
     Me:
       type: object
@@ -6134,6 +6278,11 @@ components:
             - { type: object, additionalProperties: { type: integer, minimum: 0 } }
         approvalLimits:
           description: Only with `claims:approve`. As `decisionLimits`, for approving proposals.
+          oneOf:
+            - { type: 'null' }
+            - { type: object, additionalProperties: { type: integer, minimum: 0 } }
+        creditLimits:
+          description: 'Only with `billing:credit`. The highest credit note or write-off per currency the caller may make alone or approve (ADR 0040). `null`: no limit.'
           oneOf:
             - { type: 'null' }
             - { type: object, additionalProperties: { type: integer, minimum: 0 } }
@@ -6989,6 +7138,44 @@ components:
         providerRef: { type: string, description: "The adapter's id for the payment." }
         note: { type: string }
 
+    CreditInvoiceRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, amount, reason]
+      properties:
+        kind: { type: string, enum: [credit, write-off], description: 'credit: at most what is left after earlier credit notes, also of a paid invoice. write-off: at most what is unpaid.' }
+        amount: { type: integer, minimum: 1, description: Minor units. }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    CreditProposal:
+      type: object
+      additionalProperties: false
+      required: [id, invoiceId, accountId, market, currency, kind, amount, reason, proposedBy, proposedAt, status]
+      description: A credit note or write-off above the proposer's limit, for someone else to approve or return (ADR 0040).
+      properties:
+        id: { type: string, pattern: '^cpr_[A-Za-z0-9]+$' }
+        invoiceId: { type: string }
+        accountId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        kind: { type: string, enum: [credit, write-off] }
+        amount: { type: integer, minimum: 1 }
+        reason: { type: string }
+        proposedBy: { type: string }
+        proposedAt: { type: string, format: date-time }
+        status: { type: string, enum: [proposed, approved, returned] }
+        decidedBy: { type: string }
+        decidedAt: { type: string, format: date-time }
+        creditNoteId: { type: string, description: The credit note an approval made. }
+        returnReason: { type: string }
+
+    ReturnCreditProposalRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+
     Refund:
       type: object
       additionalProperties: false
@@ -7258,11 +7445,13 @@ components:
     CreditNote:
       type: object
       additionalProperties: false
-      required: [id, number, invoiceId, accountId, partyId, market, currency, issueDate, lines, total, source, createdAt]
-      description: What is taken off an invoice (ADR 0040). Never changes.
+      required: [id, number, kind, invoiceId, accountId, partyId, market, currency, issueDate, lines, total, source, createdAt]
+      description: What is taken off an invoice (ADR 0040), after a policy event or by a person. Never changes.
       properties:
         id: { type: string, pattern: '^crn_[A-Za-z0-9]+$' }
         number: { type: string, description: From the invoice series. }
+        kind: { type: string, enum: [credit, write-off], description: 'credit: less to pay. write-off: an unpaid amount the insurer gives up.' }
+        reason: { type: string, description: Why, for one a person made. }
         invoiceId: { type: string }
         accountId: { type: string }
         partyId: { type: string }
