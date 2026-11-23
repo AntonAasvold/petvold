@@ -28,6 +28,8 @@ import {
 } from '@petvold/billing-core';
 
 export { PAYMENT_INTERVALS, type PaymentInterval, type PlanInput, type PremiumPlan, type ReferenceType } from '@petvold/billing-core';
+import { accountBalance, allocate, invoiceBalances, type AccountLedger, type Allocation, type InvoiceBalance, type PaymentMatch, type PaymentReceipt, type ReceivedPayment } from './receipts.ts';
+export * from './receipts.ts';
 
 /** Days before an installment is due that it goes on an invoice, when the plan does not say (ADR 0040, punkt 5). */
 export const DEFAULT_INVOICE_LEAD_DAYS = 31;
@@ -188,7 +190,7 @@ export interface Invoice {
 /** What the module tells others (ADR 0008, 0033). Written with the change. */
 export interface BillingEvent {
   id: string;
-  type: 'invoice.issued' | 'invoice.credited';
+  type: 'invoice.issued' | 'invoice.credited' | 'invoice.paid';
   invoiceId: string;
   market: string;
   occurredAt: Timestamp;
@@ -289,6 +291,31 @@ export interface BillingStore {
   invoice(id: string): Promise<Invoice | null>;
   /** Oldest first. */
   invoices(filter: InvoiceFilter): Promise<Invoice[]>;
+  /** The invoice with this payment reference in the market. */
+  invoiceByReference(market: string, reference: string): Promise<Invoice | null>;
+  /**
+   * Stores a received payment, in one transaction with its match and
+   * allocations when it has them. `settle` runs inside the transaction with
+   * the account's ledger, locked against other payments on the account. false,
+   * and nothing stored, if the payment was received before.
+   */
+  addReceipt(
+    receipt: PaymentReceipt,
+    settle: null | { match: PaymentMatch; plan: (ledger: AccountLedger) => { allocations: Allocation[]; events: BillingEvent[] } },
+  ): Promise<boolean>;
+  /**
+   * Matches a received payment to an account, with its allocations, as
+   * addReceipt does. Throws MatchConflictError, and stores nothing, if it is
+   * matched already.
+   */
+  addMatch(match: PaymentMatch, plan: (ledger: AccountLedger) => { allocations: Allocation[]; events: BillingEvent[] }): Promise<void>;
+  receipt(paymentId: string): Promise<{ receipt: PaymentReceipt; match: PaymentMatch | null; allocations: Allocation[] } | null>;
+  /** Oldest first. */
+  receipts(filter: { accountId?: string; market?: string; unmatched?: boolean }): Promise<{ receipt: PaymentReceipt; match: PaymentMatch | null; allocations: Allocation[] }[]>;
+  /** The account's invoices, credit notes, allocations and received total. */
+  ledger(accountId: string): Promise<AccountLedger>;
+  /** Allocations to these invoices, or all. */
+  allocations(filter: { accountId?: string }): Promise<Allocation[]>;
   /** Unpublished events, oldest first. */
   pendingEvents(limit: number): Promise<BillingEvent[]>;
   markPublished(ids: string[], at: Timestamp): Promise<void>;
@@ -301,7 +328,20 @@ export class InvoiceConflictError extends Error {
   }
 }
 
-export type BillingErrorCode = 'validation' | 'not_found';
+export class MatchConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MatchConflictError';
+  }
+}
+
+/** An invoice with what has been credited and paid of it. */
+export type InvoiceView = Invoice & InvoiceBalance;
+
+/** A payer account with what the payer owes and has to their credit. */
+export type AccountView = PayerAccount & { balance: { open: number; credit: number } };
+
+export type BillingErrorCode = 'validation' | 'not_found' | 'conflict';
 
 export class BillingError extends Error {
   constructor(
@@ -660,14 +700,16 @@ export class BillingService {
     return c;
   }
 
-  async account(id: string): Promise<PayerAccount> {
+  async account(id: string): Promise<AccountView> {
     const a = await this.d.store.account(id);
     if (!a) throw new BillingError('not_found', `Payer account ${id} does not exist`);
-    return a;
+    return { ...a, balance: accountBalance(await this.d.store.ledger(id)) };
   }
 
-  async accounts(filter: { partyId?: string; market?: string }): Promise<PayerAccount[]> {
-    return this.d.store.accounts(filter);
+  async accounts(filter: { partyId?: string; market?: string }): Promise<AccountView[]> {
+    const out: AccountView[] = [];
+    for (const a of await this.d.store.accounts(filter)) out.push({ ...a, balance: accountBalance(await this.d.store.ledger(a.id)) });
+    return out;
   }
 
   async plans(filter: { policyId?: string; accountId?: string }): Promise<PlanRecord[]> {
@@ -675,14 +717,117 @@ export class BillingService {
     return this.d.store.plans(filter);
   }
 
-  async invoice(id: string): Promise<Invoice> {
+  async invoice(id: string): Promise<InvoiceView> {
     const i = await this.d.store.invoice(id);
     if (!i) throw new BillingError('not_found', `Invoice ${id} does not exist`);
-    return i;
+    const ledger = await this.d.store.ledger(i.accountId);
+    return { ...i, ...invoiceBalances([i], ledger.creditNotes, ledger.allocations).get(i.id)! };
   }
 
-  async invoices(filter: InvoiceFilter): Promise<Invoice[]> {
-    return this.d.store.invoices(filter);
+  /** With status: only the invoices in it. */
+  async invoices(filter: InvoiceFilter & { status?: InvoiceBalance['status'] }): Promise<InvoiceView[]> {
+    const { status, ...f } = filter;
+    const invoices = await this.d.store.invoices(f);
+    const credits = await this.d.store.creditNotes(f.accountId ? { accountId: f.accountId } : {});
+    const allocations = await this.d.store.allocations(f.accountId ? { accountId: f.accountId } : {});
+    const balances = invoiceBalances(invoices, credits, allocations);
+    return invoices.map((i) => ({ ...i, ...balances.get(i.id)! })).filter((i) => !status || i.status === status);
+  }
+
+  /**
+   * A payment into the insurer's account (payment.succeeded, ADR 0040 punkt 6).
+   * With an invoice's reference, in the invoice's market and currency, it goes
+   * to the invoice's payer account: to that invoice first, then to the oldest
+   * due, and what is left is the payer's credit. Otherwise it waits among the
+   * unmatched payments for a person. Repeats give nothing new.
+   */
+  async handlePaymentEvent(e: { id: string; type: string; paymentId?: string; market: string; occurredAt: Timestamp; data: Record<string, unknown> }): Promise<ReceivedPayment | null> {
+    if (e.type !== 'payment.succeeded' || e.data.direction !== 'incoming' || !e.paymentId) return null;
+    const receipt: PaymentReceipt = {
+      paymentId: e.paymentId,
+      market: e.market,
+      currency: String(e.data.currency),
+      amount: Number(e.data.amount),
+      reference: typeof e.data.reference === 'string' ? e.data.reference : null,
+      bookedOn: String(e.data.bookedOn),
+      receivedAt: e.occurredAt,
+      sourceEventId: e.id,
+    };
+    const invoice = receipt.reference ? await this.d.store.invoiceByReference(receipt.market, receipt.reference) : null;
+    const match: PaymentMatch | null =
+      invoice && invoice.currency === receipt.currency
+        ? { paymentId: receipt.paymentId, accountId: invoice.accountId, invoiceId: invoice.id, how: 'reference', matchedBy: 'billing', matchedAt: this.d.clock.now() }
+        : null;
+    await this.d.store.addReceipt(receipt, match ? { match, plan: (ledger) => this.settle(receipt, match, ledger) } : null);
+    return this.receivedPayment(receipt.paymentId);
+  }
+
+  /**
+   * A person matches an unmatched payment (ADR 0040, punkt 6): to a payer
+   * account, or to an invoice, which it then pays first. The account must be
+   * in the payment's market and currency.
+   */
+  async matchPayment(paymentId: string, input: { accountId?: string; invoiceId?: string; note?: string }, by: string): Promise<ReceivedPayment> {
+    const r = await this.d.store.receipt(paymentId);
+    if (!r) throw new BillingError('not_found', `Payment ${paymentId} does not exist`);
+    if (r.match) throw new BillingError('conflict', `Payment ${paymentId} is matched already`);
+    if (Boolean(input.accountId) === Boolean(input.invoiceId)) throw new BillingError('validation', 'Give accountId or invoiceId');
+    const invoice = input.invoiceId ? await this.d.store.invoice(input.invoiceId) : null;
+    if (input.invoiceId && !invoice) throw new BillingError('validation', `Invoice ${input.invoiceId} does not exist`);
+    const accountId = invoice?.accountId ?? input.accountId!;
+    const account = await this.d.store.account(accountId);
+    if (!account) throw new BillingError('validation', `Payer account ${accountId} does not exist`);
+    if (account.market !== r.receipt.market || account.currency !== r.receipt.currency) {
+      throw new BillingError('validation', `The payment is in ${r.receipt.market} and ${r.receipt.currency}, the account in ${account.market} and ${account.currency}`);
+    }
+    const match: PaymentMatch = {
+      paymentId,
+      accountId,
+      ...(invoice ? { invoiceId: invoice.id } : {}),
+      how: 'manual',
+      matchedBy: by,
+      matchedAt: this.d.clock.now(),
+      ...(input.note ? { note: input.note } : {}),
+    };
+    try {
+      await this.d.store.addMatch(match, (ledger) => this.settle(r.receipt, match, ledger));
+    } catch (err) {
+      if (err instanceof MatchConflictError) throw new BillingError('conflict', `Payment ${paymentId} is matched already`);
+      throw err;
+    }
+    return this.receivedPayment(paymentId);
+  }
+
+  async receivedPayment(paymentId: string): Promise<ReceivedPayment> {
+    const r = await this.d.store.receipt(paymentId);
+    if (!r) throw new BillingError('not_found', `Payment ${paymentId} does not exist`);
+    return receivedView(r);
+  }
+
+  async receivedPayments(filter: { accountId?: string; market?: string; status?: 'matched' | 'unmatched' }): Promise<ReceivedPayment[]> {
+    const rows = await this.d.store.receipts({
+      ...(filter.accountId ? { accountId: filter.accountId } : {}),
+      ...(filter.market ? { market: filter.market } : {}),
+      ...(filter.status ? { unmatched: filter.status === 'unmatched' } : {}),
+    });
+    return rows.map(receivedView);
+  }
+
+  /** The allocations of a payment on its account, and invoice.paid for each invoice it settles. */
+  private settle(receipt: PaymentReceipt, match: PaymentMatch, ledger: AccountLedger): { allocations: Allocation[]; events: BillingEvent[] } {
+    const { allocations, settled } = allocate(receipt.amount, ledger, match.invoiceId);
+    const events = settled.map((invoiceId): BillingEvent => {
+      const i = ledger.invoices.find((x) => x.id === invoiceId)!;
+      return {
+        id: this.d.ids.next('bev'),
+        type: 'invoice.paid',
+        invoiceId,
+        market: i.market,
+        occurredAt: match.matchedAt,
+        data: { invoiceNo: i.number, accountId: i.accountId, partyId: i.partyId, total: i.total, currency: i.currency, paymentId: receipt.paymentId, paidOn: receipt.bookedOn },
+      };
+    });
+    return { allocations: allocations.map((a) => ({ ...a, paymentId: receipt.paymentId, accountId: match.accountId })), events };
   }
 
   /**
@@ -808,6 +953,71 @@ export class InMemoryBillingStore implements BillingStore {
   private readonly creditList: CreditNote[] = [];
   private readonly series = new Map<string, number>();
   private readonly outbox: (BillingEvent & { publishedAt?: Timestamp })[] = [];
+  private readonly receiptList: PaymentReceipt[] = [];
+  private readonly matches = new Map<string, PaymentMatch>();
+  private readonly allocationList: Allocation[] = [];
+
+  async invoiceByReference(market: string, reference: string) {
+    const i = this.invoiceList.find((x) => x.market === market && x.reference.value === reference);
+    return i ? structuredClone(i) : null;
+  }
+
+  async ledger(accountId: string): Promise<AccountLedger> {
+    const received = this.receiptList.filter((r) => this.matches.get(r.paymentId)?.accountId === accountId).reduce((s, r) => s + r.amount, 0);
+    return structuredClone({
+      invoices: this.invoiceList.filter((i) => i.accountId === accountId),
+      creditNotes: this.creditList.filter((c) => c.accountId === accountId),
+      allocations: this.allocationList.filter((a) => a.accountId === accountId),
+      received,
+    });
+  }
+
+  async addReceipt(receipt: PaymentReceipt, settle: null | { match: PaymentMatch; plan: (ledger: AccountLedger) => { allocations: Allocation[]; events: BillingEvent[] } }) {
+    if (this.receiptList.some((r) => r.paymentId === receipt.paymentId)) return false;
+    const done = settle ? settle.plan(await this.ledger(settle.match.accountId)) : null;
+    this.receiptList.push(structuredClone(receipt));
+    if (settle && done) {
+      this.matches.set(receipt.paymentId, structuredClone(settle.match));
+      this.allocationList.push(...structuredClone(done.allocations));
+      this.outbox.push(...structuredClone(done.events));
+    }
+    return true;
+  }
+
+  async addMatch(match: PaymentMatch, plan: (ledger: AccountLedger) => { allocations: Allocation[]; events: BillingEvent[] }) {
+    if (this.matches.has(match.paymentId)) throw new MatchConflictError(`Payment ${match.paymentId} is matched already`);
+    const done = plan(await this.ledger(match.accountId));
+    this.matches.set(match.paymentId, structuredClone(match));
+    this.allocationList.push(...structuredClone(done.allocations));
+    this.outbox.push(...structuredClone(done.events));
+  }
+
+  private row(r: PaymentReceipt) {
+    return structuredClone({ receipt: r, match: this.matches.get(r.paymentId) ?? null, allocations: this.allocationList.filter((a) => a.paymentId === r.paymentId) });
+  }
+
+  async receipt(paymentId: string) {
+    const r = this.receiptList.find((x) => x.paymentId === paymentId);
+    return r ? this.row(r) : null;
+  }
+
+  async receipts(filter: { accountId?: string; market?: string; unmatched?: boolean }) {
+    return this.receiptList
+      .filter((r) => {
+        const m = this.matches.get(r.paymentId);
+        return (
+          (!filter.market || r.market === filter.market) &&
+          (!filter.accountId || m?.accountId === filter.accountId) &&
+          (filter.unmatched === undefined || filter.unmatched === !m)
+        );
+      })
+      .sort((a, b) => (a.receivedAt === b.receivedAt ? (a.paymentId < b.paymentId ? -1 : 1) : a.receivedAt < b.receivedAt ? -1 : 1))
+      .map((r) => this.row(r));
+  }
+
+  async allocations(filter: { accountId?: string }) {
+    return structuredClone(this.allocationList.filter((a) => !filter.accountId || a.accountId === filter.accountId));
+  }
 
   async addPlan(account: PayerAccount, plan: PlanRecord): Promise<boolean> {
     if (this.planList.some((p) => p.source.eventId === plan.source.eventId)) return false;
@@ -926,6 +1136,17 @@ export class InMemoryBillingStore implements BillingStore {
   async markPublished(ids: string[], at: Timestamp) {
     for (const e of this.outbox) if (ids.includes(e.id) && !e.publishedAt) e.publishedAt = at;
   }
+}
+
+function receivedView(r: { receipt: PaymentReceipt; match: PaymentMatch | null; allocations: Allocation[] }): ReceivedPayment {
+  const allocated = r.allocations.reduce((s, a) => s + a.amount, 0);
+  return {
+    ...r.receipt,
+    status: r.match ? 'matched' : 'unmatched',
+    ...(r.match ? { match: r.match } : {}),
+    allocations: r.allocations.map((a) => ({ invoiceId: a.invoiceId, amount: a.amount })),
+    unallocated: r.match ? r.receipt.amount - allocated : 0,
+  };
 }
 
 const maxDate = (a: ISODate, b: ISODate) => (a > b ? a : b);

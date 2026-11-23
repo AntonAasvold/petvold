@@ -89,3 +89,53 @@ test('payments are seen in the caller\'s markets, and not by a role bound to pol
   assert.equal((await call('/v1/payments', 'portal')).status, 403);
   assert.equal((await call('/v1/payments/pay_nope', 'clerk')).status, 404);
 });
+
+test('a payment with the invoice\'s OCR pays it; one without waits until a person matches it', async () => {
+  const { inst, app, call, notify, received } = await setup();
+  const { seedSampleData } = await import('../src/seed.ts');
+  await seedSampleData(inst, { now: () => NOW });
+  while ((await inst.relay.tick()) > 0);
+  await inst.deps.billing!.invoicingRun({ market: 'SE', onDate: '2027-11-01', dryRun: false }, 'scheduler');
+  while ((await inst.relay.tick()) > 0);
+  const sub = await app.request('/v1/webhook-subscriptions', {
+    method: 'POST',
+    headers: { authorization: 'Bearer integration', 'content-type': 'application/json', 'idempotency-key': 'key-pay-0002' },
+    body: JSON.stringify({ url: 'https://erp.example.com/petvold', eventTypes: ['invoice.paid'], markets: ['SE'] }),
+  });
+  assert.equal(sub.status, 201);
+
+  const invoices = (await call('/v1/invoices?status=open', 'clerk')).body.items;
+  assert.ok(invoices.length >= 2);
+  for (const i of invoices) assert.ok(validatorFor('Invoice')(structuredClone(i)), JSON.stringify(validatorFor('Invoice').errors));
+  const [a, b] = invoices;
+
+  await notify([{ ...payment, id: 'fb_a', amount: a.total, reference: a.reference.value }, { ...payment, id: 'fb_b', amount: b.total, reference: null }]);
+  while ((await inst.relay.tick()) > 0);
+  while ((await inst.webhookWorker.tick()).delivered > 0);
+
+  const paidA = await call(`/v1/invoices/${a.id}`, 'clerk');
+  assert.deepEqual([paidA.body.status, paidA.body.paid, paidA.body.open], ['paid', a.total, 0]);
+  const events = received.map((r) => JSON.parse(r.body)).filter((e) => e.type === 'petvold.invoice.paid.v1');
+  assert.deepEqual(events.map((e) => e.subject), [a.id]);
+  for (const e of events) assert.ok(eventValidator('invoice.paid')(e), JSON.stringify(eventValidator('invoice.paid').errors));
+
+  const queue = await call('/v1/received-payments?status=unmatched', 'clerk');
+  assert.equal(queue.body.items.length, 1);
+  for (const p of queue.body.items) assert.ok(validatorFor('ReceivedPayment')(structuredClone(p)), JSON.stringify(validatorFor('ReceivedPayment').errors));
+  const waiting = queue.body.items[0];
+  assert.equal((await call(`/v1/received-payments/${waiting.paymentId}`, 'clerkDe')).status, 404);
+
+  const match = (token: string, body: unknown, key: string) =>
+    app.request(`/v1/received-payments/${waiting.paymentId}/matches`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'idempotency-key': key }, body: JSON.stringify(body) });
+  assert.equal((await match('integration', { invoiceId: b.id }, 'key-match-0001')).status, 403);
+  assert.equal((await match('clerk', { invoiceId: b.id, accountId: b.accountId }, 'key-match-0002')).status, 422);
+  const done = await match('clerk', { invoiceId: b.id, note: 'The payer gave the policy number in the message.' }, 'key-match-0003');
+  assert.equal(done.status, 201);
+  const body = (await done.json()) as any;
+  assert.deepEqual([body.status, body.match.how, body.match.matchedBy], ['matched', 'manual', 'finance@example.test']);
+  assert.equal((await match('clerk', { invoiceId: b.id }, 'key-match-0004')).status, 409);
+  assert.equal((await call(`/v1/invoices/${b.id}`, 'clerk')).body.status, 'paid');
+  assert.equal((await call('/v1/received-payments?status=unmatched', 'clerk')).body.items.length, 0);
+  const account = await call(`/v1/payer-accounts/${a.accountId}`, 'clerk');
+  assert.ok(validatorFor('PayerAccount')(structuredClone(account.body)), JSON.stringify(validatorFor('PayerAccount').errors));
+});

@@ -1107,7 +1107,8 @@ export function createApp(d: AppDeps) {
 
   app.get('/v1/invoices', async (c) => {
     const q = (k: string) => c.req.query(k);
-    const items = await billing.invoices({ ...(q('accountId') ? { accountId: q('accountId') } : {}), ...(q('policyId') ? { policyId: q('policyId') } : {}), ...(q('market') ? { market: q('market') } : {}) });
+    const status = q('status') as 'open' | 'partly-paid' | 'paid' | 'credited' | undefined;
+    const items = await billing.invoices({ ...(q('accountId') ? { accountId: q('accountId') } : {}), ...(q('policyId') ? { policyId: q('policyId') } : {}), ...(q('market') ? { market: q('market') } : {}), ...(status ? { status } : {}) });
     return sendPage(c, items.filter((i) => seesInvoice(c.get('scope'), i)));
   });
 
@@ -1132,6 +1133,30 @@ export function createApp(d: AppDeps) {
     const note = await billing.creditNote(id);
     if (!seesCredit(c.get('scope'), note)) throw new BillingError('not_found', `Credit note ${id} does not exist`);
     return send(c, note);
+  });
+
+  // Payments on the payers' accounts (ADR 0040): matched by reference, or waiting for a person.
+  app.get('/v1/received-payments', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const status = q('status') as 'matched' | 'unmatched' | undefined;
+    const items = await billing.receivedPayments({ ...(q('accountId') ? { accountId: q('accountId') } : {}), ...(q('market') ? { market: q('market') } : {}), ...(status ? { status } : {}) });
+    return sendPage(c, items.filter((p) => seesAccount(c.get('scope'), p.market)));
+  });
+
+  app.get('/v1/received-payments/:paymentId', async (c) => {
+    const id = c.req.param('paymentId');
+    const p = await billing.receivedPayment(id);
+    if (!seesAccount(c.get('scope'), p.market)) throw new BillingError('not_found', `Payment ${id} does not exist`);
+    return send(c, p);
+  });
+
+  app.post('/v1/received-payments/:paymentId/matches', async (c) => {
+    const id = c.req.param('paymentId');
+    const p = await billing.receivedPayment(id);
+    if (!seesAccount(c.get('scope'), p.market)) throw new BillingError('not_found', `Payment ${id} does not exist`);
+    const r = await readJson(c, 'MatchPaymentRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await billing.matchPayment(id, r.body, c.get('principal').subject) }));
   });
 
   app.get('/v1/premium-plans', async (c) => {
@@ -1791,7 +1816,7 @@ export function createApp(d: AppDeps) {
       return problem(c, status, err.message);
     }
     if (err instanceof BillingError) {
-      return problem(c, err.code === 'not_found' ? 404 : 422, err.message);
+      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
     }
     if (err instanceof PaymentsError) {
       return problem(c, err.code === 'not_found' ? 404 : 422, err.message);

@@ -439,7 +439,8 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
       if (!bank.plan.has(inv.id)) {
         const r = rnd();
         const on = r < 0.85 ? addDays(inv.issueDate, between(2, Math.max(2, daysBetween(inv.issueDate, inv.dueDate)))) : r < 0.95 ? addDays(inv.dueDate, between(3, 20)) : null;
-        bank.plan.set(inv.id, { on, amount: inv.total, reference: inv.reference.value });
+        // A few forget the OCR number: they wait among the unmatched payments for a person.
+        bank.plan.set(inv.id, { on, amount: inv.total, reference: rnd() < 0.03 ? null : inv.reference.value });
       }
     }
     const today = [...bank.plan.entries()].filter(([id, p]) => p.on === day && !bank.paid.has(id) && p.amount > 0);

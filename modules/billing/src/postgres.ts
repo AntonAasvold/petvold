@@ -4,7 +4,7 @@
  * plans never change.
  */
 import type pg from 'pg';
-import { InvoiceConflictError, type BillingEvent, type BillingStore, type CreditNote, type Invoice, type InvoiceFilter, type PayerAccount, type PlanRecord } from './index.ts';
+import { InvoiceConflictError, MatchConflictError, type AccountLedger, type Allocation, type BillingEvent, type BillingStore, type CreditNote, type Invoice, type InvoiceFilter, type PayerAccount, type PaymentMatch, type PaymentReceipt, type PlanRecord } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -34,6 +34,12 @@ function creditNote(r: Record<string, any>): CreditNote {
     createdAt: iso(r.created_at),
   };
 }
+type Queryable = Pick<pg.Pool, 'query'> | Pick<pg.PoolClient, 'query'>;
+
+function allocation(r: Record<string, any>): Allocation {
+  return { paymentId: r.payment_id ?? r.paymentId, invoiceId: r.invoice_id ?? r.invoiceId, accountId: r.account_id ?? r.accountId, amount: Number(r.amount) };
+}
+
 const date = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d));
 
 const INVOICE = `i.invoice_id, i.invoice_no, i.account_id, i.party_id, i.market, i.currency, i.issue_date::text as issue_date, i.due_date::text as due_date,
@@ -314,6 +320,148 @@ export class PostgresBillingStore implements BillingStore {
       [filter.accountId ?? null, filter.market ?? null, filter.policyId ?? null],
     );
     return r.rows.map(invoice);
+  }
+
+  async invoiceByReference(market: string, reference: string) {
+    const r = await this.pool.query(`select ${INVOICE} from billing.invoice i where i.market = $1 and i.reference = $2`, [market, reference]);
+    return r.rows[0] ? invoice(r.rows[0]) : null;
+  }
+
+  /** The account's ledger, read with the given connection: inside a transaction, after the account's lock. */
+  private async ledgerWith(db: Queryable, accountId: string): Promise<AccountLedger> {
+    const [inv, cred, alloc, rec] = await Promise.all([
+      db.query(`select ${INVOICE} from billing.invoice i where i.account_id = $1 order by i.created_at, i.invoice_no collate "C"`, [accountId]),
+      db.query(`select ${CREDIT} from billing.credit_note c where c.account_id = $1 order by c.created_at, c.credit_note_no collate "C"`, [accountId]),
+      db.query(`select payment_id, invoice_id, account_id, amount from billing.allocation where account_id = $1 order by payment_id collate "C", invoice_id collate "C"`, [accountId]),
+      db.query(`select coalesce(sum(r.amount), 0) as received from billing.payment_receipt r join billing.payment_match m using (payment_id) where m.account_id = $1`, [accountId]),
+    ]);
+    return { invoices: inv.rows.map(invoice), creditNotes: cred.rows.map(creditNote), allocations: alloc.rows.map(allocation), received: Number(rec.rows[0].received) };
+  }
+
+  async ledger(accountId: string) {
+    return this.ledgerWith(this.pool, accountId);
+  }
+
+  async addReceipt(receipt: PaymentReceipt, settle: null | { match: PaymentMatch; plan: (ledger: AccountLedger) => { allocations: Allocation[]; events: BillingEvent[] } }) {
+    const db = await this.pool.connect();
+    try {
+      await db.query('begin');
+      const ins = await db.query(
+        `insert into billing.payment_receipt (payment_id, market, currency, amount, reference, booked_on, received_at, source_event_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict do nothing`,
+        [receipt.paymentId, receipt.market, receipt.currency, receipt.amount, receipt.reference, receipt.bookedOn, receipt.receivedAt, receipt.sourceEventId],
+      );
+      if (ins.rowCount === 0) {
+        await db.query('rollback');
+        return false;
+      }
+      if (settle) await this.settleWith(db, settle.match, settle.plan);
+      await db.query('commit');
+      return true;
+    } catch (e) {
+      await db.query('rollback');
+      throw e;
+    } finally {
+      db.release();
+    }
+  }
+
+  async addMatch(match: PaymentMatch, plan: (ledger: AccountLedger) => { allocations: Allocation[]; events: BillingEvent[] }) {
+    const db = await this.pool.connect();
+    try {
+      await db.query('begin');
+      await this.settleWith(db, match, plan);
+      await db.query('commit');
+    } catch (e) {
+      await db.query('rollback');
+      if ((e as { code?: string }).code === UNIQUE_VIOLATION && (e as { constraint?: string }).constraint === 'payment_match_pkey') {
+        throw new MatchConflictError(`Payment ${match.paymentId} is matched already`);
+      }
+      throw e;
+    } finally {
+      db.release();
+    }
+  }
+
+  /** Locks the account against other payments, stores the match, and the allocations and events the plan gives. */
+  private async settleWith(db: Queryable, match: PaymentMatch, plan: (ledger: AccountLedger) => { allocations: Allocation[]; events: BillingEvent[] }) {
+    // A lock per account for this transaction: two payments never allocate the same open amount.
+    await db.query(`select pg_advisory_xact_lock(hashtext('billing.account:' || $1))`, [match.accountId]);
+    await db.query(
+      `insert into billing.payment_match (payment_id, account_id, invoice_id, how, matched_by, matched_at, note) values ($1, $2, $3, $4, $5, $6, $7)`,
+      [match.paymentId, match.accountId, match.invoiceId ?? null, match.how, match.matchedBy, match.matchedAt, match.note ?? null],
+    );
+    const done = plan(await this.ledgerWith(db, match.accountId));
+    for (const a of done.allocations) {
+      await db.query(`insert into billing.allocation (payment_id, invoice_id, account_id, amount) values ($1, $2, $3, $4)`, [a.paymentId, a.invoiceId, a.accountId, a.amount]);
+    }
+    for (const e of done.events) {
+      await db.query(`insert into billing.outbox (event_id, type, invoice_id, market, occurred_at, data) values ($1, $2, $3, $4, $5, $6)`, [
+        e.id,
+        e.type,
+        e.invoiceId,
+        e.market,
+        e.occurredAt,
+        JSON.stringify(e.data),
+      ]);
+    }
+  }
+
+  async receipt(paymentId: string) {
+    return (await this.receiptRows(`r.payment_id = $1`, [paymentId]))[0] ?? null;
+  }
+
+  async receipts(filter: { accountId?: string; market?: string; unmatched?: boolean }) {
+    return this.receiptRows(
+      `($1::text is null or m.account_id = $1) and ($2::text is null or r.market = $2)
+       and ($3::boolean is null or ($3 and m.payment_id is null) or (not $3 and m.payment_id is not null))`,
+      [filter.accountId ?? null, filter.market ?? null, filter.unmatched ?? null],
+    );
+  }
+
+  private async receiptRows(where: string, params: unknown[]) {
+    const r = await this.pool.query(
+      `select r.payment_id, r.market, r.currency, r.amount, r.reference, r.booked_on::text as booked_on, r.received_at, r.source_event_id,
+              m.account_id, m.invoice_id, m.how, m.matched_by, m.matched_at, m.note,
+              (select json_agg(json_build_object('paymentId', a.payment_id, 'invoiceId', a.invoice_id, 'accountId', a.account_id, 'amount', a.amount) order by a.invoice_id collate "C")
+               from billing.allocation a where a.payment_id = r.payment_id) as allocations
+       from billing.payment_receipt r left join billing.payment_match m using (payment_id)
+       where ${where}
+       order by r.received_at, r.payment_id collate "C"`,
+      params,
+    );
+    return r.rows.map((x) => ({
+      receipt: {
+        paymentId: x.payment_id,
+        market: x.market,
+        currency: x.currency,
+        amount: Number(x.amount),
+        reference: x.reference ?? null,
+        bookedOn: String(x.booked_on),
+        receivedAt: iso(x.received_at),
+        sourceEventId: x.source_event_id,
+      } satisfies PaymentReceipt,
+      match: x.account_id
+        ? ({
+            paymentId: x.payment_id,
+            accountId: x.account_id,
+            ...(x.invoice_id ? { invoiceId: x.invoice_id } : {}),
+            how: x.how,
+            matchedBy: x.matched_by,
+            matchedAt: iso(x.matched_at),
+            ...(x.note ? { note: x.note } : {}),
+          } satisfies PaymentMatch)
+        : null,
+      allocations: (x.allocations ?? []).map(allocation),
+    }));
+  }
+
+  async allocations(filter: { accountId?: string }) {
+    const r = await this.pool.query(
+      `select payment_id, invoice_id, account_id, amount from billing.allocation where ($1::text is null or account_id = $1) order by payment_id collate "C", invoice_id collate "C"`,
+      [filter.accountId ?? null],
+    );
+    return r.rows.map(allocation);
   }
 
   async pendingEvents(limit: number): Promise<BillingEvent[]> {

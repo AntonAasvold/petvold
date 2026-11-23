@@ -2,7 +2,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { premiumPlan } from '@petvold/billing-core';
-import { InvoiceConflictError, type BillingEvent, type BillingStore, type CreditNote, type Invoice, type PayerAccount, type PlanInput, type PlanRecord } from '../src/index.ts';
+import { InvoiceConflictError, MatchConflictError, type AccountLedger, type BillingEvent, type PaymentMatch, type PaymentReceipt, type BillingStore, type CreditNote, type Invoice, type PayerAccount, type PlanInput, type PlanRecord } from '../src/index.ts';
 
 export function payer(n = 1, o: Partial<PayerAccount> = {}): PayerAccount {
   return { id: `bac_${n}`, partyId: 'pty_anna', market: 'SE', currency: 'SEK', paymentMethod: 'invoice', createdAt: `2026-11-21T10:00:0${n}.000Z`, ...o };
@@ -132,5 +132,66 @@ export function billingStoreSuite(name: string, make: () => Promise<{ store: Bil
       await store.addPlan(payer(), planRecord(1, { createdAt: '2026-11-21T10:00:01.000Z' }));
       assert.deepEqual((await store.plans({ policyId: 'pol_1' })).map((p) => p.termNo), [1, 2]);
     });
+
+    test('a payment is received once, matched with its allocations and events, and read back', async () => {
+      const { store } = await make();
+      await store.addPlan(payer(), planRecord());
+      const inv = await store.addInvoice('SE', 2026, (no) => invoiceOf('inv_a', no, planRecord(), [1, 2]), () => []);
+      assert.deepEqual(await store.invoiceByReference('SE', inv.reference.value), inv);
+      assert.equal(await store.invoiceByReference('FI', inv.reference.value), null);
+
+      const match: PaymentMatch = { paymentId: 'pay_1', accountId: 'bac_1', invoiceId: inv.id, how: 'reference', matchedBy: 'billing', matchedAt: '2026-12-01T10:00:00.000Z' };
+      let seen: AccountLedger | null = null;
+      const plan = (ledger: AccountLedger) => {
+        seen = ledger;
+        return {
+          allocations: [{ paymentId: 'pay_1', invoiceId: inv.id, accountId: 'bac_1', amount: 10_000 }],
+          events: [{ id: 'bev_paid', type: 'invoice.paid' as const, invoiceId: inv.id, market: 'SE', occurredAt: match.matchedAt, data: { paymentId: 'pay_1' } }],
+        };
+      };
+      assert.equal(await store.addReceipt(receipt(1), { match, plan }), true);
+      assert.deepEqual(seen!.invoices.map((i) => i.id), [inv.id], 'the plan sees the account');
+      assert.equal(await store.addReceipt(receipt(1, { sourceEventId: 'pmev_again' }), { match, plan }), false, 'once');
+      assert.deepEqual(await store.receipt('pay_1'), { receipt: receipt(1), match, allocations: [{ paymentId: 'pay_1', invoiceId: inv.id, accountId: 'bac_1', amount: 10_000 }] });
+      assert.deepEqual((await store.pendingEvents(50)).filter((e) => e.type === 'invoice.paid').map((e) => e.id), ['bev_paid']);
+      const ledger = await store.ledger('bac_1');
+      assert.equal(ledger.received, receipt(1).amount);
+      assert.deepEqual(ledger.allocations.map((a) => a.amount), [10_000]);
+      assert.deepEqual((await store.allocations({ accountId: 'bac_1' })).length, 1);
+      assert.deepEqual(await store.allocations({ accountId: 'bac_x' }), []);
+    });
+
+    test('an unmatched payment waits, is matched once, and the filters find it', async () => {
+      const { store } = await make();
+      await store.addPlan(payer(), planRecord());
+      await store.addInvoice('SE', 2026, (no) => invoiceOf('inv_a', no, planRecord()), () => []);
+      assert.equal(await store.addReceipt(receipt(1, { reference: null }), null), true);
+      assert.equal(await store.addReceipt(receipt(2, { market: 'FI', currency: 'EUR', receivedAt: '2026-12-01T09:00:02.000Z' }), null), true);
+      assert.deepEqual((await store.receipts({ unmatched: true })).map((r) => r.receipt.paymentId), ['pay_1', 'pay_2']);
+      assert.deepEqual((await store.receipts({ market: 'FI' })).map((r) => r.receipt.paymentId), ['pay_2']);
+      assert.equal((await store.receipt('pay_1'))?.match, null);
+
+      const match: PaymentMatch = { paymentId: 'pay_1', accountId: 'bac_1', how: 'manual', matchedBy: 'finance@example.test', matchedAt: '2026-12-02T10:00:00.000Z', note: 'Named the policy' };
+      await store.addMatch(match, () => ({ allocations: [{ paymentId: 'pay_1', invoiceId: 'inv_a', accountId: 'bac_1', amount: 500 }], events: [] }));
+      await assert.rejects(store.addMatch({ ...match, matchedBy: 'other' }, () => ({ allocations: [], events: [] })), (e) => e instanceof MatchConflictError);
+      assert.deepEqual((await store.receipt('pay_1'))?.match, match);
+      assert.deepEqual((await store.receipts({ unmatched: false })).map((r) => r.receipt.paymentId), ['pay_1']);
+      assert.deepEqual((await store.receipts({ accountId: 'bac_1' })).map((r) => r.receipt.paymentId), ['pay_1']);
+      assert.equal((await store.ledger('bac_1')).received, receipt(1).amount);
+    });
   });
+}
+
+export function receipt(n: number, o: Partial<PaymentReceipt> = {}): PaymentReceipt {
+  return {
+    paymentId: `pay_${n}`,
+    market: 'SE',
+    currency: 'SEK',
+    amount: 41_200,
+    reference: '202600000121',
+    bookedOn: '2026-12-01',
+    receivedAt: `2026-12-01T09:00:0${n}.000Z`,
+    sourceEventId: `pmev_${n}`,
+    ...o,
+  };
 }

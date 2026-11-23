@@ -2668,6 +2668,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/received-payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Payments on the payers' accounts, oldest first
+         * @description Requires the permission `billing:read` (ADR 0040). `status=unmatched` is the
+         *     queue of payments that came in without a usable reference. Only payments
+         *     in the caller's markets; a role bound to a clinic or to policies sees none.
+         */
+        get: operations["listReceivedPayments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/received-payments/{paymentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A payment on a payer's account
+         * @description Requires the permission `billing:read`. Outside the caller's scope it answers 404.
+         */
+        get: operations["getReceivedPayment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/received-payments/{paymentId}/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Match an unmatched payment
+         * @description Requires the permission `billing:write` (ADR 0040). Matches a payment that
+         *     came in without a usable reference to a payer account or an invoice in its
+         *     market and currency, and allocates it as if it had the reference. A payment
+         *     is matched once; a matched one answers 409.
+         */
+        post: operations["matchReceivedPayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/premium-plans": {
         parameters: {
             query?: never;
@@ -4494,6 +4559,13 @@ export interface components {
             paymentMethod: "invoice";
             /** Format: date-time */
             createdAt: string;
+            /** @description Worked out from the invoices, credit notes and payments. */
+            balance: {
+                /** @description Still to pay on the invoices */
+                open: number;
+                /** @description Paid and not needed by an invoice: the payer's credit balance. */
+                credit: number;
+            };
         };
         /** @description A payment Petvold has received (ADR 0017). Never changes. */
         Payment: {
@@ -4570,6 +4642,62 @@ export interface components {
             createdBy: string;
             /** Format: date-time */
             createdAt: string;
+            /** @description Taken off by credit notes. */
+            credited: number;
+            /** @description Paid by payments, never more than total minus credited. */
+            paid: number;
+            /** @description Still to pay. */
+            open: number;
+            /** @enum {string} */
+            status: "open" | "partly-paid" | "paid" | "credited";
+        };
+        /**
+         * @description A payment into the insurer's account as billing has it (ADR 0040). With an
+         *     invoice's reference it is matched to the invoice's payer account at once:
+         *     to that invoice first, then to the oldest due. Without one it is
+         *     unmatched until a person matches it.
+         */
+        ReceivedPayment: {
+            /** @description The payment in GET /v1/payments. */
+            paymentId: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            amount: number;
+            reference: string | null;
+            /** Format: date */
+            bookedOn: string;
+            /** Format: date-time */
+            receivedAt: string;
+            sourceEventId: string;
+            /** @enum {string} */
+            status: "matched" | "unmatched";
+            match?: {
+                paymentId: string;
+                accountId: string;
+                /** @description The invoice it went to first. */
+                invoiceId?: string;
+                /** @enum {string} */
+                how: "reference" | "manual";
+                matchedBy: string;
+                /** Format: date-time */
+                matchedAt: string;
+                note?: string;
+            };
+            allocations: {
+                invoiceId: string;
+                amount: number;
+            }[];
+            /** @description What it paid of no invoice: part of the payer's credit balance. */
+            unallocated: number;
+        };
+        /** @description Exactly one of accountId and invoiceId. */
+        MatchPaymentRequest: {
+            /** @description The payer account: the payment goes to its oldest due invoice first. */
+            accountId?: string;
+            /** @description The invoice it pays first; the rest to the account's oldest due. */
+            invoiceId?: string;
+            /** @description Why, e.g. the payer named the policy in the message. No more personal data than needed. */
+            note?: string;
         };
         /** @description What is taken off an invoice (ADR 0040). Never changes. */
         CreditNote: {
@@ -9851,6 +9979,8 @@ export interface operations {
                 /** @description Invoices with a line on the policy. */
                 policyId?: string;
                 market?: components["schemas"]["Market"];
+                /** @description open: nothing paid; partly-paid; paid; credited: a credit note took all of it. */
+                status?: "open" | "partly-paid" | "paid" | "credited";
                 /** @description Items per page, 1-200. Default 50. */
                 limit?: components["parameters"]["Limit"];
                 /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
@@ -10023,6 +10153,99 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listReceivedPayments: {
+        parameters: {
+            query?: {
+                status?: "matched" | "unmatched";
+                accountId?: string;
+                market?: components["schemas"]["Market"];
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ReceivedPayment"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getReceivedPayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceivedPayment"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    matchReceivedPayment: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                paymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MatchPaymentRequest"];
+            };
+        };
+        responses: {
+            /** @description The payment, matched and allocated */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceivedPayment"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
         };
     };
     listPremiumPlans: {

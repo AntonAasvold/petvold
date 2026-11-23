@@ -193,6 +193,10 @@ Punkt 3 och 5 nämnde bara lagens regel för den första premien. FAL 5 kap. 1 �
 - **Fakturans förfallodag** är den tidigaste radens, men aldrig tidigare än lagen tillåter för någon rad: fjorton dagar efter fakturan för en ny policys första premie, och en månad efter fakturan för en senare premie. Marknadsprofilen anger båda (`firstPremiumDays`, `laterPremiumMonths`).
 - **Förvalet för `billing.invoiceLeadDays` är 31 dagar** i stället för 20. En månad är aldrig längre än 31 dagar, så en senare premie förfaller då på periodens första dag när körningen går varje dag. En kortare framförhållning flyttar förfallodagen framåt.
 
+## Förtydligande 2026-11-23
+
+Punkt 6 säger att en betalning fördelas på den äldsta förfallna skulden först. En inbetalning med en fakturas referens går nu **först till den fakturan**, och bara det som blir över till den äldsta förfallna skulden (PR #144). Annars kunde en kund som betalat en faktura med rätt OCR se den som obetald, medan pengarna gått till en äldre faktura. Med två obetalda fakturor och en betalning utan referens som en person kopplar till kontot gäller fortfarande den äldsta först.
+
 ## Källor
 
 - Försäkringsavtalslagen (2005:104), 5 kap. 1, 2 och 6 §§. riksdagen.se

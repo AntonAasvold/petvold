@@ -22,7 +22,10 @@ test('months of customers, policies, claims, invoices and payments, the same for
   assert.ok(invoices.length > a.sum.policies / 2);
   // Every payment carries an invoice's reference and amount.
   const refs = new Map(invoices.map((i) => [i.reference.value, i.total]));
-  for (const p of await a.inst.stores.payments.payments({})) assert.equal(refs.get(p.reference!), p.amount);
+  for (const p of await a.inst.stores.payments.payments({})) if (p.reference) assert.equal(refs.get(p.reference), p.amount);
+  // Billing matched them: most invoices are paid.
+  const paid = (await a.inst.deps.billing!.invoices({ status: 'paid' })).length;
+  assert.ok(paid > invoices.length / 2, `${paid} of ${invoices.length} paid`);
 
   const b = await run(7);
   assert.deepEqual(b.sum, a.sum);

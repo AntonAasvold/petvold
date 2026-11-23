@@ -3,7 +3,7 @@ import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { PostgresBillingStore } from '../src/postgres.ts';
-import { billingStoreSuite, invoiceOf, payer, planRecord } from '../test-suites/billing-store.ts';
+import { billingStoreSuite, invoiceOf, payer, planRecord, receipt } from '../test-suites/billing-store.ts';
 
 const ownerUrl = process.env.TEST_DATABASE_URL;
 const serviceUrl = process.env.BILLING_TEST_DATABASE_URL;
@@ -15,7 +15,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate billing.outbox, billing.credit_note_line, billing.credit_note, billing.invoice_line, billing.invoice, billing.invoice_number_series, billing.premium_plan, billing.payer_account cascade');
+const clean = () => admin.query('truncate billing.allocation, billing.payment_match, billing.payment_receipt, billing.outbox, billing.credit_note_line, billing.credit_note, billing.invoice_line, billing.invoice, billing.invoice_number_series, billing.premium_plan, billing.payer_account cascade');
 
 billingStoreSuite('PostgresBillingStore', async () => {
   await clean();
@@ -55,4 +55,19 @@ test('two runs at once: the number series has no gaps and no installment is invo
   const ok = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value.number] : []));
   assert.equal(ok.length, 3, 'one of the two invoices of installment 1 is refused');
   assert.deepEqual(ok.sort(), ['SE-2026-000001', 'SE-2026-000002', 'SE-2026-000003']);
+});
+
+test('payments, matches and allocations never change', async () => {
+  await clean();
+  const store = new PostgresBillingStore(pool);
+  await store.addPlan(payer(), planRecord());
+  await store.addInvoice('SE', 2026, (no) => invoiceOf('inv_a', no, planRecord()), () => []);
+  await store.addReceipt(receipt(1), {
+    match: { paymentId: 'pay_1', accountId: 'bac_1', how: 'reference', matchedBy: 'billing', matchedAt: '2026-12-01T10:00:00.000Z' },
+    plan: () => ({ allocations: [{ paymentId: 'pay_1', invoiceId: 'inv_a', accountId: 'bac_1', amount: 100 }], events: [] }),
+  });
+  await assert.rejects(pool.query(`update billing.payment_receipt set amount = 1`), /permission denied/);
+  await assert.rejects(pool.query(`delete from billing.payment_match`), /permission denied/);
+  await assert.rejects(pool.query(`update billing.allocation set amount = 1`), /permission denied/);
+  await assert.rejects(store.addReceipt(receipt(2, { amount: 0 }), null), /check/);
 });

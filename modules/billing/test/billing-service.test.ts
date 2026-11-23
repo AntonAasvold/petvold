@@ -39,7 +39,7 @@ test('policy.issued gives a payer account and a plan with the product\'s default
   assert.deepEqual(plan.input.firstPremium, { noticeSentOn: '2026-11-22', payWithinDays: 14 });
   assert.equal(plan.plan.installments[0]!.dueDate, '2026-12-06');
   assert.deepEqual(plan.source, { eventId: 'pev_1', eventType: 'policy.issued', occurredAt: '2026-11-21T23:30:00.000Z' });
-  assert.deepEqual(await service.account('bac_1'), { id: 'bac_1', partyId: 'pty_anna', market: 'SE', currency: 'SEK', paymentMethod: 'invoice', createdAt: '2026-11-21T09:30:00.000Z' });
+  assert.deepEqual(await service.account('bac_1'), { id: 'bac_1', partyId: 'pty_anna', market: 'SE', currency: 'SEK', paymentMethod: 'invoice', createdAt: '2026-11-21T09:30:00.000Z', balance: { open: 0, credit: 0 } });
 });
 
 test('the same event again gives nothing new', async () => {

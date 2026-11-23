@@ -2,7 +2,7 @@
 
 Hur Petvold delar en terms premie i delbetalningar, fördelar en betalning och räknar ut vad ett avslut betyder i pengar (ADR 0040).
 
-**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör premieplaner, fakturor och kreditnotor (steg 2). Modulen `payments` tar emot inbetalningar (steg 3a). Kopplingen av en inbetalning till fakturan, kön för okopplade inbetalningar och utbetalningarna kommer i steg 3b och 3c.
+**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör premieplaner, fakturor och kreditnotor (steg 2). Modulen `payments` tar emot inbetalningar (steg 3a), och `billing` kopplar dem till fakturorna (steg 3b). Utbetalningarna kommer i steg 3c.
 
 ## Betalarkonto och premieplan
 
@@ -49,8 +49,8 @@ Hade körningen stått still och den andra månaden fakturerats först den 10 de
 
 | Anrop | Vad det ger |
 | --- | --- |
-| `GET /v1/invoices?accountId=…&policyId=…&market=…` | Fakturor, äldst först |
-| `GET /v1/invoices/{invoiceId}` | En faktura med rader, förfallodag och referens |
+| `GET /v1/invoices?accountId=…&policyId=…&market=…&status=…` | Fakturor, äldst först |
+| `GET /v1/invoices/{invoiceId}` | En faktura med rader, förfallodag, referens och vad som är krediterat, betalt och obetalt |
 
 Händelsen `invoice.issued` går till bolagets system med webhooks ([Webhooks](webhooks.md)), och fakturan går till kunden som meddelandet `invoice` ([Meddelanden](meddelanden.md)). Den ska skickas samma dag som fakturan görs, eftersom tiden att betala räknas därifrån. Kundportalen ser en faktura bara om alla rader gäller dess egna policyer.
 
@@ -99,11 +99,11 @@ En plan ändras aldrig. En policyhändelse ger en **ny plan som ersätter** den 
 
 **Exempel:** Bella betalar 400 kr i månaden från 1 december. December och januari är fakturerade. Hon dör, och policyn avslutas från 16 januari med 4 195,07 kr tillbaka (319 av 365 dagar). Termen kostar då 604,93 kr. December står kvar, 204,93 kr av januari står kvar, och 195,07 kr av januari krediteras. Februari till november tas bort.
 
-Ingen betalning tas emot än (steg 3), så inget blir ett tillgodohavande. En återkallelse gäller bara när avslutets plan fortfarande är i kraft, alltså när ingen ändring gjorts efter avslutet.
+Har kunden redan betalat en faktura som sedan krediteras blir det betalda som fakturan inte längre behöver ett tillgodohavande ([Koppling till fakturorna](#koppling-till-fakturorna)). En återkallelse gäller bara när avslutets plan fortfarande är i kraft, alltså när ingen ändring gjorts efter avslutet.
 
 ## Inbetalningar
 
-En betaltjänst säger till Petvold när pengar kommit in på bolagets konto. Varje tjänst har en adapter (ADR 0017), och adaptern kontrollerar tjänstens signatur och översätter till Petvolds form. Inbetalningen sparas en gång, hur många gånger aviseringen än kommer, och ger händelsen `payment.succeeded`. Ännu kopplas den inte till någon faktura (steg 3b).
+En betaltjänst säger till Petvold när pengar kommit in på bolagets konto. Varje tjänst har en adapter (ADR 0017), och adaptern kontrollerar tjänstens signatur och översätter till Petvolds form. Inbetalningen sparas en gång, hur många gånger aviseringen än kommer, och ger händelsen `payment.succeeded`. `billing` kopplar den till fakturorna, se nästa avsnitt.
 
 | Anrop | Vad det ger |
 | --- | --- |
@@ -135,6 +135,40 @@ Adaptern `fake` finns för tester, dev-servern och demotjänsten. Den talar ett 
 - En avisering har 1 till 1 000 inbetalningar, som en bankfil.
 - **Dev-servern** har låtsasbanken för `SE:SEK` med hemligheten `whsec_cGV0dm9sZC1kZXYtZmFrZS1iYW5rcGV0dm9sZC1kZXY=`.
 - **Servern för drift** har den bara när `PETVOLD_FAKE_BANK_SECRET` är satt ([Drift](../teknik/drift.md)). Den är till för en demo och aldrig för riktiga pengar.
+
+## Koppling till fakturorna
+
+`billing` får varje inbetalning med `payment.succeeded` och kopplar den till ett betalarkonto (ADR 0040, punkt 6):
+
+1. **Med en fakturas OCR eller RF**, i fakturans marknad och valuta, hör den till fakturans betalarkonto. Den betalar först den fakturan, och det som blir över går till kontots äldsta förfallna faktura. Det som ingen faktura behöver blir ett tillgodohavande.
+2. **Utan referens**, med en okänd referens eller i en annan valuta, hamnar den bland de **okopplade inbetalningarna**. En handläggare kopplar den till ett konto eller en faktura, och den fördelas då på samma sätt.
+3. **En faktura som blir helt betald** ger händelsen `invoice.paid`.
+
+Inget av det ändrar fakturan. Vad som är krediterat, betalt och obetalt räknas ut från kreditnotorna och från det som varje betalning betalat:
+
+| Status | Betyder |
+| --- | --- |
+| `open` | Inget är betalt |
+| `partly-paid` | En del är betalt |
+| `paid` | Allt är betalt |
+| `credited` | En kreditnota tog hela fakturan |
+
+Betalarkontot visar `balance` med det som är obetalt (`open`) och tillgodohavandet (`credit`). Tillgodohavandet dras inte av på nästa faktura än. Det kommer i steg 5.
+
+| Anrop | Vad det ger |
+| --- | --- |
+| `GET /v1/received-payments?status=unmatched` | Kön med okopplade inbetalningar, äldst först. `status=matched` och `accountId=…` ger de kopplade. |
+| `GET /v1/received-payments/{paymentId}` | En inbetalning med koppling och vad den betalade av varje faktura |
+| `POST /v1/received-payments/{paymentId}/matches` | Koppla en inbetalning till `accountId` eller `invoiceId`, med en anteckning (`note`). En inbetalning kopplas en gång, och en andra gång ger `409`. |
+
+Läsningen kräver `billing:read`, och kopplingen `billing:write`. Båda har rollen `billing-clerk`.
+
+**Exempel:** Anna har två fakturor, december och januari på 400 kr var. Hon betalar 900 kr med januaris OCR. Januari betalas först, sedan december, och 100 kr blir ett tillgodohavande. Kontot visar `{ "open": 0, "credit": 10000 }`.
+
+```
+POST /v1/received-payments/pay_7f3…/matches
+{ "invoiceId": "inv_2c1…", "note": "Betalaren angav policynumret i meddelandet." }
+```
 
 ## Fördelning av en betalning
 

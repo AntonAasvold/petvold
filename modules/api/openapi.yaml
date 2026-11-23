@@ -3731,6 +3731,7 @@ paths:
         - { name: accountId, in: query, schema: { type: string } }
         - { name: policyId, in: query, schema: { type: string }, description: Invoices with a line on the policy. }
         - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - { name: status, in: query, schema: { type: string, enum: [open, partly-paid, paid, credited] }, description: 'open: nothing paid; partly-paid; paid; credited: a credit note took all of it.' }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
@@ -3874,6 +3875,89 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Payment' }
+
+  /v1/received-payments:
+    get:
+      tags: [billing]
+      operationId: listReceivedPayments
+      x-permission: billing:read
+      summary: Payments on the payers' accounts, oldest first
+      description: |
+        Requires the permission `billing:read` (ADR 0040). `status=unmatched` is the
+        queue of payments that came in without a usable reference. Only payments
+        in the caller's markets; a role bound to a clinic or to policies sees none.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [matched, unmatched] } }
+        - { name: accountId, in: query, schema: { type: string } }
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The payments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReceivedPayment' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/received-payments/{paymentId}:
+    get:
+      tags: [billing]
+      operationId: getReceivedPayment
+      x-permission: billing:read
+      summary: A payment on a payer's account
+      description: Requires the permission `billing:read`. Outside the caller's scope it answers 404.
+      parameters:
+        - { name: paymentId, in: path, required: true, schema: { type: string, pattern: '^pay_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReceivedPayment' }
+
+  /v1/received-payments/{paymentId}/matches:
+    post:
+      tags: [billing]
+      operationId: matchReceivedPayment
+      x-permission: billing:write
+      summary: Match an unmatched payment
+      description: |
+        Requires the permission `billing:write` (ADR 0040). Matches a payment that
+        came in without a usable reference to a payer account or an invoice in its
+        market and currency, and allocates it as if it had the reference. A payment
+        is matched once; a matched one answers 409.
+      parameters:
+        - { name: paymentId, in: path, required: true, schema: { type: string, pattern: '^pay_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MatchPaymentRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: The payment, matched and allocated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReceivedPayment' }
 
   /v1/premium-plans:
     get:
@@ -6498,7 +6582,7 @@ components:
     PayerAccount:
       type: object
       additionalProperties: false
-      required: [id, partyId, market, currency, paymentMethod, createdAt]
+      required: [id, partyId, market, currency, paymentMethod, createdAt, balance]
       description: One payer per party, market and currency (ADR 0040). The payer is the policyholder.
       properties:
         id: { type: string, pattern: '^bac_[A-Za-z0-9]+$' }
@@ -6507,6 +6591,14 @@ components:
         currency: { type: string, pattern: '^[A-Z]{3}$' }
         paymentMethod: { type: string, enum: [invoice], description: 'How the payer pays. Autogiro, direct debit, Swish and card come with the payments module.' }
         createdAt: { type: string, format: date-time }
+        balance:
+          type: object
+          additionalProperties: false
+          required: [open, credit]
+          description: Worked out from the invoices, credit notes and payments.
+          properties:
+            open: { type: integer, minimum: 0, description: Still to pay on the invoices, in minor units. }
+            credit: { type: integer, minimum: 0, description: 'Paid and not needed by an invoice: the payer''s credit balance.' }
 
     Payment:
       type: object
@@ -6528,7 +6620,7 @@ components:
     Invoice:
       type: object
       additionalProperties: false
-      required: [id, number, accountId, partyId, market, currency, issueDate, dueDate, reference, lines, total, createdBy, createdAt]
+      required: [id, number, accountId, partyId, market, currency, issueDate, dueDate, reference, lines, total, createdBy, createdAt, credited, paid, open, status]
       description: An invoice (ADR 0040). Never changes; a correction is a credit note.
       properties:
         id: { type: string, pattern: '^inv_[A-Za-z0-9]+$' }
@@ -6567,6 +6659,61 @@ components:
         total: { type: integer, minimum: 0 }
         createdBy: { type: string, description: "Who ran the invoicing: 'scheduler' or a person." }
         createdAt: { type: string, format: date-time }
+        credited: { type: integer, minimum: 0, description: Taken off by credit notes. }
+        paid: { type: integer, minimum: 0, description: 'Paid by payments, never more than total minus credited.' }
+        open: { type: integer, minimum: 0, description: Still to pay. }
+        status: { type: string, enum: [open, partly-paid, paid, credited] }
+
+    ReceivedPayment:
+      type: object
+      additionalProperties: false
+      required: [paymentId, market, currency, amount, reference, bookedOn, receivedAt, sourceEventId, status, allocations, unallocated]
+      description: |
+        A payment into the insurer's account as billing has it (ADR 0040). With an
+        invoice's reference it is matched to the invoice's payer account at once:
+        to that invoice first, then to the oldest due. Without one it is
+        unmatched until a person matches it.
+      properties:
+        paymentId: { type: string, pattern: '^pay_[A-Za-z0-9]+$', description: The payment in GET /v1/payments. }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        amount: { type: integer, minimum: 1 }
+        reference: { type: [string, 'null'] }
+        bookedOn: { type: string, format: date }
+        receivedAt: { type: string, format: date-time }
+        sourceEventId: { type: string }
+        status: { type: string, enum: [matched, unmatched] }
+        match:
+          type: object
+          additionalProperties: false
+          required: [paymentId, accountId, how, matchedBy, matchedAt]
+          properties:
+            paymentId: { type: string }
+            accountId: { type: string }
+            invoiceId: { type: string, description: The invoice it went to first. }
+            how: { type: string, enum: [reference, manual] }
+            matchedBy: { type: string }
+            matchedAt: { type: string, format: date-time }
+            note: { type: string }
+        allocations:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [invoiceId, amount]
+            properties:
+              invoiceId: { type: string }
+              amount: { type: integer, minimum: 1 }
+        unallocated: { type: integer, minimum: 0, description: "What it paid of no invoice: part of the payer's credit balance." }
+
+    MatchPaymentRequest:
+      type: object
+      additionalProperties: false
+      description: Exactly one of accountId and invoiceId.
+      properties:
+        accountId: { type: string, pattern: '^bac_[A-Za-z0-9]+$', description: 'The payer account: the payment goes to its oldest due invoice first.' }
+        invoiceId: { type: string, pattern: '^inv_[A-Za-z0-9]+$', description: "The invoice it pays first; the rest to the account's oldest due." }
+        note: { type: string, minLength: 1, maxLength: 2000, description: 'Why, e.g. the payer named the policy in the message. No more personal data than needed.' }
 
     CreditNote:
       type: object
