@@ -6,7 +6,8 @@
  *
  * Usage: npm run demo:seed [-- --months 6 --seed 1 --per-day 0.55]
  * Needs the same configuration as server.ts (databases, keys, documents and
- * Gotenberg), and PETVOLD_FAKE_BANK_SECRET.
+ * Gotenberg), and PETVOLD_FAKE_BANK_SECRET. With DEMO_WEBHOOK_URL the demo
+ * service is subscribed to every event first.
  */
 import { compose, databasesFromEnv, documentsFromEnv, fakeBankFromEnv, newPayeeHoldDaysFromEnv, webhooksFromEnv } from '../src/composition.ts';
 import { DemoClock, demoIds, runDemo } from '../src/demo-data.ts';
@@ -45,7 +46,7 @@ try {
   } else {
     const t = Date.now();
     console.log(`Demo data from ${from} to ${to}, seed ${seed}, ${perDay} new customers a day`);
-    const sum = await runDemo(inst, clock, { from, to, seed, customersPerDay: perDay, bankSecret: fake.secret, petvoldDocuments: Boolean(process.env.PETVOLD_GOTENBERG_URL), log: console.log });
+    const sum = await runDemo(inst, clock, { from, to, seed, customersPerDay: perDay, bankSecret: fake.secret, petvoldDocuments: Boolean(process.env.PETVOLD_GOTENBERG_URL), ...(process.env.DEMO_WEBHOOK_URL ? { webhookUrl: process.env.DEMO_WEBHOOK_URL } : {}), log: console.log });
     console.log(sum);
     const dead = inst.relay.deadLetters();
     console.log(`Done in ${Math.round((Date.now() - t) / 1000)} s, ${dead.length} dead letter(s) in the relay`);

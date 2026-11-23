@@ -64,7 +64,7 @@ Demon körs på en virtuell server (VPS) med Docker Compose, beslutad 2026-11-22
 3. Demoläget för inloggningen (`PETVOLD_AUTH=demo`).
 4. Testdatan: `npm run demo:seed` med klockan som går.
 5. `deploy/demo/` med Compose, Caddy och `reset.sh`, och en sida i `docs/teknik/` om hur demon sätts upp.
-6. Demotjänsten, fas 1: ta emot och visa händelserna. Den byggs separat och läggs till i Compose när den finns.
+6. Demotjänsten, fas 1: ta emot och visa händelserna. Den byggs separat och läggs till i Compose när den finns. Specen står i [Demotjänsten](../teknik/demotjanst.md).
 
 ## Konsekvenser
 
