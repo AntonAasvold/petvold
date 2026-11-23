@@ -32,6 +32,7 @@ För utvecklare och drift.
 - [Testning](teknik/testning.md): testlager och vad som krävs
 - [Drift](teknik/drift.md): starta en installation, konfiguration, inloggning, händelser och hälsa
 - [Demon](teknik/demo.md): sätta upp demon på en server, testdatan och inloggningen (ADR 0041)
+- [Demotjänsten](teknik/demotjanst.md): specen för tjänsten som tar emot och visar alla händelser, spelar bank och kontrollerar att allt stämmer
 - [API-konventioner](teknik/api-konventioner.md): hur adresser, filter, id och versioner namnges
 - [Back office](teknik/backoffice.md): appen i `apps/backoffice`, datatabellen, språk, ikoner och test
 - [Designsystemet](teknik/designsystem.md): tokens, temat för Web Awesome, komponenter och regler för text

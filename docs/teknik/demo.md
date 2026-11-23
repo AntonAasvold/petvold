@@ -1,6 +1,6 @@
 # Demon
 
-Demon är en installation av Petvold på en egen server, med demoanvändare och testdata (ADR 0041). Allt för servern finns i `deploy/demo/`.
+Demon är en installation av Petvold på en egen server, med demoanvändare och testdata (ADR 0041). Tjänsten som tar emot och visar händelserna beskrivs i [Demotjänsten](demotjanst.md). Allt för servern finns i `deploy/demo/`.
 
 ## Sätta upp demon
 
@@ -69,7 +69,7 @@ npm run demo:seed -- --months 6 --seed 1 --per-day 0.55
 | `--seed` | 1 | Fröet. Samma frö ger samma kunder, händelser och id:n. |
 | `--per-day` | 0,55 | Nya kunder per dag i genomsnitt, så omkring hundra på sex månader. |
 
-Programmet behöver samma konfiguration som `server.ts` (databaser, nycklar, arkiv och Gotenberg) och `PETVOLD_FAKE_BANK_SECRET`. Det stoppar om installationen redan har produkter, så det fyller bara en ny.
+Med `DEMO_WEBHOOK_URL` prenumererar programmet först på demotjänstens adress, så att den får hela historiken när Petvold startar ([Demotjänsten](demotjanst.md#1-prenumerationen)). Programmet behöver samma konfiguration som `server.ts` (databaser, nycklar, arkiv och Gotenberg) och `PETVOLD_FAKE_BANK_SECRET`. Det stoppar om installationen redan har produkter, så det fyller bara en ny.
 
 ### Vad som händer varje dag
 

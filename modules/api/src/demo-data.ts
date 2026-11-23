@@ -29,6 +29,13 @@ export interface DemoOptions {
   bankSecret: string;
   /** Petvold makes the notices' PDFs (documentMaker: petvold). Needs Gotenberg. */
   petvoldDocuments?: boolean;
+  /**
+   * The demo service's receiver (DEMO_WEBHOOK_URL). Subscribed to every event
+   * before anything happens, so the demo service gets the whole history when
+   * Petvold starts. The demo service rotates the secret when it starts: the
+   * secret is in no log.
+   */
+  webhookUrl?: string;
   log?: (line: string) => void;
 }
 
@@ -205,6 +212,10 @@ export async function runDemo(inst: Installation, clock: DemoClock, o: DemoOptio
   // The installation starts with its rules and products, before any customer.
   clock.set(`${o.from}T06:00:00.000Z`);
   await seedInstallation(inst, clock);
+  if (o.webhookUrl) {
+    await must('POST', '/v1/webhook-subscriptions', 'dev-integration', { url: o.webhookUrl, eventTypes: ['*'], markets: '*', description: 'Petvold Demo' });
+  }
+
   // The demo insurer's texts in notices, as an insurer sets them (ADR 0032).
   const settings = await must('GET', '/v1/settings/notices', 'dev-communications');
   await must('POST', '/v1/settings/notices/versions', 'dev-communications', {
