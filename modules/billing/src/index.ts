@@ -28,7 +28,7 @@ import {
 } from '@petvold/billing-core';
 
 export { PAYMENT_INTERVALS, type PaymentInterval, type PlanInput, type PremiumPlan, type ReferenceType } from '@petvold/billing-core';
-import { accountBalance, allocate, invoiceBalances, type AccountLedger, type Allocation, type InvoiceBalance, type PaymentMatch, type PaymentReceipt, type ReceivedPayment } from './receipts.ts';
+import { accountBalance, allocate, applyCredit, invoiceBalances, type AccountLedger, type Allocation, type CreditApplication, type InvoiceBalance, type PaymentMatch, type PaymentReceipt, type ReceivedPayment, type Refund } from './receipts.ts';
 export * from './receipts.ts';
 import { cancellationsToVoid, nextDunningAction, type DunningRules, type DunningStep, type NoticedCancellation } from './dunning.ts';
 export * from './dunning.ts';
@@ -197,8 +197,11 @@ export interface Invoice {
 /** What the module tells others (ADR 0008, 0033). Written with the change. */
 export interface BillingEvent {
   id: string;
-  type: 'invoice.issued' | 'invoice.credited' | 'invoice.paid' | 'invoice.overdue';
-  invoiceId: string;
+  type: 'invoice.issued' | 'invoice.credited' | 'invoice.paid' | 'invoice.overdue' | 'refund.ordered';
+  /** invoice.*: the invoice. */
+  invoiceId?: string;
+  /** refund.ordered: the refund. */
+  refundId?: string;
   market: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;
@@ -323,6 +326,15 @@ export interface BillingStore {
   ledger(accountId: string): Promise<AccountLedger>;
   /** Allocations to these invoices, or all. */
   allocations(filter: { accountId?: string }): Promise<Allocation[]>;
+  /**
+   * Uses or pays back an account's credit, in one transaction with the account
+   * locked against payments. `plan` sees the ledger and says what to store.
+   */
+  settleCredit(accountId: string, plan: (ledger: AccountLedger) => { applications: CreditApplication[]; refunds: Refund[]; events: BillingEvent[] }): Promise<void>;
+  /** Credit used on invoices, for these accounts or all. */
+  creditApplications(filter: { accountId?: string }): Promise<CreditApplication[]>;
+  /** Oldest first. */
+  refunds(filter: { accountId?: string; market?: string }): Promise<Refund[]>;
   /** What the dunning run did to each invoice, in order. */
   dunning(invoiceIds: string[]): Promise<Map<string, DunningStep[]>>;
   /**
@@ -362,6 +374,16 @@ export interface PolicyActions {
   cancelForUnpaidPremium(policyId: string, sentOn: ISODate, note: string, by: string): Promise<{ transactionId: string; effectiveDate: ISODate } | { skipped: string }>;
   /** Reverses the cancellation, because the premium was paid in time. A reason when the policy module cannot. */
   reverseCancellation(policyId: string, transactionId: string, note: string, by: string): Promise<{ reversed: true } | { failed: string }>;
+}
+
+export interface CreditsRunResult {
+  market: string;
+  onDate: ISODate;
+  dryRun: boolean;
+  /** Accounts with credit looked at. */
+  checked: number;
+  applied: { accountId: string; invoiceIds: string[]; amount: number }[];
+  refunds: { accountId: string; amount: number; refundId?: string }[];
 }
 
 export interface DunningRunResult {
@@ -760,7 +782,7 @@ export class BillingService {
     if (!i) throw new BillingError('not_found', `Invoice ${id} does not exist`);
     const ledger = await this.d.store.ledger(i.accountId);
     const dunning = (await this.d.store.dunning([i.id])).get(i.id) ?? [];
-    return { ...i, ...invoiceBalances([i], ledger.creditNotes, ledger.allocations).get(i.id)!, dunning };
+    return { ...i, ...invoiceBalances([i], ledger.creditNotes, ledger.allocations, ledger.creditApplications).get(i.id)!, dunning };
   }
 
   /** With status: only the invoices in it. */
@@ -769,7 +791,8 @@ export class BillingService {
     const invoices = await this.d.store.invoices(f);
     const credits = await this.d.store.creditNotes(f.accountId ? { accountId: f.accountId } : {});
     const allocations = await this.d.store.allocations(f.accountId ? { accountId: f.accountId } : {});
-    const balances = invoiceBalances(invoices, credits, allocations);
+    const applications = await this.d.store.creditApplications(f.accountId ? { accountId: f.accountId } : {});
+    const balances = invoiceBalances(invoices, credits, allocations, applications);
     const dunning = await this.d.store.dunning(invoices.map((i) => i.id));
     return invoices.map((i) => ({ ...i, ...balances.get(i.id)!, dunning: dunning.get(i.id) ?? [] })).filter((i) => !status || i.status === status);
   }
@@ -821,6 +844,119 @@ export class BillingService {
       out.noticed.push({ invoiceId: i.id, cancellations, skipped });
     }
     return out;
+  }
+
+  /**
+   * The credit run for one market (ADR 0040, punkt 6), daily before the
+   * dunning: an account's credit pays its open invoices, oldest due first; and
+   * an account with credit and nothing more to bill gets it back, as a refund
+   * that payments pays out. A dry run says what it would do.
+   */
+  async creditsRun(input: { market: string; onDate: ISODate; dryRun: boolean }, by: string): Promise<CreditsRunResult> {
+    const out: CreditsRunResult = { market: input.market, onDate: input.onDate, dryRun: input.dryRun, checked: 0, applied: [], refunds: [] };
+    for (const a of await this.d.store.accounts({ market: input.market })) {
+      const ledger = await this.d.store.ledger(a.id);
+      if (accountBalance(ledger).credit <= 0) continue;
+      out.checked++;
+      const uses = applyCredit(ledger);
+      const more = uses.length === 0 && (await this.hasMoreToBill(a.id, input.onDate));
+      if (input.dryRun) {
+        if (uses.length) out.applied.push({ accountId: a.id, invoiceIds: uses.map((u) => u.invoiceId), amount: uses.reduce((s, u) => s + u.amount, 0) });
+        else if (!more) out.refunds.push({ accountId: a.id, amount: accountBalance(ledger).credit });
+        continue;
+      }
+      if (uses.length) {
+        let applied: { invoiceIds: string[]; amount: number } | null = null;
+        await this.d.store.settleCredit(a.id, (l) => {
+          const now = applyCredit(l);
+          applied = { invoiceIds: now.map((u) => u.invoiceId), amount: now.reduce((s, u) => s + u.amount, 0) };
+          return { applications: now.map((u) => this.application(a.id, u, by)), refunds: [], events: this.paidByCredit(l, now, input.onDate) };
+        });
+        if (applied) out.applied.push({ accountId: a.id, ...(applied as { invoiceIds: string[]; amount: number }) });
+        await this.voidPaidNotices(a.id, input.onDate);
+      } else if (!more) {
+        const refund = await this.refundCredit(a, undefined, 'nothing-more-to-bill', undefined, by);
+        if (refund) out.refunds.push({ accountId: a.id, amount: refund.amount, refundId: refund.id });
+      }
+    }
+    return out;
+  }
+
+  /** The payer asks for their credit back, or part of it (ADR 0040, punkt 6). */
+  async requestRefund(accountId: string, input: { amount?: number; note?: string }, by: string): Promise<Refund> {
+    const a = await this.d.store.account(accountId);
+    if (!a) throw new BillingError('not_found', `Payer account ${accountId} does not exist`);
+    if (input.amount !== undefined && (!Number.isSafeInteger(input.amount) || input.amount <= 0)) throw new BillingError('validation', 'amount must be a whole number of minor units above zero');
+    const r = await this.refundCredit(a, input.amount, 'requested', input.note, by);
+    if (!r) throw new BillingError('conflict', `Payer account ${accountId} has ${input.amount ? 'less credit than that' : 'no credit'}`);
+    return r;
+  }
+
+  async refunds(filter: { accountId?: string; market?: string } = {}): Promise<Refund[]> {
+    return this.d.store.refunds(filter);
+  }
+
+  /** Pays back the credit, or the amount if given and covered, under the account's lock. null: not enough credit. */
+  private async refundCredit(a: PayerAccount, amount: number | undefined, reason: Refund['reason'], note: string | undefined, by: string): Promise<Refund | null> {
+    let made: Refund | null = null;
+    await this.d.store.settleCredit(a.id, (l) => {
+      const credit = accountBalance(l).credit;
+      const want = amount ?? credit;
+      if (credit <= 0 || want > credit) return { applications: [], refunds: [], events: [] };
+      const at = this.d.clock.now();
+      const refund: Refund = { id: this.d.ids.next('ref'), accountId: a.id, partyId: a.partyId, market: a.market, currency: a.currency, amount: want, reason, ...(note ? { note } : {}), at, by };
+      made = refund;
+      const event: BillingEvent = {
+        id: this.d.ids.next('bev'),
+        type: 'refund.ordered',
+        refundId: refund.id,
+        market: a.market,
+        occurredAt: at,
+        data: { accountId: a.id, partyId: a.partyId, amount: want, currency: a.currency, reason },
+      };
+      return { applications: [], refunds: [refund], events: [event] };
+    });
+    return made;
+  }
+
+  private application(accountId: string, u: { invoiceId: string; amount: number }, by: string): CreditApplication {
+    return { id: this.d.ids.next('cap'), accountId, invoiceId: u.invoiceId, amount: u.amount, at: this.d.clock.now(), by };
+  }
+
+  /** invoice.paid for each invoice the credit settles. */
+  private paidByCredit(ledger: AccountLedger, uses: { invoiceId: string; amount: number }[], onDate: ISODate): BillingEvent[] {
+    const before = invoiceBalances(ledger.invoices, ledger.creditNotes, ledger.allocations, ledger.creditApplications);
+    return uses
+      .filter((u) => before.get(u.invoiceId)!.open === u.amount)
+      .map((u) => {
+        const i = ledger.invoices.find((x) => x.id === u.invoiceId)!;
+        return {
+          id: this.d.ids.next('bev'),
+          type: 'invoice.paid' as const,
+          invoiceId: i.id,
+          market: i.market,
+          occurredAt: this.d.clock.now(),
+          data: { invoiceNo: i.number, accountId: i.accountId, partyId: i.partyId, total: i.total, currency: i.currency, paidWith: 'credit', paidOn: onDate },
+        };
+      });
+  }
+
+  /**
+   * Whether the account has more to bill: an installment not yet invoiced, or
+   * a term still running that has not been ended by a cancellation or a
+   * transfer, so a renewal may follow.
+   */
+  private async hasMoreToBill(accountId: string, onDate: ISODate): Promise<boolean> {
+    const all = await this.d.store.plans({ accountId });
+    const replaced = new Set(all.flatMap((p) => (p.replaces ? [p.replaces] : [])));
+    const current = all.filter((p) => !replaced.has(p.id));
+    const invoiced = await this.d.store.invoicedSeqs(current.map((p) => p.id));
+    for (const p of current) {
+      if (p.plan.installments.some((i) => i.amount > 0 && !invoiced.get(p.id)?.has(i.seq))) return true;
+      const ended = p.adjustment?.kind === 'cancellation' || p.adjustment?.kind === 'transfer-from';
+      if (!ended && p.plan.termEnd > onDate) return true;
+    }
+    return false;
   }
 
   /**
@@ -948,7 +1084,7 @@ export class BillingService {
         invoiceId,
         market: i.market,
         occurredAt: match.matchedAt,
-        data: { invoiceNo: i.number, accountId: i.accountId, partyId: i.partyId, total: i.total, currency: i.currency, paymentId: receipt.paymentId, paidOn: receipt.bookedOn },
+        data: { invoiceNo: i.number, accountId: i.accountId, partyId: i.partyId, total: i.total, currency: i.currency, paidWith: 'payment', paymentId: receipt.paymentId, paidOn: receipt.bookedOn },
       };
     });
     return { allocations: allocations.map((a) => ({ ...a, paymentId: receipt.paymentId, accountId: match.accountId })), events };
@@ -1105,7 +1241,27 @@ export class InMemoryBillingStore implements BillingStore {
       creditNotes: this.creditList.filter((c) => c.accountId === accountId),
       allocations: this.allocationList.filter((a) => a.accountId === accountId),
       received,
+      creditApplications: this.applicationList.filter((a) => a.accountId === accountId),
+      refunded: this.refundList.filter((r) => r.accountId === accountId).reduce((s, r) => s + r.amount, 0),
     });
+  }
+
+  private readonly applicationList: CreditApplication[] = [];
+  private readonly refundList: Refund[] = [];
+
+  async settleCredit(accountId: string, plan: (ledger: AccountLedger) => { applications: CreditApplication[]; refunds: Refund[]; events: BillingEvent[] }) {
+    const done = plan(await this.ledger(accountId));
+    this.applicationList.push(...structuredClone(done.applications));
+    this.refundList.push(...structuredClone(done.refunds));
+    this.outbox.push(...structuredClone(done.events));
+  }
+
+  async creditApplications(filter: { accountId?: string }) {
+    return structuredClone(this.applicationList.filter((a) => !filter.accountId || a.accountId === filter.accountId));
+  }
+
+  async refunds(filter: { accountId?: string; market?: string }) {
+    return structuredClone(this.refundList.filter((r) => (!filter.accountId || r.accountId === filter.accountId) && (!filter.market || r.market === filter.market)));
   }
 
   async addReceipt(receipt: PaymentReceipt, settle: null | { match: PaymentMatch; plan: (ledger: AccountLedger) => { allocations: Allocation[]; events: BillingEvent[] } }) {

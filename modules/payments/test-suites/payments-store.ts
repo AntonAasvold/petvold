@@ -133,6 +133,7 @@ export function payeeAccountOf(n: number, o: Partial<PayeeAccount> = {}): PayeeA
 export function payoutOf(n: number, o: Partial<Payout> = {}): Payout {
   return {
     id: `pyo_${n}`,
+    purpose: 'claim',
     orderId: `ord_${n}`,
     claimId: 'clm_1',
     decisionId: 'dec_1',

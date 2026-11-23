@@ -20,9 +20,10 @@ Bolagets system kan få veta när något händer i Petvold, utan att fråga. En 
 | Djur | `animal.ownership_changed`, `animal.died` | djurets id |
 | Kundmeddelanden | `notice.created`, `notice.document_made`, `notice.delivered`, `notice.failed` | meddelandets id |
 | Fakturor | `invoice.issued`: nummer, konto, part, datum, belopp, valuta, betalningsreferens och policyer. `invoice.credited`: kreditnotans id och nummer, konto, part, belopp, valuta och policyhändelsen den kom av (ADR 0040) | fakturans id |
+| Återbetalningar | `refund.ordered`: konto, part, belopp, valuta och skäl (ADR 0040). `invoice.paid` säger med `paidWith` om en betalning eller tillgodohavandet betalade fakturan. | återbetalningens id |
 | Förfallna fakturor | `invoice.overdue`: nummer, konto, part, förfallodag, obetalt belopp, valuta, referens och påminnelsens nummer (ADR 0040) | fakturans id |
 | Betalda fakturor | `invoice.paid`: nummer, konto, part, belopp, valuta, inbetalningen och dagen (ADR 0040) | fakturans id |
-| Utbetalningar | `payout.paid` och `payout.failed`: skada, policy, part eller klinik, order, belopp och valuta, aldrig kontonumret (ADR 0040) | utbetalningens id |
+| Utbetalningar | `payout.paid` och `payout.failed`: syfte (ersättning eller återbetalning), skada och policy för en ersättning, part eller klinik, order, belopp och valuta, aldrig kontonumret (ADR 0040) | utbetalningens id |
 | Inbetalningar | `payment.succeeded`: riktning, adapter, belopp, valuta, betalningsreferens och bokföringsdag (ADR 0017). Inget om betalaren. | inbetalningens id |
 | Körningar | `job.failed`: körning, startsätt och start, aldrig felet (ADR 0037) | körningens id |
 

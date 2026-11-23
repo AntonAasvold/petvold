@@ -3876,6 +3876,66 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Payment' }
 
+  /v1/refunds:
+    get:
+      tags: [billing]
+      operationId: listRefunds
+      x-permission: billing:read
+      summary: Credit paid back to payers, oldest first
+      description: Requires the permission `billing:read` (ADR 0040). Only in the caller's markets; a role bound to a clinic or to policies sees none.
+      parameters:
+        - { name: accountId, in: query, schema: { type: string } }
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The refunds
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Refund' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/payer-accounts/{accountId}/refunds:
+    post:
+      tags: [billing]
+      operationId: requestRefund
+      x-permission: billing:write
+      summary: "Pay back a payer's credit"
+      description: |
+        Requires the permission `billing:write` (ADR 0040). The payer asked for their
+        credit back, all of it or an amount. The refund goes to payments as
+        refund.ordered and is paid out to the payer. Without credit, or with less
+        than the amount, 409.
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string, pattern: '^bac_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefundRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: The refund
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Refund' }
+
   /v1/received-payments:
     get:
       tags: [billing]
@@ -6890,7 +6950,7 @@ components:
     Payout:
       type: object
       additionalProperties: false
-      required: [id, orderId, claimId, decisionId, policyId, market, currency, amount, provider, sourceEventId, createdAt, status, steps]
+      required: [id, purpose, orderId, market, currency, amount, provider, sourceEventId, createdAt, status, steps]
       description: |
         A claim's payout order on its way to the payee (ADR 0040): the clinic in the
         order if it has an agreement on direct settlement in force that day
@@ -6898,8 +6958,9 @@ components:
         is never paid twice.
       properties:
         id: { type: string, pattern: '^pyo_[A-Za-z0-9]+$' }
-        orderId: { type: string, description: The payout order in claim.payout_ordered. }
-        claimId: { type: string }
+        purpose: { type: string, enum: [claim, premium-refund], description: "claim: a claim's payout order. premium-refund: a payer's credit paid back (GET /v1/refunds)." }
+        orderId: { type: string, description: 'The payout order in claim.payout_ordered, or the refund.' }
+        claimId: { type: string, description: A claim's payout only. }
         decisionId: { type: string }
         policyId: { type: string }
         market: { $ref: '#/components/schemas/Market' }
@@ -6927,6 +6988,30 @@ components:
         payeeAccountId: { type: string }
         providerRef: { type: string, description: "The adapter's id for the payment." }
         note: { type: string }
+
+    Refund:
+      type: object
+      additionalProperties: false
+      required: [id, accountId, partyId, market, currency, amount, reason, at, by]
+      description: "A payer's credit paid back (ADR 0040). Payments pays it out to the payer as a payout with purpose premium-refund. Never changes."
+      properties:
+        id: { type: string, pattern: '^ref_[A-Za-z0-9]+$' }
+        accountId: { type: string }
+        partyId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        amount: { type: integer, minimum: 1 }
+        reason: { type: string, enum: [requested, nothing-more-to-bill], description: 'requested: the payer asked. nothing-more-to-bill: the account has nothing left to invoice, so the credit run paid it back.' }
+        note: { type: string }
+        at: { type: string, format: date-time }
+        by: { type: string }
+
+    RefundRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        amount: { type: integer, minimum: 1, description: 'Minor units, at most the credit. Omitted: all of it.' }
+        note: { type: string, minLength: 1, maxLength: 2000, description: How the payer asked. }
 
     PayeeAccount:
       type: object

@@ -148,6 +148,7 @@ export interface PayoutFilter {
   partyId?: string;
   clinicId?: string;
   market?: string;
+  orderId?: string;
 }
 
 export class PayoutConflictError extends Error {
@@ -265,8 +266,8 @@ export class PaymentsService {
     const orderId = String(e.data.payoutOrderId);
     const existing = (await this.d.store.payouts({ claimId: e.claimId })).find((p) => p.orderId === orderId);
     if (existing) return existing;
-    const policyId = String(e.data.policyId);
     const day = marketDate(e.market, e.occurredAt);
+    const policyId = String(e.data.policyId);
     const clinicId = typeof e.data.clinicId === 'string' ? e.data.clinicId : undefined;
     const agreement = clinicId ? (await this.d.store.agreements({ clinicId, market: e.market })).some((a) => agreementInForce(a, day)) : false;
     let payee: Payee;
@@ -277,9 +278,8 @@ export class PaymentsService {
       if (!partyId) throw new Error(`No policyholder for ${policyId}, for payout order ${orderId}`);
       payee = { partyId };
     }
-    const now = this.d.clock.now();
-    const payout: Payout = {
-      id: this.d.ids.next('pyo'),
+    return this.createPayout(provider, payee, {
+      purpose: 'claim',
       orderId,
       claimId: e.claimId,
       decisionId: String(e.data.decisionId),
@@ -287,12 +287,46 @@ export class PaymentsService {
       market: e.market,
       currency: String(e.data.currency),
       amount: Number(e.data.amount),
+      sourceEventId: e.id,
+    });
+  }
+
+  /**
+   * Billing pays back a payer's credit (refund.ordered, ADR 0040 punkt 6 and 8):
+   * a payout to the payer, like a claim's. Without an adapter that pays out,
+   * nothing: the refund stays with the insurer's systems.
+   */
+  async handleBillingEvent(e: { id: string; type: string; refundId?: string; market: string; occurredAt: Timestamp; data: Record<string, unknown> }): Promise<PayoutView | null> {
+    if (e.type !== 'refund.ordered' || !e.refundId) return null;
+    const provider = this.outgoing(e.market, String(e.data.currency));
+    if (!provider) return null;
+    return this.createPayout(provider, { partyId: String(e.data.partyId) }, {
+      purpose: 'premium-refund',
+      orderId: e.refundId,
+      market: e.market,
+      currency: String(e.data.currency),
+      amount: Number(e.data.amount),
+      sourceEventId: e.id,
+    });
+  }
+
+  /** Stores a payout once per order, and sends it, or leaves it waiting or held. */
+  private async createPayout(
+    provider: PaymentProvider,
+    payee: Payee,
+    o: Pick<Payout, 'purpose' | 'orderId' | 'claimId' | 'decisionId' | 'policyId' | 'market' | 'currency' | 'amount' | 'sourceEventId'>,
+  ): Promise<PayoutView> {
+    const existing = (await this.d.store.payouts({ orderId: o.orderId }))[0];
+    if (existing) return existing;
+    const now = this.d.clock.now();
+    const payout: Payout = {
+      id: this.d.ids.next('pyo'),
+      ...o,
       ...payee,
       provider: provider.id,
-      sourceEventId: e.id,
       createdAt: now,
     };
-    const account = await this.currentAccount(payee, e.market);
+    const account = await this.currentAccount(payee, o.market);
     const gate = payoutGate(account, now, this.d.newPayeeHoldDays ?? 0);
     const first: PayoutStep =
       gate === 'awaiting-details'
@@ -300,7 +334,7 @@ export class PaymentsService {
         : gate === 'held'
           ? { status: 'held', at: now, by: 'payments', payeeAccountId: account!.id, note: 'The payee details are new' }
           : { status: 'pending', at: now, by: 'payments', payeeAccountId: account!.id };
-    if (!(await this.d.store.addPayout(payout, first, []))) return (await this.d.store.payouts({ claimId: e.claimId })).find((p) => p.orderId === orderId)!;
+    if (!(await this.d.store.addPayout(payout, first, []))) return (await this.d.store.payouts({ orderId: o.orderId }))[0]!;
     if (gate === 'ready') await this.send(payout.id, 2, account!);
     return (await this.d.store.payout(payout.id))!;
   }
@@ -457,7 +491,7 @@ export class PaymentsService {
       payoutId: p.id,
       market: p.market,
       occurredAt: at,
-      data: { claimId: p.claimId, policyId: p.policyId, ...payeeOf(p), orderId: p.orderId, amount: p.amount, currency: p.currency },
+      data: { purpose: p.purpose, ...(p.claimId ? { claimId: p.claimId, policyId: p.policyId } : {}), ...payeeOf(p), orderId: p.orderId, amount: p.amount, currency: p.currency },
     };
     await this.d.store.addPayoutStep(p.id, seq, step, [event]);
   }
@@ -607,6 +641,7 @@ export class InMemoryPaymentsStore implements PaymentsStore {
           (!filter.claimId || p.claimId === filter.claimId) &&
           (!filter.partyId || p.partyId === filter.partyId) &&
           (!filter.clinicId || p.clinicId === filter.clinicId) &&
+          (!filter.orderId || p.orderId === filter.orderId) &&
           (!filter.market || p.market === filter.market),
       )
       .sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? -1 : 1) : a.createdAt < b.createdAt ? -1 : 1));

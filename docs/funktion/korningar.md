@@ -11,6 +11,7 @@ Petvold har arbete som ska ske varje dag utan att någon trycker på en knapp: f
 | `policies.renewal` | Policyer vars term slutar inom produktens framförhållning förnyas. Det som inte kan förnyas hamnar under "behöver beslut" (ADR 0029). | 02:00 |
 | `parties.retention` | Parter vars lagringstid har gått ut får en begäran om anonymisering, som en dataskyddsansvarig beslutar om (ADR 0028) | 03:00 |
 | `billing.invoicing` | Delbetalningar som förfaller inom framförhållningen hamnar på en faktura per betalarkonto (ADR 0040, se [Premier och betalningar](premier.md#fakturor)) | 04:00 |
+| `billing.credits` | Tillgodohavanden betalar kontots obetalda fakturor, eller betalas tillbaka när kontot inte har mer att fakturera (ADR 0040, se [Premier och betalningar](premier.md#tillgodohavanden)) | 04:30 |
 | `billing.dunning` | Påminnelse om en förfallen faktura, och uppsägning för obetald premie när påminnelsen inte hjälpt (ADR 0040, se [Premier och betalningar](premier.md#obetald-premie)) | 05:00 |
 | `claims.information-requests` | Öppna begäranden om komplettering får sin påminnelse på påminnelsedagen och går ut dagen efter svarsdatumet. Ärendet går då tillbaka till en handläggare (ADR 0036, se [Komplettering](skadereglering.md#komplettering)). | 06:00 |
 
@@ -39,6 +40,7 @@ Resultatet har bara antal och id:n, aldrig personuppgifter. En ansökans svar om
 | `policies.renewal` | `checked`, `renewed`, `cancelled`, `notYet`, `needsDecision` (policy och skäl), `renewedPolicyIds` |
 | `parties.retention` | `settingsVersion`, `checked`, `due`, `ongoing`, `withinRetention`, `pendingRequest`, `requestIds` |
 | `billing.invoicing` | `checked`, `invoiced`, `invoiceIds` |
+| `billing.credits` | `checked`, `applied`, `refunded`, `refundIds` |
 | `billing.dunning` | `checked`, `reminded`, `noticed`, `invoiceIds` |
 | `claims.information-requests` | `reminded`, `expired`, `remindedRequestIds`, `expiredRequestIds` |
 

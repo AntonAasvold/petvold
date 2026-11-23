@@ -17,7 +17,7 @@ export type Timestamp = string;
  * and 6). Anything else in a module's event stays inside Petvold: names, notes,
  * who did it. Types are versioned: a breaking change is a new `.vN`.
  */
-export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId' | 'invoiceId' | 'paymentId' | 'payoutId';
+export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId' | 'invoiceId' | 'paymentId' | 'payoutId' | 'refundId';
 
 /** A request for information (ADR 0036): what was asked for and when it is due, never the note. */
 const INFORMATION_FIELDS = ['requestId', 'recipient', 'items', 'dueDate', 'status'];
@@ -47,11 +47,13 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'invoice.credited': { source: 'billing', subject: 'invoiceId', fields: ['creditNoteId', 'creditNoteNo', 'accountId', 'partyId', 'total', 'currency', 'reason'] },
   // A payment into the insurer's account (ADR 0017). The payer's details stay inside Petvold.
   // A claim's payout reached the payee, or could not (ADR 0040). Never the account number.
-  'payout.paid': { source: 'payments', subject: 'payoutId', fields: ['claimId', 'policyId', 'partyId', 'clinicId', 'orderId', 'amount', 'currency'] },
-  'payout.failed': { source: 'payments', subject: 'payoutId', fields: ['claimId', 'policyId', 'partyId', 'clinicId', 'orderId', 'amount', 'currency'] },
+  'payout.paid': { source: 'payments', subject: 'payoutId', fields: ['purpose', 'claimId', 'policyId', 'partyId', 'clinicId', 'orderId', 'amount', 'currency'] },
+  'payout.failed': { source: 'payments', subject: 'payoutId', fields: ['purpose', 'claimId', 'policyId', 'partyId', 'clinicId', 'orderId', 'amount', 'currency'] },
+  // A payer's credit paid back (ADR 0040): payments pays it out as payout.paid with purpose premium-refund.
+  'refund.ordered': { source: 'billing', subject: 'refundId', fields: ['accountId', 'partyId', 'amount', 'currency', 'reason'] },
   'payment.succeeded': { source: 'payments', subject: 'paymentId', fields: ['direction', 'provider', 'amount', 'currency', 'reference', 'bookedOn'] },
   'invoice.overdue': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'dueDate', 'open', 'currency', 'reference', 'reminderNo'] },
-  'invoice.paid': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'total', 'currency', 'paymentId', 'paidOn'] },
+  'invoice.paid': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'total', 'currency', 'paidWith', 'paymentId', 'paidOn'] },
   'invoice.issued': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'issueDate', 'dueDate', 'total', 'currency', 'reference', 'policyIds'] },
   // A run failed (ADR 0037), for the insurer's operations to alert on. The error stays inside Petvold.
   'job.failed': { source: 'scheduling', subject: 'runId', fields: ['job', 'trigger', 'startedAt'] },
@@ -83,6 +85,7 @@ export interface SourceEvent {
   invoiceId?: string;
   paymentId?: string;
   payoutId?: string;
+  refundId?: string;
   market: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;

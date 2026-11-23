@@ -207,6 +207,30 @@ export function billingStoreSuite(name: string, make: () => Promise<{ store: Bil
       ]);
       assert.deepEqual((await store.pendingEvents(50)).filter((e) => e.type === 'invoice.overdue').map((e) => e.id), ['bev_overdue']);
     });
+
+    test('credit is used and paid back under the account, with its events, and the ledger sees it', async () => {
+      const { store } = await make();
+      await store.addPlan(payer(), planRecord());
+      const inv = await store.addInvoice('SE', 2026, (no) => invoiceOf('inv_a', no, planRecord()), () => []);
+      let seen: AccountLedger | null = null;
+      await store.settleCredit('bac_1', (l) => {
+        seen = l;
+        return {
+          applications: [{ id: 'cap_1', accountId: 'bac_1', invoiceId: inv.id, amount: 500, at: '2026-12-01T04:30:00.000Z', by: 'scheduler' }],
+          refunds: [{ id: 'ref_1', accountId: 'bac_1', partyId: 'pty_anna', market: 'SE', currency: 'SEK', amount: 700, reason: 'requested', note: 'Phone', at: '2026-12-01T04:30:00.000Z', by: 'kundservice' }],
+          events: [{ id: 'bev_ref', type: 'refund.ordered', refundId: 'ref_1', market: 'SE', occurredAt: '2026-12-01T04:30:00.000Z', data: { amount: 700 } }],
+        };
+      });
+      assert.deepEqual(seen!.creditApplications, [], 'the plan sees the ledger before');
+      const ledger = await store.ledger('bac_1');
+      assert.deepEqual(ledger.creditApplications.map((a) => [a.id, a.invoiceId, a.amount]), [['cap_1', inv.id, 500]]);
+      assert.equal(ledger.refunded, 700);
+      assert.deepEqual((await store.creditApplications({ accountId: 'bac_1' })).map((a) => a.id), ['cap_1']);
+      assert.deepEqual(await store.refunds({ accountId: 'bac_1' }), [{ id: 'ref_1', accountId: 'bac_1', partyId: 'pty_anna', market: 'SE', currency: 'SEK', amount: 700, reason: 'requested', note: 'Phone', at: '2026-12-01T04:30:00.000Z', by: 'kundservice' }]);
+      assert.deepEqual(await store.refunds({ market: 'FI' }), []);
+      const [e] = (await store.pendingEvents(50)).filter((x) => x.type === 'refund.ordered');
+      assert.deepEqual([e?.refundId, e?.invoiceId], ['ref_1', undefined]);
+    });
   });
 }
 

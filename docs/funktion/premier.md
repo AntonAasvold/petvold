@@ -2,7 +2,7 @@
 
 Hur Petvold delar en terms premie i delbetalningar, fördelar en betalning och räknar ut vad ett avslut betyder i pengar (ADR 0040).
 
-**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör premieplaner, fakturor och kreditnotor (steg 2). Modulen `payments` tar emot inbetalningar (steg 3a), och `billing` kopplar dem till fakturorna (steg 3b). `payments` betalar ut skadornas ersättning till försäkringstagaren, eller till kliniken vid direktreglering (steg 3c). Körningen `billing.dunning` påminner om obetalda fakturor och säger upp för obetald premie (steg 4).
+**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör premieplaner, fakturor och kreditnotor (steg 2). Modulen `payments` tar emot inbetalningar (steg 3a), och `billing` kopplar dem till fakturorna (steg 3b). `payments` betalar ut skadornas ersättning till försäkringstagaren, eller till kliniken vid direktreglering (steg 3c). Körningen `billing.dunning` påminner om obetalda fakturor och säger upp för obetald premie (steg 4). Körningen `billing.credits` använder tillgodohavanden på fakturorna eller betalar tillbaka dem (steg 5a).
 
 ## Betalarkonto och premieplan
 
@@ -153,7 +153,7 @@ Inget av det ändrar fakturan. Vad som är krediterat, betalt och obetalt räkna
 | `paid` | Allt är betalt |
 | `credited` | En kreditnota tog hela fakturan |
 
-Betalarkontot visar `balance` med det som är obetalt (`open`) och tillgodohavandet (`credit`). Tillgodohavandet dras inte av på nästa faktura än. Det kommer i steg 5.
+Betalarkontot visar `balance` med det som är obetalt (`open`) och tillgodohavandet (`credit`), se [Tillgodohavanden](#tillgodohavanden).
 
 | Anrop | Vad det ger |
 | --- | --- |
@@ -169,6 +169,28 @@ Läsningen kräver `billing:read`, och kopplingen `billing:write`. Båda har rol
 POST /v1/received-payments/pay_7f3…/matches
 { "invoiceId": "inv_2c1…", "note": "Betalaren angav policynumret i meddelandet." }
 ```
+
+## Tillgodohavanden
+
+Ett tillgodohavande är det kunden betalat som ingen faktura behöver: en överbetalning, eller en betald faktura som en kreditnota tagit ner efter en ändring, ett avslut eller en ånger (ADR 0040, punkt 6). Körningen `billing.credits` går varje morgon klockan 04:30, mellan faktureringen och påminnelserna ([Körningar](korningar.md)):
+
+1. **Har kontot obetalda fakturor** betalar tillgodohavandet dem, den äldsta förfallna först. En faktura som blir betald ger `invoice.paid` med `paidWith: credit`. Det sker innan påminnelserna, så ingen påminns om det tillgodohavandet redan täcker.
+2. **Har kontot inget mer att fakturera** betalas tillgodohavandet tillbaka (`reason: nothing-more-to-bill`). Det gäller när alla delbetalningar är fakturerade och terminen har tagit slut, eller avslutats eller överlåtits. Annars väntar tillgodohavandet på nästa faktura.
+3. **En återbetalning** går till `payments` som `refund.ordered` och betalas ut till betalaren som en utbetalning med `purpose: premium-refund`, med samma väntan och spärr som en ersättning ([Utbetalning av ersättning](#utbetalning-av-ersättning)).
+
+Kunden kan också be om tillgodohavandet tillbaka, hela eller en del:
+
+```
+POST /v1/payer-accounts/bac_…/refunds
+{ "amount": 10000, "note": "Kunden bad om det i telefon." }
+```
+
+| Anrop | Vad det ger |
+| --- | --- |
+| `POST /v1/payer-accounts/{accountId}/refunds` | Betala tillbaka, hela tillgodohavandet eller `amount` (`billing:write`). Mer än tillgodohavandet ger `409`. |
+| `GET /v1/refunds?accountId=…` | Återbetalningarna |
+
+Ett tillgodohavande som används och en återbetalning ändras aldrig. Kontots tillgodohavande är det mottagna minus det som betalat fakturor och det som betalats tillbaka. Ett egenskapstest prövar att summan alltid går ihop.
 
 ## Obetald premie
 
@@ -199,7 +221,7 @@ Fakturan visar i `dunning` vad körningen gjort, i ordning:
 
 ## Utbetalning av ersättning
 
-Ett beslut som ger ersättning blir en utbetalningsorder, `claim.payout_ordered` (ADR 0019). `payments` gör en **utbetalning** av ordern, och varje order betalas en gång (ADR 0040, punkt 8). Mottagaren är:
+Ett beslut som ger ersättning blir en utbetalningsorder, `claim.payout_ordered` (ADR 0019). `payments` gör en **utbetalning** av ordern, och varje order betalas en gång (ADR 0040, punkt 8). En återbetalning av ett tillgodohavande blir en utbetalning på samma sätt (`purpose: premium-refund`). Mottagaren för en ersättning är:
 - **kliniken** i ordern (`clinicId`), om den har ett avtal om direktreglering som gäller den dagen
 - annars **försäkringstagaren** den dagen
 

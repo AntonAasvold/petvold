@@ -68,14 +68,17 @@ export interface PayoutStep {
   note?: string;
 }
 
-/** A claim's payout order on its way to the payee. */
+/** A payout on its way to the payee: a claim's payout order, or a refund of a payer's credit. */
 export type Payout = Payee & {
   id: string;
-  /** The claim's payout order: one payout per order, so an order is never paid twice. */
+  /** 'claim': a claim's payout order. 'premium-refund': billing pays back a payer's credit. */
+  purpose: 'claim' | 'premium-refund';
+  /** The order: the claim's payout order or billing's refund. One payout per order, so an order is never paid twice. */
   orderId: string;
-  claimId: string;
-  decisionId: string;
-  policyId: string;
+  /** claim: the claim, the decision and the policy. */
+  claimId?: string;
+  decisionId?: string;
+  policyId?: string;
   market: string;
   currency: string;
   amount: number;

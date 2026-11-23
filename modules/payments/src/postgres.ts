@@ -162,9 +162,9 @@ export class PostgresPaymentsStore implements PaymentsStore {
     try {
       await client.query('begin');
       const ins = await client.query(
-        `insert into payments.payout (payout_id, order_id, claim_id, decision_id, policy_id, market, currency, amount, party_id, clinic_id, provider, source_event_id, created_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) on conflict (order_id) do nothing`,
-        [p.id, p.orderId, p.claimId, p.decisionId, p.policyId, p.market, p.currency, p.amount, p.partyId ?? null, p.clinicId ?? null, p.provider, p.sourceEventId, p.createdAt],
+        `insert into payments.payout (payout_id, purpose, order_id, claim_id, decision_id, policy_id, market, currency, amount, party_id, clinic_id, provider, source_event_id, created_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) on conflict (order_id) do nothing`,
+        [p.id, p.purpose, p.orderId, p.claimId ?? null, p.decisionId ?? null, p.policyId ?? null, p.market, p.currency, p.amount, p.partyId ?? null, p.clinicId ?? null, p.provider, p.sourceEventId, p.createdAt],
       );
       if (ins.rowCount === 0) {
         await client.query('rollback');
@@ -209,15 +209,15 @@ export class PostgresPaymentsStore implements PaymentsStore {
 
   async payouts(filter: PayoutFilter): Promise<PayoutView[]> {
     const rows = await this.payoutRows(
-      `($1::text is null or p.claim_id = $1) and ($2::text is null or p.party_id = $2) and ($3::text is null or p.market = $3) and ($4::text is null or p.clinic_id = $4)`,
-      [filter.claimId ?? null, filter.partyId ?? null, filter.market ?? null, filter.clinicId ?? null],
+      `($1::text is null or p.claim_id = $1) and ($2::text is null or p.party_id = $2) and ($3::text is null or p.market = $3) and ($4::text is null or p.clinic_id = $4) and ($5::text is null or p.order_id = $5)`,
+      [filter.claimId ?? null, filter.partyId ?? null, filter.market ?? null, filter.clinicId ?? null, filter.orderId ?? null],
     );
     return filter.status ? rows.filter((p) => p.status === filter.status) : rows;
   }
 
   private async payoutRows(where: string, params: unknown[]): Promise<PayoutView[]> {
     const { rows } = await this.pool.query(
-      `select p.payout_id, p.order_id, p.claim_id, p.decision_id, p.policy_id, p.market, p.currency, p.amount, p.party_id, p.clinic_id, p.provider, p.source_event_id, p.created_at,
+      `select p.payout_id, p.purpose, p.order_id, p.claim_id, p.decision_id, p.policy_id, p.market, p.currency, p.amount, p.party_id, p.clinic_id, p.provider, p.source_event_id, p.created_at,
               (select json_agg(json_build_object('status', s.status, 'at', s.at, 'by', s.by_whom, 'payeeAccountId', s.payee_account_id, 'providerRef', s.provider_ref, 'note', s.note) order by s.seq)
                from payments.payout_step s where s.payout_id = p.payout_id) as steps
        from payments.payout p where ${where}
@@ -235,10 +235,9 @@ export class PostgresPaymentsStore implements PaymentsStore {
       }));
       return {
         id: r.payout_id,
+        purpose: r.purpose,
         orderId: r.order_id,
-        claimId: r.claim_id,
-        decisionId: r.decision_id,
-        policyId: r.policy_id,
+        ...(r.claim_id ? { claimId: r.claim_id, decisionId: r.decision_id, policyId: r.policy_id } : {}),
         market: r.market,
         currency: r.currency,
         amount: Number(r.amount),
