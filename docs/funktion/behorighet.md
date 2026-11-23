@@ -74,8 +74,9 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `documents:read` | Läsa dokument och öppna dem med en länk som gäller i 15 minuter. Dessutom krävs rätten till det dokumentet hör till (ADR 0038). | `GET /v1/documents`, `GET /v1/documents/{id}`, `GET` och `POST …/links` |
 | `documents:share` | Ge kunden en länk som gäller upp till 7 dagar, och spärra en länk | `POST …/links` med `audience: customer`, `POST …/links/{linkId}/revocations` |
 | `claims:request-information` | Begära komplettering av kunden eller kliniken, och återkalla en begäran (ADR 0036). Svaret registreras med `claims:register`. | `POST /v1/claims/{id}/information-requests`, `POST …/information-requests/{requestId}/cancellations` |
-| `billing:read` | Läsa betalarkonton, premieplaner och fakturor (ADR 0040) | `GET /v1/payer-accounts`, `.../{id}`, `GET /v1/premium-plans`, `GET /v1/invoices`, `.../{id}`, `GET /v1/credit-notes`, `.../{id}` |
+| `billing:read` | Läsa betalarkonton, premieplaner och fakturor (ADR 0040) | `GET /v1/payer-accounts`, `.../{id}`, `GET /v1/premium-plans`, `GET /v1/invoices`, `.../{id}`, `GET /v1/credit-notes`, `.../{id}`, `GET /v1/received-payments`, `.../{id}` |
 | `payments:read` | Läsa inbetalningar (ADR 0017, 0040) | `GET /v1/payments`, `.../{id}` |
+| `billing:write` | Koppla en inbetalning utan användbar referens till ett betalarkonto eller en faktura (ADR 0040) | `POST /v1/received-payments/{id}/matches` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
 | `limits:read` | Se förbrukat och återstående försäkringsbelopp | `GET /v1/policies/{p}/limits` |
 
@@ -105,7 +106,7 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `catalog-publisher` | `catalog:read`, `catalog:publish` | – | Granskar och publicerar produktversioner |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview`, `catalog:read`, `animals:lookup` | klinik | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | – | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
-| `billing-clerk` | `billing:read`, `payments:read`, `policies:read`, `parties:read`, `catalog:read` | – | Följer premierna, till exempel ekonomiavdelningen (ADR 0040) |
+| `billing-clerk` | `billing:read`, `billing:write`, `payments:read`, `policies:read`, `parties:read`, `catalog:read` | – | Följer premierna, till exempel ekonomiavdelningen (ADR 0040) |
 | `customer-channel` | `claims:read`, `claims:request-review`, `catalog:read`, `policies:read`, `policies:quote`, `notices:read`, `billing:read` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
 
 ## Omfång

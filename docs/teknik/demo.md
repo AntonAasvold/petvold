@@ -84,7 +84,7 @@ Programmet behöver samma konfiguration som `server.ts` (databaser, nycklar, ark
    - Små skador regleras automatiskt.
    - En handläggare beslutar om de andra, och en attestant attesterar dem över handläggarens gräns.
 5. **Ibland** ändrar en kund självrisken, ångrar sig inom fjorton dagar eller avslutar för att hunden dött.
-6. **Låtsasbanken** betalar fakturorna. De flesta betalas i tid, var tionde för sent och var tjugonde inte alls.
+6. **Låtsasbanken** betalar fakturorna. De flesta betalas i tid, var tionde för sent och var tjugonde inte alls. Tre av hundra betalningar saknar OCR och hamnar bland de okopplade inbetalningarna.
 
 Sist läggs exempeldatan från dev-servern in: Bella, Doris, hushållet i Malmö och ansökningarna i Uppsala. Då fungerar tokenen och guiderna som nämner dem, till exempel `dev-customer`.
 

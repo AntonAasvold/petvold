@@ -63,6 +63,7 @@ channels:
       noticeFailed: { $ref: '#/components/messages/noticeFailed' }
       invoiceIssued: { $ref: '#/components/messages/invoiceIssued' }
       invoiceCredited: { $ref: '#/components/messages/invoiceCredited' }
+      invoicePaid: { $ref: '#/components/messages/invoicePaid' }
       paymentSucceeded: { $ref: '#/components/messages/paymentSucceeded' }
 
 operations:
@@ -108,6 +109,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/noticeFailed' }
       - { $ref: '#/channels/subscription/messages/invoiceIssued' }
       - { $ref: '#/channels/subscription/messages/invoiceCredited' }
+      - { $ref: '#/channels/subscription/messages/invoicePaid' }
       - { $ref: '#/channels/subscription/messages/paymentSucceeded' }
 
 components:
@@ -518,6 +520,18 @@ components:
             properties:
               type: { const: petvold.invoice.credited.v1 }
               data: { $ref: '#/components/schemas/InvoiceCreditedData' }
+    invoicePaid:
+      name: petvold.invoice.paid.v1
+      title: invoice.paid
+      summary: 'A payment settled what was left on an invoice (ADR 0040). The invoice and its payments with GET /v1/invoices/{id} and GET /v1/received-payments.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.invoice.paid.v1 }
+              data: { $ref: '#/components/schemas/InvoicePaidData' }
     paymentSucceeded:
       name: petvold.payment.succeeded.v1
       title: payment.succeeded
@@ -897,6 +911,19 @@ components:
         from: { $ref: '#/components/schemas/Date' }
         deadline: { $ref: '#/components/schemas/Date' }
         deceasedOn: { $ref: '#/components/schemas/Date' }
+    InvoicePaidData:
+      type: object
+      additionalProperties: false
+      required: [invoiceId, invoiceNo, accountId, partyId, total, currency, paymentId, paidOn]
+      properties:
+        invoiceId: { type: string, pattern: '^inv_[A-Za-z0-9]+$' }
+        invoiceNo: { type: string }
+        accountId: { type: string, pattern: '^bac_[A-Za-z0-9]+$' }
+        partyId: { $ref: '#/components/schemas/PartyId' }
+        total: { type: integer, minimum: 0, description: The invoice's total in minor units, before credit notes. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        paymentId: { type: string, pattern: '^pay_[A-Za-z0-9]+$', description: The payment that settled it. }
+        paidOn: { $ref: '#/components/schemas/Date' }
     PaymentSucceededData:
       type: object
       additionalProperties: false

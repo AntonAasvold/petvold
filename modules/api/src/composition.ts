@@ -450,6 +450,9 @@ export async function compose(config: InstallationConfig): Promise<Installation>
         pending: (limit) => paymentsStore.pendingEvents(limit),
         deliver: async (e) => {
           log(`[event] ${e.type} ${e.paymentId} ${e.data.amount} ${e.data.currency}`);
+          // Billing matches it to an invoice, or leaves it among the unmatched (ADR 0040).
+          const received = await billing.handlePaymentEvent(e);
+          if (received) log(`[billing] ${received.paymentId} ${received.status}${received.match ? ` to ${received.match.accountId}` : ''}`);
           const queued = await webhooks.enqueue({ ...e });
           if (queued) log(`[webhook] ${e.type} ${e.paymentId} queued for ${queued} subscription(s)`);
         },

@@ -47,6 +47,7 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'invoice.credited': { source: 'billing', subject: 'invoiceId', fields: ['creditNoteId', 'creditNoteNo', 'accountId', 'partyId', 'total', 'currency', 'reason'] },
   // A payment into the insurer's account (ADR 0017). The payer's details stay inside Petvold.
   'payment.succeeded': { source: 'payments', subject: 'paymentId', fields: ['direction', 'provider', 'amount', 'currency', 'reference', 'bookedOn'] },
+  'invoice.paid': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'total', 'currency', 'paymentId', 'paidOn'] },
   'invoice.issued': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'issueDate', 'dueDate', 'total', 'currency', 'reference', 'policyIds'] },
   // A run failed (ADR 0037), for the insurer's operations to alert on. The error stays inside Petvold.
   'job.failed': { source: 'scheduling', subject: 'runId', fields: ['job', 'trigger', 'startedAt'] },

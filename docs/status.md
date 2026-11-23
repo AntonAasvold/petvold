@@ -7,10 +7,11 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 **Gjort**
 - Demon på en annan port, PR #144: `DEMO_PORT` och `DUCKDNS_TOKEN` i `setup.sh` ger certifikat med en TXT-post hos DuckDNS, när 80 och 443 leder till en annan maskin.
   - Caddy byggs i `deploy/demo/caddy/` med `caddy-dns/duckdns`. `DEMO_PUBLIC_URL` ger dokumentlänkarna rätt port. HTTP/3 är avstängt.
+- Pengar, steg 3b, PR #145: inbetalningar kopplas till fakturan med OCR eller RF, först den fakturan och sedan äldsta förfallna, resten blir tillgodohavande. Kön med okopplade inbetalningar och koppling för hand (`billing:write`). `invoice.paid`, och fakturans status och kontots saldo i API:t. Egenskapstest för fördelningen. Migration 0055.
 
 **Nästa steg**
 1. Sätta upp demon (Anton): en VM i Proxmox hemma, med `DEMO_PORT=8443` och DuckDNS. Sedan demotjänstens fas 1, som tar emot och visar händelserna.
-2. ADR 0040, steg 3b: koppla inbetalningar till fakturor, okopplade inbetalningar och `invoice.paid`. Steg 3c: utbetalningar från `claim.payout_ordered`.
+2. ADR 0040, steg 3c: utbetalningar från `claim.payout_ordered`. Sedan steg 4, obetald premie.
 3. ADR 0038, steg 5: gallring av dokument som en körning.
 4. Back office: översikten på startsidan och omräkning av beslut.
 
