@@ -467,11 +467,16 @@ export async function compose(config: InstallationConfig): Promise<Installation>
         name: 'billing',
         pending: (limit) => billingStore.pendingEvents(limit),
         deliver: async (e) => {
-          log(`[event] ${e.type} ${e.invoiceId}`);
-          const notice = await communications.handleBillingEvent(e);
-          if (notice) log(`[notice] ${notice.type} ${notice.id} due ${notice.dueBy}`);
+          log(`[event] ${e.type} ${e.invoiceId ?? e.refundId}`);
+          if (e.invoiceId) {
+            const notice = await communications.handleBillingEvent({ ...e, invoiceId: e.invoiceId });
+            if (notice) log(`[notice] ${notice.type} ${notice.id} due ${notice.dueBy}`);
+          }
+          // A refund of the payer's credit becomes a payout (ADR 0040, punkt 8).
+          const payout = await payments.handleBillingEvent(e);
+          if (payout) log(`[payout] ${payout.id} ${payout.amount} ${payout.currency} refund: ${payout.status}`);
           const queued = await webhooks.enqueue({ ...e });
-          if (queued) log(`[webhook] ${e.type} ${e.invoiceId} queued for ${queued} subscription(s)`);
+          if (queued) log(`[webhook] ${e.type} ${e.invoiceId ?? e.refundId} queued for ${queued} subscription(s)`);
         },
         markPublished: (ids, at) => billingStore.markPublished(ids, at),
       }),

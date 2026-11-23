@@ -1135,6 +1135,22 @@ export function createApp(d: AppDeps) {
     return send(c, note);
   });
 
+  // Credit paid back to the payer (ADR 0040, punkt 6).
+  app.get('/v1/refunds', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const items = await billing.refunds({ ...(q('accountId') ? { accountId: q('accountId') } : {}), ...(q('market') ? { market: q('market') } : {}) });
+    return sendPage(c, items.filter((r) => seesAccount(c.get('scope'), r.market)));
+  });
+
+  app.post('/v1/payer-accounts/:accountId/refunds', async (c) => {
+    const id = c.req.param('accountId');
+    const a = await billing.account(id);
+    if (!seesAccount(c.get('scope'), a.market)) throw new BillingError('not_found', `Payer account ${id} does not exist`);
+    const r = await readJson(c, 'RefundRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await billing.requestRefund(id, r.body, c.get('principal').subject) }));
+  });
+
   // Payments on the payers' accounts (ADR 0040): matched by reference, or waiting for a person.
   app.get('/v1/received-payments', async (c) => {
     const q = (k: string) => c.req.query(k);

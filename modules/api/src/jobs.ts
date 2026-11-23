@@ -12,13 +12,13 @@ import type { JobContext, JobDefinition, JobResult, Schedule } from '@petvold/sc
 import type { Application, PolicyService, Proposal, RenewalRunResult } from '@petvold/policies';
 import type { RetentionRunResult, RetentionService } from '@petvold/parties';
 import type { ClaimsService, InformationRunResult } from '@petvold/claims-core';
-import type { BillingService, DunningRunResult, InvoicingRunResult } from '@petvold/billing';
+import type { BillingService, CreditsRunResult, DunningRunResult, InvoicingRunResult } from '@petvold/billing';
 
 export interface JobServices {
   policies: Pick<PolicyService, 'renewalRun' | 'expireApplications' | 'expireProposals'>;
   retention: Pick<RetentionService, 'run'>;
   claims: Pick<ClaimsService, 'informationRequestRun'>;
-  billing: Pick<BillingService, 'invoicingRun' | 'dunningRun'>;
+  billing: Pick<BillingService, 'invoicingRun' | 'dunningRun' | 'creditsRun'>;
 }
 
 /** A job with its full result, for the API, and the summary the history keeps. */
@@ -113,6 +113,14 @@ export function jobRunners(s: JobServices) {
     summarize: (r) => ({ checked: r.checked, invoiced: r.invoices.length, invoiceIds: r.invoices.flatMap((i) => (i.invoiceId ? [i.invoiceId] : [])) }),
     join: (fulls) => fulls,
   };
+  // Credit balances (ADR 0040, punkt 6): after the invoicing and before the dunning, so credit pays first.
+  const credits: JobRunner<CreditsRunResult> = {
+    name: 'billing.credits',
+    schedule: { kind: 'daily', at: '04:30' },
+    execute: ({ market, onDate, by, dryRun }) => s.billing.creditsRun({ market, onDate, dryRun }, by),
+    summarize: (r) => ({ checked: r.checked, applied: r.applied.length, refunded: r.refunds.length, refundIds: r.refunds.flatMap((x) => (x.refundId ? [x.refundId] : [])) }),
+    join: (fulls) => fulls,
+  };
   // Unpaid premium (ADR 0040, punkt 7): after the invoicing, reminders and notice of cancellation.
   const dunning: JobRunner<DunningRunResult> = {
     name: 'billing.dunning',
@@ -121,7 +129,7 @@ export function jobRunners(s: JobServices) {
     summarize: (r) => ({ checked: r.checked, reminded: r.reminded.length, noticed: r.noticed.length, invoiceIds: [...r.reminded, ...r.noticed.map((n) => n.invoiceId)] }),
     join: (fulls) => fulls,
   };
-  return { applicationExpiry, proposalExpiry, renewal, retention, informationRequests, invoicing, dunning };
+  return { applicationExpiry, proposalExpiry, renewal, retention, informationRequests, invoicing, credits, dunning };
 }
 
 /** The jobs for the scheduler, with their default schedules in each market's time zone. */

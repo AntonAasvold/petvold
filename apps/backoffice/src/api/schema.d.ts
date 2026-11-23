@@ -2668,6 +2668,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Credit paid back to payers, oldest first
+         * @description Requires the permission `billing:read` (ADR 0040). Only in the caller's markets; a role bound to a clinic or to policies sees none.
+         */
+        get: operations["listRefunds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payer-accounts/{accountId}/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pay back a payer's credit
+         * @description Requires the permission `billing:write` (ADR 0040). The payer asked for their
+         *     credit back, all of it or an amount. The refund goes to payments as
+         *     refund.ordered and is paid out to the payer. Without credit, or with less
+         *     than the amount, 409.
+         */
+        post: operations["requestRefund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/received-payments": {
         parameters: {
             query?: never;
@@ -4753,11 +4796,17 @@ export interface components {
          */
         Payout: {
             id: string;
-            /** @description The payout order in claim.payout_ordered. */
+            /**
+             * @description claim: a claim's payout order. premium-refund: a payer's credit paid back (GET /v1/refunds).
+             * @enum {string}
+             */
+            purpose: "claim" | "premium-refund";
+            /** @description The payout order in claim.payout_ordered, or the refund. */
             orderId: string;
-            claimId: string;
-            decisionId: string;
-            policyId: string;
+            /** @description A claim's payout only. */
+            claimId?: string;
+            decisionId?: string;
+            policyId?: string;
             market: components["schemas"]["Market"];
             currency: string;
             amount: number;
@@ -4781,6 +4830,30 @@ export interface components {
             payeeAccountId?: string;
             /** @description The adapter's id for the payment. */
             providerRef?: string;
+            note?: string;
+        };
+        /** @description A payer's credit paid back (ADR 0040). Payments pays it out to the payer as a payout with purpose premium-refund. Never changes. */
+        Refund: {
+            id: string;
+            accountId: string;
+            partyId: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            amount: number;
+            /**
+             * @description requested: the payer asked. nothing-more-to-bill: the account has nothing left to invoice, so the credit run paid it back.
+             * @enum {string}
+             */
+            reason: "requested" | "nothing-more-to-bill";
+            note?: string;
+            /** Format: date-time */
+            at: string;
+            by: string;
+        };
+        RefundRequest: {
+            /** @description Minor units, at most the credit. Omitted: all of it. */
+            amount?: number;
+            /** @description How the payer asked. */
             note?: string;
         };
         /** @description Where a payee, a party or a clinic, is paid (ADR 0040). Never changes; new details replace the old. The number is masked but for the last four. */
@@ -10484,6 +10557,73 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listRefunds: {
+        parameters: {
+            query?: {
+                accountId?: string;
+                market?: components["schemas"]["Market"];
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The refunds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Refund"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    requestRefund: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                accountId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefundRequest"];
+            };
+        };
+        responses: {
+            /** @description The refund */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refund"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
         };
     };
     listReceivedPayments: {

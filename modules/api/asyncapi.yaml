@@ -65,6 +65,7 @@ channels:
       invoiceCredited: { $ref: '#/components/messages/invoiceCredited' }
       invoicePaid: { $ref: '#/components/messages/invoicePaid' }
       invoiceOverdue: { $ref: '#/components/messages/invoiceOverdue' }
+      refundOrdered: { $ref: '#/components/messages/refundOrdered' }
       paymentSucceeded: { $ref: '#/components/messages/paymentSucceeded' }
       payoutPaid: { $ref: '#/components/messages/payoutPaid' }
       payoutFailed: { $ref: '#/components/messages/payoutFailed' }
@@ -114,6 +115,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/invoiceCredited' }
       - { $ref: '#/channels/subscription/messages/invoicePaid' }
       - { $ref: '#/channels/subscription/messages/invoiceOverdue' }
+      - { $ref: '#/channels/subscription/messages/refundOrdered' }
       - { $ref: '#/channels/subscription/messages/paymentSucceeded' }
       - { $ref: '#/channels/subscription/messages/payoutPaid' }
       - { $ref: '#/channels/subscription/messages/payoutFailed' }
@@ -526,6 +528,18 @@ components:
             properties:
               type: { const: petvold.invoice.credited.v1 }
               data: { $ref: '#/components/schemas/InvoiceCreditedData' }
+    refundOrdered:
+      name: petvold.refund.ordered.v1
+      title: refund.ordered
+      summary: "A payer's credit is paid back (ADR 0040). Payments pays it out as payout.paid with purpose premium-refund. Fetch it with GET /v1/refunds."
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.refund.ordered.v1 }
+              data: { $ref: '#/components/schemas/RefundOrderedData' }
     invoiceOverdue:
       name: petvold.invoice.overdue.v1
       title: invoice.overdue
@@ -953,6 +967,17 @@ components:
         from: { $ref: '#/components/schemas/Date' }
         deadline: { $ref: '#/components/schemas/Date' }
         deceasedOn: { $ref: '#/components/schemas/Date' }
+    RefundOrderedData:
+      type: object
+      additionalProperties: false
+      required: [refundId, accountId, partyId, amount, currency, reason]
+      properties:
+        refundId: { type: string, pattern: '^ref_[A-Za-z0-9]+$' }
+        accountId: { type: string, pattern: '^bac_[A-Za-z0-9]+$' }
+        partyId: { $ref: '#/components/schemas/PartyId' }
+        amount: { type: integer, minimum: 1, description: In minor units. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        reason: { type: string, enum: [requested, nothing-more-to-bill] }
     InvoiceOverdueData:
       type: object
       additionalProperties: false
@@ -970,7 +995,7 @@ components:
     InvoicePaidData:
       type: object
       additionalProperties: false
-      required: [invoiceId, invoiceNo, accountId, partyId, total, currency, paymentId, paidOn]
+      required: [invoiceId, invoiceNo, accountId, partyId, total, currency, paidWith, paidOn]
       properties:
         invoiceId: { type: string, pattern: '^inv_[A-Za-z0-9]+$' }
         invoiceNo: { type: string }
@@ -978,15 +1003,17 @@ components:
         partyId: { $ref: '#/components/schemas/PartyId' }
         total: { type: integer, minimum: 0, description: The invoice's total in minor units, before credit notes. }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
-        paymentId: { type: string, pattern: '^pay_[A-Za-z0-9]+$', description: The payment that settled it. }
+        paidWith: { type: string, enum: [payment, credit], description: "What settled it: a payment, or the payer's credit balance." }
+        paymentId: { type: string, pattern: '^pay_[A-Za-z0-9]+$', description: The payment that settled it, when paidWith is payment. }
         paidOn: { $ref: '#/components/schemas/Date' }
     PayoutData:
       type: object
       additionalProperties: false
-      required: [payoutId, claimId, policyId, orderId, amount, currency]
-      description: To the policyholder (partyId), or to a clinic with an agreement on direct settlement (clinicId).
+      required: [payoutId, purpose, orderId, amount, currency]
+      description: "A claim's payout to the policyholder (partyId) or to a clinic with an agreement on direct settlement (clinicId), or a payer's credit paid back."
       properties:
         payoutId: { type: string, pattern: '^pyo_[A-Za-z0-9]+$' }
+        purpose: { type: string, enum: [claim, premium-refund] }
         claimId: { type: string }
         policyId: { type: string }
         partyId: { $ref: '#/components/schemas/PartyId' }

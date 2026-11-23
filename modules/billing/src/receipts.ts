@@ -47,6 +47,31 @@ export interface Allocation {
   amount: number;
 }
 
+/** Credit used on an invoice: the payer's credit balance paying it (ADR 0040, punkt 6). Never changes. */
+export interface CreditApplication {
+  id: string;
+  accountId: string;
+  invoiceId: string;
+  amount: number;
+  at: Timestamp;
+  by: string;
+}
+
+/** Credit paid back to the payer (ADR 0040, punkt 6 and 8): an order to payments. Never changes. */
+export interface Refund {
+  id: string;
+  accountId: string;
+  partyId: string;
+  market: string;
+  currency: string;
+  amount: number;
+  /** 'requested': the payer asked. 'nothing-more-to-bill': the account has no installments left to invoice. */
+  reason: 'requested' | 'nothing-more-to-bill';
+  note?: string;
+  at: Timestamp;
+  by: string;
+}
+
 /** Everything on one payer account that payments are allocated against. */
 export interface AccountLedger {
   invoices: Invoice[];
@@ -54,6 +79,10 @@ export interface AccountLedger {
   allocations: Allocation[];
   /** The amounts of the payments matched to the account. */
   received: number;
+  /** Credit used on the account's invoices. */
+  creditApplications: CreditApplication[];
+  /** Credit paid back. */
+  refunded: number;
 }
 
 export type InvoiceStatus = 'open' | 'partly-paid' | 'paid' | 'credited';
@@ -78,12 +107,17 @@ export interface ReceivedPayment extends PaymentReceipt {
   unallocated: number;
 }
 
-/** What each invoice has been credited and paid. Pure. */
-export function invoiceBalances(invoices: readonly Invoice[], creditNotes: readonly CreditNote[], allocations: readonly Allocation[]): Map<string, InvoiceBalance> {
+/** What each invoice has been credited and paid, by payments and by credit used on it. Pure. */
+export function invoiceBalances(
+  invoices: readonly Invoice[],
+  creditNotes: readonly CreditNote[],
+  allocations: readonly Pick<Allocation, 'invoiceId' | 'amount'>[],
+  creditApplications: readonly Pick<CreditApplication, 'invoiceId' | 'amount'>[] = [],
+): Map<string, InvoiceBalance> {
   const credited = new Map<string, number>();
   for (const c of creditNotes) credited.set(c.invoiceId, (credited.get(c.invoiceId) ?? 0) + c.total);
   const allocated = new Map<string, number>();
-  for (const a of allocations) allocated.set(a.invoiceId, (allocated.get(a.invoiceId) ?? 0) + a.amount);
+  for (const a of [...allocations, ...creditApplications]) allocated.set(a.invoiceId, (allocated.get(a.invoiceId) ?? 0) + a.amount);
   const out = new Map<string, InvoiceBalance>();
   for (const i of invoices) {
     const c = Math.min(credited.get(i.id) ?? 0, i.total);
@@ -102,14 +136,26 @@ export function invoiceBalances(invoices: readonly Invoice[], creditNotes: reado
  * invoice no longer needs. Pure.
  */
 export function accountBalance(ledger: AccountLedger): { open: number; credit: number } {
-  const balances = invoiceBalances(ledger.invoices, ledger.creditNotes, ledger.allocations);
+  const balances = invoiceBalances(ledger.invoices, ledger.creditNotes, ledger.allocations, ledger.creditApplications);
   let open = 0;
   let paid = 0;
   for (const b of balances.values()) {
     open += b.open;
     paid += b.paid;
   }
-  return { open, credit: ledger.received - paid };
+  return { open, credit: ledger.received - paid - ledger.refunded };
+}
+
+/**
+ * Where the payer's credit goes (ADR 0040, punkt 6): to the open invoices,
+ * oldest due first, never more than the credit or than is open. Pure.
+ */
+export function applyCredit(ledger: AccountLedger): { invoiceId: string; amount: number }[] {
+  const { credit } = accountBalance(ledger);
+  if (credit <= 0) return [];
+  const balances = invoiceBalances(ledger.invoices, ledger.creditNotes, ledger.allocations, ledger.creditApplications);
+  const open = ledger.invoices.map((i) => ({ id: i.id, dueDate: i.dueDate, open: balances.get(i.id)!.open })).filter((i) => i.open > 0);
+  return allocatePayment(credit, open).allocations.map((a) => ({ invoiceId: a.id, amount: a.amount }));
 }
 
 /**
@@ -120,10 +166,10 @@ export function accountBalance(ledger: AccountLedger): { open: number; credit: n
  */
 export function allocate(
   amount: number,
-  ledger: Pick<AccountLedger, 'invoices' | 'creditNotes' | 'allocations'>,
+  ledger: Pick<AccountLedger, 'invoices' | 'creditNotes' | 'allocations'> & Partial<Pick<AccountLedger, 'creditApplications'>>,
   first?: string,
 ): { allocations: { invoiceId: string; amount: number }[]; unallocated: number; settled: string[] } {
-  const balances = invoiceBalances(ledger.invoices, ledger.creditNotes, ledger.allocations);
+  const balances = invoiceBalances(ledger.invoices, ledger.creditNotes, ledger.allocations, ledger.creditApplications ?? []);
   const open = ledger.invoices.map((i) => ({ id: i.id, dueDate: i.dueDate, open: balances.get(i.id)!.open })).filter((i) => i.open > 0);
   const out: { invoiceId: string; amount: number }[] = [];
   let left = amount;

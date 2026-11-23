@@ -74,12 +74,12 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `documents:read` | Läsa dokument och öppna dem med en länk som gäller i 15 minuter. Dessutom krävs rätten till det dokumentet hör till (ADR 0038). | `GET /v1/documents`, `GET /v1/documents/{id}`, `GET` och `POST …/links` |
 | `documents:share` | Ge kunden en länk som gäller upp till 7 dagar, och spärra en länk | `POST …/links` med `audience: customer`, `POST …/links/{linkId}/revocations` |
 | `claims:request-information` | Begära komplettering av kunden eller kliniken, och återkalla en begäran (ADR 0036). Svaret registreras med `claims:register`. | `POST /v1/claims/{id}/information-requests`, `POST …/information-requests/{requestId}/cancellations` |
-| `billing:read` | Läsa betalarkonton, premieplaner och fakturor (ADR 0040) | `GET /v1/payer-accounts`, `.../{id}`, `GET /v1/premium-plans`, `GET /v1/invoices`, `.../{id}`, `GET /v1/credit-notes`, `.../{id}`, `GET /v1/received-payments`, `.../{id}` |
+| `billing:read` | Läsa betalarkonton, premieplaner och fakturor (ADR 0040) | `GET /v1/payer-accounts`, `.../{id}`, `GET /v1/premium-plans`, `GET /v1/invoices`, `.../{id}`, `GET /v1/credit-notes`, `.../{id}`, `GET /v1/received-payments`, `.../{id}`, `GET /v1/refunds` |
 | `payments:read` | Läsa inbetalningar, utbetalningar och maskade betaluppgifter (ADR 0017, 0040) | `GET /v1/payments`, `.../{id}`, `GET /v1/payouts`, `.../{id}`, `GET /v1/payees/{partyId}/accounts`, `GET /v1/clinics/{clinicId}/accounts`, `GET /v1/clinic-agreements` |
 | `payments:payee-write` | Ge en parts betaluppgifter. Det sparas vem som gav dem (ADR 0040) | `POST /v1/payees/{partyId}/accounts`, `POST /v1/clinics/{clinicId}/accounts` |
 | `payments:agreements` | Göra och avsluta avtal om direktreglering med kliniker (ADR 0040) | `POST /v1/clinic-agreements`, `.../{id}/endings` |
 | `payments:release` | Släppa en utbetalning som spärrats för att betaluppgifterna är nya, men inte den man själv gav uppgifterna till | `POST /v1/payouts/{id}/releases` |
-| `billing:write` | Koppla en inbetalning utan användbar referens till ett betalarkonto eller en faktura (ADR 0040) | `POST /v1/received-payments/{id}/matches` |
+| `billing:write` | Koppla en inbetalning utan användbar referens till ett betalarkonto eller en faktura, och betala tillbaka ett tillgodohavande (ADR 0040) | `POST /v1/received-payments/{id}/matches`, `POST /v1/payer-accounts/{id}/refunds` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
 | `limits:read` | Se förbrukat och återstående försäkringsbelopp | `GET /v1/policies/{p}/limits` |
 

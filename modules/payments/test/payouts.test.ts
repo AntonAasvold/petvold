@@ -195,3 +195,15 @@ test('a clinic without details waits like a party, and gets paid when it gives t
   assert.deepEqual((await service.payeeAccounts({ clinicId: 'clinic_001' })).map((a) => [a.clinicId, a.current]), [['clinic_001', true]]);
   assert.deepEqual(await service.payeeAccounts({ partyId: 'pty_anna' }), []);
 });
+
+test('a refund of a payer\'s credit is paid out to the payer, once', async () => {
+  const { service, store } = setup();
+  await service.addPayeeAccount({ partyId: 'pty_anna' }, bank, 'a@example.test');
+  const e = { id: 'bev_r', type: 'refund.ordered', refundId: 'ref_1', market: 'SE', occurredAt: '2026-12-01T09:00:00.000Z', data: { accountId: 'bac_1', partyId: 'pty_anna', amount: 12_300, currency: 'SEK', reason: 'nothing-more-to-bill' } };
+  const p = await service.handleBillingEvent(e);
+  assert.deepEqual([p?.purpose, p?.orderId, p?.partyId, p?.amount, p?.status, p?.claimId], ['premium-refund', 'ref_1', 'pty_anna', 12_300, 'paid', undefined]);
+  assert.equal((await service.handleBillingEvent(e))?.id, p?.id, 'once');
+  const [paidEvent] = (await store.pendingEvents(10)).filter((x) => x.type === 'payout.paid');
+  assert.deepEqual([paidEvent?.data.purpose, paidEvent?.data.claimId], ['premium-refund', undefined]);
+  assert.equal(await service.handleBillingEvent({ ...e, type: 'invoice.paid' }), null);
+});
