@@ -9,14 +9,42 @@
  * guard against fraud with changed account details. The person who releases
  * it must not be the one who gave the details.
  */
-import type { Timestamp } from '@petvold/common';
+import type { ISODate, Timestamp } from '@petvold/common';
 
 export type PayeeMethod = 'se-bank' | 'iban';
 
-/** Where a payee is paid. A Swedish bank account, or an IBAN. Never changes. */
-export interface PayeeAccount {
+/** Who is paid: a party (the policyholder), or a clinic with an agreement on direct settlement. */
+export type Payee = { partyId: string; clinicId?: undefined } | { clinicId: string; partyId?: undefined };
+
+/** The payee's fields alone, e.g. to filter by. Pure. */
+export const payeeOf = (x: { partyId?: string | undefined; clinicId?: string | undefined }): Payee => (x.clinicId ? { clinicId: x.clinicId } : { partyId: x.partyId! });
+
+/**
+ * An agreement on direct settlement with a clinic (ADR 0040, punkt 8): while it
+ * is in force, a payout order that names the clinic is paid to the clinic.
+ * Never changes; an ending is added beside it.
+ */
+export interface ClinicAgreement {
   id: string;
-  partyId: string;
+  clinicId: string;
+  market: string;
+  validFrom: ISODate;
+  /** Exclusive. Omitted: until ended. */
+  validTo?: ISODate;
+  createdBy: string;
+  createdAt: Timestamp;
+  ended?: { validTo: ISODate; by: string; at: Timestamp; reason: string };
+}
+
+/** Whether the agreement is in force on a day. Pure. */
+export function agreementInForce(a: ClinicAgreement, day: ISODate): boolean {
+  const to = a.ended && (!a.validTo || a.ended.validTo < a.validTo) ? a.ended.validTo : a.validTo;
+  return a.validFrom <= day && (!to || day < to);
+}
+
+/** Where a payee is paid. A Swedish bank account, or an IBAN. Never changes. */
+export type PayeeAccount = Payee & {
+  id: string;
   market: string;
   method: PayeeMethod;
   /** se-bank: clearing number and account number. iban: the IBAN and optionally the BIC. Personal data. */
@@ -24,13 +52,7 @@ export interface PayeeAccount {
   /** From when it is the payee's: the newest replaces the others. */
   createdAt: Timestamp;
   createdBy: string;
-}
-
-/** A payee account as the API shows it: the number masked but for the last four. */
-export interface PayeeAccountView extends Omit<PayeeAccount, 'details'> {
-  details: { clearing: string; account: string } | { iban: string; bic?: string };
-  current: boolean;
-}
+};
 
 export type PayoutStatus = 'awaiting-details' | 'held' | 'pending' | 'paid' | 'failed';
 
@@ -47,7 +69,7 @@ export interface PayoutStep {
 }
 
 /** A claim's payout order on its way to the payee. */
-export interface Payout {
+export type Payout = Payee & {
   id: string;
   /** The claim's payout order: one payout per order, so an order is never paid twice. */
   orderId: string;
@@ -57,12 +79,10 @@ export interface Payout {
   market: string;
   currency: string;
   amount: number;
-  /** Who is paid: the policyholder on the day of the order. */
-  partyId: string;
   provider: string;
   sourceEventId: string;
   createdAt: Timestamp;
-}
+};
 
 export type PayoutView = Payout & { status: PayoutStatus; steps: PayoutStep[] };
 

@@ -2,7 +2,7 @@
 
 Hur Petvold delar en terms premie i delbetalningar, fördelar en betalning och räknar ut vad ett avslut betyder i pengar (ADR 0040).
 
-**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör premieplaner, fakturor och kreditnotor (steg 2). Modulen `payments` tar emot inbetalningar (steg 3a), och `billing` kopplar dem till fakturorna (steg 3b). `payments` betalar ut skadornas ersättning till försäkringstagaren (steg 3c-1). Direktreglering till kliniker kommer i steg 3c-2.
+**Läge:** räkningen finns i `billing-core` (steg 1 av 8). Modulen `billing` gör premieplaner, fakturor och kreditnotor (steg 2). Modulen `payments` tar emot inbetalningar (steg 3a), och `billing` kopplar dem till fakturorna (steg 3b). `payments` betalar ut skadornas ersättning till försäkringstagaren, eller till kliniken vid direktreglering (steg 3c).
 
 ## Betalarkonto och premieplan
 
@@ -172,7 +172,9 @@ POST /v1/received-payments/pay_7f3…/matches
 
 ## Utbetalning av ersättning
 
-Ett beslut som ger ersättning blir en utbetalningsorder, `claim.payout_ordered` (ADR 0019). `payments` gör en **utbetalning** av ordern till den som var försäkringstagare den dagen. Varje order betalas en gång (ADR 0040, punkt 8).
+Ett beslut som ger ersättning blir en utbetalningsorder, `claim.payout_ordered` (ADR 0019). `payments` gör en **utbetalning** av ordern, och varje order betalas en gång (ADR 0040, punkt 8). Mottagaren är:
+- **kliniken** i ordern (`clinicId`), om den har ett avtal om direktreglering som gäller den dagen
+- annars **försäkringstagaren** den dagen
 
 ```mermaid
 stateDiagram-v2
@@ -202,6 +204,23 @@ stateDiagram-v2
 | `POST /v1/payouts/{payoutId}/releases` | Släpp en spärrad utbetalning (`payments:release`), med en anteckning om hur uppgifterna kontrollerades |
 
 Rollen `billing-clerk` har alla tre rättigheterna, så två personer med den rollen kan ge uppgifter och släppa utbetalningar åt varandra.
+
+### Direktreglering till kliniker
+
+En klinik med avtal får ersättningen för skadorna den anmält i stället för kunden. Kunden har då bara betalat sin självrisk på kliniken. Avtalet gäller per klinik och marknad, från en dag och eventuellt till en dag. Två avtal för samma klinik och marknad får inte överlappa. Kliniken identifieras med samma `clinicId` som i dess token och skador.
+
+| Anrop | Vad det ger |
+| --- | --- |
+| `POST /v1/clinic-agreements` | Ett avtal: `clinicId`, `market`, `validFrom` och eventuellt `validTo` (`payments:agreements`) |
+| `POST /v1/clinic-agreements/{id}/endings` | Avsluta från en dag, med skäl. Ordrar från den dagen går till försäkringstagaren. |
+| `GET /v1/clinic-agreements?clinicId=…` | Avtalen med eventuellt avslut |
+| `GET` och `POST /v1/clinics/{clinicId}/accounts` | Klinikens betaluppgifter, som för en part, med samma spärr |
+| `GET /v1/payouts?clinicId=…` | Utbetalningarna till kliniken |
+
+```
+POST /v1/clinic-agreements
+{ "clinicId": "clinic_001", "market": "SE", "validFrom": "2027-01-01" }
+```
 
 ```
 POST /v1/payees/pty_owner001/accounts

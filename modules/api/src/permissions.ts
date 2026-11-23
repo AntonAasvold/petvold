@@ -111,6 +111,8 @@ export const PERMISSIONS = [
   'payments:payee-write',
   /** Release a payout held because the payee details are new. Not by the one who gave them. */
   'payments:release',
+  /** Make and end agreements on direct settlement with clinics (ADR 0040, punkt 8). */
+  'payments:agreements',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -217,7 +219,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** The insurer's customer portal or app, acting for a signed-in customer. */
   'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read', 'documents:read', 'documents:share', 'billing:read'], bindsTo: 'policies' },
   /** Follows the premiums: payer accounts, premium plans and later invoices and payments (ADR 0040), e.g. the finance team. */
-  'billing-clerk': { permissions: ['billing:read', 'billing:write', 'payments:read', 'payments:payee-write', 'payments:release', 'policies:read', 'parties:read', 'catalog:read'] },
+  'billing-clerk': { permissions: ['billing:read', 'billing:write', 'payments:read', 'payments:payee-write', 'payments:release', 'payments:agreements', 'policies:read', 'parties:read', 'catalog:read'] },
 };
 
 export function isPermission(value: unknown): value is Permission {

@@ -21,7 +21,7 @@ Bolagets system kan få veta när något händer i Petvold, utan att fråga. En 
 | Kundmeddelanden | `notice.created`, `notice.document_made`, `notice.delivered`, `notice.failed` | meddelandets id |
 | Fakturor | `invoice.issued`: nummer, konto, part, datum, belopp, valuta, betalningsreferens och policyer. `invoice.credited`: kreditnotans id och nummer, konto, part, belopp, valuta och policyhändelsen den kom av (ADR 0040) | fakturans id |
 | Betalda fakturor | `invoice.paid`: nummer, konto, part, belopp, valuta, inbetalningen och dagen (ADR 0040) | fakturans id |
-| Utbetalningar | `payout.paid` och `payout.failed`: skada, policy, part, order, belopp och valuta, aldrig kontonumret (ADR 0040) | utbetalningens id |
+| Utbetalningar | `payout.paid` och `payout.failed`: skada, policy, part eller klinik, order, belopp och valuta, aldrig kontonumret (ADR 0040) | utbetalningens id |
 | Inbetalningar | `payment.succeeded`: riktning, adapter, belopp, valuta, betalningsreferens och bokföringsdag (ADR 0017). Inget om betalaren. | inbetalningens id |
 | Körningar | `job.failed`: körning, startsätt och start, aldrig felet (ADR 0037) | körningens id |
 

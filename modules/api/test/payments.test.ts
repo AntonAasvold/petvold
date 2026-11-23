@@ -199,3 +199,42 @@ test('a decided claim is paid out to the policyholder once the payee has details
   const listed = await call('GET', `/v1/payees/${first.partyId}/accounts`, 'clerk');
   assert.deepEqual(listed.body.items.map((a: any) => a.current), [true]);
 });
+
+test('direct settlement: a clinic with an agreement is paid the claims it reports', async () => {
+  const clock = { now: () => NOW };
+  const inst = await compose({ databases: {}, engineVersion: 'test', clock, payments: { fake: { secret: SECRET, markets: [{ market: 'SE', currency: 'SEK' }] } } });
+  const tokens: Record<string, Principal> = {
+    clerk: { subject: 'finance@example.test', roles: ['billing-clerk'], markets: ['SE'] },
+    handler: { subject: 'h@example.test', roles: ['handler'], markets: ['SE'] },
+  };
+  const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
+  let k = 0;
+  const call = async (method: string, path: string, token: string, body?: unknown) => {
+    const res = await app.request(path, { method, headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'content-type': 'application/json', 'idempotency-key': `key-clinic-${String(++k).padStart(4, '0')}` }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    return { status: res.status, body: (await res.json()) as any };
+  };
+  const { seedSampleData } = await import('../src/seed.ts');
+  await seedSampleData(inst, clock);
+  while ((await inst.relay.tick()) > 0);
+
+  assert.equal((await call('POST', '/v1/clinic-agreements', 'handler', { clinicId: 'clinic_001', market: 'SE', validFrom: '2026-01-01' })).status, 403);
+  const agreement = await call('POST', '/v1/clinic-agreements', 'clerk', { clinicId: 'clinic_001', market: 'SE', validFrom: '2026-01-01' });
+  assert.equal(agreement.status, 201);
+  assert.ok(validatorFor('ClinicAgreement')(structuredClone(agreement.body)), JSON.stringify(validatorFor('ClinicAgreement').errors));
+  assert.equal((await call('POST', '/v1/clinic-agreements', 'clerk', { clinicId: 'clinic_001', market: 'SE', validFrom: '2026-06-01' })).status, 409);
+  assert.equal((await call('POST', '/v1/clinics/clinic_001/accounts', 'clerk', { market: 'SE', method: 'iban', details: { iban: 'SE4550000000058398257466' } })).status, 201);
+
+  const { fixtures } = await import('@petvold/claims-store-memory');
+  await inst.deps.service.registerClaim(fixtures.otitisClaim({ id: 'clm_clinic1', claimNo: 'S-2026-099001', channel: 'clinic_direct', clinicId: 'clinic_001', receivedAt: '2026-11-30T10:00:00Z' }));
+  while ((await inst.relay.tick()) > 0);
+  const [payout] = (await call('GET', '/v1/payouts?clinicId=clinic_001', 'clerk')).body.items;
+  assert.ok(payout, 'the clinic was paid');
+  assert.ok(validatorFor('Payout')(structuredClone(payout)), JSON.stringify(validatorFor('Payout').errors));
+  assert.deepEqual([payout.claimId, payout.clinicId, payout.partyId, payout.status], ['clm_clinic1', 'clinic_001', undefined, 'paid']);
+
+  const ended = await call('POST', `/v1/clinic-agreements/${agreement.body.id}/endings`, 'clerk', { validTo: '2026-12-01', reason: 'The clinic ended the agreement.' });
+  assert.equal(ended.status, 201);
+  assert.equal((await call('GET', '/v1/clinic-agreements?clinicId=clinic_001', 'clerk')).body.items[0].ended.validTo, '2026-12-01');
+  const accounts = await call('GET', '/v1/clinics/clinic_001/accounts', 'clerk');
+  assert.equal(accounts.body.items[0].details.iban, '********************7466');
+});

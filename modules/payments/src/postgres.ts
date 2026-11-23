@@ -4,7 +4,7 @@
  * payment never changes.
  */
 import type pg from 'pg';
-import { PayoutConflictError, type PayeeAccount, type Payment, type PaymentEvent, type PaymentFilter, type PaymentsStore, type Payout, type PayoutStatus, type PayoutStep, type PayoutView } from './index.ts';
+import { PayoutConflictError, type ClinicAgreement, type Payee, type PayeeAccount, type PayoutFilter, type Payment, type PaymentEvent, type PaymentFilter, type PaymentsStore, type Payout, type PayoutStatus, type PayoutStep, type PayoutView } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -95,14 +95,61 @@ export class PostgresPaymentsStore implements PaymentsStore {
 
   async addPayeeAccount(a: PayeeAccount): Promise<void> {
     await this.pool.query(
-      `insert into payments.payee_account (payee_account_id, party_id, market, method, details, created_at, created_by) values ($1, $2, $3, $4, $5, $6, $7)`,
-      [a.id, a.partyId, a.market, a.method, a.details, a.createdAt, a.createdBy],
+      `insert into payments.payee_account (payee_account_id, party_id, clinic_id, market, method, details, created_at, created_by) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [a.id, a.partyId ?? null, a.clinicId ?? null, a.market, a.method, a.details, a.createdAt, a.createdBy],
     );
   }
 
-  async payeeAccounts(partyId: string): Promise<PayeeAccount[]> {
-    const { rows } = await this.pool.query(`select ${ACCOUNT} from payments.payee_account where party_id = $1 order by created_at, payee_account_id collate "C"`, [partyId]);
+  async payeeAccounts(payee: Payee): Promise<PayeeAccount[]> {
+    const { rows } = await this.pool.query(
+      `select ${ACCOUNT} from payments.payee_account where ${payee.clinicId ? 'clinic_id' : 'party_id'} = $1 order by created_at, payee_account_id collate "C"`,
+      [payee.clinicId ?? payee.partyId],
+    );
     return rows.map(account);
+  }
+
+  async addAgreement(a: ClinicAgreement): Promise<void> {
+    await this.pool.query(
+      `insert into payments.clinic_agreement (agreement_id, clinic_id, market, valid_from, valid_to, created_by, created_at) values ($1, $2, $3, $4, $5, $6, $7)`,
+      [a.id, a.clinicId, a.market, a.validFrom, a.validTo ?? null, a.createdBy, a.createdAt],
+    );
+  }
+
+  async endAgreement(id: string, e: NonNullable<ClinicAgreement['ended']>): Promise<void> {
+    try {
+      await this.pool.query(`insert into payments.clinic_agreement_ending (agreement_id, valid_to, ended_by, ended_at, reason) values ($1, $2, $3, $4, $5)`, [id, e.validTo, e.by, e.at, e.reason]);
+    } catch (err) {
+      if ((err as { code?: string }).code === UNIQUE_VIOLATION) throw new PayoutConflictError(`Agreement ${id} is ended already`);
+      throw err;
+    }
+  }
+
+  async agreement(id: string): Promise<ClinicAgreement | null> {
+    return (await this.agreementRows(`a.agreement_id = $1`, [id]))[0] ?? null;
+  }
+
+  async agreements(filter: { clinicId?: string; market?: string }): Promise<ClinicAgreement[]> {
+    return this.agreementRows(`($1::text is null or a.clinic_id = $1) and ($2::text is null or a.market = $2)`, [filter.clinicId ?? null, filter.market ?? null]);
+  }
+
+  private async agreementRows(where: string, params: unknown[]): Promise<ClinicAgreement[]> {
+    const { rows } = await this.pool.query(
+      `select a.agreement_id, a.clinic_id, a.market, a.valid_from::text as valid_from, a.valid_to::text as valid_to, a.created_by, a.created_at,
+              e.valid_to::text as ended_to, e.ended_by, e.ended_at, e.reason
+       from payments.clinic_agreement a left join payments.clinic_agreement_ending e using (agreement_id)
+       where ${where} order by a.created_at, a.agreement_id collate "C"`,
+      params,
+    );
+    return rows.map((r) => ({
+      id: r.agreement_id,
+      clinicId: r.clinic_id,
+      market: r.market,
+      validFrom: r.valid_from,
+      ...(r.valid_to ? { validTo: r.valid_to } : {}),
+      createdBy: r.created_by,
+      createdAt: iso(r.created_at),
+      ...(r.ended_to ? { ended: { validTo: r.ended_to, by: r.ended_by, at: iso(r.ended_at), reason: r.reason } } : {}),
+    }));
   }
 
   async payeeAccount(id: string): Promise<PayeeAccount | null> {
@@ -115,9 +162,9 @@ export class PostgresPaymentsStore implements PaymentsStore {
     try {
       await client.query('begin');
       const ins = await client.query(
-        `insert into payments.payout (payout_id, order_id, claim_id, decision_id, policy_id, market, currency, amount, party_id, provider, source_event_id, created_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) on conflict (order_id) do nothing`,
-        [p.id, p.orderId, p.claimId, p.decisionId, p.policyId, p.market, p.currency, p.amount, p.partyId, p.provider, p.sourceEventId, p.createdAt],
+        `insert into payments.payout (payout_id, order_id, claim_id, decision_id, policy_id, market, currency, amount, party_id, clinic_id, provider, source_event_id, created_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) on conflict (order_id) do nothing`,
+        [p.id, p.orderId, p.claimId, p.decisionId, p.policyId, p.market, p.currency, p.amount, p.partyId ?? null, p.clinicId ?? null, p.provider, p.sourceEventId, p.createdAt],
       );
       if (ins.rowCount === 0) {
         await client.query('rollback');
@@ -160,17 +207,17 @@ export class PostgresPaymentsStore implements PaymentsStore {
     return (await this.payoutRows(`p.payout_id = $1`, [id]))[0] ?? null;
   }
 
-  async payouts(filter: { status?: PayoutStatus; claimId?: string; partyId?: string; market?: string }): Promise<PayoutView[]> {
+  async payouts(filter: PayoutFilter): Promise<PayoutView[]> {
     const rows = await this.payoutRows(
-      `($1::text is null or p.claim_id = $1) and ($2::text is null or p.party_id = $2) and ($3::text is null or p.market = $3)`,
-      [filter.claimId ?? null, filter.partyId ?? null, filter.market ?? null],
+      `($1::text is null or p.claim_id = $1) and ($2::text is null or p.party_id = $2) and ($3::text is null or p.market = $3) and ($4::text is null or p.clinic_id = $4)`,
+      [filter.claimId ?? null, filter.partyId ?? null, filter.market ?? null, filter.clinicId ?? null],
     );
     return filter.status ? rows.filter((p) => p.status === filter.status) : rows;
   }
 
   private async payoutRows(where: string, params: unknown[]): Promise<PayoutView[]> {
     const { rows } = await this.pool.query(
-      `select p.payout_id, p.order_id, p.claim_id, p.decision_id, p.policy_id, p.market, p.currency, p.amount, p.party_id, p.provider, p.source_event_id, p.created_at,
+      `select p.payout_id, p.order_id, p.claim_id, p.decision_id, p.policy_id, p.market, p.currency, p.amount, p.party_id, p.clinic_id, p.provider, p.source_event_id, p.created_at,
               (select json_agg(json_build_object('status', s.status, 'at', s.at, 'by', s.by_whom, 'payeeAccountId', s.payee_account_id, 'providerRef', s.provider_ref, 'note', s.note) order by s.seq)
                from payments.payout_step s where s.payout_id = p.payout_id) as steps
        from payments.payout p where ${where}
@@ -195,7 +242,7 @@ export class PostgresPaymentsStore implements PaymentsStore {
         market: r.market,
         currency: r.currency,
         amount: Number(r.amount),
-        partyId: r.party_id,
+        ...(r.clinic_id ? { clinicId: r.clinic_id as string } : { partyId: r.party_id as string }),
         provider: r.provider,
         sourceEventId: r.source_event_id,
         createdAt: iso(r.created_at),
@@ -206,10 +253,10 @@ export class PostgresPaymentsStore implements PaymentsStore {
   }
 }
 
-const ACCOUNT = `payee_account_id, party_id, market, method, details, created_at, created_by`;
+const ACCOUNT = `payee_account_id, party_id, clinic_id, market, method, details, created_at, created_by`;
 
 function account(r: Record<string, any>): PayeeAccount {
-  return { id: r.payee_account_id, partyId: r.party_id, market: r.market, method: r.method, details: r.details, createdAt: iso(r.created_at), createdBy: r.created_by };
+  return { id: r.payee_account_id, ...(r.clinic_id ? { clinicId: r.clinic_id as string } : { partyId: r.party_id as string }), market: r.market, method: r.method, details: r.details, createdAt: iso(r.created_at), createdBy: r.created_by };
 }
 
 async function insertStep(client: pg.PoolClient, payoutId: string, seq: number, s: PayoutStep) {

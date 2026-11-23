@@ -53,8 +53,12 @@ Ett id är ett prefix, ett understreck och bokstäver och siffror, till exempel 
 | `rvw_` | begäran om prövning | `po_` | utbetalningsorder |
 | `jrn_` | journal i ledgern | `dp_` | självriskperiod |
 | `whs_` | prenumeration på webhooks | `whd_` | utskick av webhook |
+| `bac_` | betalarkonto | `ppl_` | premieplan |
+| `inv_` | faktura | `crn_` | kreditnota |
+| `pay_` | inbetalning | `pyo_` | utbetalning |
+| `pya_` | betaluppgifter | `cag_` | avtal om direktreglering |
 
-Ett nytt prefix har två till fyra bokstäver och läggs till i tabellen. En skadas id väljs av den som anmäler skadan och får också innehålla `_`, till exempel `clm_otit_204311`.
+Ett nytt prefix har två till fyra bokstäver och läggs till i tabellen. En kliniks id (`clinicId`) har inget prefix, eftersom det kommer från bolagets system med klinikens token och skador. Det är det enda undantaget i kontrollen. En skadas id väljs av den som anmäler skadan och får också innehålla `_`, till exempel `clm_otit_204311`.
 
 ## Versioner
 

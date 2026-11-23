@@ -75,8 +75,9 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `documents:share` | Ge kunden en länk som gäller upp till 7 dagar, och spärra en länk | `POST …/links` med `audience: customer`, `POST …/links/{linkId}/revocations` |
 | `claims:request-information` | Begära komplettering av kunden eller kliniken, och återkalla en begäran (ADR 0036). Svaret registreras med `claims:register`. | `POST /v1/claims/{id}/information-requests`, `POST …/information-requests/{requestId}/cancellations` |
 | `billing:read` | Läsa betalarkonton, premieplaner och fakturor (ADR 0040) | `GET /v1/payer-accounts`, `.../{id}`, `GET /v1/premium-plans`, `GET /v1/invoices`, `.../{id}`, `GET /v1/credit-notes`, `.../{id}`, `GET /v1/received-payments`, `.../{id}` |
-| `payments:read` | Läsa inbetalningar, utbetalningar och maskade betaluppgifter (ADR 0017, 0040) | `GET /v1/payments`, `.../{id}`, `GET /v1/payouts`, `.../{id}`, `GET /v1/payees/{partyId}/accounts` |
-| `payments:payee-write` | Ge en parts betaluppgifter. Det sparas vem som gav dem (ADR 0040) | `POST /v1/payees/{partyId}/accounts` |
+| `payments:read` | Läsa inbetalningar, utbetalningar och maskade betaluppgifter (ADR 0017, 0040) | `GET /v1/payments`, `.../{id}`, `GET /v1/payouts`, `.../{id}`, `GET /v1/payees/{partyId}/accounts`, `GET /v1/clinics/{clinicId}/accounts`, `GET /v1/clinic-agreements` |
+| `payments:payee-write` | Ge en parts betaluppgifter. Det sparas vem som gav dem (ADR 0040) | `POST /v1/payees/{partyId}/accounts`, `POST /v1/clinics/{clinicId}/accounts` |
+| `payments:agreements` | Göra och avsluta avtal om direktreglering med kliniker (ADR 0040) | `POST /v1/clinic-agreements`, `.../{id}/endings` |
 | `payments:release` | Släppa en utbetalning som spärrats för att betaluppgifterna är nya, men inte den man själv gav uppgifterna till | `POST /v1/payouts/{id}/releases` |
 | `billing:write` | Koppla en inbetalning utan användbar referens till ett betalarkonto eller en faktura (ADR 0040) | `POST /v1/received-payments/{id}/matches` |
 | `claims:preview` | Få förhandsbesked utan att något sparas | `POST /v1/claim-previews` |
@@ -108,7 +109,7 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `catalog-publisher` | `catalog:read`, `catalog:publish` | – | Granskar och publicerar produktversioner |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview`, `catalog:read`, `animals:lookup` | klinik | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | – | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
-| `billing-clerk` | `billing:read`, `billing:write`, `payments:read`, `payments:payee-write`, `payments:release`, `policies:read`, `parties:read`, `catalog:read` | – | Följer premierna, till exempel ekonomiavdelningen (ADR 0040) |
+| `billing-clerk` | `billing:read`, `billing:write`, `payments:read`, `payments:payee-write`, `payments:release`, `payments:agreements`, `policies:read`, `parties:read`, `catalog:read` | – | Följer premierna, till exempel ekonomiavdelningen (ADR 0040) |
 | `customer-channel` | `claims:read`, `claims:request-review`, `catalog:read`, `policies:read`, `policies:quote`, `notices:read`, `billing:read` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
 
 ## Omfång
