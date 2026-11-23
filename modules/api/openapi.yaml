@@ -3959,6 +3959,146 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ReceivedPayment' }
 
+  /v1/payees/{partyId}/accounts:
+    parameters:
+      - { name: partyId, in: path, required: true, schema: { type: string, pattern: '^pty_[A-Za-z0-9]{1,64}$' } }
+    get:
+      tags: [payments]
+      operationId: listPayeeAccounts
+      x-permission: payments:read
+      summary: "A payee's account details, oldest first"
+      description: Requires the permission `payments:read` (ADR 0040). The numbers are masked but for the last four. The newest in a market is `current`.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The account details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayeeAccount' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    post:
+      tags: [payments]
+      operationId: addPayeeAccount
+      x-permission: payments:payee-write
+      summary: Give a payee's account details
+      description: |
+        Requires the permission `payments:payee-write` (ADR 0040). The details replace
+        the payee's earlier ones in the market from now, logged with who gave them.
+        Payouts waiting for details go on: held for a person if the market holds
+        new details (`PETVOLD_NEW_PAYEE_HOLD_DAYS`), else sent.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayeeAccountInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: The details, masked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayeeAccount' }
+
+  /v1/payouts:
+    get:
+      tags: [payments]
+      operationId: listPayouts
+      x-permission: payments:read
+      summary: Payouts, oldest first
+      description: |
+        Requires the permission `payments:read` (ADR 0040). `status=held` is the queue
+        of payouts a person must release, and `status=awaiting-details` those
+        waiting for the payee's account. Only payouts in the caller's markets; a
+        role bound to a clinic or to policies sees none.
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/PayoutStatus' } }
+        - { name: claimId, in: query, schema: { type: string } }
+        - { name: partyId, in: query, schema: { type: string } }
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The payouts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Payout' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/payouts/{payoutId}:
+    get:
+      tags: [payments]
+      operationId: getPayout
+      x-permission: payments:read
+      summary: A payout with its steps
+      description: Requires the permission `payments:read`. Outside the caller's scope it answers 404.
+      parameters:
+        - { name: payoutId, in: path, required: true, schema: { type: string, pattern: '^pyo_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The payout
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payout' }
+
+  /v1/payouts/{payoutId}/releases:
+    post:
+      tags: [payments]
+      operationId: releasePayout
+      x-permission: payments:release
+      summary: Release a held payout
+      description: |
+        Requires the permission `payments:release` (ADR 0040). Sends a payout held
+        because the payee's details are new. The one who gave the details cannot
+        release it (403). A payout that is not held, or whose payee has given
+        other details since, answers 409.
+      parameters:
+        - { name: payoutId, in: path, required: true, schema: { type: string, pattern: '^pyo_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReleasePayoutRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: The payout, sent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payout' }
+
   /v1/premium-plans:
     get:
       tags: [billing]
@@ -6599,6 +6739,95 @@ components:
           properties:
             open: { type: integer, minimum: 0, description: Still to pay on the invoices, in minor units. }
             credit: { type: integer, minimum: 0, description: 'Paid and not needed by an invoice: the payer''s credit balance.' }
+
+    PayoutStatus:
+      type: string
+      enum: [awaiting-details, held, pending, paid, failed]
+      description: |
+        awaiting-details: the payee has given no account. held: the account is newer
+        than the market's hold, and a person must release it. pending: sent, the
+        payment service has not answered. paid. failed.
+
+    Payout:
+      type: object
+      additionalProperties: false
+      required: [id, orderId, claimId, decisionId, policyId, market, currency, amount, partyId, provider, sourceEventId, createdAt, status, steps]
+      description: A claim's payout order on its way to the policyholder (ADR 0040). One per order, so an order is never paid twice.
+      properties:
+        id: { type: string, pattern: '^pyo_[A-Za-z0-9]+$' }
+        orderId: { type: string, description: The payout order in claim.payout_ordered. }
+        claimId: { type: string }
+        decisionId: { type: string }
+        policyId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        amount: { type: integer, minimum: 1 }
+        partyId: { type: string, description: The payee, the policyholder on the day of the order. }
+        provider: { type: string }
+        sourceEventId: { type: string }
+        createdAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/PayoutStatus' }
+        steps:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/PayoutStep' }
+
+    PayoutStep:
+      type: object
+      additionalProperties: false
+      required: [status, at, by]
+      properties:
+        status: { $ref: '#/components/schemas/PayoutStatus' }
+        at: { type: string, format: date-time }
+        by: { type: string, description: "'payments', the adapter, or the person who released it." }
+        payeeAccountId: { type: string }
+        providerRef: { type: string, description: "The adapter's id for the payment." }
+        note: { type: string }
+
+    PayeeAccount:
+      type: object
+      additionalProperties: false
+      required: [id, partyId, market, method, details, createdAt, createdBy, current]
+      description: Where a payee is paid (ADR 0040). Never changes; new details replace the old. The number is masked but for the last four.
+      properties:
+        id: { type: string, pattern: '^pya_[A-Za-z0-9]+$' }
+        partyId: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        method: { type: string, enum: [se-bank, iban] }
+        details:
+          type: object
+          additionalProperties: false
+          properties:
+            clearing: { type: string }
+            account: { type: string }
+            iban: { type: string }
+            bic: { type: string }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+        current: { type: boolean, description: The newest in its market, the one payouts go to. }
+
+    PayeeAccountInput:
+      type: object
+      additionalProperties: false
+      required: [market, method, details]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        method: { type: string, enum: [se-bank, iban] }
+        details:
+          type: object
+          description: 'se-bank: clearing (4 or 5 digits) and account (6 to 12 digits). iban: iban, checked by ISO 13616, and optionally bic.'
+          additionalProperties: false
+          properties:
+            clearing: { type: string, pattern: '^[0-9]{4,5}$' }
+            account: { type: string, pattern: '^[0-9]{6,12}$' }
+            iban: { type: string, maxLength: 42 }
+            bic: { type: string }
+
+    ReleasePayoutRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        note: { type: string, minLength: 1, maxLength: 2000, description: "How the details were checked, e.g. a call to the customer's number in the register." }
 
     Payment:
       type: object

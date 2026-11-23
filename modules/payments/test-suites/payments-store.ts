@@ -1,7 +1,7 @@
 /** The PaymentsStore contract, run against every implementation. */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { succeeded, type Payment, type PaymentsStore } from '../src/index.ts';
+import { PayoutConflictError, succeeded, type PayeeAccount, type Payment, type PaymentsStore, type Payout } from '../src/index.ts';
 
 export function paymentOf(n = 1, o: Partial<Payment> = {}): Payment {
   return {
@@ -65,5 +65,59 @@ export function paymentsStoreSuite(name: string, make: () => Promise<{ store: Pa
       await store.markPublished(['evt_1'], '2026-12-01T11:00:00.000Z');
       assert.deepEqual((await store.pendingEvents(10)).map((e) => e.id), ['evt_2']);
     });
+
+    test('payee accounts are added, never changed, and read oldest first', async () => {
+      const { store } = await make();
+      await store.addPayeeAccount(payeeOf(1));
+      await store.addPayeeAccount(payeeOf(2, { method: 'iban', details: { iban: 'SE4550000000058398257466' } }));
+      assert.deepEqual((await store.payeeAccounts('pty_anna')).map((a) => a.id), ['pya_1', 'pya_2']);
+      assert.deepEqual(await store.payeeAccount('pya_2'), payeeOf(2, { method: 'iban', details: { iban: 'SE4550000000058398257466' } }));
+      assert.deepEqual(await store.payeeAccounts('pty_x'), []);
+    });
+
+    test('a payout is stored once per order, moves step by step, and its events go out', async () => {
+      const { store } = await make();
+      await store.addPayeeAccount(payeeOf(1));
+      assert.equal(await store.addPayout(payoutOf(1), { status: 'awaiting-details', at: '2026-12-01T10:00:00.000Z', by: 'payments' }, []), true);
+      assert.equal(await store.addPayout(payoutOf(2, { orderId: 'ord_1' }), { status: 'pending', at: '2026-12-01T10:00:00.000Z', by: 'payments' }, []), false, 'one per order');
+      await store.addPayoutStep('pyo_1', 2, { status: 'pending', at: '2026-12-01T11:00:00.000Z', by: 'payments', payeeAccountId: 'pya_1' }, []);
+      await assert.rejects(store.addPayoutStep('pyo_1', 2, { status: 'held', at: '2026-12-01T11:00:00.000Z', by: 'payments' }, []), (e) => e instanceof PayoutConflictError);
+      await assert.rejects(store.addPayoutStep('pyo_1', 4, { status: 'paid', at: '2026-12-01T11:00:00.000Z', by: 'fake' }, []), (e) => e instanceof PayoutConflictError, 'no gaps');
+      const event = { id: 'evt_pyo', type: 'payout.paid' as const, payoutId: 'pyo_1', market: 'SE', occurredAt: '2026-12-01T11:00:01.000Z', data: { amount: 100 } };
+      await store.addPayoutStep('pyo_1', 3, { status: 'paid', at: '2026-12-01T11:00:01.000Z', by: 'fake', payeeAccountId: 'pya_1', providerRef: 'fake-pyo_1', note: 'ok' }, [event]);
+      const p = await store.payout('pyo_1');
+      assert.equal(p?.status, 'paid');
+      assert.deepEqual(p?.steps.map((x) => x.status), ['awaiting-details', 'pending', 'paid']);
+      assert.deepEqual(p?.steps[2], { status: 'paid', at: '2026-12-01T11:00:01.000Z', by: 'fake', payeeAccountId: 'pya_1', providerRef: 'fake-pyo_1', note: 'ok' });
+      const pending = await store.pendingEvents(10);
+      assert.deepEqual(pending.map((e) => [e.type, e.payoutId, e.paymentId]), [['payout.paid', 'pyo_1', undefined]]);
+      await store.addPayout(payoutOf(3, { claimId: 'clm_2', createdAt: '2026-12-02T10:00:00.000Z' }), { status: 'held', at: '2026-12-02T10:00:00.000Z', by: 'payments' }, []);
+      assert.deepEqual((await store.payouts({ status: 'held' })).map((x) => x.id), ['pyo_3']);
+      assert.deepEqual((await store.payouts({ claimId: 'clm_1' })).map((x) => x.id), ['pyo_1']);
+      assert.deepEqual((await store.payouts({ partyId: 'pty_anna' })).map((x) => x.id), ['pyo_1', 'pyo_3']);
+      assert.equal(await store.payout('pyo_x'), null);
+    });
   });
+}
+
+export function payeeOf(n: number, o: Partial<PayeeAccount> = {}): PayeeAccount {
+  return { id: `pya_${n}`, partyId: 'pty_anna', market: 'SE', method: 'se-bank', details: { clearing: '8327', account: '9412345678' }, createdAt: `2026-11-30T10:00:0${n}.000Z`, createdBy: 'kundservice@example.test', ...o };
+}
+
+export function payoutOf(n: number, o: Partial<Payout> = {}): Payout {
+  return {
+    id: `pyo_${n}`,
+    orderId: `ord_${n}`,
+    claimId: 'clm_1',
+    decisionId: 'dec_1',
+    policyId: 'pol_1',
+    market: 'SE',
+    currency: 'SEK',
+    amount: 1_234_500,
+    partyId: 'pty_anna',
+    provider: 'fake',
+    sourceEventId: `cev_${n}`,
+    createdAt: `2026-12-01T10:00:0${n}.000Z`,
+    ...o,
+  };
 }

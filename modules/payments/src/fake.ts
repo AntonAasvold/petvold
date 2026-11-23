@@ -11,7 +11,7 @@
  * signed with the headers webhook-id, webhook-timestamp and webhook-signature.
  */
 import type { Timestamp } from '@petvold/common';
-import { ProviderNotificationError, verifySignature, type PaymentProvider, type ProviderCapability, type ProviderNotification, type RawNotification } from './index.ts';
+import { ProviderNotificationError, verifySignature, type PaymentProvider, type PayoutRequest, type PayoutResult, type ProviderCapability, type ProviderNotification, type RawNotification } from './index.ts';
 
 export const FAKE_NOTIFICATION_SCHEMA = 'petvold-fake-bank.v1';
 
@@ -35,7 +35,18 @@ export class FakeProvider implements PaymentProvider {
   }
 
   capabilities(): ProviderCapability[] {
-    return this.o.markets.map((m) => ({ ...m, kind: 'incoming' as const }));
+    return this.o.markets.flatMap((m) => [
+      { ...m, kind: 'incoming' as const },
+      { ...m, kind: 'outgoing' as const },
+    ]);
+  }
+
+  /** Pays at once, and once per payout id. The demo bank sees the payout in the event payout.paid. */
+  async payout(req: PayoutRequest): Promise<PayoutResult> {
+    if (!this.o.markets.some((m) => m.market === req.market && m.currency === req.currency)) {
+      return { status: 'failed', providerRef: `fake-${req.payoutId}`, reason: `The fake bank does not pay out in ${req.market} and ${req.currency}` };
+    }
+    return { status: 'paid', providerRef: `fake-${req.payoutId}` };
   }
 
   async parseNotification(raw: RawNotification, now: Timestamp): Promise<ProviderNotification[]> {

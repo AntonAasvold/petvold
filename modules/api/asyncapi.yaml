@@ -65,6 +65,8 @@ channels:
       invoiceCredited: { $ref: '#/components/messages/invoiceCredited' }
       invoicePaid: { $ref: '#/components/messages/invoicePaid' }
       paymentSucceeded: { $ref: '#/components/messages/paymentSucceeded' }
+      payoutPaid: { $ref: '#/components/messages/payoutPaid' }
+      payoutFailed: { $ref: '#/components/messages/payoutFailed' }
 
 operations:
   sendEvent:
@@ -111,6 +113,8 @@ operations:
       - { $ref: '#/channels/subscription/messages/invoiceCredited' }
       - { $ref: '#/channels/subscription/messages/invoicePaid' }
       - { $ref: '#/channels/subscription/messages/paymentSucceeded' }
+      - { $ref: '#/channels/subscription/messages/payoutPaid' }
+      - { $ref: '#/channels/subscription/messages/payoutFailed' }
 
 components:
   messageTraits:
@@ -544,6 +548,30 @@ components:
             properties:
               type: { const: petvold.payment.succeeded.v1 }
               data: { $ref: '#/components/schemas/PaymentSucceededData' }
+    payoutPaid:
+      name: petvold.payout.paid.v1
+      title: payout.paid
+      summary: "A claim's payout reached the payee (ADR 0040). Fetch it with GET /v1/payouts/{id}."
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.payout.paid.v1 }
+              data: { $ref: '#/components/schemas/PayoutData' }
+    payoutFailed:
+      name: petvold.payout.failed.v1
+      title: payout.failed
+      summary: "The payment service could not pay a claim's payout (ADR 0040)."
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.payout.failed.v1 }
+              data: { $ref: '#/components/schemas/PayoutData' }
     noticeCreated:
       name: petvold.notice.created.v1
       title: notice.created
@@ -924,6 +952,18 @@ components:
         currency: { type: string, pattern: '^[A-Z]{3}$' }
         paymentId: { type: string, pattern: '^pay_[A-Za-z0-9]+$', description: The payment that settled it. }
         paidOn: { $ref: '#/components/schemas/Date' }
+    PayoutData:
+      type: object
+      additionalProperties: false
+      required: [payoutId, claimId, policyId, partyId, orderId, amount, currency]
+      properties:
+        payoutId: { type: string, pattern: '^pyo_[A-Za-z0-9]+$' }
+        claimId: { type: string }
+        policyId: { type: string }
+        partyId: { $ref: '#/components/schemas/PartyId' }
+        orderId: { type: string, description: The payout order in claim.payout_ordered. }
+        amount: { type: integer, minimum: 1, description: In minor units of currency. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
     PaymentSucceededData:
       type: object
       additionalProperties: false

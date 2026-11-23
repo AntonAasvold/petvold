@@ -1187,6 +1187,46 @@ export function createApp(d: AppDeps) {
     return send(c, p);
   });
 
+  // Payees and payouts (ADR 0040, punkt 8). Same scope as payments.
+  app.get('/v1/payees/:partyId/accounts', async (c) => {
+    const items = await payments.payeeAccounts(c.req.param('partyId'));
+    return sendPage(c, items.filter((a) => seesPayment(c.get('scope'), a.market)));
+  });
+
+  app.post('/v1/payees/:partyId/accounts', async (c) => {
+    const partyId = c.req.param('partyId');
+    const r = await readJson(c, 'PayeeAccountInput');
+    if (!r.ok) return r.res;
+    if (!seesPayment(c.get('scope'), r.body.market)) return problem(c, 403, 'Not permitted', "The market is outside the caller's scope");
+    return idempotent(c, r.body, async () => {
+      const a = await payments.addPayeeAccount(partyId, r.body, c.get('principal').subject);
+      return { status: 201, body: (await payments.payeeAccounts(partyId)).find((x) => x.id === a.id)! };
+    });
+  });
+
+  app.get('/v1/payouts', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const status = q('status') as 'awaiting-details' | 'held' | 'pending' | 'paid' | 'failed' | undefined;
+    const items = await payments.payouts({ ...(status ? { status } : {}), ...(q('claimId') ? { claimId: q('claimId') } : {}), ...(q('partyId') ? { partyId: q('partyId') } : {}), ...(q('market') ? { market: q('market') } : {}) });
+    return sendPage(c, items.filter((p) => seesPayment(c.get('scope'), p.market)));
+  });
+
+  const visiblePayout = async (c: Context<Env>) => {
+    const id = c.req.param('payoutId')!;
+    const p = await payments.payout(id);
+    if (!seesPayment(c.get('scope'), p.market)) throw new PaymentsError('not_found', `Payout ${id} does not exist`);
+    return p;
+  };
+
+  app.get('/v1/payouts/:payoutId', async (c) => send(c, await visiblePayout(c)));
+
+  app.post('/v1/payouts/:payoutId/releases', async (c) => {
+    const p = await visiblePayout(c);
+    const r = await readJson(c, 'ReleasePayoutRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await payments.releasePayout(p.id, c.get('principal').subject, r.body.note) }));
+  });
+
   // Webhook subscriptions (ADR 0033). A subscription's markets must lie within the caller's;
   // only a caller with every market may subscribe to '*'.
   const webhooks =
@@ -1819,7 +1859,8 @@ export function createApp(d: AppDeps) {
       return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
     }
     if (err instanceof PaymentsError) {
-      return problem(c, err.code === 'not_found' ? 404 : 422, err.message);
+      const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
+      return problem(c, status, err.message);
     }
     if (err instanceof CommunicationsError) {
       return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);

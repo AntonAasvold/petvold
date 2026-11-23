@@ -50,6 +50,7 @@ docker run --rm -e DATABASE_URL=postgres://… petvold-api node_modules/.bin/dbm
 | `PETVOLD_AUTH_ROLES_CLAIM`, `PETVOLD_AUTH_MARKETS_CLAIM`, `PETVOLD_AUTH_CLINIC_CLAIM`, `PETVOLD_AUTH_POLICIES_CLAIM` | Nej | Var i token roller, marknader, klinik och försäkringar finns. Förval `roles`, `petvold_markets`, `petvold_clinic_id` och `petvold_policy_ids`. |
 | `PETVOLD_WEBHOOK_KEY` | Ja | 32 slumpade byte i base64, till exempel från `openssl rand -base64 32`. Krypterar hemligheterna för webhooks (ADR 0033). Förvara den som en hemlighet. Om den byts kan sparade hemligheter inte läsas, och varje prenumeration behöver en ny hemlighet. |
 | `PETVOLD_WEBHOOK_ALLOW_HOSTS` | Nej | Värdar som en webhook får peka på fast de är lokala eller använder `http`, kommaseparerat. Förval inga. |
+| `PETVOLD_NEW_PAYEE_HOLD_DAYS` | Nej | Dagar som nya betaluppgifter spärrar en utbetalning tills en annan person släpper den (ADR 0040). Förval 0, ingen spärr. |
 | `PETVOLD_FAKE_BANK_SECRET`, `PETVOLD_FAKE_BANK_MARKETS` | Nej | Låtsasbanken för en demo (ADR 0017): hemligheten (`whsec_` och base64) som banken signerar med, och marknaderna, till exempel `SE:SEK,FI:EUR` (förval `SE:SEK`). Utan hemligheten finns ingen låtsasbank. Aldrig i en installation med riktiga pengar. |
 | `PORT` | Nej | Förval 8080 |
 | `PETVOLD_CORS_ORIGINS` | Om ett gränssnitt i webbläsaren anropar API:t från en annan adress | Tillåtna ursprung, kommaseparerat, till exempel `https://portal.bolaget.se`. Varje värde måste vara ett exakt ursprung. `*` godtas inte. Förval inga. |

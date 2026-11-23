@@ -9,15 +9,17 @@
  * other part of Petvold reads a service's own format. The module never reads
  * another module's tables (ADR 0001).
  */
-import { isISODate, isMarketCode, type ISODate, type Timestamp } from '@petvold/common';
+import { isISODate, isMarketCode, marketDate, type ISODate, type Timestamp } from '@petvold/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { maskDetails, payeeDetailsProblem, payoutGate, type PayeeAccount, type PayeeMethod, type Payout, type PayoutRequest, type PayoutResult, type PayoutStatus, type PayoutStep, type PayoutView } from './payouts.ts';
+export * from './payouts.ts';
 
 /** What an adapter can do, per market and currency (ADR 0017, punkt 5). */
 export interface ProviderCapability {
   market: string;
   currency: string;
-  /** 'incoming': it tells Petvold of payments into the insurer's account. */
-  kind: 'incoming';
+  /** 'incoming': it tells Petvold of payments into the insurer's account. 'outgoing': it pays out from it. */
+  kind: 'incoming' | 'outgoing';
 }
 
 /** A notification as it reached Petvold, before the adapter has checked it. */
@@ -57,6 +59,8 @@ export interface PaymentProvider {
    * ProviderNotificationError when the signature or the content is wrong.
    */
   parseNotification(raw: RawNotification, now: Timestamp): Promise<ProviderNotification[]>;
+  /** Pays out. The payout's id is the idempotency key: asked twice, it pays once. Only with an 'outgoing' capability. */
+  payout?(req: PayoutRequest): Promise<PayoutResult>;
 }
 
 export class ProviderNotificationError extends Error {
@@ -87,8 +91,11 @@ export interface Payment {
 
 export interface PaymentEvent {
   id: string;
-  type: 'payment.succeeded';
-  paymentId: string;
+  type: 'payment.succeeded' | 'payout.paid' | 'payout.failed';
+  /** payment.succeeded: the payment. */
+  paymentId?: string;
+  /** payout.*: the payout. */
+  payoutId?: string;
   market: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;
@@ -113,9 +120,30 @@ export interface PaymentsStore {
   payments(filter: PaymentFilter): Promise<Payment[]>;
   pendingEvents(limit: number): Promise<PaymentEvent[]>;
   markPublished(ids: string[], at: Timestamp): Promise<void>;
+  addPayeeAccount(account: PayeeAccount): Promise<void>;
+  /** The party's accounts, oldest first; the last in the market is the current one. */
+  payeeAccounts(partyId: string): Promise<PayeeAccount[]>;
+  payeeAccount(id: string): Promise<PayeeAccount | null>;
+  /** Stores the payout with its first step and events. false, and nothing stored, if the order already has a payout. */
+  addPayout(payout: Payout, step: PayoutStep, events: PaymentEvent[]): Promise<boolean>;
+  /**
+   * Adds a step as step number `seq` (1 is the first). Throws PayoutConflictError,
+   * and stores nothing, if that step is taken: someone else moved the payout first.
+   */
+  addPayoutStep(payoutId: string, seq: number, step: PayoutStep, events: PaymentEvent[]): Promise<void>;
+  payout(id: string): Promise<PayoutView | null>;
+  /** Oldest first. */
+  payouts(filter: { status?: PayoutStatus; claimId?: string; partyId?: string; market?: string }): Promise<PayoutView[]>;
 }
 
-export type PaymentsErrorCode = 'not_found' | 'unknown_provider';
+export class PayoutConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PayoutConflictError';
+  }
+}
+
+export type PaymentsErrorCode = 'not_found' | 'unknown_provider' | 'validation' | 'conflict' | 'forbidden';
 
 export class PaymentsError extends Error {
   constructor(
@@ -132,6 +160,10 @@ export interface PaymentsDeps {
   providers: PaymentProvider[];
   clock: { now(): Timestamp };
   ids: { next(prefix: string): string };
+  /** Who is paid for a policy: the policyholder on a day. Needed for payouts. */
+  policies?: { policyholderOn(policyId: string, date: ISODate): Promise<string | null> };
+  /** Days that new payee details hold a payout for a person (payments.newPayeeHoldDays). Default 0: never. */
+  newPayeeHoldDays?: number;
 }
 
 /** What one notification gave: the payments it added, and those Petvold already had. */
@@ -201,6 +233,164 @@ export class PaymentsService {
     const p = await this.d.store.payment(id);
     if (!p) throw new PaymentsError('not_found', `Payment ${id} does not exist`);
     return p;
+  }
+
+  /**
+   * A claim's payout order (claim.payout_ordered, ADR 0040 punkt 8) becomes a
+   * payout to the policyholder. It is sent at once, or waits for details, or
+   * is held when the details are new. Repeats give nothing new. Without an
+   * adapter that pays out in the market, Petvold makes no payout: the order
+   * stays with the insurer's systems, as claim.payout_ordered says it.
+   */
+  async handleClaimEvent(e: { id: string; type: string; claimId?: string; market: string; occurredAt: Timestamp; data: Record<string, unknown> }): Promise<PayoutView | null> {
+    if (e.type !== 'claim.payout_ordered' || !e.claimId) return null;
+    const provider = this.outgoing(e.market, String(e.data.currency));
+    if (!provider) return null;
+    if (!this.d.policies) throw new Error('Payouts need the policies port');
+    const orderId = String(e.data.payoutOrderId);
+    const existing = (await this.d.store.payouts({ claimId: e.claimId })).find((p) => p.orderId === orderId);
+    if (existing) return existing;
+    const policyId = String(e.data.policyId);
+    const partyId = await this.d.policies.policyholderOn(policyId, marketDate(e.market, e.occurredAt));
+    if (!partyId) throw new Error(`No policyholder for ${policyId}, for payout order ${orderId}`);
+    const now = this.d.clock.now();
+    const payout: Payout = {
+      id: this.d.ids.next('pyo'),
+      orderId,
+      claimId: e.claimId,
+      decisionId: String(e.data.decisionId),
+      policyId,
+      market: e.market,
+      currency: String(e.data.currency),
+      amount: Number(e.data.amount),
+      partyId,
+      provider: provider.id,
+      sourceEventId: e.id,
+      createdAt: now,
+    };
+    const account = await this.currentAccount(partyId, e.market);
+    const gate = payoutGate(account, now, this.d.newPayeeHoldDays ?? 0);
+    const first: PayoutStep =
+      gate === 'awaiting-details'
+        ? { status: 'awaiting-details', at: now, by: 'payments' }
+        : gate === 'held'
+          ? { status: 'held', at: now, by: 'payments', payeeAccountId: account!.id, note: 'The payee details are new' }
+          : { status: 'pending', at: now, by: 'payments', payeeAccountId: account!.id };
+    if (!(await this.d.store.addPayout(payout, first, []))) return (await this.d.store.payouts({ claimId: e.claimId })).find((p) => p.orderId === orderId)!;
+    if (gate === 'ready') await this.send(payout.id, 2, account!);
+    return (await this.d.store.payout(payout.id))!;
+  }
+
+  /**
+   * New payee details for a party (ADR 0040, punkt 8). They replace the old
+   * from now. Payouts waiting for details go on: held if the details are newer
+   * than the hold, else sent. A held payout is held again on the new details.
+   */
+  async addPayeeAccount(partyId: string, input: { market: string; method: PayeeMethod; details: Record<string, unknown> }, by: string): Promise<PayeeAccount> {
+    const problem = payeeDetailsProblem(input.method, input.details);
+    if (problem) throw new PaymentsError('validation', problem);
+    const details =
+      input.method === 'iban'
+        ? { iban: String(input.details.iban).replace(/\s/g, '').toUpperCase(), ...(input.details.bic ? { bic: String(input.details.bic) } : {}) }
+        : { clearing: String(input.details.clearing), account: String(input.details.account) };
+    const account: PayeeAccount = { id: this.d.ids.next('pya'), partyId, market: input.market, method: input.method, details, createdAt: this.d.clock.now(), createdBy: by };
+    await this.d.store.addPayeeAccount(account);
+    // Payouts waiting for details go on, and held ones are held again on the new details.
+    const waiting = (await this.d.store.payouts({ partyId, market: input.market })).filter((p) => p.status === 'awaiting-details' || p.status === 'held');
+    for (const p of waiting) {
+      const gate = payoutGate(account, this.d.clock.now(), this.d.newPayeeHoldDays ?? 0);
+      try {
+        if (gate === 'held') {
+          const note = p.status === 'held' ? 'The payee details changed' : 'The payee details are new';
+          await this.d.store.addPayoutStep(p.id, p.steps.length + 1, { status: 'held', at: this.d.clock.now(), by: 'payments', payeeAccountId: account.id, note }, []);
+        } else {
+          await this.d.store.addPayoutStep(p.id, p.steps.length + 1, { status: 'pending', at: this.d.clock.now(), by: 'payments', payeeAccountId: account.id }, []);
+          await this.send(p.id, p.steps.length + 2, account);
+        }
+      } catch (err) {
+        if (!(err instanceof PayoutConflictError)) throw err;
+      }
+    }
+    return account;
+  }
+
+  /** The party's payee details, newest last, with the numbers masked. */
+  async payeeAccounts(partyId: string): Promise<(PayeeAccount & { current: boolean })[]> {
+    const all = await this.d.store.payeeAccounts(partyId);
+    const current = new Set(Object.values(Object.fromEntries(all.map((a) => [a.market, a.id]))));
+    return all.map((a) => ({ ...a, details: maskDetails(a.details), current: current.has(a.id) }));
+  }
+
+  /**
+   * A person releases a held payout (ADR 0040, punkt 8). Not the one who gave
+   * the payee details: four eyes against fraud with changed details.
+   */
+  async releasePayout(id: string, by: string, note?: string): Promise<PayoutView> {
+    const p = await this.payout(id);
+    if (p.status !== 'held') throw new PaymentsError('conflict', `Payout ${id} is ${p.status}, not held`);
+    const accountId = p.steps.at(-1)!.payeeAccountId!;
+    const account = await this.d.store.payeeAccount(accountId);
+    const current = await this.currentAccount(p.partyId, p.market);
+    if (!account || !current || current.id !== account.id) throw new PaymentsError('conflict', 'The payee details changed after the payout was held');
+    if (account.createdBy === by) throw new PaymentsError('forbidden', 'The one who gave the payee details cannot release the payout');
+    try {
+      await this.d.store.addPayoutStep(id, p.steps.length + 1, { status: 'pending', at: this.d.clock.now(), by, payeeAccountId: account.id, ...(note ? { note } : {}) }, []);
+    } catch (err) {
+      if (err instanceof PayoutConflictError) throw new PaymentsError('conflict', `Payout ${id} was moved by someone else`);
+      throw err;
+    }
+    await this.send(id, p.steps.length + 2, account);
+    return this.payout(id);
+  }
+
+  async payout(id: string): Promise<PayoutView> {
+    const p = await this.d.store.payout(id);
+    if (!p) throw new PaymentsError('not_found', `Payout ${id} does not exist`);
+    return p;
+  }
+
+  async payouts(filter: { status?: PayoutStatus; claimId?: string; partyId?: string; market?: string } = {}): Promise<PayoutView[]> {
+    return this.d.store.payouts(filter);
+  }
+
+  /**
+   * When the party last had a relation in payments, for retention (ADR 0028,
+   * 0040 punkt 11): ongoing while a payout to them is not paid or failed, else
+   * the last day details were given or a payout made.
+   */
+  async activityOf(partyId: string): Promise<{ ongoing: true } | { lastDate: ISODate } | null> {
+    const payouts = await this.d.store.payouts({ partyId });
+    if (payouts.some((p) => p.status !== 'paid' && p.status !== 'failed')) return { ongoing: true };
+    const dates = [...(await this.d.store.payeeAccounts(partyId)).map((a) => marketDate(a.market, a.createdAt)), ...payouts.map((p) => marketDate(p.market, p.steps.at(-1)!.at))].sort();
+    return dates.length ? { lastDate: dates.at(-1)! } : null;
+  }
+
+  private async currentAccount(partyId: string, market: string): Promise<PayeeAccount | null> {
+    return (await this.d.store.payeeAccounts(partyId)).filter((a) => a.market === market).at(-1) ?? null;
+  }
+
+  private outgoing(market: string, currency: string): PaymentProvider | null {
+    return [...this.providers.values()].find((x) => x.payout && x.capabilities().some((c) => c.kind === 'outgoing' && c.market === market && c.currency === currency)) ?? null;
+  }
+
+  /** Asks the adapter to pay a pending payout, and stores what it says as step `seq`. */
+  private async send(payoutId: string, seq: number, account: PayeeAccount): Promise<void> {
+    const p = (await this.d.store.payout(payoutId))!;
+    const provider = this.providers.get(p.provider);
+    if (!provider?.payout) throw new Error(`The provider ${p.provider} does not pay out`);
+    const r = await provider.payout({ payoutId: p.id, market: p.market, currency: p.currency, amount: p.amount, account: { method: account.method, ...account.details } });
+    if (r.status === 'pending') return;
+    const at = this.d.clock.now();
+    const step: PayoutStep = { status: r.status, at, by: provider.id, payeeAccountId: account.id, providerRef: r.providerRef, ...(r.reason ? { note: r.reason } : {}) };
+    const event: PaymentEvent = {
+      id: this.d.ids.next('evt'),
+      type: r.status === 'paid' ? 'payout.paid' : 'payout.failed',
+      payoutId: p.id,
+      market: p.market,
+      occurredAt: at,
+      data: { claimId: p.claimId, policyId: p.policyId, partyId: p.partyId, orderId: p.orderId, amount: p.amount, currency: p.currency },
+    };
+    await this.d.store.addPayoutStep(p.id, seq, step, [event]);
   }
 }
 
@@ -274,6 +464,59 @@ export function signNotification(secret: string, id: string, timestamp: number, 
 export class InMemoryPaymentsStore implements PaymentsStore {
   private readonly list: Payment[] = [];
   private readonly outbox: (PaymentEvent & { publishedAt?: Timestamp })[] = [];
+  private readonly accounts: PayeeAccount[] = [];
+  private readonly payoutList: Payout[] = [];
+  private readonly steps = new Map<string, PayoutStep[]>();
+
+  async addPayeeAccount(account: PayeeAccount) {
+    this.accounts.push(structuredClone(account));
+  }
+
+  async payeeAccounts(partyId: string) {
+    return structuredClone(this.accounts.filter((a) => a.partyId === partyId));
+  }
+
+  async payeeAccount(id: string) {
+    const a = this.accounts.find((x) => x.id === id);
+    return a ? structuredClone(a) : null;
+  }
+
+  async addPayout(payout: Payout, step: PayoutStep, events: PaymentEvent[]) {
+    if (this.payoutList.some((p) => p.orderId === payout.orderId)) return false;
+    this.payoutList.push(structuredClone(payout));
+    this.steps.set(payout.id, [structuredClone(step)]);
+    this.pushEvents(events);
+    return true;
+  }
+
+  async addPayoutStep(payoutId: string, seq: number, step: PayoutStep, events: PaymentEvent[]) {
+    const steps = this.steps.get(payoutId);
+    if (!steps) throw new Error(`Payout ${payoutId} does not exist`);
+    if (steps.length !== seq - 1) throw new PayoutConflictError(`Step ${seq} of payout ${payoutId} is taken`);
+    steps.push(structuredClone(step));
+    this.pushEvents(events);
+  }
+
+  private view(p: Payout): PayoutView {
+    const steps = this.steps.get(p.id) ?? [];
+    return structuredClone({ ...p, status: steps.at(-1)!.status, steps });
+  }
+
+  async payout(id: string) {
+    const p = this.payoutList.find((x) => x.id === id);
+    return p ? this.view(p) : null;
+  }
+
+  async payouts(filter: { status?: PayoutStatus; claimId?: string; partyId?: string; market?: string }) {
+    return this.payoutList
+      .map((p) => this.view(p))
+      .filter((p) => (!filter.status || p.status === filter.status) && (!filter.claimId || p.claimId === filter.claimId) && (!filter.partyId || p.partyId === filter.partyId) && (!filter.market || p.market === filter.market))
+      .sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? -1 : 1) : a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  private pushEvents(events: PaymentEvent[]) {
+    for (const e of events) this.outbox.push({ ...structuredClone(e), sequence: this.outbox.length + 1 });
+  }
 
   async addPayment(payment: Payment, event: PaymentEvent): Promise<boolean> {
     if (this.list.some((p) => p.provider === payment.provider && p.providerRef === payment.providerRef)) return false;

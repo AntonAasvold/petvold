@@ -17,7 +17,7 @@ export type Timestamp = string;
  * and 6). Anything else in a module's event stays inside Petvold: names, notes,
  * who did it. Types are versioned: a breaking change is a new `.vN`.
  */
-export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId' | 'invoiceId' | 'paymentId';
+export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId' | 'invoiceId' | 'paymentId' | 'payoutId';
 
 /** A request for information (ADR 0036): what was asked for and when it is due, never the note. */
 const INFORMATION_FIELDS = ['requestId', 'recipient', 'items', 'dueDate', 'status'];
@@ -46,6 +46,9 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'notice.failed': { source: 'communications', subject: 'noticeId', fields: ['deliveryId', 'channel'] },
   'invoice.credited': { source: 'billing', subject: 'invoiceId', fields: ['creditNoteId', 'creditNoteNo', 'accountId', 'partyId', 'total', 'currency', 'reason'] },
   // A payment into the insurer's account (ADR 0017). The payer's details stay inside Petvold.
+  // A claim's payout reached the payee, or could not (ADR 0040). Never the account number.
+  'payout.paid': { source: 'payments', subject: 'payoutId', fields: ['claimId', 'policyId', 'partyId', 'orderId', 'amount', 'currency'] },
+  'payout.failed': { source: 'payments', subject: 'payoutId', fields: ['claimId', 'policyId', 'partyId', 'orderId', 'amount', 'currency'] },
   'payment.succeeded': { source: 'payments', subject: 'paymentId', fields: ['direction', 'provider', 'amount', 'currency', 'reference', 'bookedOn'] },
   'invoice.paid': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'total', 'currency', 'paymentId', 'paidOn'] },
   'invoice.issued': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'issueDate', 'dueDate', 'total', 'currency', 'reference', 'policyIds'] },
@@ -78,6 +81,7 @@ export interface SourceEvent {
   runId?: string;
   invoiceId?: string;
   paymentId?: string;
+  payoutId?: string;
   market: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;

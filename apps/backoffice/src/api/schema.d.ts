@@ -2733,6 +2733,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/payees/{partyId}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                partyId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A payee's account details, oldest first
+         * @description Requires the permission `payments:read` (ADR 0040). The numbers are masked but for the last four. The newest in a market is `current`.
+         */
+        get: operations["listPayeeAccounts"];
+        put?: never;
+        /**
+         * Give a payee's account details
+         * @description Requires the permission `payments:payee-write` (ADR 0040). The details replace
+         *     the payee's earlier ones in the market from now, logged with who gave them.
+         *     Payouts waiting for details go on: held for a person if the market holds
+         *     new details (`PETVOLD_NEW_PAYEE_HOLD_DAYS`), else sent.
+         */
+        post: operations["addPayeeAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Payouts, oldest first
+         * @description Requires the permission `payments:read` (ADR 0040). `status=held` is the queue
+         *     of payouts a person must release, and `status=awaiting-details` those
+         *     waiting for the payee's account. Only payouts in the caller's markets; a
+         *     role bound to a clinic or to policies sees none.
+         */
+        get: operations["listPayouts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payouts/{payoutId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A payout with its steps
+         * @description Requires the permission `payments:read`. Outside the caller's scope it answers 404.
+         */
+        get: operations["getPayout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payouts/{payoutId}/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release a held payout
+         * @description Requires the permission `payments:release` (ADR 0040). Sends a payout held
+         *     because the payee's details are new. The one who gave the details cannot
+         *     release it (403). A payout that is not held, or whose payee has given
+         *     other details since, answers 409.
+         */
+        post: operations["releasePayout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/premium-plans": {
         parameters: {
             query?: never;
@@ -4566,6 +4661,79 @@ export interface components {
                 /** @description Paid and not needed by an invoice: the payer's credit balance. */
                 credit: number;
             };
+        };
+        /**
+         * @description awaiting-details: the payee has given no account. held: the account is newer
+         *     than the market's hold, and a person must release it. pending: sent, the
+         *     payment service has not answered. paid. failed.
+         * @enum {string}
+         */
+        PayoutStatus: "awaiting-details" | "held" | "pending" | "paid" | "failed";
+        /** @description A claim's payout order on its way to the policyholder (ADR 0040). One per order, so an order is never paid twice. */
+        Payout: {
+            id: string;
+            /** @description The payout order in claim.payout_ordered. */
+            orderId: string;
+            claimId: string;
+            decisionId: string;
+            policyId: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            amount: number;
+            /** @description The payee */
+            partyId: string;
+            provider: string;
+            sourceEventId: string;
+            /** Format: date-time */
+            createdAt: string;
+            status: components["schemas"]["PayoutStatus"];
+            steps: components["schemas"]["PayoutStep"][];
+        };
+        PayoutStep: {
+            status: components["schemas"]["PayoutStatus"];
+            /** Format: date-time */
+            at: string;
+            /** @description 'payments', the adapter, or the person who released it. */
+            by: string;
+            payeeAccountId?: string;
+            /** @description The adapter's id for the payment. */
+            providerRef?: string;
+            note?: string;
+        };
+        /** @description Where a payee is paid (ADR 0040). Never changes; new details replace the old. The number is masked but for the last four. */
+        PayeeAccount: {
+            id: string;
+            partyId: string;
+            market: components["schemas"]["Market"];
+            /** @enum {string} */
+            method: "se-bank" | "iban";
+            details: {
+                clearing?: string;
+                account?: string;
+                iban?: string;
+                bic?: string;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            createdBy: string;
+            /** @description The newest in its market */
+            current: boolean;
+        };
+        PayeeAccountInput: {
+            market: components["schemas"]["Market"];
+            /** @enum {string} */
+            method: "se-bank" | "iban";
+            /** @description se-bank: clearing (4 or 5 digits) and account (6 to 12 digits). iban: iban, checked by ISO 13616, and optionally bic. */
+            details: {
+                clearing?: string;
+                account?: string;
+                iban?: string;
+                bic?: string;
+            };
+        };
+        ReleasePayoutRequest: {
+            /** @description How the details were checked, e.g. a call to the customer's number in the register. */
+            note?: string;
         };
         /** @description A payment Petvold has received (ADR 0017). Never changes. */
         Payment: {
@@ -10239,6 +10407,165 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReceivedPayment"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listPayeeAccounts: {
+        parameters: {
+            query?: {
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                partyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["PayeeAccount"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    addPayeeAccount: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                partyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayeeAccountInput"];
+            };
+        };
+        responses: {
+            /** @description The details, masked */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayeeAccount"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listPayouts: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["PayoutStatus"];
+                claimId?: string;
+                partyId?: string;
+                market?: components["schemas"]["Market"];
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payouts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Payout"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getPayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payoutId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payout */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payout"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    releasePayout: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                payoutId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleasePayoutRequest"];
+            };
+        };
+        responses: {
+            /** @description The payout, sent */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payout"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

@@ -105,8 +105,12 @@ export const PERMISSIONS = [
   'billing:read',
   /** Match a payment that came in without a usable reference to a payer account (ADR 0040). */
   'billing:write',
-  /** Read payments into and out of the insurer's accounts (ADR 0017, 0040). */
+  /** Read payments into and out of the insurer's accounts, payouts and payee details masked (ADR 0017, 0040). */
   'payments:read',
+  /** Give a payee's account details (ADR 0040, punkt 8). Logged with who gave them. */
+  'payments:payee-write',
+  /** Release a payout held because the payee details are new. Not by the one who gave them. */
+  'payments:release',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -213,7 +217,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** The insurer's customer portal or app, acting for a signed-in customer. */
   'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read', 'documents:read', 'documents:share', 'billing:read'], bindsTo: 'policies' },
   /** Follows the premiums: payer accounts, premium plans and later invoices and payments (ADR 0040), e.g. the finance team. */
-  'billing-clerk': { permissions: ['billing:read', 'billing:write', 'payments:read', 'policies:read', 'parties:read', 'catalog:read'] },
+  'billing-clerk': { permissions: ['billing:read', 'billing:write', 'payments:read', 'payments:payee-write', 'payments:release', 'policies:read', 'parties:read', 'catalog:read'] },
 };
 
 export function isPermission(value: unknown): value is Permission {
