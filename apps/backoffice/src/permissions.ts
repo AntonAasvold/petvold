@@ -26,20 +26,26 @@ export function countLabel(page: { items: unknown[]; nextCursor?: string }): str
   return page.nextCursor ? `${page.items.length}+` : String(page.items.length);
 }
 
+/** The menu, the most used first. Each role sees its own part of it, in this order. */
 export const SECTIONS: Section[] = [
+  // The daily work: claims and finding the customer, the policy and the animal.
   { path: '/claims', label: 'nav.claims', icon: 'file-invoice', anyOf: ['claims:read'], count: { path: '/v1/claims', query: { status: 'awaiting-decision' } } },
   { path: '/policies', label: 'nav.policies', icon: 'paw', anyOf: ['policies:read'] },
   { path: '/parties', label: 'nav.parties', icon: 'address-book', anyOf: ['parties:read'] },
   { path: '/animals', label: 'nav.animals', icon: 'dog', anyOf: ['animals:read'] },
-  { path: '/erasures', label: 'nav.erasures', icon: 'user-slash', anyOf: ['parties:privacy'], count: { path: '/v1/erasure-requests', query: { status: 'pending' } } },
+  // Queues that wait for a person.
   { path: '/applications', label: 'nav.applications', icon: 'list-check', anyOf: ['policies:read'], count: { path: '/v1/applications', query: { status: 'referred' } } },
   { path: '/proposals', label: 'nav.proposals', icon: 'user-check', anyOf: ['policies:read'], count: { path: '/v1/policy-proposals', query: { status: 'pending' } } },
-  { path: '/notices', label: 'nav.notices', icon: 'envelope', anyOf: ['notices:read'], count: { path: '/v1/notices', query: { attention: true } } },
   { path: '/money', label: 'nav.money', icon: 'coins', anyOf: ['billing:read', 'payments:read'], count: { path: '/v1/received-payments', query: { status: 'unmatched' } } },
-  { path: '/webhooks', label: 'nav.webhooks', icon: 'plug', anyOf: ['webhooks:read'], count: { path: '/v1/webhook-deliveries', query: { status: 'dead' } } },
-  { path: '/jobs', label: 'nav.jobs', icon: 'clock', anyOf: ['jobs:read'], count: { path: '/v1/relay-dead-letters', query: {} } },
+  { path: '/notices', label: 'nav.notices', icon: 'envelope', anyOf: ['notices:read'], count: { path: '/v1/notices', query: { attention: true } } },
+  // Seldom: requests to erase personal data.
+  { path: '/erasures', label: 'nav.erasures', icon: 'user-slash', anyOf: ['parties:privacy'], count: { path: '/v1/erasure-requests', query: { status: 'pending' } } },
+  // Configuration.
   { path: '/products', label: 'nav.products', icon: 'box', anyOf: ['catalog:read'] },
   { path: '/rule-sets', label: 'nav.ruleSets', icon: 'scale-balanced', anyOf: ['rules:read'] },
+  // Integration and operations.
+  { path: '/webhooks', label: 'nav.webhooks', icon: 'plug', anyOf: ['webhooks:read'], count: { path: '/v1/webhook-deliveries', query: { status: 'dead' } } },
+  { path: '/jobs', label: 'nav.jobs', icon: 'clock', anyOf: ['jobs:read'], count: { path: '/v1/relay-dead-letters', query: {} } },
   { path: '/settings', label: 'nav.settings', icon: 'gear', anyOf: ['access:read', 'parties:privacy', 'notices:read'] },
   { path: '/docs', label: 'nav.docs', icon: 'book', anyOf: [] },
 ];

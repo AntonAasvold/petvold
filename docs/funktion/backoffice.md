@@ -33,7 +33,15 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 
 - **Toppraden** visar Petvold och Back office, ett sökfält, språkval, vem som är inloggad och Logga ut.
 - **Sökfältet** öppnar en skada (`clm_…`), policy (`pol_…`), ansökan (`app_…`) eller ett meddelande (`ntc_…`) direkt. Allt annat söks bland policyerna: djur- eller part-id, personnummer och chipnummer. Ett personnummer hamnar aldrig i webbadressen.
-- **Menyn** visar de avsnitt användaren har rätt till. Det valda avsnittet är svart med vit text. En räknare visar hur många som väntar i:
+- **Menyn** visar de avsnitt användaren har rätt till, med det man använder mest överst:
+  1. det dagliga arbetet: Skador, Policyer, Parter och Djur
+  2. köerna som väntar på en person: Ansökningar, Förslag, Pengar och Meddelanden
+  3. Radering, som används sällan
+  4. konfigurationen: Produkter och Regeluppsättningar
+  5. integration och drift: Webhooks, Körningar och Inställningar
+  6. Dokumentation sist
+
+  En roll ser bara sin del, i samma ordning. Det valda avsnittet är svart med vit text. En räknare visar hur många som väntar i:
   - skadornas kö för beslut
   - ansökningar till manuell prövning
   - förslag
