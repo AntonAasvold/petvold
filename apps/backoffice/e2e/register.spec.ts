@@ -168,7 +168,8 @@ test("a handler corrects a decided claim; the person's decision is reopened and 
   await expect(page.locator('.title').getByText('Awaiting decision')).toBeVisible();
   await expect(page.getByText('The claim was corrected after the decision')).toBeVisible();
   await expect(actions.getByRole('heading', { name: 'Decision', exact: true })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').first()).toContainText('claim.corrected');
+  // Not necessarily first: the decision's notice comes through the relay and can be later than the correction.
+  await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').filter({ hasText: 'claim.corrected' })).toHaveCount(1);
 });
 
 test('an attachment is added as a reference to the archive, and a better scan replaces it (ADR 0036)', async ({ page }) => {
