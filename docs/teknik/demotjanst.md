@@ -78,7 +78,7 @@ Händelserna är tunna (ADR 0033): id:n, belopp, datum och koder, men inga namn 
 | Token | Används till |
 | --- | --- |
 | `dev-integration` | Prenumerationen och listan över leveranser |
-| `dev-all` | Läsa policyer, skador, parter, meddelanden, fakturor, inbetalningar och utbetalningar. `dev-all` har rollen `billing-clerk`. |
+| `dev-all` | Läsa policyer, skador, parter, meddelanden, fakturor, inbetalningar och utbetalningar. `dev-all` har rollerna `billing-clerk`, `billing-manager` och `accountant`. |
 | `dev-customer` | Kundens handlingar, om ett scenario behöver det |
 
 ## Händelserna

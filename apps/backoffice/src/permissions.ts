@@ -37,6 +37,7 @@ export const SECTIONS: Section[] = [
   { path: '/applications', label: 'nav.applications', icon: 'list-check', anyOf: ['policies:read'], count: { path: '/v1/applications', query: { status: 'referred' } } },
   { path: '/proposals', label: 'nav.proposals', icon: 'user-check', anyOf: ['policies:read'], count: { path: '/v1/policy-proposals', query: { status: 'pending' } } },
   { path: '/money', label: 'nav.money', icon: 'coins', anyOf: ['billing:read', 'payments:read'], count: { path: '/v1/received-payments', query: { status: 'unmatched' } } },
+  { path: '/accounting', label: 'nav.accounting', icon: 'calculator', anyOf: ['accounting:read'] },
   { path: '/notices', label: 'nav.notices', icon: 'envelope', anyOf: ['notices:read'], count: { path: '/v1/notices', query: { attention: true } } },
   // Seldom: requests to erase personal data.
   { path: '/erasures', label: 'nav.erasures', icon: 'user-slash', anyOf: ['parties:privacy'], count: { path: '/v1/erasure-requests', query: { status: 'pending' } } },

@@ -5,6 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
+- Pengar, steg 8d, PR #NN: **Bokföring** i back office med dagsavslut och fil, saldon, verifikationer och kontoplan med versioner. Rättat: det första dagsavslutet kunde hoppa över en dag när en verifikation för i går kom in efter dagens första. `dev-all` har alla roller.
 - Menyns ordning, PR #161: det dagliga arbetet först, sedan köerna, konfiguration och drift, och Dokumentation sist.
 - Pengar, steg 8c, PR #160: betaluppgifter och utbetalningar på partens sida, med svenskt konto eller IBAN (kontrollerat). Under **Pengar**: utbetalningar som väntar på betaluppgifter, och avtal med kliniker som görs och avslutas, med klinikens betaluppgifter.
 - Det fladdrande testet för skadans historik, PR #159: testet räknade med att rättelsen stod överst, men skadebeskedet kommer via relän och kan vara senare.
