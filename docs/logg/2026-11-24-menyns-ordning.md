@@ -1,4 +1,4 @@
-# Menyns ordning (PR #NN)
+# Menyns ordning (PR #161)
 
 **Datum:** 2026-11-24 **ADR:** 0035 **Moduler:** `apps/backoffice`
 

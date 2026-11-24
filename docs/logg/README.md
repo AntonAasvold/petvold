@@ -43,7 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
-| 2026-11-24 | [Menyns ordning](2026-11-24-menyns-ordning.md) | #NN |
+| 2026-11-24 | [Menyns ordning](2026-11-24-menyns-ordning.md) | #161 |
 | 2026-11-24 | [Pengar, steg 8c: betaluppgifter och kliniker i back office](2026-11-24-betaluppgifter-och-kliniker.md) | #160 |
 | 2026-11-24 | [Det fladdrande testet för skadans historik](2026-11-24-fladdrande-historik.md) | #159 |
 | 2026-11-24 | [Pengar, steg 8b: betalarens konto i back office](2026-11-24-betalarkonto.md) | #158 |
