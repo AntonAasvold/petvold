@@ -1,4 +1,4 @@
-# Pengar, steg 8c: betaluppgifter och kliniker i back office (PR #NN)
+# Pengar, steg 8c: betaluppgifter och kliniker i back office (PR #160)
 
 **Datum:** 2026-11-24 **ADR:** 0040, 0035 **Moduler:** `apps/backoffice`
 
