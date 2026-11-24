@@ -16,7 +16,7 @@ fi
 # Caddy with the DuckDNS module is built here; after the first time it comes from the cache.
 docker compose build caddy
 docker compose stop api caddy web
-docker compose rm -sf api migrate postgres seaweedfs
+docker compose rm -sf api migrate roles postgres seaweedfs
 docker volume rm -f petvold-demo_pgdata petvold-demo_s3data
 # The test data is made with Petvold stopped: the seed drives the relay and the runs with its own clock.
 docker compose --profile seed run --rm seed

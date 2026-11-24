@@ -5,6 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
+- Demon kan uppdateras med datan kvar, PR #156: tjänsten `roles` skapar de modulroller som saknas innan `migrate`. Förut stoppade migrering 0064 på en databas från före `accounting_service`.
 - Fler affärsprocesser, PR #155: teckning, policyns livscykel, skadereglering, meddelanden och personuppgifter. Det blir 179 regler totalt.
 - Systemdokumentation i back office, PR #154: **Dokumentation** i menyn visar affärsprocesserna och affärsreglerna ([docs/processer](processer/README.md)), funktionerna och besluten, sökbara. Sidorna byggs in från `docs/`.
   - Sex processer för pengarna, med 67 regler. Varje regel har id, källa och inställning, till exempel `OBET-05`.

@@ -80,6 +80,24 @@ services:
     environment:
       DATABASE_URL: postgres://petvold:${POSTGRES_PASSWORD}@postgres:5432/petvold?sslmode=disable
     depends_on:
+      roles: { condition: service_completed_successfully }
+
+  # Creates the module roles that are missing (initdb/01-roles.sh), then stops.
+  # The database's own initdb only runs once, so without this an update with a
+  # new module would stop at the first grant to its role.
+  roles:
+    image: postgres:18.7-trixie
+    restart: "no"
+    command: ["sh", "/initdb/01-roles.sh"]
+    environment:
+      PGHOST: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: petvold
+      POSTGRES_DB: petvold
+      SERVICE_DB_PASSWORD: ${SERVICE_DB_PASSWORD}
+    volumes:
+      - ./initdb:/initdb:ro
+    depends_on:
       postgres: { condition: service_healthy }
 
   # The test data (npm run demo:seed). Only run by reset.sh, with the api stopped.
