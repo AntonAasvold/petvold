@@ -20,6 +20,7 @@ import { act, type Notice } from '../actions.ts';
 import '../components/data-grid.ts';
 import '../components/event-log.ts';
 import '../components/party-documents.ts';
+import '../components/party-accounts.ts';
 import type { Column } from '../components/data-grid.ts';
 import type { LogEntry } from '../components/event-log.ts';
 import { partyFields } from '../components/party-fields.ts';
@@ -264,6 +265,7 @@ export class PartyDetail extends LitElement {
             ></pv-data-grid>
           </section>`
             : nothing}
+          ${this.may('billing:read') ? html`<pv-party-accounts .api=${this.api} party-id=${this.partyId}></pv-party-accounts>` : nothing}
           <pv-party-documents .api=${this.api} party-id=${this.partyId}></pv-party-documents>
         </div>
         <div class="side">

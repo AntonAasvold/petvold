@@ -284,6 +284,22 @@ Varje inställning är versionerad (ADR 0020, 0028, 0032). En ändring blir en n
 | Spärrade utbetalningar | Utbetalningar som väntar för att betaluppgifterna är nya: sedan när, belopp, mottagare och vad de avser | **Släpp** efter att uppgifterna kontrollerats med mottagaren på ett nummer ur registret, med en valfri anteckning. Den som gav uppgifterna får inte släppa, och API:t säger nej då (`UTB-07`). |
 | Kreditförslag | Kreditnotor och avskrivningar över förslagsställarens gräns | **Attestera** eller **skicka tillbaka** med ett skäl. Den som föreslog ser förslaget men inte knapparna (`KRED-08`). Räcker inte den egna gränsen säger API:t nej. |
 
+### Betalarens konto
+
+**Partens sida** visar partens betalarkonton, ett per marknad och valuta, med det som är kvar att betala och tillgodohavandet. Kortet kräver `billing:read`. En rad öppnar kontot (`/payer-accounts/bac_…`):
+
+- **Överst** står att betala och tillgodo.
+- **Fakturorna** visas med den senaste först: nummer, förfallodag, summa, att betala och status. Har körningen för obetald premie gjort något visas det, till exempel *Påmind* eller *Uppsägning skickad*.
+- **En vald faktura** visar referensen (OCR eller RF), vad som är krediterat och betalt, och policyerna på den. Med `billing:credit` går det att ta ner den:
+  - med en **kreditnota**, högst det som tidigare kreditnotor lämnat, också på en betald faktura (`KRED-06`)
+  - med en **avskrivning**, högst det obetalda (`KRED-07`)
+
+  Inom den egna gränsen görs den direkt. Över gränsen blir den ett förslag under **Pengar** (`KRED-08`).
+- **Återbetalningar** visas med datum, belopp och varför.
+- **Betala tillbaka tillgodohavandet** finns med `billing:write` när kontot har ett tillgodohavande. Det gäller hela tillgodohavandet eller en del (`KRED-12`), och `payments` betalar ut det till betalaren.
+
+**Exempel:** Erik ringer om sin faktura på 3 600 kr. Ekonomi öppnar honom, öppnar kontot och väljer fakturan. En kreditnota på 10 kr med skälet "Goodwill efter klagomål" görs direkt. En avskrivning på 2 000 kr är över kontoristens gräns på 1 000 kr och hamnar under **Pengar** för ekonomichefen.
+
 **Exempel:** en inbetalning på 731 kr kommer in utan OCR. Ekonomi ser i bankens meddelande att den gäller Bellas försäkring, kopplar den till Annas betalarkonto med motiveringen "Betalaren angav policyn i meddelandet", och raden försvinner ur kön.
 
 ## Dokumentation

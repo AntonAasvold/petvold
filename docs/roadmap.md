@@ -206,7 +206,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
   - [ ] Betaltjänster: bankfiler (ISO 20022), Stripe eller Surfboard (kort och Swish), Autogiro och SEPA, och Swish direkt
   - [ ] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav:
     - [x] 8a: köerna i **Pengar**: okopplade inbetalningar, spärrade utbetalningar och kreditförslag
-    - [ ] 8b: betalarens konto på partens sida, med fakturor, saldo, kreditnota och återbetalning
+    - [x] 8b: betalarens konto på partens sida, med fakturor, saldo, kreditnota och återbetalning
     - [ ] 8c: betaluppgifter och avtal med kliniker
     - [ ] 8d: dagsavslut och kontoplan
 - Premieåterbetalning vid avslut och ny premieplan vid förnyelse.
