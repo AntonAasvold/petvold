@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-24 | [Pengar, steg 8a: köerna i back office](2026-11-24-pengar-i-back-office.md) | #NN |
 | 2026-11-24 | [Affärsprocesser för teckning, policy, skada, meddelanden och personuppgifter](2026-11-24-processer.md) | #155 |
 | 2026-11-24 | [Systemdokumentation i back office](2026-11-24-systemdokumentation.md) | #154 |
 | 2026-11-24 | [Pengar, steg 6b: dagsavslut och kontoplan](2026-11-24-dagsavslut.md) | #153 |

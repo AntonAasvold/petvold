@@ -45,6 +45,7 @@ import '../views/notice-detail.ts';
 import '../views/webhooks-view.ts';
 import '../views/webhook-detail.ts';
 import '../views/settings-view.ts';
+import '../views/money-view.ts';
 import '../views/catalog-views.ts';
 
 @customElement('pv-app')
@@ -281,6 +282,7 @@ export class AppShell extends LitElement {
       { pattern: /^\/parties\/(?<id>[^/]+)$/, render: (p) => html`<pv-party-detail .api=${this.api} .me=${this.me} party-id=${p.id!}></pv-party-detail>` },
       { pattern: /^\/jobs$/, render: () => html`<pv-jobs .api=${this.api} .me=${this.me}></pv-jobs>` },
       { pattern: /^\/jobs\/(?<id>[^/]+)$/, render: (p) => html`<pv-job-detail .api=${this.api} .me=${this.me} job=${p.id!}></pv-job-detail>` },
+      { pattern: /^\/money$/, render: () => html`<pv-money .api=${this.api} .me=${this.me}></pv-money>` },
       { pattern: /^\/settings$/, render: () => html`<pv-settings .api=${this.api} .me=${this.me}></pv-settings>` },
       { pattern: /^\/docs(?:\/(?<section>processer|funktion|adr)\/(?<slug>[^/]+))?$/, render: (p) => {
         // The pages are large, so the view loads when it is opened.
@@ -375,6 +377,8 @@ export class AppShell extends LitElement {
         return msg('Rule sets', { id: 'nav.ruleSets' });
       case 'nav.settings':
         return msg('Settings', { id: 'nav.settings' });
+      case 'nav.money':
+        return msg('Money', { id: 'nav.money' });
       case 'nav.docs':
         return msg('Documentation', { id: 'nav.docs' });
       default:

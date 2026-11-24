@@ -36,6 +36,9 @@ export const DEV_TOKENS = [
   'dev-registrar',
   'dev-privacy',
   'dev-privacy-2',
+  'dev-billing',
+  'dev-billing-manager',
+  'dev-accountant',
 ] as const;
 
 export function devSession(): Session {
