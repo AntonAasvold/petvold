@@ -39,6 +39,15 @@ test('each day up to yesterday is closed once, in order, with totals and account
   assert.deepEqual((await s.service.closeDays({ market: 'FI', onDate: '2026-12-04', dryRun: false }, 'scheduler')).days, []);
 });
 
+test('the first close starts at the earliest booking date, also when an earlier day was booked later', async () => {
+  const s = setup();
+  // Today's verification first, then a bank file for yesterday: the lower number is today's.
+  await s.service.handleEvent(paid('e1', '2026-12-03'));
+  await s.service.handleEvent(paid('e2', '2026-12-02', 10_000));
+  const r = await s.service.closeDays({ market: 'SE', onDate: '2026-12-03', dryRun: false }, 'scheduler');
+  assert.deepEqual(r.closes.map((c) => [c.day, c.verificationCount]), [['2026-12-02', 1]], 'yesterday is closed, not skipped');
+});
+
 test('a payment for a closed day is booked on the first open day, its own day kept', async () => {
   const s = setup();
   await s.service.handleEvent(paid('e1', '2026-12-01'));

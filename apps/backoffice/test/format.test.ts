@@ -55,7 +55,7 @@ test('sections follow the permissions from /v1/me; the documentation is there fo
 
 test('the menu has the daily work first, then the queues, configuration, operations and the documentation last', async () => {
   const { SECTIONS } = await import('../src/permissions.ts');
-  assert.deepEqual(SECTIONS.map((s) => s.path), ['/claims', '/policies', '/parties', '/animals', '/applications', '/proposals', '/money', '/notices', '/erasures', '/products', '/rule-sets', '/webhooks', '/jobs', '/settings', '/docs']);
+  assert.deepEqual(SECTIONS.map((s) => s.path), ['/claims', '/policies', '/parties', '/animals', '/applications', '/proposals', '/money', '/accounting', '/notices', '/erasures', '/products', '/rule-sets', '/webhooks', '/jobs', '/settings', '/docs']);
 });
 
 test('the menu counts a page of waiting items', async () => {

@@ -360,7 +360,11 @@ export class AccountingService {
    */
   async closeDays(input: { market: string; onDate: ISODate; dryRun: boolean }, by: string): Promise<{ market: string; onDate: ISODate; dryRun: boolean; days: ISODate[]; closes: DayClose[] }> {
     const last = await this.d.store.closedThrough(input.market);
-    const first = last ? addDays(last, 1) : (await this.d.store.verifications({ market: input.market }))[0]?.bookingDate;
+    // Before any day is closed: the earliest booking date, not the first by number. A
+    // payment booked yesterday can come after today's first verification.
+    const first = last
+      ? addDays(last, 1)
+      : (await this.d.store.verifications({ market: input.market })).reduce<ISODate | undefined>((min, v) => (!min || v.bookingDate < min ? v.bookingDate : min), undefined);
     const days: ISODate[] = [];
     for (let d = first; d && d < input.onDate; d = addDays(d, 1)) days.push(d);
     const out = { market: input.market, onDate: input.onDate, dryRun: input.dryRun, days, closes: [] as DayClose[] };

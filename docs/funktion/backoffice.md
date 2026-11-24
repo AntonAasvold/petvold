@@ -24,6 +24,7 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 
 | Produkter | Produkterna och varje produktversion med innehåll, säljperiod och livscykel. Produktens sida är byggd som skadans: rubrik och fakta (den publicerade versionen, antal utkast och versioner), versionerna och den valda versionens innehåll till vänster, och den valda versionen med status och åtgärder till höger (skicka till granskning, publicera, ändra, nytt utkast, skicka tillbaka, avsluta försäljning). Ett utkast redigeras i vänsterkolumnen. | `catalog:read`, `catalog:write` för utkast, `catalog:publish` för att publicera, skicka tillbaka och avsluta försäljning |
 | Pengar | Köerna för pengarna: okopplade inbetalningar som kopplas för hand, utbetalningar som spärrats för nya betaluppgifter och släpps av någon annan, utbetalningar som väntar på betaluppgifter, kreditnotor och avskrivningar över gränsen som attesteras eller skickas tillbaka, och avtal med kliniker. Räknaren visar okopplade inbetalningar. | `billing:read` eller `payments:read`. `billing:write` för att koppla, `payments:release` för att släppa, `billing:credit` för att attestera. |
+| Bokföring | Dagsavslut med summor, kontrollsumma och fil, saldo per konto, verifikationer med rader, och kontoplanen med versioner | `accounting:read`, och `accounting:configure` för att ändra kontoplanen |
 | Dokumentation | Affärsprocesserna och affärsreglerna, funktionerna och besluten (ADR), sökbara | Inloggad |
 | Regeluppsättningar | Serierna (skaderegler, tariffer, prisvillkor och teckningsregler) och varje version med livscykel. Seriens sida är byggd som produktens. | `rules:read`, `rules:write` för utkast, `rules:publish` för att publicera, skicka tillbaka och avveckla |
 
@@ -322,6 +323,19 @@ Nya uppgifter ersätter de gamla. Om marknaden spärrar nya uppgifter väntar n�
 **Exempel:** Erik ringer om sin faktura på 3 600 kr. Ekonomi öppnar honom, öppnar kontot och väljer fakturan. En kreditnota på 10 kr med skälet "Goodwill efter klagomål" görs direkt. En avskrivning på 2 000 kr är över kontoristens gräns på 1 000 kr och hamnar under **Pengar** för ekonomichefen.
 
 **Exempel:** en inbetalning på 731 kr kommer in utan OCR. Ekonomi ser i bankens meddelande att den gäller Bellas försäkring, kopplar den till Annas betalarkonto med motiveringen "Betalaren angav policyn i meddelandet", och raden försvinner ur kön.
+
+## Bokföring
+
+**Bokföring** i menyn är för redovisningen (`accountant`, ADR 0040, steg 8). Den har fyra flikar. Marknad och period väljs överst, och förvalet är innevarande månad.
+
+| Flik | Visar | Åtgärd |
+| --- | --- | --- |
+| Dagsavslut | Stängda dagar, den senaste först: antal verifikationer, debet och kredit per valuta, och en markering när kontoplanen saknar konton för dagen eller när debet och kredit inte går ihop | **Hämta filen (CSV)** för en vald dag. Filen görs om från dagen och ger samma kontrollsumma (`BOK-10`). |
+| Saldon | Debet, kredit och saldo per konto och valuta för perioden | – |
+| Verifikationer | Nummer, bokföringsdag, text och belopp. En vald verifikation visar raderna och händelsen den kom från. | – |
+| Kontoplan | Petvolds konton med ert nummer och namn för den valda marknaden, och versionerna | Med `accounting:configure`: ändra nummer och namn och **spara en ny version** med ett skäl. Ett tomt nummer tar bort kontot ur planen. En stängd dag behåller sin version. |
+
+**Exempel:** redovisningen öppnar Dagsavslut, väljer gårdagen och hämtar `petvold-verifications-SE-2026-11-23.csv` till ekonomisystemet. Dagen är markerad för att kontoplanen saknar konton. De läggs in under Kontoplan, med skälet "Vår kontoplan från 1 december". Dagar som stängs efter det får kontonumren.
 
 ## Dokumentation
 

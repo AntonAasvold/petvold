@@ -7,7 +7,7 @@
 import type { Authenticator, Principal } from './app.ts';
 
 /** The back office's roles for dev-all: not the jobs, and not the clinic or the customer channel, which bind the caller to their own claims or policies. */
-export const ALL_ROLES = ['handler', 'approver', 'underwriter', 'policy-registrar', 'animal-registrar', 'party-registrar', 'privacy-officer', 'catalog-manager', 'catalog-publisher', 'rules-author', 'rules-publisher', 'communications-manager', 'integration-admin', 'operations', 'admin', 'document-service', 'billing-clerk'];
+export const ALL_ROLES = ['handler', 'approver', 'underwriter', 'policy-registrar', 'animal-registrar', 'party-registrar', 'privacy-officer', 'catalog-manager', 'catalog-publisher', 'rules-author', 'rules-publisher', 'communications-manager', 'integration-admin', 'operations', 'admin', 'document-service', 'billing-clerk', 'billing-manager', 'accountant'];
 
 export const DEMO_TOKENS: Record<string, Principal> = {
   'dev-handler': { subject: 'handlaggare@example.test', roles: ['handler'], markets: '*' },

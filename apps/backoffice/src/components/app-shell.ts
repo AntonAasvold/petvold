@@ -47,6 +47,7 @@ import '../views/webhook-detail.ts';
 import '../views/settings-view.ts';
 import '../views/money-view.ts';
 import '../views/payer-account.ts';
+import '../views/accounting-view.ts';
 import '../views/catalog-views.ts';
 
 @customElement('pv-app')
@@ -284,6 +285,7 @@ export class AppShell extends LitElement {
       { pattern: /^\/jobs$/, render: () => html`<pv-jobs .api=${this.api} .me=${this.me}></pv-jobs>` },
       { pattern: /^\/jobs\/(?<id>[^/]+)$/, render: (p) => html`<pv-job-detail .api=${this.api} .me=${this.me} job=${p.id!}></pv-job-detail>` },
       { pattern: /^\/payer-accounts\/(?<id>[^/]+)$/, render: (p) => html`<pv-payer-account .api=${this.api} .me=${this.me} account-id=${p.id!}></pv-payer-account>` },
+      { pattern: /^\/accounting$/, render: () => html`<pv-accounting .api=${this.api} .me=${this.me}></pv-accounting>` },
       { pattern: /^\/money$/, render: () => html`<pv-money .api=${this.api} .me=${this.me}></pv-money>` },
       { pattern: /^\/settings$/, render: () => html`<pv-settings .api=${this.api} .me=${this.me}></pv-settings>` },
       { pattern: /^\/docs(?:\/(?<section>processer|funktion|adr)\/(?<slug>[^/]+))?$/, render: (p) => {
@@ -381,6 +383,8 @@ export class AppShell extends LitElement {
         return msg('Settings', { id: 'nav.settings' });
       case 'nav.money':
         return msg('Money', { id: 'nav.money' });
+      case 'nav.accounting':
+        return msg('Bookkeeping', { id: 'nav.accounting' });
       case 'nav.docs':
         return msg('Documentation', { id: 'nav.docs' });
       default:

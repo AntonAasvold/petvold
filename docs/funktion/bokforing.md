@@ -50,7 +50,7 @@ Petvold bokför på sina egna slag av konton. [Kontoplanen](#kontoplanen) övers
 
 ## Dagsavslutet
 
-Körningen `accounting.day-close` stänger varje dag före i dag, klockan 06:00 i marknaden ([Körningar](korningar.md)). Dagarna stängs i ordning, från dagen efter den senast stängda, och ingen dag hoppas över, också när den inte har några verifikationer.
+Körningen `accounting.day-close` stänger varje dag före i dag, klockan 06:00 i marknaden ([Körningar](korningar.md)). Dagarna stängs i ordning, från dagen efter den senast stängda, och ingen dag hoppas över, också när den inte har några verifikationer. Den första stängningen börjar vid den tidigaste bokföringsdagen, också när en verifikation för en tidigare dag kom in efter dagens första.
 
 - **En stängd dag ändras aldrig.** En verifikation för en dag som redan är stängd bokförs på första öppna dag, och dess egen dag sparas som `eventDate`. Det händer till exempel när en inbetalning med gårdagens bokföringsdag kommer in efter klockan 06:00.
 - **Stängningen sparar** antalet verifikationer, debet och kredit per valuta, vilken version av kontoplanen filen använder, vilka kontoslag som saknar kontonummer i den, och filens kontrollsumma (SHA-256).
