@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-24 | [Demon kan uppdateras med datan kvar](2026-11-24-demo-roller.md) | #156 |
 | 2026-11-24 | [Affärsprocesser för teckning, policy, skada, meddelanden och personuppgifter](2026-11-24-processer.md) | #155 |
 | 2026-11-24 | [Systemdokumentation i back office](2026-11-24-systemdokumentation.md) | #154 |
 | 2026-11-24 | [Pengar, steg 6b: dagsavslut och kontoplan](2026-11-24-dagsavslut.md) | #153 |
