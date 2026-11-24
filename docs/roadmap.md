@@ -101,7 +101,7 @@ Mål: kunna teckna en hundförsäkring och reglera en skada från början till s
 - [x] Back office enligt designsystemet, PR 2: skadeärendet med beslut i en egen spalt, och `routing` i bedömningen
 - [x] Back office enligt designsystemet, PR 3: `<pv-waterfall>` och `<pv-event-log>`
 - [x] Systemdokumentation i back office: affärsprocesser och affärsregler med id och källa, sökbara, tillsammans med funktionerna och besluten
-- [ ] Affärsprocesser för teckning, policyns livscykel, skadereglering, meddelanden och personuppgifter i `docs/processer`
+- [x] Affärsprocesser för teckning, policyns livscykel, skadereglering, meddelanden och personuppgifter i `docs/processer`
 - [ ] Livförsäkring som moment, eller ändrat namn på exempelprodukten (F4)
 
 **Skadeprocessen hela vägen** (före M5)
