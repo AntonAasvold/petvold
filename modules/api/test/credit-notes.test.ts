@@ -15,6 +15,7 @@ test('a clerk credits within the limit, proposes above it, and the head of finan
     clerk: { subject: 'ekonomi@example.test', roles: ['billing-clerk'], markets: ['SE'] },
     manager: { subject: 'ekonomichef@example.test', roles: ['billing-manager'], markets: ['SE'] },
     handler: { subject: 'h@example.test', roles: ['handler'], markets: ['SE'] },
+    documents: { subject: 'docs@example.test', roles: ['document-service'], markets: ['SE'] },
   };
   const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
   let k = 0;
@@ -40,6 +41,12 @@ test('a clerk credits within the limit, proposes above it, and the head of finan
   assert.equal(approved.body.kind, 'write-off');
   assert.equal((await call('GET', `/v1/credit-proposals/${big.body.id}`, 'clerk')).body.status, 'approved');
   assert.equal((await call('POST', `/v1/invoices/${inv.id}/credit-notes`, 'manager', { kind: 'write-off', amount: inv.total, reason: 'x' })).status, 409, 'more than is unpaid');
+  // The customer gets the credit note, but not the write-off (ADR 0040).
+  while ((await inst.relay.tick()) > 0);
+  const notices = (await call('GET', `/v1/notices?type=credit-note&recipientPartyId=${inv.partyId}`, 'documents')).body.items;
+  assert.deepEqual(notices.map((n: any) => [n.content.creditNoteId, n.content.total.amount, n.content.cause, n.invoiceId]), [[small.body.id, 50_000, 'manual', inv.id]]);
+  assert.ok(validatorFor('Notice')(structuredClone(notices[0])), JSON.stringify(validatorFor('Notice').errors));
+  assert.equal(JSON.stringify(notices[0]).includes('Goodwill'), false, "never the person's reason");
   const me = await call('GET', '/v1/me', 'clerk');
   assert.deepEqual(me.body.creditLimits, { SEK: 100_000, EUR: 10_000 });
 });

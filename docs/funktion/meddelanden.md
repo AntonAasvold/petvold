@@ -30,13 +30,15 @@ Samma händelse ger aldrig två meddelanden av samma typ, även om den levereras
 | `claim-information-expired` | En begäran till kunden går ut utan svar | Tre dagar efter utgången | Ingen lag (ADR 0036) |
 | `invoice` | Faktureringen gör en faktura ([Premier och betalningar](premier.md#fakturor)) | Fakturans dag, eftersom tiden att betala räknas från den dag kravet skickades | FAL 5 kap. 1 § |
 | `payment-reminder` | En faktura är förfallen och påmind ([Premier och betalningar](premier.md#obetald-premie)). Kräver bolagets text `payment`. | Snarast | Inget krav i lag. Bolaget kan stänga av den. |
+| `credit-note` | En faktura krediteras, av en person eller efter en ändring, ett avslut eller en överlåtelse ([Premier och betalningar](premier.md#kreditnotor-och-avskrivningar)). En avskrivning ger inget besked. | Snarast | Inget krav i lag. Bolaget kan stänga av den. |
 
 - **Tre dagar** är Petvolds tolkning av "snarast", eftersom lagen inte anger något antal dagar. Bolaget kan ändra det i [inställningarna](#bolagets-inställningar).
 - **Fakturan** har fakturans id (`invoiceId`) i stället för en policy, eftersom en faktura kan samla flera policyer. Med `documentMaker: petvold` gör Petvold PDF:en med sin mall för fakturor ([Dokument](dokument.md)). Skickas den sent blir den `late`, och då bör någon kontrollera förfallodagen, som räknas från fakturans dag.
 - **Mottagaren** är försäkringstagaren när beskedet gäller, vid en uppsägning den sista dagen policyn gällde. Vid ett avslag är det den sökande, och vid ett erbjudande den nya ägaren. För en skada är det försäkringstagaren på den första behandlingsdagen.
 - **En begäran om komplettering till kliniken** ger inget meddelande. Kliniken är inte kund, och bolaget når den på annat sätt.
 - **Språket** är partens språk, annars marknadens, i Sverige svenska.
-- **Typer som lagen inte kräver** (`cancellation-confirmation`, `transfer-offer` och `claim-information-expired`) kan stängas av i inställningarna.
+- **Typer som lagen inte kräver** (`cancellation-confirmation`, `transfer-offer`, `claim-information-expired`, `payment-reminder` och `credit-note`) kan stängas av i inställningarna.
+- **En avskrivning** ger inget besked. Bolaget ger upp det obetalda i sin bokföring, men det är inte säkert att bolaget vill tala om det för kunden. Bolaget kan skicka ett eget brev.
 - **Skadornas händelser** ger meddelanden från den dag funktionen finns. Beslut och begäranden från tidigare ger inga meddelanden i efterhand.
 
 ## Innehållet
@@ -54,6 +56,7 @@ Innehållet är fält, inte text. Varje typ har ett schema med versionsnummer, t
 | `claim-decision.v1` | `claimId`, `claimNo`, `policyId`, `animalId`, `decisionId`, `seq`, `outcome`, `payout`, `automated`, `mainReason` och `steps` (nycklar och värden, som i beslutets förklaring), `deviation` när handläggaren gick mot förslaget, `reviewAvailable` (kunden kan begära att en person prövar beslutet) och `review`, bolagets text om hur beslutet prövas |
 | `claim-information-request.v1`, `claim-information-reminder.v1` | `claimId`, `claimNo`, `policyId`, `animalId`, `requestId`, `items` (vad som saknas), `note` (handläggarens beskrivning) och `dueDate` (sista dagen att svara) |
 | `claim-information-expired.v1` | Samma fält utan `note`, och `decidedOnAvailableBasis`: en handläggare beslutar på det underlag som finns |
+| `credit-note.v1` | `creditNoteId`, `creditNoteNo`, `invoiceId`, `invoiceNo`, `issueDate`, `total`, `cause` (policyhändelsen som gav den, till exempel `policy.cancelled`, eller `manual` och `credit-proposal`) och `lines` (policy och belopp). Aldrig handläggarens skäl, som kan vara en intern anteckning. |
 | `invoice.v1` | `invoiceId`, `invoiceNo`, `issueDate`, `dueDate`, `total`, `reference` (`ocr` eller `rf` och värdet), `lines` (policy, period, premie, skatt, avgift och belopp) och `payment`, bolagets text om vart kunden betalar |
 
 Varje typ får också `sender` från inställningarna när bolaget har angett en avsändare. Meddelandet anger vilken version av inställningarna det skapades med (`settingsVersion`).

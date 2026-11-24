@@ -5,6 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
+- Besked om kreditnota, PR #164: kunden får meddelandet `credit-note` när en faktura krediteras, men inte vid en avskrivning. Bolaget kan stänga av det. Migration 0067.
 - Betaluppgifter raderas med parten, PR #163: ett godkännande av en radering raderar betaluppgifterna i `payments` först, och stoppas medan en utbetalning är på väg. `erasures:reapply` raderar dem igen. Migration 0066 med en trigger som bara tillåter radering.
 - Pengar, steg 8d, PR #162: **Bokföring** i back office med dagsavslut och fil, saldon, verifikationer och kontoplan med versioner. Rättat: det första dagsavslutet kunde hoppa över en dag när en verifikation för i går kom in efter dagens första. `dev-all` har alla roller.
 - Menyns ordning, PR #161: det dagliga arbetet först, sedan köerna, konfiguration och drift, och Dokumentation sist.

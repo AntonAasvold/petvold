@@ -409,6 +409,8 @@ export function noticeTypeLabel(t: string): string {
       return msg('Invoice', { id: 'notice.type.invoice' });
     case 'payment-reminder':
       return msg('Payment reminder', { id: 'notice.type.payment-reminder' });
+    case 'credit-note':
+      return msg('Credit note', { id: 'notice.type.credit-note' });
     default:
       return t;
   }

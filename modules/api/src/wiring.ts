@@ -409,7 +409,7 @@ export function accountingSources(billing: BillingService): AccountingSources {
 }
 
 /** Billing's invoices as the notices read them (ADR 0040). */
-export function invoiceSource(billing: BillingService): InvoiceSource {
+export function invoiceSource(billing: BillingService): Required<InvoiceSource> {
   return {
     async invoice(id) {
       const i = await billing.invoice(id).catch((e: unknown) => {
@@ -428,6 +428,26 @@ export function invoiceSource(billing: BillingService): InvoiceSource {
         reference: { ...i.reference },
         total: i.total,
         lines: i.lines.map((l) => ({ policyId: l.policyId, periodStart: l.periodStart, periodEnd: l.periodEnd, premium: l.premium, tax: l.tax, fee: l.fee, amount: l.amount })),
+      };
+    },
+    async creditNote(id) {
+      const c = await billing.creditNote(id).catch((e: unknown) => {
+        if (e instanceof BillingError && e.code === 'not_found') return null;
+        throw e;
+      });
+      if (!c) return null;
+      return {
+        id: c.id,
+        number: c.number,
+        kind: c.kind,
+        invoiceId: c.invoiceId,
+        partyId: c.partyId,
+        market: c.market,
+        currency: c.currency,
+        issueDate: c.issueDate,
+        total: c.total,
+        cause: c.source.eventType,
+        lines: c.lines.map((l) => ({ policyId: l.policyId, amount: l.amount })),
       };
     },
   };
