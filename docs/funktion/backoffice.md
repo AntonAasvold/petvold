@@ -23,6 +23,7 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Inställningar | Roller och gränser, gallring och bolagets texter för meddelanden, som versioner med skäl och historik | `access:read`, `parties:privacy` eller `notices:read`. Att ändra kräver `access:manage`, `parties:erase` eller `notices:configure`. |
 
 | Produkter | Produkterna och varje produktversion med innehåll, säljperiod och livscykel. Produktens sida är byggd som skadans: rubrik och fakta (den publicerade versionen, antal utkast och versioner), versionerna och den valda versionens innehåll till vänster, och den valda versionen med status och åtgärder till höger (skicka till granskning, publicera, ändra, nytt utkast, skicka tillbaka, avsluta försäljning). Ett utkast redigeras i vänsterkolumnen. | `catalog:read`, `catalog:write` för utkast, `catalog:publish` för att publicera, skicka tillbaka och avsluta försäljning |
+| Dokumentation | Affärsprocesserna och affärsreglerna, funktionerna och besluten (ADR), sökbara | Inloggad |
 | Regeluppsättningar | Serierna (skaderegler, tariffer, prisvillkor och teckningsregler) och varje version med livscykel. Seriens sida är byggd som produktens. | `rules:read`, `rules:write` för utkast, `rules:publish` för att publicera, skicka tillbaka och avveckla |
 
 *Inte byggt än:* simulering av en regelversion mot sparade beslut, och formulär för tariffer, prisvillkor och teckningsregler.
@@ -271,6 +272,22 @@ Varje inställning är versionerad (ADR 0020, 0028, 0032). En ändring blir en n
   - avsändare och text om prövning på svenska och engelska
 
   Utan text om prövning blir ett avslag ofullständigt (ADR 0032).
+
+## Dokumentation
+
+**Dokumentation** i menyn visar systemdokumentationen för alla som är inloggade. Den har tre delar:
+
+- **Processer och regler** ([docs/processer](../processer/README.md)): affärsprocesserna steg för steg, med reglerna i tabeller med id, källa och inställning.
+- **Funktioner** (`docs/funktion`): hur funktionerna används och ställs in.
+- **Beslut** (`docs/adr`): arkitekturbesluten.
+
+Sidorna är filerna i `docs/` och byggs in i back office. Det finns ingen egen kopia att hålla i takt, och en ändring i dokumentationen syns efter nästa bygge. Teknisk dokumentation och byggloggen är för utvecklare och visas inte här.
+
+**Sökningen** hittar avsnitt där alla orden finns. Ett ord i sidans rubrik väger mest, sedan avsnittets rubrik och en rad som börjar med ordet. Därför kommer raden som definierar en regel före en rad som hänvisar till den. Sökningen ligger i adressen (`/docs?q=OBET-05`), så en sökning går att länka till, och en träff leder till avsnittet (`/docs/processer/obetald-premie#regler`).
+
+**Exempel:** sök på `tillgodohavande`. Först kommer processen *Kreditering och tillgodohavanden*, sedan avsnitten i *Premier och betalningar* och i ADR 0040.
+
+Dokumentationen är på svenska oavsett språket i gränssnittet. Flödesdiagrammen visas som text och ritas på dokumentationssajten (`npm run site`).
 
 ## Produkter och regler
 

@@ -6,6 +6,7 @@ Dokumentationen skrivs samtidigt som koden. En PR som ändrar hur något fungera
 
 För försäkringsbolag, produktägare och handläggare. Ingen kod krävs för att läsa.
 
+- [Affärsprocesser och affärsregler](processer/README.md): processerna steg för steg, och reglerna med id, källa och inställning
 - [Översikt](funktion/README.md): vad Petvold är, vilka delar som finns och vad som är byggt
 - [Skadereglering](funktion/skadereglering.md): hur ett ärende bedöms, beräknas och beslutas
 - [Produktkonfiguration](funktion/produktkonfiguration.md): produkter, regeluppsättningar, policyns villkor och produktens dokument
