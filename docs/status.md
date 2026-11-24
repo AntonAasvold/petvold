@@ -5,6 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
+- Pengar, steg 8b, PR #158: betalarkontona på partens sida, och kontots sida med saldo, fakturor och återbetalningar. Kreditnota och avskrivning på en faktura, ett förslag över gränsen, och återbetalning av tillgodohavandet.
 - Pengar, steg 8a, PR #157: **Pengar** i back office med köerna för okopplade inbetalningar (koppla), spärrade utbetalningar (släppa) och kreditförslag (attestera eller skicka tillbaka). Fyra ögon gäller. Inloggningen har ekonomirollerna.
 - Demon kan uppdateras med datan kvar, PR #156: tjänsten `roles` skapar de modulroller som saknas innan `migrate`. Förut stoppade migrering 0064 på en databas från före `accounting_service`.
 - Fler affärsprocesser, PR #155: teckning, policyns livscykel, skadereglering, meddelanden och personuppgifter. Det blir 179 regler totalt.
