@@ -7,12 +7,12 @@
  */
 import { can, type Me } from './permissions.ts';
 
-export type MoneyTab = 'unmatched' | 'held' | 'proposals';
+export type MoneyTab = 'unmatched' | 'held' | 'awaiting' | 'proposals' | 'clinics';
 
-const TAB_PERMISSION: Record<MoneyTab, string> = { unmatched: 'billing:read', held: 'payments:read', proposals: 'billing:read' };
+const TAB_PERMISSION: Record<MoneyTab, string> = { unmatched: 'billing:read', held: 'payments:read', awaiting: 'payments:read', proposals: 'billing:read', clinics: 'payments:read' };
 
 /** The tabs the caller may read, in order. */
-export const moneyTabs = (me: Me | null): MoneyTab[] => (['unmatched', 'held', 'proposals'] as const).filter((t) => can(me, TAB_PERMISSION[t]));
+export const moneyTabs = (me: Me | null): MoneyTab[] => (['unmatched', 'held', 'awaiting', 'proposals', 'clinics'] as const).filter((t) => can(me, TAB_PERMISSION[t]));
 
 export interface MatchForm {
   /** A payer account (bac_…) or an invoice (inv_…). */

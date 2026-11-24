@@ -21,6 +21,7 @@ import '../components/data-grid.ts';
 import '../components/event-log.ts';
 import '../components/party-documents.ts';
 import '../components/party-accounts.ts';
+import '../components/payee-accounts.ts';
 import type { Column } from '../components/data-grid.ts';
 import type { LogEntry } from '../components/event-log.ts';
 import { partyFields } from '../components/party-fields.ts';
@@ -266,6 +267,7 @@ export class PartyDetail extends LitElement {
           </section>`
             : nothing}
           ${this.may('billing:read') ? html`<pv-party-accounts .api=${this.api} party-id=${this.partyId}></pv-party-accounts>` : nothing}
+          ${this.may('payments:read') && !p.anonymized ? html`<pv-payee-accounts .api=${this.api} .me=${this.me} party-id=${this.partyId} market=${p.market}></pv-payee-accounts>` : nothing}
           <pv-party-documents .api=${this.api} party-id=${this.partyId}></pv-party-documents>
         </div>
         <div class="side">

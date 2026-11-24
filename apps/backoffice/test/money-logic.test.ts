@@ -6,8 +6,8 @@ const me = (permissions: string[], subject = 'clerk-1') => ({ subject, roles: []
 
 test('the tabs follow the permissions', () => {
   assert.deepEqual(moneyTabs(me(['billing:read'])), ['unmatched', 'proposals']);
-  assert.deepEqual(moneyTabs(me(['payments:read'])), ['held']);
-  assert.deepEqual(moneyTabs(me(['billing:read', 'payments:read'])), ['unmatched', 'held', 'proposals']);
+  assert.deepEqual(moneyTabs(me(['payments:read'])), ['held', 'awaiting', 'clinics']);
+  assert.deepEqual(moneyTabs(me(['billing:read', 'payments:read'])), ['unmatched', 'held', 'awaiting', 'proposals', 'clinics']);
   assert.deepEqual(moneyTabs(null), []);
 });
 

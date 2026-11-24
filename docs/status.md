@@ -5,6 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
+- Pengar, steg 8c, PR #160: betaluppgifter och utbetalningar på partens sida, med svenskt konto eller IBAN (kontrollerat). Under **Pengar**: utbetalningar som väntar på betaluppgifter, och avtal med kliniker som görs och avslutas, med klinikens betaluppgifter.
 - Det fladdrande testet för skadans historik, PR #159: testet räknade med att rättelsen stod överst, men skadebeskedet kommer via relän och kan vara senare.
 - Pengar, steg 8b, PR #158: betalarkontona på partens sida, och kontots sida med saldo, fakturor och återbetalningar. Kreditnota och avskrivning på en faktura, ett förslag över gränsen, och återbetalning av tillgodohavandet.
 - Pengar, steg 8a, PR #157: **Pengar** i back office med köerna för okopplade inbetalningar (koppla), spärrade utbetalningar (släppa) och kreditförslag (attestera eller skicka tillbaka). Fyra ögon gäller. Inloggningen har ekonomirollerna.
