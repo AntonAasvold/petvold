@@ -1,4 +1,4 @@
-# Pengar, steg 8a: köerna i back office (PR #NN)
+# Pengar, steg 8a: köerna i back office (PR #157)
 
 **Datum:** 2026-11-24 **ADR:** 0040, 0035 **Moduler:** `apps/backoffice`
 
