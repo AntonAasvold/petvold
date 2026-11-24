@@ -1,4 +1,4 @@
-# Pengar, steg 8b: betalarens konto i back office (PR #NN)
+# Pengar, steg 8b: betalarens konto i back office (PR #158)
 
 **Datum:** 2026-11-24 **ADR:** 0040, 0035 **Moduler:** `apps/backoffice`
 
