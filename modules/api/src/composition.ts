@@ -27,7 +27,7 @@ import {
 import { PostgresProductStore, PostgresReferenceDataStore } from '@petvold/catalog/postgres';
 import { AnimalService, InMemoryAnimalStore, type AnimalStore } from '@petvold/animals';
 import { PostgresAnimalStore } from '@petvold/animals/postgres';
-import { InMemoryPartyStore, InMemoryRetentionStore, PartyService, RetentionService, type PartyStore } from '@petvold/parties';
+import { InMemoryPartyStore, InMemoryRetentionStore, PartyService, RetentionService, type ErasureHook, type PartyStore } from '@petvold/parties';
 import { PostgresPartyStore, PostgresRetentionStore } from '@petvold/parties/postgres';
 import { InMemoryPolicyStore, PolicyService, type PolicyStore } from '@petvold/policies';
 import { CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, type NoticeStore } from '@petvold/communications';
@@ -272,7 +272,9 @@ export async function compose(config: InstallationConfig): Promise<Installation>
 
   const partiesPool = pool('parties', 3);
   const partyStore: PartyStore = partiesPool ? new PostgresPartyStore(partiesPool) : new InMemoryPartyStore();
-  const parties = new PartyService({ store: partyStore, clock, ids });
+  // Other modules' personal data that goes with an anonymization, added below once they exist (ADR 0028).
+  const erasureHooks: ErasureHook[] = [];
+  const parties = new PartyService({ store: partyStore, clock, ids, erasureHooks });
 
   const animalsPool = pool('animals', 2);
   const animalStore: AnimalStore = animalsPool ? new PostgresAnimalStore(animalsPool) : new InMemoryAnimalStore();
@@ -379,6 +381,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     policies: billingPolicySource(policies),
     newPayeeHoldDays: config.payments?.newPayeeHoldDays ?? 0,
   });
+  // Payee account numbers go with the party (ADR 0040, punkt 11).
+  erasureHooks.push({ name: 'payments', blocker: (id) => payments.erasureBlocker(id), erase: async (id) => void (await payments.erasePayee(id)) });
 
   // Accounting (ADR 0040, punkt 9): a verification for every event that moves money, from the relay below.
   const accountingPool = pool('accounting', 2);

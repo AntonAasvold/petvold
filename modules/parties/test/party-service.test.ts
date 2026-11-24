@@ -8,12 +8,13 @@ import {
   luhnValid,
   normalizePartyIdentifier,
   publicView,
+  type ErasureHook,
   type RegisterPartyInput,
 } from '../src/index.ts';
 
-function setup() {
+function setup(erasureHooks: ErasureHook[] = []) {
   let n = 0;
-  return new PartyService({ store: new InMemoryPartyStore(), clock: { now: () => '2026-11-15T10:00:00.000Z' }, ids: { next: (p) => `${p}_${++n}` } });
+  return new PartyService({ store: new InMemoryPartyStore(), clock: { now: () => '2026-11-15T10:00:00.000Z' }, ids: { next: (p) => `${p}_${++n}` }, erasureHooks });
 }
 const by = 'registrar@example.test';
 // Personal numbers born 2099: valid in form, but no living person can have them.
@@ -77,6 +78,21 @@ test('details change with the current revision and a reason; kind and market nev
   await rejects(s.change(p.id, { ...base, basedOnRevision: 1, reason: 'x' }, by), 'conflict', /revision 2/);
   await rejects(s.change(p.id, { name: 'Anna AB', basedOnRevision: 2, reason: 'x' }, by), 'validation', /not name/);
   assert.deepEqual((await s.revisions(p.id)).map((r) => r.revision), [1, 2]);
+});
+
+test("erasure: another module's data goes first, and a module may stop it while it still needs the data", async () => {
+  const log: string[] = [];
+  let busy: string | null = 'Payouts on their way to the party: pyo_1';
+  const s = setup([{ name: 'payments', blocker: async () => busy, erase: async (id) => void log.push(`erase ${id}`) }]);
+  const p = await s.register(anna(), by);
+  const r = await s.requestErasure(p.id, { basis: 'subject-request', reason: 'The customer asked' }, 'officer-a');
+  await rejects(s.approveErasure(r.id, {}, 'officer-b'), 'conflict', /payments: Payouts on their way/);
+  assert.deepEqual(log, [], 'nothing erased');
+  assert.equal((await s.get(p.id)).anonymized, undefined, 'and the party is not anonymized');
+  busy = null;
+  await s.approveErasure(r.id, {}, 'officer-b');
+  assert.deepEqual(log, [`erase ${p.id}`]);
+  assert.equal((await s.get(p.id)).anonymized, true);
 });
 
 test('erasure: a request, an approval by someone else, and the party is anonymized for good', async () => {

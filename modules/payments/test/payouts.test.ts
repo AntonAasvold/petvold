@@ -207,3 +207,22 @@ test('a refund of a payer\'s credit is paid out to the payer, once', async () =>
   assert.deepEqual([paidEvent?.data.purpose, paidEvent?.data.claimId], ['premium-refund', undefined]);
   assert.equal(await service.handleBillingEvent({ ...e, type: 'invoice.paid' }), null);
 });
+
+test("an anonymized party's payee details are erased, but not while a payout is on its way (ADR 0040, punkt 11)", async () => {
+  const { service } = setup({ holdDays: 3 });
+  const code = (x: Promise<unknown>) => x.then(() => 'ok', (e) => (e instanceof PaymentsError ? e.code : String(e)));
+  await service.addPayeeAccount({ partyId: 'pty_anna' }, bank, 'kundservice@example.test');
+  const held = await service.handleClaimEvent(ordered());
+  assert.equal(held?.status, 'held');
+  assert.match((await service.erasureBlocker('pty_anna')) ?? '', new RegExp(held!.id));
+  assert.equal(await code(service.erasePayee('pty_anna')), 'conflict');
+  await service.releasePayout(held!.id, 'ekonomi@example.test');
+  assert.equal(await service.erasureBlocker('pty_anna'), null, 'paid: nothing on its way');
+  assert.equal(await service.erasePayee('pty_anna'), 1);
+  assert.equal(await service.erasePayee('pty_anna'), 0, 'safe to run again');
+  assert.deepEqual(await service.payeeAccounts({ partyId: 'pty_anna' }), []);
+  assert.equal((await service.payout(held!.id)).status, 'paid', "the payout's history is kept");
+  // A later order waits for details given after the erasure.
+  assert.equal((await service.handleClaimEvent(ordered('ord_2', 500)))?.status, 'awaiting-details');
+  assert.equal(await service.erasureBlocker('pty_anna'), null, 'waiting for details does not stop an erasure');
+});

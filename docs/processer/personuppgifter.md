@@ -33,9 +33,10 @@ flowchart LR
 | PERS-11 | Måste uppgifterna sparas trots en begäran, till exempel för ett skadeärende inom tioårsgränsen, begränsas parten till ett datum. En begränsad part syns bara för den med `parties:privacy`. | GDPR artikel 17.3 och 18 | – |
 | PERS-12 | En begränsad eller anonymiserad part kan inte bli försäkringstagare eller ny ägare till ett djur. | ADR 0028 | – |
 | PERS-13 | Motiveringar och skäl får inte innehålla personuppgifter. | ADR 0028 | – |
-| PERS-14 | Efter en återställning från säkerhetskopia körs alla godkända anonymiseringar igen, innan systemet öppnas. | ADR 0028 | `npm run erasures:reapply` |
+| PERS-14 | Efter en återställning från säkerhetskopia körs alla godkända anonymiseringar igen, och betaluppgifterna raderas igen, innan systemet öppnas. | ADR 0028 | `npm run erasures:reapply` |
 | PERS-15 | Priset sparar zonen, inte postnumret. Meddelanden har id, inte namn och adress. Händelser till bolagets system har inga fritexter. | GDPR artikel 5.1 c, ADR 0032, ADR 0033 | – |
-| PERS-16 | Fakturor, betalningar och verifikationer sparas i sju år och raderas inte vid en begäran om radering. Betaluppgifter raderas inte än när en part anonymiseras. | Bokföringslagen 7 kap. 2 §, ADR 0040, punkt 11 | – |
+| PERS-16 | Fakturor, betalningar och verifikationer sparas i sju år och raderas inte vid en begäran om radering. | Bokföringslagen 7 kap. 2 §, ADR 0040, punkt 11 | – |
+| PERS-17 | Partens betaluppgifter raderas när parten anonymiseras. Raderna finns kvar så att utbetalningarna hänger ihop. En utbetalning som är på väg till parten stoppar raderingen tills den är betald eller misslyckad. | GDPR artikel 17, ADR 0040, punkt 11 | – |
 
 ## Exempel
 

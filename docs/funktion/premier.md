@@ -258,7 +258,7 @@ stateDiagram-v2
     pending --> failed
 ```
 
-- **Betaluppgifterna** (bankkonto med clearingnummer, eller IBAN) ägs av `payments`, per part och marknad. Nya uppgifter ersätter de gamla från den stunden, och det sparas vem som gav dem. API:t visar bara de fyra sista siffrorna.
+- **Betaluppgifterna** (bankkonto med clearingnummer, eller IBAN) ägs av `payments`, per part och marknad. Nya uppgifter ersätter de gamla från den stunden, och det sparas vem som gav dem. API:t visar bara de fyra sista siffrorna. När parten anonymiseras raderas kontonumren ([Parter](parter.md#radering-och-begränsning-adr-0028)).
 - **Utan betaluppgifter** väntar utbetalningen (`awaiting-details`) och skickas när kunden ger dem.
 - **Spärren:** uppgifter som är nyare än `PETVOLD_NEW_PAYEE_HOLD_DAYS` dagar (förval 0, ingen spärr) håller utbetalningen (`held`). En person släpper den, men inte den som gav uppgifterna. Det skyddar mot bedrägeri med ändrade kontouppgifter. Kommer nya uppgifter medan den är spärrad, spärras den om på de nya.
 - **Utan en adapter som betalar ut** i marknaden gör Petvold ingen utbetalning. Ordern finns då bara i `claim.payout_ordered`, för bolagets eget system.

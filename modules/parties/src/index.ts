@@ -268,10 +268,25 @@ export class PartyError extends Error {
   }
 }
 
+/**
+ * Another module's personal data about a party that goes with the party's
+ * anonymization (ADR 0028), e.g. payee account numbers (ADR 0040, punkt 11).
+ * Through its own service: a module never reads another's tables (ADR 0001).
+ */
+export interface ErasureHook {
+  name: string;
+  /** Why the data cannot be erased now, or null. Asked before the approval. */
+  blocker(partyId: string): Promise<string | null>;
+  /** Erases the data. Runs before the party is anonymized, and again after a restore; safe to run twice. */
+  erase(partyId: string): Promise<void>;
+}
+
 export interface PartyDeps {
   store: PartyStore;
   clock: { now(): string };
   ids: { next(prefix: string): string };
+  /** Filled in by the composition once the other modules exist. */
+  erasureHooks?: ErasureHook[];
 }
 
 export interface PartyIdentifierInput {
@@ -430,6 +445,13 @@ export class PartyService {
     const r = await this.pending(requestId);
     if (r.requestedBy === by) throw new PartyError('forbidden', 'The one who asked for an erasure cannot approve it');
     const reason = input.reason?.trim();
+    const hooks = this.d.erasureHooks ?? [];
+    for (const h of hooks) {
+      const blocker = await h.blocker(r.partyId);
+      if (blocker) throw new PartyError('conflict', `${h.name}: ${blocker}`);
+    }
+    // The other modules' data first: if the anonymization below fails, nothing personal is left behind it.
+    for (const h of hooks) await h.erase(r.partyId);
     await this.d.store
       .decideErasure(requestId, { outcome: 'approved', ...(reason ? { reason } : {}), decidedBy: by, decidedAt: this.d.clock.now() })
       .catch(this.translate);

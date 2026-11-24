@@ -82,7 +82,7 @@ Svaret har `"value": "20990101-****"` och `"masked": true`. Numret är fött 209
 Personuppgifter tas bort genom att parten **anonymiseras**. Namn, födelsedatum, kontaktuppgifter, adress, språk och motiveringar tas bort i alla revisioner, och personnummer och organisationsnummer tas bort. Id:t, sorten och marknaden finns kvar, så att djurens ägarskap, försäkringar och beslut fortfarande hänger ihop. Det går inte att ångra.
 
 1. **Någon begär anonymisering:** `POST /v1/parties/{id}/erasure-requests` med `basis` och `reason`. `basis` är `subject-request` om personen själv har bett om det, eller `retention-expired` om lagringstiden har gått ut. En part kan bara ha en obesvarad begäran.
-2. **Någon annan godkänner:** `POST /v1/erasure-requests/{id}/approvals`. Den som begärde får inte godkänna (`403`). Parten anonymiseras i samma ögonblick.
+2. **Någon annan godkänner:** `POST /v1/erasure-requests/{id}/approvals`. Den som begärde får inte godkänna (`403`). Parten anonymiseras i samma ögonblick, och partens **betaluppgifter** raderas (ADR 0040, punkt 11). Kontonumren tas bort, men raderna finns kvar så att utbetalningarnas historik hänger ihop. Är en utbetalning till parten på väg, alltså spärrad eller skickad utan svar, svarar godkännandet `409` med utbetalningarna. Godkänn igen när den är betald eller misslyckad. En utbetalning som väntar på betaluppgifter stoppar inte raderingen.
 3. **Eller avslår:** `POST /v1/erasure-requests/{id}/rejections` med `reason`. Om personen själv bad om radering men uppgifterna måste sparas, till exempel för ett skadeärende inom tioårsgränsen, anges `restrictUntil`. Parten är då **begränsad** till och med det datumet: den syns inte vid sökning och ger `404` för alla utom den som har `parties:privacy`. Ett djur kan inte heller få en begränsad eller anonymiserad part som ny ägare.
 
 `GET /v1/erasure-requests?status=pending` visar obesvarade begäranden, äldst först.
@@ -117,7 +117,7 @@ Motiveringarna får inte innehålla personuppgifter. De sparas för att visa vad
 
 **Exempel:** Anna sålde sin sista hund 1 juni 2015. Med tio år går lagringstiden ut 1 juni 2025. Nästa körning skapar en begäran, och `dev-privacy` godkänner den.
 
-**Efter en återställning från säkerhetskopia** körs `npm run erasures:reapply` innan systemet öppnas. Det kör alla godkända anonymiseringar igen, i ordning, och går att köra flera gånger.
+**Efter en återställning från säkerhetskopia** körs `npm run erasures:reapply` innan systemet öppnas. Det kör alla godkända anonymiseringar igen, i ordning, och raderar de parternas betaluppgifter igen när `PAYMENTS_DATABASE_URL` är satt, och går att köra flera gånger.
 
 ## Vem ser vad
 
