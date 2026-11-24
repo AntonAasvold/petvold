@@ -22,6 +22,9 @@ import { IdempotencyKeys } from '../decide.ts';
 import { formatDate, formatDateTime, formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import { heldSince, matchBody, matchProblems, mayDecideProposal, mayRelease, moneyTabs, returnReasonOk, type MoneyTab } from '../money-logic.ts';
+import { agreementBody, agreementProblems, endingProblems, inForce, type AgreementForm } from '../payee-logic.ts';
+import '../components/payee-accounts.ts';
+import { navigate } from '../router.ts';
 import { append, emptyPager, hasMore, type Pager } from '../pager.ts';
 import type { Me } from '../permissions.ts';
 import { pvComponents } from '../styles/pv-components.ts';
@@ -29,7 +32,10 @@ import { pvComponents } from '../styles/pv-components.ts';
 type Payment = components['schemas']['ReceivedPayment'];
 type Payout = components['schemas']['Payout'];
 type Proposal = components['schemas']['CreditProposal'];
-type Row = Payment | Payout | Proposal;
+type Agreement = components['schemas']['ClinicAgreement'];
+type Row = Payment | Payout | Proposal | Agreement;
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 const value = (e: Event) => (e.target as HTMLInputElement).value;
 
@@ -47,6 +53,8 @@ export class MoneyView extends LitElement {
   @state() private problems: string[] = [];
   @state() private notice: Notice | null = null;
   @state() private busy = '';
+  @state() private agreement: AgreementForm = { clinicId: '', market: 'SE', validFrom: today(), validTo: '' };
+  @state() private ending = { validTo: '', reason: '' };
   private request = 0;
   private keys = new IdempotencyKeys();
 
@@ -116,6 +124,10 @@ export class MoneyView extends LitElement {
         return unwrap(this.api.GET('/v1/received-payments', { params: { query: { ...query, status: 'unmatched' } } }));
       case 'held':
         return unwrap(this.api.GET('/v1/payouts', { params: { query: { ...query, status: 'held' } } }));
+      case 'awaiting':
+        return unwrap(this.api.GET('/v1/payouts', { params: { query: { ...query, status: 'awaiting-details' } } }));
+      case 'clinics':
+        return unwrap(this.api.GET('/v1/clinic-agreements', { params: { query } }));
       default:
         return unwrap(this.api.GET('/v1/credit-proposals', { params: { query: { ...query, status: 'proposed' } } }));
     }
@@ -156,6 +168,7 @@ export class MoneyView extends LitElement {
     this.note = '';
     this.problems = [];
     this.notice = null;
+    this.ending = { validTo: '', reason: '' };
   }
 
   private tabLabel(t: MoneyTab) {
@@ -164,8 +177,12 @@ export class MoneyView extends LitElement {
         return msg('Unmatched payments', { id: 'money.tab.unmatched' });
       case 'held':
         return msg('Held payouts', { id: 'money.tab.held' });
+      case 'awaiting':
+        return msg('Awaiting details', { id: 'payout.awaitingDetails' });
       case 'proposals':
         return msg('Credit proposals', { id: 'money.tab.proposals' });
+      case 'clinics':
+        return msg('Clinics', { id: 'money.tab.clinics' });
     }
   }
 
@@ -187,6 +204,21 @@ export class MoneyView extends LitElement {
           { key: 'amount', header: msg('Amount', { id: 'money.amount' }), value: (r) => amount(r as Payment), align: 'end' },
           { key: 'reference', header: msg('Reference', { id: 'money.reference' }), value: (r) => (r as Payment).reference ?? '–' },
           { key: 'market', header: msg('Market', { id: 'money.market' }), value: (r) => (r as Payment).market },
+        ];
+      case 'awaiting':
+        return [
+          { key: 'ordered', header: msg('Ordered', { id: 'payee.ordered' }), value: (r) => formatDateTime((r as Payout).createdAt, lang) },
+          { key: 'amount', header: msg('Amount', { id: 'money.amount' }), value: (r) => amount(r as Payout), align: 'end' },
+          { key: 'payee', header: msg('Payee', { id: 'money.payee' }), value: (r) => (r as Payout).clinicId ?? (r as Payout).partyId ?? '–' },
+          { key: 'purpose', header: msg('For', { id: 'money.purpose' }), value: (r) => this.purposeLabel((r as Payout).purpose) },
+        ];
+      case 'clinics':
+        return [
+          { key: 'clinic', header: msg('Clinic', { id: 'money.clinic' }), value: (r) => html`<span class="pv-mono">${(r as Agreement).clinicId}</span>` },
+          { key: 'market', header: msg('Market', { id: 'money.market' }), value: (r) => (r as Agreement).market },
+          { key: 'from', header: msg('From', { id: 'money.from' }), value: (r) => formatDate((r as Agreement).validFrom, lang) },
+          { key: 'to', header: msg('To', { id: 'money.to' }), value: (r) => { const a = r as Agreement; const to = a.ended?.validTo ?? a.validTo; return to ? formatDate(to, lang) : '–'; } },
+          { key: 'inForce', header: msg('In force', { id: 'money.inForce' }), value: (r) => (inForce(r as Agreement, today()) ? html`<span class="pv-badge pv-badge--solid">${msg('In force', { id: 'money.inForce' })}</span>` : '') },
         ];
       case 'held':
         return [
@@ -345,10 +377,129 @@ export class MoneyView extends LitElement {
     </section>`;
   }
 
+  private async doAddAgreement(e: Event) {
+    e.preventDefault();
+    this.problems = agreementProblems(this.agreement);
+    if (this.problems.length) return;
+    await this.send(
+      'agreement',
+      this.agreement.clinicId,
+      (key) => this.api.POST('/v1/clinic-agreements', { params: { header: { 'Idempotency-Key': key } }, body: agreementBody(this.agreement) }),
+      msg('The agreement is made. Payout orders naming the clinic go to it while it is in force.', { id: 'money.agreementMade' }),
+    );
+    if (!this.problems.length && this.notice?.variant === 'success') this.agreement = { clinicId: '', market: this.agreement.market, validFrom: today(), validTo: '' };
+  }
+
+  private async doEnd(e: Event, a: Agreement) {
+    e.preventDefault();
+    this.problems = endingProblems(a, this.ending.validTo, this.ending.reason);
+    if (this.problems.length) return;
+    await this.send(
+      'end',
+      a.id,
+      (key) =>
+        this.api.POST('/v1/clinic-agreements/{agreementId}/endings', {
+          params: { path: { agreementId: a.id }, header: { 'Idempotency-Key': key } },
+          body: { validTo: this.ending.validTo, reason: this.ending.reason.trim() },
+        }),
+      msg('The agreement is ended. From that day, payouts go to the policyholder.', { id: 'money.agreementEnded' }),
+    );
+  }
+
+  private awaitingCard(p: Payout) {
+    const lang = getLocale();
+    return html`<section class="pv-card" aria-labelledby="sel">
+        <div class="pv-card__head"><h2 class="pv-card__title" id="sel">${msg('Awaiting details', { id: 'payout.awaitingDetails' })}</h2><span class="pv-card__meta pv-mono">${p.id}</span></div>
+        <div class="pv-card__body">
+          <dl class="pv-dl">
+            ${this.row(msg('Amount', { id: 'money.amount' }), formatMoney(p.amount, p.currency, lang))}
+            ${this.row(msg('Payee', { id: 'money.payee' }), p.clinicId ?? p.partyId ?? '–', true)}
+            ${this.row(msg('For', { id: 'money.purpose' }), this.purposeLabel(p.purpose))}
+          </dl>
+          <p>${msg('The payee has given no account. The payout is sent when they do.', { id: 'money.awaitingHow' })}</p>
+          ${p.partyId
+            ? html`<wa-button appearance="outlined" @click=${() => navigate(`/parties/${encodeURIComponent(p.partyId!)}`)}>${msg('Open the payee', { id: 'money.openPayee' })}</wa-button>`
+            : nothing}
+        </div>
+      </section>
+      ${p.clinicId ? html`<pv-payee-accounts .api=${this.api} .me=${this.me} clinic-id=${p.clinicId} market=${p.market}></pv-payee-accounts>` : nothing}`;
+  }
+
+  private agreementProblemText(p: string) {
+    switch (p) {
+      case 'clinic':
+        return msg("Give the clinic's id.", { id: 'money.clinicProblem' });
+      case 'market':
+        return msg('A market is two capital letters, e.g. SE.', { id: 'payee.marketProblem' });
+      case 'from':
+        return msg('Give the first day.', { id: 'money.fromProblem' });
+      case 'to':
+        return msg('The last day must be after the first.', { id: 'money.toProblem' });
+      default:
+        return msg('Give a reason.', { id: 'money.reasonProblem' });
+    }
+  }
+
+  private newAgreementCard() {
+    const f = this.agreement;
+    const set = (patch: Partial<AgreementForm>) => (this.agreement = { ...f, ...patch });
+    return html`<section class="pv-card" aria-labelledby="new-agreement">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="new-agreement">${msg('New agreement', { id: 'money.newAgreement' })}</h2></div>
+      <form class="pv-card__body" @submit=${(e: Event) => this.doAddAgreement(e)} novalidate>
+        <p>${msg('While in force, a payout for a claim the clinic sent goes to the clinic (UTB-03).', { id: 'money.agreementHow' })}</p>
+        <wa-input label=${msg('Clinic', { id: 'money.clinic' })} .value=${f.clinicId} @input=${(e: Event) => set({ clinicId: value(e) })}></wa-input>
+        <wa-input label=${msg('Market', { id: 'money.market' })} .value=${f.market} @input=${(e: Event) => set({ market: value(e).toUpperCase() })}></wa-input>
+        <wa-input type="date" label=${msg('From', { id: 'money.from' })} .value=${f.validFrom} @input=${(e: Event) => set({ validFrom: value(e) })}></wa-input>
+        <wa-input type="date" label=${msg('Until (optional, not included)', { id: 'money.until' })} .value=${f.validTo} @input=${(e: Event) => set({ validTo: value(e) })}></wa-input>
+        ${this.problems.length ? html`<wa-callout variant="danger" role="alert">${this.problems.map((p) => html`<div>${this.agreementProblemText(p)}</div>`)}</wa-callout>` : nothing}
+        <wa-button type="submit" variant="brand" ?loading=${this.busy === 'agreement'}>${msg('Make the agreement', { id: 'money.makeAgreement' })}</wa-button>
+      </form>
+    </section>`;
+  }
+
+  private agreementCard(a: Agreement) {
+    const lang = getLocale();
+    const to = a.ended?.validTo ?? a.validTo;
+    const open = !a.ended && (!a.validTo || a.validTo > today());
+    return html`<section class="pv-card" aria-labelledby="sel">
+        <div class="pv-card__head"><h2 class="pv-card__title" id="sel">${msg('Agreement', { id: 'money.agreement' })} ${a.clinicId}</h2><span class="pv-card__meta pv-mono">${a.id}</span></div>
+        <div class="pv-card__body">
+          <dl class="pv-dl">
+            ${this.row(msg('Market', { id: 'money.market' }), a.market)}
+            ${this.row(msg('From', { id: 'money.from' }), formatDate(a.validFrom, lang))}
+            ${this.row(msg('To', { id: 'money.to' }), to ? formatDate(to, lang) : '–')}
+            ${this.row(msg('Made by', { id: 'money.madeBy' }), `${a.createdBy}, ${formatDateTime(a.createdAt, lang)}`)}
+            ${a.ended ? this.row(msg('Ended', { id: 'party.ended' }), `${a.ended.reason} (${a.ended.by})`) : nothing}
+          </dl>
+          ${open && this.me?.permissions.includes('payments:agreements')
+            ? html`<form @submit=${(e: Event) => this.doEnd(e, a)} novalidate>
+                <wa-input type="date" label=${msg('Ends on (not included)', { id: 'money.endsOn' })} .value=${this.ending.validTo} @input=${(e: Event) => (this.ending = { ...this.ending, validTo: value(e) })}></wa-input>
+                <wa-textarea label=${msg('Reason', { id: 'money.reason' })} rows="2" .value=${this.ending.reason} @input=${(e: Event) => (this.ending = { ...this.ending, reason: value(e) })}></wa-textarea>
+                ${this.problems.length ? html`<wa-callout variant="danger" role="alert">${this.problems.map((p) => html`<div>${this.agreementProblemText(p)}</div>`)}</wa-callout>` : nothing}
+                <wa-button type="submit" appearance="outlined" ?loading=${this.busy === 'end'}>${msg('End the agreement', { id: 'money.endAgreement' })}</wa-button>
+              </form>`
+            : nothing}
+        </div>
+      </section>
+      <pv-payee-accounts .api=${this.api} .me=${this.me} clinic-id=${a.clinicId} market=${a.market}></pv-payee-accounts>`;
+  }
+
   private side() {
     const s = this.selected;
-    const card = !s ? nothing : 'paymentId' in s ? this.paymentCard(s) : 'purpose' in s ? this.payoutCard(s) : this.proposalCard(s);
-    if (!this.notice && !s) return nothing;
+    const card = !s
+      ? this.tab === 'clinics' && this.me?.permissions.includes('payments:agreements')
+        ? this.newAgreementCard()
+        : nothing
+      : 'paymentId' in s
+        ? this.paymentCard(s)
+        : 'purpose' in s
+          ? s.status === 'awaiting-details'
+            ? this.awaitingCard(s)
+            : this.payoutCard(s)
+          : 'validFrom' in s
+            ? this.agreementCard(s)
+            : this.proposalCard(s);
+    if (!this.notice && card === nothing) return nothing;
     return html`<div class="side">
       ${this.notice ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'success' ? 'status' : 'alert'}>${this.notice.text}</wa-callout>` : nothing}
       ${card}

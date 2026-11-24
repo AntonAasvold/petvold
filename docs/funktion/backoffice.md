@@ -23,7 +23,7 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Inställningar | Roller och gränser, gallring och bolagets texter för meddelanden, som versioner med skäl och historik | `access:read`, `parties:privacy` eller `notices:read`. Att ändra kräver `access:manage`, `parties:erase` eller `notices:configure`. |
 
 | Produkter | Produkterna och varje produktversion med innehåll, säljperiod och livscykel. Produktens sida är byggd som skadans: rubrik och fakta (den publicerade versionen, antal utkast och versioner), versionerna och den valda versionens innehåll till vänster, och den valda versionen med status och åtgärder till höger (skicka till granskning, publicera, ändra, nytt utkast, skicka tillbaka, avsluta försäljning). Ett utkast redigeras i vänsterkolumnen. | `catalog:read`, `catalog:write` för utkast, `catalog:publish` för att publicera, skicka tillbaka och avsluta försäljning |
-| Pengar | Köerna för pengarna: okopplade inbetalningar som kopplas för hand, utbetalningar som spärrats för nya betaluppgifter och släpps av någon annan, och kreditnotor och avskrivningar över gränsen som attesteras eller skickas tillbaka. Räknaren visar okopplade inbetalningar. | `billing:read` eller `payments:read`. `billing:write` för att koppla, `payments:release` för att släppa, `billing:credit` för att attestera. |
+| Pengar | Köerna för pengarna: okopplade inbetalningar som kopplas för hand, utbetalningar som spärrats för nya betaluppgifter och släpps av någon annan, utbetalningar som väntar på betaluppgifter, kreditnotor och avskrivningar över gränsen som attesteras eller skickas tillbaka, och avtal med kliniker. Räknaren visar okopplade inbetalningar. | `billing:read` eller `payments:read`. `billing:write` för att koppla, `payments:release` för att släppa, `billing:credit` för att attestera. |
 | Dokumentation | Affärsprocesserna och affärsreglerna, funktionerna och besluten (ADR), sökbara | Inloggad |
 | Regeluppsättningar | Serierna (skaderegler, tariffer, prisvillkor och teckningsregler) och varje version med livscykel. Seriens sida är byggd som produktens. | `rules:read`, `rules:write` för utkast, `rules:publish` för att publicera, skicka tillbaka och avveckla |
 
@@ -276,13 +276,26 @@ Varje inställning är versionerad (ADR 0020, 0028, 0032). En ändring blir en n
 
 ## Pengar
 
-**Pengar** i menyn har tre köer, en per flik (ADR 0040, steg 8). Flikarna följer behörigheten. Den som bara har `payments:read` ser bara de spärrade utbetalningarna. En rad öppnas till höger med uppgifterna och åtgärden. Efter åtgärden försvinner raden ur kön, och ett besked visar hur det gick.
+**Pengar** i menyn har fem flikar (ADR 0040, steg 8). Flikarna följer behörigheten: inbetalningar och kreditförslag kräver `billing:read`, och utbetalningar och kliniker kräver `payments:read`. En rad öppnas till höger med uppgifterna och åtgärden. Efter åtgärden försvinner raden ur kön, och ett besked visar hur det gick.
 
 | Flik | Visar | Åtgärd |
 | --- | --- | --- |
 | Okopplade inbetalningar | Inbetalningar utan användbar referens, äldst först: bokföringsdag, belopp, referens och marknad | **Koppla** till ett betalarkonto (`bac_…`) eller en faktura (`inv_…`), med en valfri motivering. Kontot betalar den äldsta förfallna fakturan först, och en faktura betalar den fakturan först ([Inbetalning](../processer/inbetalning.md), `BET-08`). |
 | Spärrade utbetalningar | Utbetalningar som väntar för att betaluppgifterna är nya: sedan när, belopp, mottagare och vad de avser | **Släpp** efter att uppgifterna kontrollerats med mottagaren på ett nummer ur registret, med en valfri anteckning. Den som gav uppgifterna får inte släppa, och API:t säger nej då (`UTB-07`). |
+| Väntar på betaluppgifter | Utbetalningar till en mottagare som inte gett något konto | **Öppna mottagaren** och ge uppgifterna där. För en klinik ges de direkt i kortet. Utbetalningen skickas när uppgifterna finns (`UTB-06`). |
 | Kreditförslag | Kreditnotor och avskrivningar över förslagsställarens gräns | **Attestera** eller **skicka tillbaka** med ett skäl. Den som föreslog ser förslaget men inte knapparna (`KRED-08`). Räcker inte den egna gränsen säger API:t nej. |
+
+| Kliniker | Avtal om direktreglering: klinik, marknad, från, till och om det gäller i dag | Med `payments:agreements`: **gör ett avtal** (klinik, marknad, första dag och eventuellt sista dag, som inte ingår), och **avsluta** ett avtal från en dag med ett skäl. Ett valt avtal visar också klinikens betaluppgifter (`UTB-03`). |
+
+### Betaluppgifter
+
+**Partens sida** visar betaluppgifterna för den som har `payments:read`, med de nyaste först. Den uppgift som används är märkt, och numret visas bara med de fyra sista siffrorna (`UTB-05`). Under dem visas utbetalningarna till parten med status. Med `payments:payee-write` går det att **ge nya uppgifter**:
+- **Svenskt bankkonto:** clearingnummer med 4 eller 5 siffror och kontonummer med 6 till 12. Mellanslag och bindestreck tas bort.
+- **IBAN**, kontrollerat efter ISO 13616, och eventuellt BIC.
+
+Nya uppgifter ersätter de gamla. Om marknaden spärrar nya uppgifter väntar nästa utbetalning tills någon annan släpper den under **Pengar** (`UTB-07`). Klinikens betaluppgifter ges på samma sätt från avtalet.
+
+**Exempel:** Sara ringer och ger sitt konto, 8327-9 123 456 789. Kundservice skriver in det. Raden visar kontot med bara de fyra sista siffrorna, märkt som det som används.
 
 ### Betalarens konto
 

@@ -614,3 +614,20 @@ export function erasureBasisLabel(b: string): string {
 export function erasureOutcomeLabel(o: string): string {
   return o === 'approved' ? msg('Anonymized', { id: 'party.anonymized' }) : o === 'rejected' ? msg('Rejected', { id: 'jobs.rejectedBadge' }) : o;
 }
+
+export function payoutStatusLabel(s: string): string {
+  switch (s) {
+    case 'awaiting-details':
+      return msg('Awaiting details', { id: 'payout.awaitingDetails' });
+    case 'held':
+      return msg('Held', { id: 'payout.held' });
+    case 'pending':
+      return msg('Sent', { id: 'payout.pending' });
+    case 'paid':
+      return msg('Paid', { id: 'invoice.paid' });
+    case 'failed':
+      return msg('Failed', { id: 'notice.failed' });
+    default:
+      return s;
+  }
+}

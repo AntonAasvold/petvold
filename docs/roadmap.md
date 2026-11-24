@@ -207,7 +207,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
   - [ ] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav:
     - [x] 8a: köerna i **Pengar**: okopplade inbetalningar, spärrade utbetalningar och kreditförslag
     - [x] 8b: betalarens konto på partens sida, med fakturor, saldo, kreditnota och återbetalning
-    - [ ] 8c: betaluppgifter och avtal med kliniker
+    - [x] 8c: betaluppgifter och avtal med kliniker
     - [ ] 8d: dagsavslut och kontoplan
 - Premieåterbetalning vid avslut och ny premieplan vid förnyelse.
 - Distribution och provision (ny ADR):
