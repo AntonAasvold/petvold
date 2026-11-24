@@ -55,9 +55,11 @@ import { BillingService, InMemoryBillingStore, type BillingStore } from '@petvol
 import { PostgresBillingStore } from '@petvold/billing/postgres';
 import { FakeProvider, InMemoryPaymentsStore, PaymentsService, type PaymentProvider, type PaymentsStore } from '@petvold/payments';
 import { PostgresPaymentsStore } from '@petvold/payments/postgres';
-import { animalPort, billingPolicyActions, billingProductSource, billingPolicySource, claimSource, invoiceSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
+import { AccountingService, InMemoryAccountingStore, type AccountingStore } from '@petvold/accounting';
+import { PostgresAccountingStore } from '@petvold/accounting/postgres';
+import { accountingSources, animalPort, billingPolicyActions, billingProductSource, billingPolicySource, claimSource, invoiceSource, claimsActivity, claimsEventForNotices, claimsEventForWebhooks, partySource, policySource, productPort } from './wiring.ts';
 
-export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling', 'documents', 'billing', 'payments'] as const;
+export const DATABASES = ['claims', 'access', 'decisioning', 'catalog', 'animals', 'parties', 'policies', 'communications', 'webhooks', 'scheduling', 'documents', 'billing', 'payments', 'accounting'] as const;
 export type DatabaseName = (typeof DATABASES)[number];
 
 export interface InstallationConfig {
@@ -122,6 +124,7 @@ export const DATABASE_ENV: Record<DatabaseName, string> = {
   documents: 'DOCUMENTS_DATABASE_URL',
   billing: 'BILLING_DATABASE_URL',
   payments: 'PAYMENTS_DATABASE_URL',
+  accounting: 'ACCOUNTING_DATABASE_URL',
 };
 
 /** The database URLs from the environment, skipping empty ones. */
@@ -204,6 +207,7 @@ export interface Installation {
     documents: DocumentStore;
     billing: BillingStore;
     payments: PaymentsStore;
+    accounting: AccountingStore;
   };
   relay: Relay;
   /** Runs the daily jobs when they are due (ADR 0037). Start it next to the relay. */
@@ -376,6 +380,11 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     newPayeeHoldDays: config.payments?.newPayeeHoldDays ?? 0,
   });
 
+  // Accounting (ADR 0040, punkt 9): a verification for every event that moves money, from the relay below.
+  const accountingPool = pool('accounting', 2);
+  const accountingStore: AccountingStore = accountingPool ? new PostgresAccountingStore(accountingPool) : new InMemoryAccountingStore();
+  const accounting = new AccountingService({ store: accountingStore, sources: accountingSources(billing), clock, ids });
+
   const retention = new RetentionService({
     parties,
     settings: partiesPool ? new PostgresRetentionStore(partiesPool) : new InMemoryRetentionStore(),
@@ -427,6 +436,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
           // A payout order becomes a payout to the policyholder (ADR 0040, punkt 8).
           const payout = await payments.handleClaimEvent(outward);
           if (payout) log(`[payout] ${payout.id} ${payout.amount} ${payout.currency} for ${payout.claimId}: ${payout.status}`);
+          const booked = await accounting.handleEvent(outward);
+          if (booked) log(`[accounting] ${booked.number} ${booked.text}`);
           const queued = await webhooks.enqueue(outward);
           if (queued) log(`[webhook] ${e.type} ${entry.id} queued for ${queued} subscription(s)`);
         },
@@ -475,6 +486,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
           // A refund of the payer's credit becomes a payout (ADR 0040, punkt 8).
           const payout = await payments.handleBillingEvent(e);
           if (payout) log(`[payout] ${payout.id} ${payout.amount} ${payout.currency} refund: ${payout.status}`);
+          const booked = await accounting.handleEvent(e);
+          if (booked) log(`[accounting] ${booked.number} ${booked.text}`);
           const queued = await webhooks.enqueue({ ...e });
           if (queued) log(`[webhook] ${e.type} ${e.invoiceId ?? e.refundId} queued for ${queued} subscription(s)`);
         },
@@ -488,6 +501,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
           // Billing matches it to an invoice, or leaves it among the unmatched (ADR 0040).
           const received = await billing.handlePaymentEvent(e);
           if (received) log(`[billing] ${received.paymentId} ${received.status}${received.match ? ` to ${received.match.accountId}` : ''}`);
+          const booked = await accounting.handleEvent(e);
+          if (booked) log(`[accounting] ${booked.number} ${booked.text}`);
           const queued = await webhooks.enqueue({ ...e });
           if (queued) log(`[webhook] ${e.type} ${e.paymentId ?? e.payoutId} queued for ${queued} subscription(s)`);
         },
@@ -530,7 +545,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   });
 
   return {
-    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks, scheduler, relay, documents, billing, payments },
+    deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks, scheduler, relay, documents, billing, payments, accounting },
     stores: {
       claims: claimsStore,
       roles: roleStore,
@@ -546,6 +561,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
       documents: documentStore,
       billing: billingStore,
       payments: paymentsStore,
+      accounting: accountingStore,
     },
     relay,
     scheduler,

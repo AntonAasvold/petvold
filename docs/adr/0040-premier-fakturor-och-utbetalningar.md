@@ -204,6 +204,13 @@ Punkt 7 byggdes så här (PR #149):
 - **Alla policyer på fakturan** sägs upp. En delbetald faktura fördelas inte på policyerna.
 - **Dagarna kommer från marknadens regler** (7 och 21 dagar efter förfallodagen i Sverige). Inställningar per produkt eller installation, och påminnelseavgift, kommer senare.
 
+## Förtydligande 2026-11-24, steg 6a
+
+Punkt 9 byggdes så här (PR #152):
+- **Tillgodohavanden bokförs som ett negativt saldo på premiefordran** per betalarkonto, inte på ett eget konto. Ett tillgodohavande kan uppstå på flera sätt, till exempel en överbetalning eller en kreditnota på en betald faktura, och det är en omföring som bolagets ekonomisystem gör vid periodens slut. Kontot `tillgodohavande` i punkt 9 finns därför inte som eget slag.
+- **Varje inbetalning bokförs först mot okopplade inbetalningar**, och flyttas till premiefordran med händelsen `payment.matched` när `billing` kopplat den. Bokföringen beror då inte på i vilken ordning modulerna läser händelserna.
+- **Tre slag till:** delbetalningsavgifter, kundförluster (avskrivningar) och återbetalningar att betala. Skadekostnad bokförs mot skuld för ersättning när utbetalningsordern kommer.
+
 ## Källor
 
 - Försäkringsavtalslagen (2005:104), 5 kap. 1, 2 och 6 §§. riksdagen.se

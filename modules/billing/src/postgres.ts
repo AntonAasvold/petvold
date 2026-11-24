@@ -413,10 +413,11 @@ export class PostgresBillingStore implements BillingStore {
       await db.query(`insert into billing.allocation (payment_id, invoice_id, account_id, amount) values ($1, $2, $3, $4)`, [a.paymentId, a.invoiceId, a.accountId, a.amount]);
     }
     for (const e of done.events) {
-      await db.query(`insert into billing.outbox (event_id, type, invoice_id, market, occurred_at, data) values ($1, $2, $3, $4, $5, $6)`, [
+      await db.query(`insert into billing.outbox (event_id, type, invoice_id, payment_id, market, occurred_at, data) values ($1, $2, $3, $4, $5, $6, $7)`, [
         e.id,
         e.type,
-        e.invoiceId,
+        e.invoiceId ?? null,
+        e.paymentId ?? null,
         e.market,
         e.occurredAt,
         JSON.stringify(e.data),
@@ -647,7 +648,7 @@ export class PostgresBillingStore implements BillingStore {
 
   async pendingEvents(limit: number): Promise<BillingEvent[]> {
     const { rows } = await this.pool.query(
-      `select seq, event_id, type, invoice_id, refund_id, market, occurred_at, data from billing.outbox where published_at is null order by seq limit $1`,
+      `select seq, event_id, type, invoice_id, refund_id, payment_id, market, occurred_at, data from billing.outbox where published_at is null order by seq limit $1`,
       [limit],
     );
     return rows.map((r) => ({
@@ -655,6 +656,7 @@ export class PostgresBillingStore implements BillingStore {
       type: r.type,
       ...(r.invoice_id ? { invoiceId: r.invoice_id } : {}),
       ...(r.refund_id ? { refundId: r.refund_id } : {}),
+      ...(r.payment_id ? { paymentId: r.payment_id } : {}),
       market: r.market,
       occurredAt: iso(r.occurred_at),
       data: r.data,

@@ -17,6 +17,7 @@ create role scheduling_service login password 'scheduling_service';
 create role documents_service login password 'documents_service';
 create role billing_service login password 'billing_service';
 create role payments_service login password 'payments_service';
+create role accounting_service login password 'accounting_service';
 
 -- Separate database for tests, so tests never touch development data.
 create database petvold_test owner petvold;

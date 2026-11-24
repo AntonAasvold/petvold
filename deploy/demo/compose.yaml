@@ -25,6 +25,7 @@ x-petvold: &petvold
     DOCUMENTS_DATABASE_URL: postgres://documents_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
     BILLING_DATABASE_URL: postgres://billing_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
     PAYMENTS_DATABASE_URL: postgres://payments_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
+    ACCOUNTING_DATABASE_URL: postgres://accounting_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold?sslmode=disable
     PETVOLD_VERSION: demo-${PETVOLD_TAG:-main}
     PETVOLD_AUTH: demo
     # With a port when the demo is reached on another port than 443, e.g. https://petvold.example.org:8443.

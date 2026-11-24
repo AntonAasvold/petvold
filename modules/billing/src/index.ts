@@ -19,6 +19,7 @@ import {
   reduceInstallments,
   settleTerm,
   splitByWeight,
+  splitWithinCaps,
   type Installment,
   type PaymentInterval,
   type PlanInput,
@@ -201,11 +202,13 @@ export interface Invoice {
 /** What the module tells others (ADR 0008, 0033). Written with the change. */
 export interface BillingEvent {
   id: string;
-  type: 'invoice.issued' | 'invoice.credited' | 'invoice.paid' | 'invoice.overdue' | 'refund.ordered';
+  type: 'invoice.issued' | 'invoice.credited' | 'invoice.paid' | 'invoice.overdue' | 'refund.ordered' | 'payment.matched';
   /** invoice.*: the invoice. */
   invoiceId?: string;
   /** refund.ordered: the refund. */
   refundId?: string;
+  /** payment.matched: the payment. */
+  paymentId?: string;
   market: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;
@@ -871,7 +874,7 @@ export class BillingService {
     const credited = new Map<string, number>();
     for (const c of await this.d.store.creditNotes({ invoiceId: i.id })) for (const l of c.lines) credited.set(`${l.planId}#${l.seq}`, (credited.get(`${l.planId}#${l.seq}`) ?? 0) + l.amount);
     const left = i.lines.map((l) => Math.max(0, l.amount - (credited.get(`${l.planId}#${l.seq}`) ?? 0)));
-    const shares = splitByWeight(input.amount, left);
+    const shares = splitWithinCaps(input.amount, left);
     const lines: CreditNoteLine[] = i.lines.flatMap((l, n) => (shares[n]! > 0 ? [{ planId: l.planId, policyId: l.policyId, seq: l.seq, amount: shares[n]! }] : []));
     const now = this.d.clock.now();
     const note: Omit<CreditNote, 'number'> = {
@@ -1242,7 +1245,16 @@ export class BillingService {
         data: { invoiceNo: i.number, accountId: i.accountId, partyId: i.partyId, total: i.total, currency: i.currency, paidWith: 'payment', paymentId: receipt.paymentId, paidOn: receipt.bookedOn },
       };
     });
-    return { allocations: allocations.map((a) => ({ ...a, paymentId: receipt.paymentId, accountId: match.accountId })), events };
+    // The payment belongs to a payer now, whatever it paid: accounting moves it from unmatched payments (ADR 0040, punkt 9).
+    const matched: BillingEvent = {
+      id: this.d.ids.next('bev'),
+      type: 'payment.matched',
+      paymentId: receipt.paymentId,
+      market: receipt.market,
+      occurredAt: match.matchedAt,
+      data: { accountId: match.accountId, amount: receipt.amount, currency: receipt.currency, how: match.how, bookedOn: receipt.bookedOn, ...(match.invoiceId ? { invoiceId: match.invoiceId } : {}) },
+    };
+    return { allocations: allocations.map((a) => ({ ...a, paymentId: receipt.paymentId, accountId: match.accountId })), events: [matched, ...events] };
   }
 
   /**

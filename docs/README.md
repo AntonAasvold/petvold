@@ -17,6 +17,8 @@ För försäkringsbolag, produktägare och handläggare. Ingen kod krävs för a
 - [Teckning](funktion/teckning.md): hälsofrågor, ansökan och manuell prövning
 - [Meddelanden](funktion/meddelanden.md): besked som lagen kräver, och bolagets dokumentsystem
 - [Webhooks](funktion/webhooks.md): händelser till bolagets system, med signatur och omförsök
+- [Premier och betalningar](funktion/premier.md): premieplaner, fakturor, inbetalningar, obetald premie, tillgodohavanden och utbetalningar
+- [Bokföring](funktion/bokforing.md): verifikationer för varje händelse som rör pengar, och kontona
 - [Körningar](funktion/korningar.md): förnyelse, utgång och gallring varje dag, en server i taget, med historik
 - [Dokument](funktion/dokument.md): filer i Petvolds arkiv, kundens dokument och länkar som slutar gälla
 - [Back office](funktion/backoffice.md): gränssnittet för handläggare och back office
