@@ -4,6 +4,7 @@
  * payment never changes.
  */
 import type pg from 'pg';
+import type { Timestamp } from '@petvold/common';
 import { PayoutConflictError, type ClinicAgreement, type Payee, type PayeeAccount, type PayoutFilter, type Payment, type PaymentEvent, type PaymentFilter, type PaymentsStore, type Payout, type PayoutStatus, type PayoutStep, type PayoutView } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
@@ -102,7 +103,7 @@ export class PostgresPaymentsStore implements PaymentsStore {
 
   async payeeAccounts(payee: Payee): Promise<PayeeAccount[]> {
     const { rows } = await this.pool.query(
-      `select ${ACCOUNT} from payments.payee_account where ${payee.clinicId ? 'clinic_id' : 'party_id'} = $1 order by created_at, payee_account_id collate "C"`,
+      `select ${ACCOUNT} from payments.payee_account where ${payee.clinicId ? 'clinic_id' : 'party_id'} = $1 and erased_at is null order by created_at, payee_account_id collate "C"`,
       [payee.clinicId ?? payee.partyId],
     );
     return rows.map(account);
@@ -153,8 +154,13 @@ export class PostgresPaymentsStore implements PaymentsStore {
   }
 
   async payeeAccount(id: string): Promise<PayeeAccount | null> {
-    const { rows } = await this.pool.query(`select ${ACCOUNT} from payments.payee_account where payee_account_id = $1`, [id]);
+    const { rows } = await this.pool.query(`select ${ACCOUNT} from payments.payee_account where payee_account_id = $1 and erased_at is null`, [id]);
     return rows[0] ? account(rows[0]) : null;
+  }
+
+  async erasePayeeAccounts(partyId: string, at: Timestamp): Promise<number> {
+    const { rowCount } = await this.pool.query(`update payments.payee_account set details = '{}'::jsonb, erased_at = $2 where party_id = $1 and erased_at is null`, [partyId, at]);
+    return rowCount ?? 0;
   }
 
   async addPayout(p: Payout, step: PayoutStep, events: PaymentEvent[]): Promise<boolean> {

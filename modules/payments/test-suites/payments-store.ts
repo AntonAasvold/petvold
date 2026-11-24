@@ -75,6 +75,18 @@ export function paymentsStoreSuite(name: string, make: () => Promise<{ store: Pa
       assert.deepEqual(await store.payeeAccounts({ partyId: 'pty_x' }), []);
     });
 
+    test("a party's payee accounts are erased once, the rows kept for the payouts, and are read no more", async () => {
+      const { store } = await make();
+      await store.addPayeeAccount(payeeAccountOf(1));
+      await store.addPayeeAccount(payeeAccountOf(2));
+      await store.addPayeeAccount(payeeAccountOf(3, { partyId: 'pty_bo' }));
+      assert.equal(await store.erasePayeeAccounts('pty_anna', '2026-12-01T10:00:00.000Z'), 2);
+      assert.equal(await store.erasePayeeAccounts('pty_anna', '2026-12-02T10:00:00.000Z'), 0, 'again: nothing left');
+      assert.deepEqual(await store.payeeAccounts({ partyId: 'pty_anna' }), []);
+      assert.equal(await store.payeeAccount('pya_1'), null);
+      assert.deepEqual((await store.payeeAccounts({ partyId: 'pty_bo' })).map((a) => a.id), ['pya_3'], "another party's are left");
+    });
+
     test('a payout is stored once per order, moves step by step, and its events go out', async () => {
       const { store } = await make();
       await store.addPayeeAccount(payeeAccountOf(1));

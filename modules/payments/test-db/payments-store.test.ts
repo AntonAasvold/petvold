@@ -35,12 +35,16 @@ test('a payment never changes, and the amount is above zero', async () => {
   assert.equal((await store.pendingEvents(10)).length, 1);
 });
 
-test('payee accounts, payouts and their steps never change', async () => {
+test('payee accounts are only ever erased, once; payouts and their steps never change', async () => {
   await clean();
   const store = new PostgresPaymentsStore(pool);
   await store.addPayeeAccount(payeeAccountOf(1));
   await store.addPayout(payoutOf(1), { status: 'awaiting-details', at: '2026-12-01T10:00:00.000Z', by: 'payments' }, []);
-  await assert.rejects(pool.query(`update payments.payee_account set details = '{}'`), /permission denied/);
+  await assert.rejects(pool.query(`update payments.payee_account set created_by = 'x'`), /permission denied/);
+  await assert.rejects(pool.query(`update payments.payee_account set details = '{"clearing":"1","account":"2"}'`), /except to be erased once/);
+  await assert.rejects(pool.query(`update payments.payee_account set details = '{}'`), /except to be erased once/, 'not without erased_at');
+  await store.erasePayeeAccounts('pty_anna', '2026-12-02T10:00:00.000Z');
+  await assert.rejects(pool.query(`update payments.payee_account set erased_at = now(), details = '{}'`), /except to be erased once/, 'once');
   await assert.rejects(pool.query(`update payments.payout set amount = 1`), /permission denied/);
   await assert.rejects(pool.query(`delete from payments.payout_step`), /permission denied/);
 });

@@ -25,7 +25,7 @@
     "site": "tsx scripts/build-site.ts",
     "roles:sync": "node --env-file-if-exists=.env --import tsx modules/api/scripts/sync-roles.ts",
     "demo:seed": "node --env-file-if-exists=.env --import tsx modules/api/scripts/demo-seed.ts",
-    "erasures:reapply": "node --env-file-if-exists=.env --import tsx modules/parties/scripts/reapply-erasures.ts",
+    "erasures:reapply": "node --env-file-if-exists=.env --import tsx modules/api/scripts/reapply-erasures.ts",
     "scenarios:golden": "tsx scripts/scenarios-golden.ts",
     "ui:dev": "npm run dev -w @petvold/backoffice",
     "ui:build": "npm run build -w @petvold/backoffice",

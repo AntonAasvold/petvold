@@ -121,14 +121,17 @@ export interface PaymentsStore {
   pendingEvents(limit: number): Promise<PaymentEvent[]>;
   markPublished(ids: string[], at: Timestamp): Promise<void>;
   addPayeeAccount(account: PayeeAccount): Promise<void>;
-  /** The payee's accounts, oldest first; the last in the market is the current one. */
+  /** The payee's accounts, oldest first; the last in the market is the current one. Erased ones are left out. */
   payeeAccounts(payee: Payee): Promise<PayeeAccount[]>;
+  /** Erases the party's account numbers, keeping the rows (ADR 0040, punkt 11). The number erased now; 0 when done before. */
+  erasePayeeAccounts(partyId: string, at: Timestamp): Promise<number>;
   addAgreement(agreement: ClinicAgreement): Promise<void>;
   /** Adds the agreement's ending. Throws PayoutConflictError if it has one. */
   endAgreement(id: string, ended: NonNullable<ClinicAgreement['ended']>): Promise<void>;
   agreement(id: string): Promise<ClinicAgreement | null>;
   /** Oldest first. */
   agreements(filter: { clinicId?: string; market?: string }): Promise<ClinicAgreement[]>;
+  /** null when it does not exist or is erased. */
   payeeAccount(id: string): Promise<PayeeAccount | null>;
   /** Stores the payout with its first step and events. false, and nothing stored, if the order already has a payout. */
   addPayout(payout: Payout, step: PayoutStep, events: PaymentEvent[]): Promise<boolean>;
@@ -412,6 +415,27 @@ export class PaymentsService {
   }
 
   /**
+   * Why the party's payee details cannot be erased now, or null (ADR 0040,
+   * punkt 11): a payout to them that is on its way. A payout still waiting for
+   * details does not stop it; it waits for details given after the erasure.
+   */
+  async erasureBlocker(partyId: string): Promise<string | null> {
+    const busy = (await this.d.store.payouts({ partyId })).filter((p) => p.status === 'held' || p.status === 'pending');
+    return busy.length ? `Payouts on their way to the party: ${busy.map((p) => p.id).join(', ')}` : null;
+  }
+
+  /**
+   * Erases the party's payee account numbers when the party is anonymized (ADR
+   * 0040, punkt 11, ADR 0028). The rows stay, so the payouts' history holds
+   * together. Safe to run again, e.g. after a restore from backup.
+   */
+  async erasePayee(partyId: string): Promise<number> {
+    const blocker = await this.erasureBlocker(partyId);
+    if (blocker) throw new PaymentsError('conflict', blocker);
+    return this.d.store.erasePayeeAccounts(partyId, this.d.clock.now());
+  }
+
+  /**
    * When the party last had a relation in payments, for retention (ADR 0028,
    * 0040 punkt 11): ongoing while a payout to them is not paid or failed, else
    * the last day details were given or a payout made.
@@ -577,8 +601,21 @@ export class InMemoryPaymentsStore implements PaymentsStore {
 
   private readonly agreementList: ClinicAgreement[] = [];
 
+  private readonly erased = new Set<string>();
+
   async payeeAccounts(payee: Payee) {
-    return structuredClone(this.accounts.filter((a) => (payee.clinicId ? a.clinicId === payee.clinicId : a.partyId === payee.partyId)));
+    return structuredClone(this.accounts.filter((a) => !this.erased.has(a.id) && (payee.clinicId ? a.clinicId === payee.clinicId : a.partyId === payee.partyId)));
+  }
+
+  async erasePayeeAccounts(partyId: string) {
+    let n = 0;
+    for (const a of this.accounts) {
+      if (a.partyId !== partyId || this.erased.has(a.id)) continue;
+      this.erased.add(a.id);
+      a.details = {} as PayeeAccount['details'];
+      n++;
+    }
+    return n;
   }
 
   async addAgreement(a: ClinicAgreement) {
@@ -602,7 +639,7 @@ export class InMemoryPaymentsStore implements PaymentsStore {
   }
 
   async payeeAccount(id: string) {
-    const a = this.accounts.find((x) => x.id === id);
+    const a = this.accounts.find((x) => x.id === id && !this.erased.has(x.id));
     return a ? structuredClone(a) : null;
   }
 

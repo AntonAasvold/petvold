@@ -5,6 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
+- Betaluppgifter raderas med parten, PR #163: ett godkännande av en radering raderar betaluppgifterna i `payments` först, och stoppas medan en utbetalning är på väg. `erasures:reapply` raderar dem igen. Migration 0066 med en trigger som bara tillåter radering.
 - Pengar, steg 8d, PR #162: **Bokföring** i back office med dagsavslut och fil, saldon, verifikationer och kontoplan med versioner. Rättat: det första dagsavslutet kunde hoppa över en dag när en verifikation för i går kom in efter dagens första. `dev-all` har alla roller.
 - Menyns ordning, PR #161: det dagliga arbetet först, sedan köerna, konfiguration och drift, och Dokumentation sist.
 - Pengar, steg 8c, PR #160: betaluppgifter och utbetalningar på partens sida, med svenskt konto eller IBAN (kontrollerat). Under **Pengar**: utbetalningar som väntar på betaluppgifter, och avtal med kliniker som görs och avslutas, med klinikens betaluppgifter.
@@ -38,4 +39,3 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 - En sänkt ersättning vid omprövning ger ingen återkravsorder. ADR 0040 föreslår ett förslag till återkrav i en kö.
 - Gallringen känner till djur, policyer, ansökningar och skador. Innan den körs skarpt hos ett försäkringsbolag behöver bolaget bekräfta lagringstiderna och att inga andra system har relationer som Petvold inte känner till, till exempel betalningar (M5).
 - Det sparas inte vem som slagit upp ett djur.
-- Betaluppgifter raderas inte när en part raderas (ADR 0040, punkt 11). Gallringen ser bara att parten har en pågående utbetalning.
