@@ -204,7 +204,11 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
     - [x] 6a: verifikationer för varje händelse som rör pengar, och saldo per konto
     - [x] 6b: kontoplan, dagsavslut med CSV och `accounting.day_closed`. SIE 4 och perioder som stängs för hand när en installation behöver dem.
   - [ ] Betaltjänster: bankfiler (ISO 20022), Stripe eller Surfboard (kort och Swish), Autogiro och SEPA, och Swish direkt
-  - [ ] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav
+  - [ ] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav:
+    - [x] 8a: köerna i **Pengar**: okopplade inbetalningar, spärrade utbetalningar och kreditförslag
+    - [ ] 8b: betalarens konto på partens sida, med fakturor, saldo, kreditnota och återbetalning
+    - [ ] 8c: betaluppgifter och avtal med kliniker
+    - [ ] 8d: dagsavslut och kontoplan
 - Premieåterbetalning vid avslut och ny premieplan vid förnyelse.
 - Distribution och provision (ny ADR):
   - vem som sålde en policy: försäkringsbolagets egen kanal, en säljare eller ett ombud (förmedlare), sparat på tecknandet och på varje förnyelse
