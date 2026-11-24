@@ -333,6 +333,24 @@ export function settleTerm(input: { lines: readonly TermLine[]; premiumReduction
  * of the division on the last part that has a weight, so the parts add up to
  * exactly the amount. All weights zero: everything on the last part.
  */
+/**
+ * Splits an amount over caps so the parts add up and none is above its cap:
+ * each gets its share rounded down, and what is left goes one by one to the
+ * largest remainders (ties to the first). The amount must be at most the caps'
+ * sum, e.g. a credit note over what is left on an invoice's lines.
+ */
+export function splitWithinCaps(amount: number, caps: readonly number[]): number[] {
+  assertAmount(amount, 'amount');
+  for (const c of caps) assertAmount(c, 'cap');
+  const total = caps.reduce((s, c) => s + c, 0);
+  if (amount > total) throw new BillingError(`amount: ${amount} is more than the caps' ${total}`);
+  if (amount === 0) return caps.map(() => 0);
+  const out = caps.map((c) => Number((BigInt(amount) * BigInt(c)) / BigInt(total)));
+  const order = caps.map((c, i) => ({ i, rest: (BigInt(amount) * BigInt(c)) % BigInt(total) })).sort((a, b) => (a.rest === b.rest ? a.i - b.i : a.rest > b.rest ? -1 : 1));
+  for (let left = amount - out.reduce((s, x) => s + x, 0), k = 0; left > 0; left--, k++) out[order[k]!.i]! += 1;
+  return out;
+}
+
 export function splitByWeight(amount: number, weights: readonly number[]): number[] {
   assertAmount(amount, 'amount');
   if (weights.length === 0) throw new BillingError('weights: at least one');

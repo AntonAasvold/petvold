@@ -62,6 +62,8 @@ tags:
     description: Notices the law requires the customer to get, for the insurer's document system (ADR 0032).
   - name: billing
     description: Payer accounts and premium plans, made from the policies' events (ADR 0040).
+  - name: accounting
+    description: "Verifications in double entry for every event that moves money, for the insurer's accounts (ADR 0040)."
   - name: payments
     description: Payments into the insurer's account, reported by the payment services' adapters (ADR 0017, 0040).
   - name: webhooks
@@ -4019,6 +4021,81 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Payment' }
 
+  /v1/verifications:
+    get:
+      tags: [accounting]
+      operationId: listVerifications
+      x-permission: accounting:read
+      summary: Verifications, by number
+      description: |
+        Requires the permission `accounting:read` (ADR 0040). Every event that moves
+        money gives one: an invoice, a credit note or write-off, a payment received
+        and matched, a refund, a claim's payout order and a payout. Only in the
+        caller's markets.
+      parameters:
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - { name: from, in: query, schema: { type: string, format: date }, description: Booking date, inclusive. }
+        - { name: to, in: query, schema: { type: string, format: date }, description: Booking date, inclusive. }
+        - { name: objectId, in: query, schema: { type: string }, description: 'The invoice, credit note, payment, payout, refund or claim.' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The verifications
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Verification' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/verifications/{verificationId}:
+    get:
+      tags: [accounting]
+      operationId: getVerification
+      x-permission: accounting:read
+      summary: A verification
+      description: Requires the permission `accounting:read`. Outside the caller's scope it answers 404.
+      parameters:
+        - { name: verificationId, in: path, required: true, schema: { type: string, pattern: '^ver_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The verification
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Verification' }
+
+  /v1/account-balances:
+    get:
+      tags: [accounting]
+      operationId: getAccountBalances
+      x-permission: accounting:read
+      summary: The balance per kind of account and currency
+      description: Requires the permission `accounting:read` (ADR 0040). The sums of the verifications in the market, between the booking dates if given.
+      parameters:
+        - { name: market, in: query, required: true, schema: { $ref: '#/components/schemas/Market' } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '200':
+          description: The balances
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountBalances' }
+
   /v1/refunds:
     get:
       tags: [billing]
@@ -7175,6 +7252,75 @@ components:
       required: [reason]
       properties:
         reason: { type: string, minLength: 1, maxLength: 2000 }
+
+    AccountKind:
+      type: string
+      enum: [bank, premium-receivable, premium-income, premium-tax, installment-fees, unmatched-payments, customer-losses, claims-cost, claims-payable, refunds-payable]
+      description: "Petvold's own kinds of account. The chart of accounts maps them to the insurer's account numbers. premium-receivable is per payer account; a negative balance is the payer's credit."
+
+    Verification:
+      type: object
+      additionalProperties: false
+      required: [id, number, market, currency, bookingDate, text, source, lines, createdAt]
+      description: A verification in double entry (ADR 0040). Debit and credit balance. Never changes; a correction is a new verification.
+      properties:
+        id: { type: string, pattern: '^ver_[A-Za-z0-9]+$' }
+        number: { type: string, description: 'From the market''s unbroken series per year, e.g. V-SE-2026-000001.' }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        bookingDate: { type: string, format: date }
+        text: { type: string }
+        source:
+          type: object
+          additionalProperties: false
+          required: [eventId, eventType, objectType, objectId]
+          properties:
+            eventId: { type: string }
+            eventType: { type: string }
+            objectType: { type: string, enum: [invoice, credit-note, payment, payout, refund, claim] }
+            objectId: { type: string }
+        lines:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [account, debit, credit]
+            properties:
+              account: { $ref: '#/components/schemas/AccountKind' }
+              debit: { type: integer, minimum: 0 }
+              credit: { type: integer, minimum: 0 }
+              payerAccountId: { type: string }
+              policyId: { type: string }
+              claimId: { type: string }
+              period:
+                type: object
+                additionalProperties: false
+                required: [from, to]
+                description: The period a premium line pays for, end exclusive, for periodization.
+                properties:
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        createdAt: { type: string, format: date-time }
+
+    AccountBalances:
+      type: object
+      additionalProperties: false
+      required: [market, items]
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [account, currency, debit, credit, balance]
+            properties:
+              account: { $ref: '#/components/schemas/AccountKind' }
+              currency: { type: string, pattern: '^[A-Z]{3}$' }
+              debit: { type: integer, minimum: 0 }
+              credit: { type: integer, minimum: 0 }
+              balance: { type: integer, description: Debit minus credit. }
 
     Refund:
       type: object

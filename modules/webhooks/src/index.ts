@@ -52,6 +52,8 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   // A payer's credit paid back (ADR 0040): payments pays it out as payout.paid with purpose premium-refund.
   'refund.ordered': { source: 'billing', subject: 'refundId', fields: ['accountId', 'partyId', 'amount', 'currency', 'reason'] },
   'payment.succeeded': { source: 'payments', subject: 'paymentId', fields: ['direction', 'provider', 'amount', 'currency', 'reference', 'bookedOn'] },
+  // A payment belongs to a payer now (ADR 0040): by its reference, or matched by a person.
+  'payment.matched': { source: 'billing', subject: 'paymentId', fields: ['accountId', 'amount', 'currency', 'how', 'bookedOn', 'invoiceId'] },
   'invoice.overdue': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'dueDate', 'open', 'currency', 'reference', 'reminderNo'] },
   'invoice.paid': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'total', 'currency', 'paidWith', 'paymentId', 'paidOn'] },
   'invoice.issued': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'issueDate', 'dueDate', 'total', 'currency', 'reference', 'policyIds'] },

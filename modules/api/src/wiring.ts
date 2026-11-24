@@ -4,6 +4,7 @@
  * and by the dev server.
  */
 import { AnimalError, type AnimalService } from '@petvold/animals';
+import type { AccountingSources } from '@petvold/accounting';
 import { BillingError, type BillingService, type PolicyActions, type PolicySource as BillingPolicySource, type ProductSource as BillingProductSource } from '@petvold/billing';
 import { CatalogError, billingSettingsOf, onSale, policySettingsOf, productVersionId, vetCareTermsFor, type ProductService } from '@petvold/catalog';
 import { DomainError, eventClaimId, type ClaimsEvent, type ClaimsService } from '@petvold/claims-core';
@@ -384,6 +385,25 @@ export function billingPolicyActions(policies: PolicyService): PolicyActions {
         if (e instanceof PolicyError) return { failed: e.message };
         throw e;
       }
+    },
+  };
+}
+
+/** Billing's invoices and credit notes as accounting reads them (ADR 0040, punkt 9). */
+export function accountingSources(billing: BillingService): AccountingSources {
+  const orNull = async <T>(p: Promise<T>): Promise<T | null> =>
+    p.catch((e: unknown) => {
+      if (e instanceof BillingError && e.code === 'not_found') return null;
+      throw e;
+    });
+  return {
+    async invoice(id) {
+      const i = await orNull(billing.invoice(id));
+      return i ? { id: i.id, number: i.number, accountId: i.accountId, market: i.market, currency: i.currency, issueDate: i.issueDate, lines: i.lines.map((l) => ({ ...l })) } : null;
+    },
+    async creditNote(id) {
+      const c = await orNull(billing.creditNote(id));
+      return c ? { id: c.id, number: c.number, kind: c.kind, invoiceId: c.invoiceId, accountId: c.accountId, market: c.market, currency: c.currency, issueDate: c.issueDate, lines: c.lines.map((l) => ({ ...l })), total: c.total } : null;
     },
   };
 }

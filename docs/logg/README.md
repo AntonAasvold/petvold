@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-24 | [Pengar, steg 6a: verifikationer](2026-11-24-verifikationer.md) | #152 |
 | 2026-11-23 | [Pengar, steg 5b: kreditnotor och avskrivningar med attest](2026-11-23-kreditnotor-med-attest.md) | #151 |
 | 2026-11-23 | [Pengar, steg 5a: tillgodohavanden](2026-11-23-tillgodohavanden.md) | #150 |
 | 2026-11-23 | [Pengar, steg 4: obetald premie](2026-11-23-obetald-premie.md) | #149 |

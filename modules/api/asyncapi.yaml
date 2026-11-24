@@ -66,6 +66,7 @@ channels:
       invoicePaid: { $ref: '#/components/messages/invoicePaid' }
       invoiceOverdue: { $ref: '#/components/messages/invoiceOverdue' }
       refundOrdered: { $ref: '#/components/messages/refundOrdered' }
+      paymentMatched: { $ref: '#/components/messages/paymentMatched' }
       paymentSucceeded: { $ref: '#/components/messages/paymentSucceeded' }
       payoutPaid: { $ref: '#/components/messages/payoutPaid' }
       payoutFailed: { $ref: '#/components/messages/payoutFailed' }
@@ -116,6 +117,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/invoicePaid' }
       - { $ref: '#/channels/subscription/messages/invoiceOverdue' }
       - { $ref: '#/channels/subscription/messages/refundOrdered' }
+      - { $ref: '#/channels/subscription/messages/paymentMatched' }
       - { $ref: '#/channels/subscription/messages/paymentSucceeded' }
       - { $ref: '#/channels/subscription/messages/payoutPaid' }
       - { $ref: '#/channels/subscription/messages/payoutFailed' }
@@ -528,6 +530,18 @@ components:
             properties:
               type: { const: petvold.invoice.credited.v1 }
               data: { $ref: '#/components/schemas/InvoiceCreditedData' }
+    paymentMatched:
+      name: petvold.payment.matched.v1
+      title: payment.matched
+      summary: 'A payment belongs to a payer account now: by an invoice''s reference, or matched by a person (ADR 0040). Fetch it with GET /v1/received-payments/{id}.'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.payment.matched.v1 }
+              data: { $ref: '#/components/schemas/PaymentMatchedData' }
     refundOrdered:
       name: petvold.refund.ordered.v1
       title: refund.ordered
@@ -967,6 +981,18 @@ components:
         from: { $ref: '#/components/schemas/Date' }
         deadline: { $ref: '#/components/schemas/Date' }
         deceasedOn: { $ref: '#/components/schemas/Date' }
+    PaymentMatchedData:
+      type: object
+      additionalProperties: false
+      required: [paymentId, accountId, amount, currency, how, bookedOn]
+      properties:
+        paymentId: { type: string, pattern: '^pay_[A-Za-z0-9]+$' }
+        accountId: { type: string, pattern: '^bac_[A-Za-z0-9]+$' }
+        amount: { type: integer, minimum: 1, description: The whole payment, in minor units. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        how: { type: string, enum: [reference, manual] }
+        bookedOn: { $ref: '#/components/schemas/Date' }
+        invoiceId: { type: string, pattern: '^inv_[A-Za-z0-9]+$', description: The invoice it paid first. }
     RefundOrderedData:
       type: object
       additionalProperties: false

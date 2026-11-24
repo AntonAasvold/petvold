@@ -110,6 +110,8 @@ export const PERMISSIONS = [
    * them above, and approve others' proposals within the limits (ADR 0040, punkt 10).
    */
   'billing:credit',
+  /** Read the verifications and the balances per account (ADR 0040, punkt 9). */
+  'accounting:read',
   /** Read payments into and out of the insurer's accounts, payouts and payee details masked (ADR 0017, 0040). */
   'payments:read',
   /** Give a payee's account details (ADR 0040, punkt 8). Logged with who gave them. */
@@ -234,6 +236,8 @@ export const DEFAULT_ROLES: RoleDefinitions = {
     // SEK 1,000 and EUR 100 alone; above that, a proposal someone with a higher limit approves.
     creditLimits: { SEK: 100_000, EUR: 10_000 },
   },
+  /** Follows the bookkeeping Petvold hands to the insurer's accounts, e.g. the accountants (ADR 0040, punkt 9). */
+  accountant: { permissions: ['accounting:read', 'billing:read', 'payments:read'] },
   /** Approves larger credit notes and write-offs, e.g. the head of finance (ADR 0040, punkt 10). */
   'billing-manager': { permissions: ['billing:read', 'billing:credit', 'payments:read', 'policies:read', 'parties:read'], creditLimits: { SEK: 5_000_000, EUR: 500_000 } },
 };

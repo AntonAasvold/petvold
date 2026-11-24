@@ -2774,6 +2774,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verifications, by number
+         * @description Requires the permission `accounting:read` (ADR 0040). Every event that moves
+         *     money gives one: an invoice, a credit note or write-off, a payment received
+         *     and matched, a refund, a claim's payout order and a payout. Only in the
+         *     caller's markets.
+         */
+        get: operations["listVerifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/verifications/{verificationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A verification
+         * @description Requires the permission `accounting:read`. Outside the caller's scope it answers 404.
+         */
+        get: operations["getVerification"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account-balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The balance per kind of account and currency
+         * @description Requires the permission `accounting:read` (ADR 0040). The sums of the verifications in the market, between the booking dates if given.
+         */
+        get: operations["getAccountBalances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/refunds": {
         parameters: {
             query?: never;
@@ -4978,6 +5041,57 @@ export interface components {
         };
         ReturnCreditProposalRequest: {
             reason: string;
+        };
+        /**
+         * @description Petvold's own kinds of account. The chart of accounts maps them to the insurer's account numbers. premium-receivable is per payer account; a negative balance is the payer's credit.
+         * @enum {string}
+         */
+        AccountKind: "bank" | "premium-receivable" | "premium-income" | "premium-tax" | "installment-fees" | "unmatched-payments" | "customer-losses" | "claims-cost" | "claims-payable" | "refunds-payable";
+        /** @description A verification in double entry (ADR 0040). Debit and credit balance. Never changes; a correction is a new verification. */
+        Verification: {
+            id: string;
+            /** @description From the market's unbroken series per year, e.g. V-SE-2026-000001. */
+            number: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            /** Format: date */
+            bookingDate: string;
+            text: string;
+            source: {
+                eventId: string;
+                eventType: string;
+                /** @enum {string} */
+                objectType: "invoice" | "credit-note" | "payment" | "payout" | "refund" | "claim";
+                objectId: string;
+            };
+            lines: {
+                account: components["schemas"]["AccountKind"];
+                debit: number;
+                credit: number;
+                payerAccountId?: string;
+                policyId?: string;
+                claimId?: string;
+                /** @description The period a premium line pays for, end exclusive, for periodization. */
+                period?: {
+                    /** Format: date */
+                    from: string;
+                    /** Format: date */
+                    to: string;
+                };
+            }[];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AccountBalances: {
+            market: components["schemas"]["Market"];
+            items: {
+                account: components["schemas"]["AccountKind"];
+                currency: string;
+                debit: number;
+                credit: number;
+                /** @description Debit minus credit. */
+                balance: number;
+            }[];
         };
         /** @description A payer's credit paid back (ADR 0040). Payments pays it out to the payer as a payout with purpose premium-refund. Never changes. */
         Refund: {
@@ -10879,6 +10993,97 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listVerifications: {
+        parameters: {
+            query?: {
+                market?: components["schemas"]["Market"];
+                /** @description Booking date */
+                from?: string;
+                /** @description Booking date */
+                to?: string;
+                /** @description The invoice, credit note, payment, payout, refund or claim. */
+                objectId?: string;
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The verifications */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Verification"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                verificationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The verification */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Verification"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAccountBalances: {
+        parameters: {
+            query: {
+                market: components["schemas"]["Market"];
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The balances */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountBalances"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
         };
     };
     listRefunds: {

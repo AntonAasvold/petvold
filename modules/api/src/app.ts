@@ -17,6 +17,7 @@ import { InMemoryPolicyStore, PolicyError, PolicyService, type Application, type
 import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_TYPES, type NoticeType, type NoticeView } from '@petvold/communications';
 import { BillingError, BillingService, InMemoryBillingStore } from '@petvold/billing';
 import { InMemoryPaymentsStore, PaymentsError, PaymentsService, ProviderNotificationError } from '@petvold/payments';
+import { AccountingError, AccountingService, InMemoryAccountingStore } from '@petvold/accounting';
 import { InMemoryWebhookStore, SecretBox, WebhookError, WebhookService, type Subscription } from '@petvold/webhooks';
 import { animalPort, billingPolicySource, billingProductSource, claimSource, claimsActivity, partySource, policySource, productPort } from './wiring.ts';
 import { tariffCoverage } from '@petvold/pricing-core';
@@ -141,6 +142,8 @@ export interface AppDeps {
   billing?: BillingService;
   /** Payments (ADR 0017, 0040). Omitted: kept in memory with no payment providers. */
   payments?: PaymentsService;
+  /** Accounting (ADR 0040). Omitted: kept in memory; the installation's relay feeds it. */
+  accounting?: AccountingService;
   /** Runs (ADR 0037). Omitted: the four jobs over these services, with history in memory. */
   scheduler?: Scheduler;
   /** The relay, to send a dead letter again (ADR 0037). Omitted: the dead letter is only removed from the store. */
@@ -1248,6 +1251,34 @@ export function createApp(d: AppDeps) {
     return send(c, p);
   });
 
+  // Accounting (ADR 0040, punkt 9): the verifications and the balances. Scope: the caller's markets.
+  const accounting =
+    d.accounting ??
+    new AccountingService({ store: new InMemoryAccountingStore(), sources: { invoice: async () => null, creditNote: async () => null }, clock: d.clock, ids: { next: (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}` } });
+  const accountingFilter = (c: Context<Env>) => {
+    const q = (k: string) => c.req.query(k);
+    return { ...(q('market') ? { market: q('market') } : {}), ...(q('from') ? { from: q('from') } : {}), ...(q('to') ? { to: q('to') } : {}), ...(q('objectId') ? { objectId: q('objectId') } : {}) };
+  };
+
+  app.get('/v1/verifications', async (c) => {
+    const items = await accounting.verifications(accountingFilter(c));
+    return sendPage(c, items.filter((v) => seesPayment(c.get('scope'), v.market)));
+  });
+
+  app.get('/v1/verifications/:verificationId', async (c) => {
+    const id = c.req.param('verificationId');
+    const v = await accounting.verification(id);
+    if (!seesPayment(c.get('scope'), v.market)) throw new AccountingError('not_found', `Verification ${id} does not exist`);
+    return send(c, v);
+  });
+
+  app.get('/v1/account-balances', async (c) => {
+    const market = c.req.query('market');
+    if (!market) return problem(c, 422, 'market is required');
+    if (!seesPayment(c.get('scope'), market)) return problem(c, 403, 'Not permitted', "The market is outside the caller's scope");
+    return send(c, { market, items: await accounting.balances(accountingFilter(c)) });
+  });
+
   // Payees and payouts (ADR 0040, punkt 8). Same scope as payments.
   app.get('/v1/payees/:partyId/accounts', async (c) => {
     const items = await payments.payeeAccounts({ partyId: c.req.param('partyId') });
@@ -1964,6 +1995,9 @@ export function createApp(d: AppDeps) {
     }
     if (err instanceof BillingError) {
       return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);
+    }
+    if (err instanceof AccountingError) {
+      return problem(c, err.code === 'not_found' ? 404 : 422, err.message);
     }
     if (err instanceof PaymentsError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;

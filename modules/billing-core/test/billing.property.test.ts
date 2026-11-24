@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
-import { PAYMENT_INTERVALS, addDays, allocatePayment, applyBpHalfUp, distributeAdjustment, premiumPlan, settleCancellation, type PlanInput } from '@petvold/billing-core';
+import { PAYMENT_INTERVALS, addDays, allocatePayment, applyBpHalfUp, distributeAdjustment, premiumPlan, settleCancellation, splitByWeight, splitWithinCaps, type PlanInput } from '@petvold/billing-core';
 
 const date = fc.integer({ min: 0, max: 3_650 }).map((d) => addDays('2025-01-01', d));
 const planInput: fc.Arbitrary<PlanInput> = fc
@@ -199,4 +199,21 @@ test('a settled term: kept + new charge is the new total, kept + credited is wha
       assert.ok(s.newCharge === 0 || credited === 0);
     }),
   );
+});
+
+test('splitWithinCaps: the parts add up and none is above its cap', () => {
+  fc.assert(
+    fc.property(fc.array(fc.integer({ min: 0, max: 1_000_000 }), { minLength: 1, maxLength: 8 }), fc.double({ min: 0, max: 1, noNaN: true }), (caps, share) => {
+      const amount = Math.floor(caps.reduce((s, c) => s + c, 0) * share);
+      const parts = splitWithinCaps(amount, caps);
+      assert.equal(parts.reduce((s, p) => s + p, 0), amount);
+      parts.forEach((p, i) => assert.ok(p >= 0 && p <= caps[i]!, `${p} > ${caps[i]}`));
+    }),
+    { numRuns: 500 },
+  );
+});
+
+test('splitByWeight can put more than its weight on the last part, which is why credit notes use splitWithinCaps', () => {
+  assert.deepEqual(splitByWeight(2, [1, 1, 1]), [0, 0, 2]);
+  assert.deepEqual(splitWithinCaps(2, [1, 1, 1]), [1, 1, 0]);
 });
