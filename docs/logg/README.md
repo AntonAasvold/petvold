@@ -43,7 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
-| 2026-11-24 | [Pengar, steg 8d: bokföringen i back office](2026-11-24-bokforing-i-back-office.md) | #NN |
+| 2026-11-24 | [Pengar, steg 8d: bokföringen i back office](2026-11-24-bokforing-i-back-office.md) | #162 |
 | 2026-11-24 | [Menyns ordning](2026-11-24-menyns-ordning.md) | #161 |
 | 2026-11-24 | [Pengar, steg 8c: betaluppgifter och kliniker i back office](2026-11-24-betaluppgifter-och-kliniker.md) | #160 |
 | 2026-11-24 | [Det fladdrande testet för skadans historik](2026-11-24-fladdrande-historik.md) | #159 |

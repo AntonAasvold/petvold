@@ -1,4 +1,4 @@
-# Pengar, steg 8d: bokföringen i back office (PR #NN)
+# Pengar, steg 8d: bokföringen i back office (PR #162)
 
 **Datum:** 2026-11-24 **ADR:** 0040, 0035, 0020 **Moduler:** `apps/backoffice`, `accounting`, `api`
 
