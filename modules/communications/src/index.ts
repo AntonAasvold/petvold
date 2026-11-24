@@ -29,6 +29,7 @@ export const NOTICE_TYPES = [
   'claim-information-expired',
   'invoice',
   'payment-reminder',
+  'credit-note',
 ] as const;
 export type NoticeType = (typeof NOTICE_TYPES)[number];
 
@@ -46,6 +47,7 @@ export const NOTICE_SCHEMAS: Record<NoticeType, string> = {
   'claim-information-expired': 'claim-information-expired.v1',
   invoice: 'invoice.v1',
   'payment-reminder': 'payment-reminder.v1',
+  'credit-note': 'credit-note.v1',
 };
 
 /** Fields an insurer's text fills, per type: a notice without them is incomplete and in the queue. */
@@ -156,6 +158,8 @@ export const NOTICE_RULES: Record<string, MarketNoticeRules> = {
       // A reminder of an overdue invoice (ADR 0040, punkt 7). Not required by law; the notice of
       // cancellation that may follow is the insurer-termination, which is.
       'payment-reminder': { required: false, due: 'promptly', legalBasis: [] },
+      // A credit note on an invoice: less to pay (ADR 0040, punkt 5). Not required by law. A write-off gives none.
+      'credit-note': { required: false, due: 'promptly', legalBasis: [] },
     },
   },
 };
@@ -356,8 +360,25 @@ export interface InvoiceView {
   lines: { policyId: string; periodStart: ISODate; periodEnd: ISODate; premium: number; tax: number; fee: number; amount: number }[];
 }
 
+/** A credit note as the notice needs it, read from billing (ADR 0040). */
+export interface CreditNoteView {
+  id: string;
+  number: string;
+  kind: 'credit' | 'write-off';
+  invoiceId: string;
+  partyId: string;
+  market: string;
+  currency: string;
+  issueDate: ISODate;
+  total: number;
+  /** What made it: a policy event (e.g. policy.cancelled), 'manual' or 'credit-proposal'. */
+  cause: string;
+  lines: { policyId: string; amount: number }[];
+}
+
 export interface InvoiceSource {
   invoice(invoiceId: string): Promise<InvoiceView | null>;
+  creditNote?(creditNoteId: string): Promise<CreditNoteView | null>;
 }
 
 /** What the module reads from the policy module. */
@@ -547,13 +568,36 @@ export class CommunicationsService {
 
   /**
    * Makes the invoice a billing event calls for (ADR 0040): invoice.issued
-   * gives the invoice to the customer, due to be sent on its issue date.
-   * Repeats give nothing new.
+   * gives the invoice to the customer, due to be sent on its issue date;
+   * invoice.overdue the reminder; invoice.credited the credit note, but not a
+   * write-off, which the insurer may not want to tell. Repeats give nothing new.
    */
   async handleBillingEvent(e: SourceEvent & { invoiceId: string }): Promise<Notice | null> {
-    if ((e.type !== 'invoice.issued' && e.type !== 'invoice.overdue') || !this.d.invoices) return null;
+    if (!this.d.invoices || !['invoice.issued', 'invoice.overdue', 'invoice.credited'].includes(e.type)) return null;
     const i = await this.d.invoices.invoice(e.invoiceId);
     if (!i) throw new Error(`The invoice ${e.invoiceId} of event ${e.id} does not exist`);
+    if (e.type === 'invoice.credited') {
+      if (!this.d.invoices.creditNote) return null;
+      const c = await this.d.invoices.creditNote(String(e.data.creditNoteId ?? ''));
+      if (!c) throw new Error(`The credit note ${e.data.creditNoteId} of event ${e.id} does not exist`);
+      if (c.kind === 'write-off') return null;
+      return this.make(e, {
+        type: 'credit-note',
+        market: c.market,
+        recipientPartyId: c.partyId,
+        invoiceId: i.id,
+        content: {
+          creditNoteId: c.id,
+          creditNoteNo: c.number,
+          invoiceId: i.id,
+          invoiceNo: i.number,
+          issueDate: c.issueDate,
+          total: { amount: c.total, currency: c.currency },
+          cause: c.cause,
+          lines: c.lines.map((l) => ({ policyId: l.policyId, amount: l.amount })),
+        },
+      });
+    }
     if (e.type === 'invoice.overdue') {
       // What is still open, as the event says it: the invoice may be paid in part.
       return this.make(e, {

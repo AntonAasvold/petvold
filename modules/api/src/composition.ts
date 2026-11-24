@@ -309,7 +309,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     // The claims engine is made below; the port reads it when an event comes.
     claims: { decision: (id, seq) => claimSource(service).decision(id, seq), informationRequest: (id, r) => claimSource(service).informationRequest(id, r) },
     // Billing is made below; the port reads it when an event comes.
-    invoices: { invoice: (id) => invoiceSource(billing).invoice(id) },
+    // billing is made below: read it when a notice is made.
+    invoices: { invoice: (id) => invoiceSource(billing).invoice(id), creditNote: (id) => invoiceSource(billing).creditNote(id) },
     // With a renderer, a market may have Petvold make the notices it has templates for (ADR 0038).
     ...(renderer ? { petvoldTemplates: (type: string, market: string) => TEMPLATES.some((t) => t.name === type && t.market === market) } : {}),
     clock,

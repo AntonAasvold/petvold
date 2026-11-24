@@ -95,7 +95,7 @@ En plan ändras aldrig. En policyhändelse ger en **ny plan som ersätter** den 
 | `policy.reinstated` | Avslutet återkallas. Delbetalningarna som avslutet tog bort kommer tillbaka, och det som krediterades faktureras igen som en egen delbetalning. Har avslutets egen delbetalning hunnit faktureras dras den från de återställda delbetalningarna. |
 | `policy.transferred` | Den förra ägaren avräknas som vid ett avslut från försäljningsdagen. Den nya ägaren får ett betalarkonto, om den inte har ett, och en plan från försäljningsdagen till termens slut med samma belopp och reglerna för en första premie. |
 
-**Kreditnotor** görs automatiskt, en per faktura, med nummer ur fakturornas serie. De har ingen attest, eftersom de följer av en policyhändelse och inte av en persons beslut. Händelsen `invoice.credited` går ut med webhooks, och kreditnotorna läses med `GET /v1/credit-notes` och `GET /v1/credit-notes/{id}`.
+**Kreditnotor** görs automatiskt, en per faktura, med nummer ur fakturornas serie. De har ingen attest, eftersom de följer av en policyhändelse och inte av en persons beslut. Händelsen `invoice.credited` går ut med webhooks, och kreditnotorna läses med `GET /v1/credit-notes` och `GET /v1/credit-notes/{id}`. Kunden får kreditnotan som meddelande, `credit-note` ([Meddelanden](meddelanden.md#typer)). En avskrivning ger inget meddelande.
 
 **Exempel:** Bella betalar 400 kr i månaden från 1 december. December och januari är fakturerade. Hon dör, och policyn avslutas från 16 januari med 4 195,07 kr tillbaka (319 av 365 dagar). Termen kostar då 604,93 kr. December står kvar, 204,93 kr av januari står kvar, och 195,07 kr av januari krediteras. Februari till november tas bort.
 

@@ -4900,9 +4900,10 @@ export interface components {
          *     - claim-information-expired: the request expired; a handler decides on what there is (not required by law), claim-information-expired.v1
          *     - invoice: the demand for premium (ADR 0040; SE: FAL 5 kap. 1 §), invoice.v1. To be sent on its issue date, since the time to pay counts from it.
          *     - payment-reminder: a reminder of an overdue invoice (ADR 0040), payment-reminder.v1. Not required by law.
+         *     - credit-note: a credit note that takes something off an invoice (ADR 0040), credit-note.v1. Not required by law; a write-off gives none.
          * @enum {string}
          */
-        NoticeType: "policy-confirmation" | "renewal-notice" | "insurer-termination" | "cancellation-confirmation" | "application-declined" | "transfer-offer" | "claim-decision" | "claim-information-request" | "claim-information-reminder" | "claim-information-expired" | "invoice" | "payment-reminder";
+        NoticeType: "policy-confirmation" | "renewal-notice" | "insurer-termination" | "cancellation-confirmation" | "application-declined" | "transfer-offer" | "claim-decision" | "claim-information-request" | "claim-information-reminder" | "claim-information-expired" | "invoice" | "payment-reminder" | "credit-note";
         WebhookSubscriptionRequest: {
             /** @description https, e.g. https://hooks.example.com/petvold. Not a local or private address. */
             url: string;
@@ -5667,6 +5668,7 @@ export interface components {
              *     - claim-information-expired.v1: the same without note, and decidedOnAvailableBasis.
              *     - invoice.v1: invoiceId, invoiceNo, issueDate, dueDate, total, reference (type and value), lines (policyId, periodStart, periodEnd, premium, tax, fee, amount), and payment from the settings.
              *     - payment-reminder.v1: invoiceId, invoiceNo, dueDate, open (amount and currency), reference (type and value), and payment from the settings.
+             *     - credit-note.v1: creditNoteId, creditNoteNo, invoiceId, invoiceNo, issueDate, total (amount and currency), cause (the policy event that made it, e.g. policy.cancelled, or manual or credit-proposal), and lines (policyId, amount). Never the person's reason, which may be an internal note.
              *     Every type gets sender from the settings when it is set.
              */
             content: {

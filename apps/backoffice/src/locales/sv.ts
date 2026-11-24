@@ -909,6 +909,7 @@ export const templates: Record<string, string> = {
   'notice.type.claim-information-expired': 'Underlaget kom inte in',
   'notice.type.invoice': 'Faktura',
   'nav.docs': 'Dokumentation',
+  'notice.type.credit-note': 'Kreditnota',
   'account.kind.bank': 'Bank',
   'account.kind.claimsCost': 'Skadekostnad',
   'account.kind.claimsPayable': 'Skulder för ersättning',
