@@ -17,7 +17,7 @@ export type Timestamp = string;
  * and 6). Anything else in a module's event stays inside Petvold: names, notes,
  * who did it. Types are versioned: a breaking change is a new `.vN`.
  */
-export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId' | 'invoiceId' | 'paymentId' | 'payoutId' | 'refundId';
+export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId' | 'invoiceId' | 'paymentId' | 'payoutId' | 'refundId' | 'day';
 
 /** A request for information (ADR 0036): what was asked for and when it is due, never the note. */
 const INFORMATION_FIELDS = ['requestId', 'recipient', 'items', 'dueDate', 'status'];
@@ -57,6 +57,8 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'invoice.overdue': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'dueDate', 'open', 'currency', 'reference', 'reminderNo'] },
   'invoice.paid': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'total', 'currency', 'paidWith', 'paymentId', 'paidOn'] },
   'invoice.issued': { source: 'billing', subject: 'invoiceId', fields: ['invoiceNo', 'accountId', 'partyId', 'issueDate', 'dueDate', 'total', 'currency', 'reference', 'policyIds'] },
+  // A day of verifications closed and handed over (ADR 0040). The file with GET /v1/day-closes/{market}/{day}/file.
+  'accounting.day_closed': { source: 'accounting', subject: 'day', fields: ['verificationCount', 'totals', 'chartVersion', 'unmapped', 'csvSha256'] },
   // A run failed (ADR 0037), for the insurer's operations to alert on. The error stays inside Petvold.
   'job.failed': { source: 'scheduling', subject: 'runId', fields: ['job', 'trigger', 'startedAt'] },
   'policy.issued': { source: 'policies', subject: 'policyId', fields: ['transactionId', 'animalId', 'policyholderPartyId', 'productVersion', 'startDate', 'endDate', 'premium', 'paymentInterval', 'applicationId'] },
@@ -88,6 +90,8 @@ export interface SourceEvent {
   paymentId?: string;
   payoutId?: string;
   refundId?: string;
+  /** accounting.day_closed: the day. */
+  day?: string;
   market: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;

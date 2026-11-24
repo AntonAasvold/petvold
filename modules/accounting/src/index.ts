@@ -12,7 +12,10 @@
  * The module never reads another module's tables (ADR 0001): it learns of
  * money from events, and reads what an event does not carry through ports.
  */
-import { marketDate, type ISODate, type Timestamp } from '@petvold/common';
+import { addDays, marketDate, type ISODate, type Timestamp } from '@petvold/common';
+import { createHash } from 'node:crypto';
+import { dayCsv, dayTotals, type ChartAccount, type ChartOfAccounts, type DayClose } from './close.ts';
+export * from './close.ts';
 
 /** Petvold's own kinds of account. A verification uses these; the chart maps them. */
 export const ACCOUNT_KINDS = [
@@ -56,7 +59,10 @@ export interface Verification {
   number: string;
   market: string;
   currency: string;
+  /** The day it is booked on: its event's day, or the first open day if that day was closed already. */
   bookingDate: ISODate;
+  /** The event's own day, when it is not the booking date. */
+  eventDate?: ISODate;
   text: string;
   /** The event it was made from, and the object it is about. */
   source: { eventId: string; eventType: string; objectType: 'invoice' | 'credit-note' | 'payment' | 'payout' | 'refund' | 'claim'; objectId: string };
@@ -64,7 +70,18 @@ export interface Verification {
   createdAt: Timestamp;
 }
 
-export type VerificationDraft = Omit<Verification, 'id' | 'number' | 'createdAt'>;
+export type VerificationDraft = Omit<Verification, 'id' | 'number' | 'createdAt' | 'eventDate'>;
+
+/** What the module tells others (ADR 0008, 0033). */
+export interface AccountingEvent {
+  id: string;
+  type: 'accounting.day_closed';
+  market: string;
+  day: ISODate;
+  occurredAt: Timestamp;
+  data: Record<string, unknown>;
+  sequence?: number;
+}
 
 /** An event as the relay hands it over, from billing, payments or claims. */
 export interface MoneyEvent {
@@ -105,9 +122,16 @@ export interface AccountingSources {
   } | null>;
 }
 
+export class ChartConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ChartConflictError';
+  }
+}
+
 export class AccountingError extends Error {
   constructor(
-    public readonly code: 'not_found' | 'validation',
+    public readonly code: 'not_found' | 'validation' | 'conflict',
     message: string,
   ) {
     super(message);
@@ -254,10 +278,30 @@ export interface VerificationFilter {
 
 export interface AccountingStore {
   /**
-   * Takes the next number in the market's series for the year and stores the
-   * verification with it. null, and nothing stored, if its event is booked.
+   * Stores a verification in one transaction, locked against the market's day
+   * close: its booking date is its event's day, or the first open day if that
+   * day is closed; the number is the next in the market's series for the year
+   * of the booking date. null, and nothing stored, if its event is booked.
    */
-  add(market: string, year: number, numbered: (no: number) => Verification): Promise<Verification | null>;
+  add(market: string, eventDate: ISODate, numbered: (bookingDate: ISODate, no: number) => Verification): Promise<Verification | null>;
+  /** The last closed day in the market, or null. */
+  closedThrough(market: string): Promise<ISODate | null>;
+  /**
+   * Closes the day after the last closed one, locked against new
+   * verifications in the market: `make` sees the day's verifications and says
+   * what to store. null if the day is not the next to close.
+   */
+  closeDay(market: string, day: ISODate, make: (verifications: Verification[]) => { close: DayClose; events: AccountingEvent[] }): Promise<DayClose | null>;
+  dayClose(market: string, day: ISODate): Promise<DayClose | null>;
+  /** Oldest first. */
+  dayCloses(filter: { market?: string; from?: ISODate; to?: ISODate }): Promise<DayClose[]>;
+  /** The newest version, or null before the first. */
+  chart(): Promise<ChartOfAccounts | null>;
+  chartVersions(): Promise<ChartOfAccounts[]>;
+  /** Throws ChartConflictError if the version exists. */
+  addChart(c: ChartOfAccounts): Promise<void>;
+  pendingEvents(limit: number): Promise<AccountingEvent[]>;
+  markPublished(ids: string[], at: Timestamp): Promise<void>;
   verification(id: string): Promise<Verification | null>;
   bySourceEvent(eventId: string): Promise<Verification | null>;
   /** By number. */
@@ -297,9 +341,104 @@ export class AccountingService {
     assertBalanced(draft);
     const now = this.d.clock.now();
     const id = this.d.ids.next('ver');
-    const year = Number(draft.bookingDate.slice(0, 4));
-    const stored = await this.d.store.add(draft.market, year, (no) => ({ ...draft, id, number: `V-${draft.market}-${year}-${String(no).padStart(6, '0')}`, createdAt: now }));
+    const stored = await this.d.store.add(draft.market, draft.bookingDate, (bookingDate, no) => ({
+      ...draft,
+      id,
+      number: `V-${draft.market}-${bookingDate.slice(0, 4)}-${String(no).padStart(6, '0')}`,
+      bookingDate,
+      ...(bookingDate !== draft.bookingDate ? { eventDate: draft.bookingDate } : {}),
+      createdAt: now,
+    }));
     return stored ?? (await this.d.store.bySourceEvent(e.id));
+  }
+
+  /**
+   * The day close for one market (ADR 0040, punkt 9), daily: every day from the
+   * one after the last closed, or the first with a verification, to the day
+   * before onDate is closed in order, each with its totals, the chart in force
+   * and the file's checksum, and accounting.day_closed. A dry run says which.
+   */
+  async closeDays(input: { market: string; onDate: ISODate; dryRun: boolean }, by: string): Promise<{ market: string; onDate: ISODate; dryRun: boolean; days: ISODate[]; closes: DayClose[] }> {
+    const last = await this.d.store.closedThrough(input.market);
+    const first = last ? addDays(last, 1) : (await this.d.store.verifications({ market: input.market }))[0]?.bookingDate;
+    const days: ISODate[] = [];
+    for (let d = first; d && d < input.onDate; d = addDays(d, 1)) days.push(d);
+    const out = { market: input.market, onDate: input.onDate, dryRun: input.dryRun, days, closes: [] as DayClose[] };
+    if (input.dryRun) return out;
+    const chart = await this.d.store.chart();
+    const mapping = chart?.markets[input.market] ?? {};
+    for (const day of days) {
+      const made = await this.d.store.closeDay(input.market, day, (vs) => {
+        const at = this.d.clock.now();
+        const csv = dayCsv(vs, mapping);
+        const close: DayClose = {
+          market: input.market,
+          day,
+          closedAt: at,
+          closedBy: by,
+          verificationCount: vs.length,
+          ...dayTotals(vs, mapping),
+          chartVersion: chart?.version ?? 0,
+          csvSha256: createHash('sha256').update(csv).digest('hex'),
+        };
+        const event: AccountingEvent = {
+          id: this.d.ids.next('aev'),
+          type: 'accounting.day_closed',
+          market: input.market,
+          day,
+          occurredAt: at,
+          data: { day, verificationCount: close.verificationCount, totals: close.totals, chartVersion: close.chartVersion, unmapped: close.unmapped, csvSha256: close.csvSha256 },
+        };
+        return { close, events: [event] };
+      });
+      if (!made) break; // another server closed it meanwhile
+      out.closes.push(made);
+    }
+    return out;
+  }
+
+  async dayCloses(filter: { market?: string; from?: ISODate; to?: ISODate } = {}): Promise<DayClose[]> {
+    return this.d.store.dayCloses(filter);
+  }
+
+  /** A closed day's file, made again from its verifications and its chart version, and checked against the checksum. */
+  async dayFile(market: string, day: ISODate): Promise<{ close: DayClose; csv: string }> {
+    const close = await this.d.store.dayClose(market, day);
+    if (!close) throw new AccountingError('not_found', `The day ${day} is not closed in ${market}`);
+    const chart = (await this.d.store.chartVersions()).find((c) => c.version === close.chartVersion);
+    const csv = dayCsv(await this.d.store.verifications({ market, from: day, to: day }), chart?.markets[market] ?? {});
+    if (createHash('sha256').update(csv).digest('hex') !== close.csvSha256) throw new Error(`The file for ${market} ${day} no longer matches its checksum`);
+    return { close, csv };
+  }
+
+  /** The chart of accounts in force: version 0, empty, before the first change. */
+  async chart(): Promise<ChartOfAccounts> {
+    return (await this.d.store.chart()) ?? { version: 0, markets: {}, changedBy: 'petvold', changedAt: '1970-01-01T00:00:00.000Z', reason: 'No chart yet: the files use Petvold\'s kinds of account' };
+  }
+
+  async chartVersions(): Promise<ChartOfAccounts[]> {
+    return this.d.store.chartVersions();
+  }
+
+  /** A new version of the chart, based on the one in force (ADR 0020). From then, day closes use it. */
+  async changeChart(input: { basedOnVersion: number; markets: ChartOfAccounts['markets']; reason: string }, by: string): Promise<ChartOfAccounts> {
+    const cur = await this.chart();
+    if (input.basedOnVersion !== cur.version) throw new AccountingError('conflict', `The chart is at version ${cur.version}, not ${input.basedOnVersion}`);
+    for (const [market, accounts] of Object.entries(input.markets)) {
+      if (!/^[A-Z]{2}$/.test(market)) throw new AccountingError('validation', `Unknown market ${market}`);
+      for (const [kind, acc] of Object.entries(accounts)) {
+        if (!(ACCOUNT_KINDS as readonly string[]).includes(kind)) throw new AccountingError('validation', `Unknown kind of account ${kind}`);
+        if (!acc || !/^[A-Za-z0-9.-]{1,20}$/.test(acc.number)) throw new AccountingError('validation', `${market} ${kind}: the account number must be 1 to 20 letters, digits, points or dashes`);
+      }
+    }
+    const next: ChartOfAccounts = { version: cur.version + 1, markets: structuredClone(input.markets), changedBy: by, changedAt: this.d.clock.now(), reason: input.reason };
+    try {
+      await this.d.store.addChart(next);
+    } catch (err) {
+      if (err instanceof ChartConflictError) throw new AccountingError('conflict', 'The chart was changed meanwhile');
+      throw err;
+    }
+    return next;
   }
 
   async verification(id: string): Promise<Verification> {
@@ -331,14 +470,62 @@ export class AccountingService {
 export class InMemoryAccountingStore implements AccountingStore {
   private readonly list: Verification[] = [];
   private readonly series = new Map<string, number>();
+  private readonly closes: DayClose[] = [];
+  private readonly charts: ChartOfAccounts[] = [];
+  private readonly outbox: (AccountingEvent & { publishedAt?: Timestamp })[] = [];
 
-  async add(market: string, year: number, numbered: (no: number) => Verification) {
-    const key = `${market}:${year}`;
-    const v = numbered((this.series.get(key) ?? 0) + 1);
+  async add(market: string, eventDate: ISODate, numbered: (bookingDate: ISODate, no: number) => Verification) {
+    const closed = await this.closedThrough(market);
+    const bookingDate = closed && eventDate <= closed ? addDays(closed, 1) : eventDate;
+    const key = `${market}:${bookingDate.slice(0, 4)}`;
+    const v = numbered(bookingDate, (this.series.get(key) ?? 0) + 1);
     if (this.list.some((x) => x.source.eventId === v.source.eventId)) return null;
     this.series.set(key, (this.series.get(key) ?? 0) + 1);
     this.list.push(structuredClone(v));
     return structuredClone(v);
+  }
+
+  async closedThrough(market: string) {
+    return this.closes.filter((c) => c.market === market).map((c) => c.day).sort().at(-1) ?? null;
+  }
+
+  async closeDay(market: string, day: ISODate, make: (verifications: Verification[]) => { close: DayClose; events: AccountingEvent[] }) {
+    const last = await this.closedThrough(market);
+    if (last ? day !== addDays(last, 1) : this.list.some((v) => v.market === market && v.bookingDate < day)) return null;
+    const { close, events } = make(await this.verifications({ market, from: day, to: day }));
+    this.closes.push(structuredClone(close));
+    for (const e of events) this.outbox.push({ ...structuredClone(e), sequence: this.outbox.length + 1 });
+    return structuredClone(close);
+  }
+
+  async dayClose(market: string, day: ISODate) {
+    const c = this.closes.find((x) => x.market === market && x.day === day);
+    return c ? structuredClone(c) : null;
+  }
+
+  async dayCloses(f: { market?: string; from?: ISODate; to?: ISODate }) {
+    return structuredClone(this.closes.filter((c) => (!f.market || c.market === f.market) && (!f.from || c.day >= f.from) && (!f.to || c.day <= f.to)).sort((a, b) => (a.day === b.day ? (a.market < b.market ? -1 : 1) : a.day < b.day ? -1 : 1)));
+  }
+
+  async chart() {
+    return structuredClone(this.charts.at(-1) ?? null);
+  }
+
+  async chartVersions() {
+    return structuredClone(this.charts);
+  }
+
+  async addChart(c: ChartOfAccounts) {
+    if (this.charts.some((x) => x.version === c.version)) throw new ChartConflictError(`Chart version ${c.version} exists`);
+    this.charts.push(structuredClone(c));
+  }
+
+  async pendingEvents(limit: number) {
+    return structuredClone(this.outbox.filter((e) => !e.publishedAt).slice(0, limit)).map(({ publishedAt: _, ...e }) => e);
+  }
+
+  async markPublished(ids: string[], at: Timestamp) {
+    for (const e of this.outbox) if (ids.includes(e.id) && !e.publishedAt) e.publishedAt = at;
   }
 
   async verification(id: string) {

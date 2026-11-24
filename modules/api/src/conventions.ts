@@ -15,7 +15,7 @@ const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 const SEGMENT = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 const CAMEL = /^[a-z][a-zA-Z0-9]*$/;
 /** Path parameters that are natural keys, not ids. */
-export const NATURAL_KEYS = ['product', 'version', 'series', 'kind', 'code', 'seq', 'job', 'deadLetter'];
+export const NATURAL_KEYS = ['product', 'version', 'series', 'kind', 'code', 'seq', 'job', 'deadLetter', 'market', 'day'];
 /** The roles a party has in a filter: `{role}PartyId`. */
 export const PARTY_ROLES = ['owner', 'policyholder', 'recipient'];
 /** Words that read badly as a resource; the replacement in parentheses. */

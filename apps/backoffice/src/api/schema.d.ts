@@ -2817,6 +2817,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/day-closes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Closed days, oldest first
+         * @description Requires the permission `accounting:read` (ADR 0040). The run `accounting.day-close`
+         *     closes every day before today in order, at 06:00 in the market. Only the
+         *     caller's markets.
+         */
+        get: operations["listDayCloses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/day-closes/{market}/{day}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A closed day's verifications as CSV
+         * @description Requires the permission `accounting:read` (ADR 0040). One row per verification
+         *     line (RFC 4180, comma, UTF-8): the account by the chart in force at the close,
+         *     amounts as decimals with a point, and the period of premium lines. Made again
+         *     from the verifications each time and checked against the close's checksum,
+         *     which `x-content-sha256` repeats.
+         */
+        get: operations["getDayFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/settings/chart-of-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The chart of accounts in force
+         * @description Requires the permission `accounting:read` (ADR 0040). Version 0, empty, until the first change.
+         */
+        get: operations["getChartOfAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/settings/chart-of-accounts/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every version of the chart of accounts, oldest first
+         * @description Requires the permission `accounting:read`. Each closed day names the version its file uses.
+         */
+        get: operations["listChartOfAccounts"];
+        put?: never;
+        /**
+         * Change the chart of accounts
+         * @description Requires the permission `accounting:configure` (ADR 0040). A new version, based on
+         *     the one in force (409 otherwise). Days closed from then use it; a closed
+         *     day's file keeps the version it was closed with.
+         */
+        post: operations["changeChartOfAccounts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/account-balances": {
         parameters: {
             query?: never;
@@ -5081,6 +5173,53 @@ export interface components {
             }[];
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @description A day of verifications closed and handed to the insurer's system (ADR 0040). Never changes; a verification for it that comes later is booked on the first open day. */
+        DayClose: {
+            market: components["schemas"]["Market"];
+            /** Format: date */
+            day: string;
+            /** Format: date-time */
+            closedAt: string;
+            closedBy: string;
+            verificationCount: number;
+            totals: {
+                currency: string;
+                debit: number;
+                credit: number;
+            }[];
+            /** @description The chart of accounts the file uses. 0: none yet. */
+            chartVersion: number;
+            /** @description Kinds the chart has no account number for; the file has the kind instead. */
+            unmapped: components["schemas"]["AccountKind"][];
+            /** @description SHA-256 of the day's file, which is made again the same. */
+            csvSha256: string;
+        };
+        /** @description Maps Petvold's kinds of account to the insurer's account numbers, per market (ADR 0040). A version never changes. */
+        ChartOfAccounts: {
+            /** @description 0: no chart yet. */
+            version: number;
+            markets: {
+                [key: string]: components["schemas"]["ChartAccounts"];
+            };
+            changedBy: string;
+            /** Format: date-time */
+            changedAt: string;
+            reason: string;
+        };
+        /** @description Kind of account -> the insurer's account. */
+        ChartAccounts: {
+            [key: string]: {
+                number: string;
+                name?: string;
+            };
+        };
+        ChangeChartOfAccountsRequest: {
+            basedOnVersion: number;
+            markets: {
+                [key: string]: components["schemas"]["ChartAccounts"];
+            };
+            reason: string;
         };
         AccountBalances: {
             market: components["schemas"]["Market"];
@@ -11057,6 +11196,151 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listDayCloses: {
+        parameters: {
+            query?: {
+                market?: components["schemas"]["Market"];
+                from?: string;
+                to?: string;
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The closed days */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["DayClose"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getDayFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                market: components["schemas"]["Market"];
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getChartOfAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The chart */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChartOfAccounts"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listChartOfAccounts: {
+        parameters: {
+            query?: {
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The versions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ChartOfAccounts"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    changeChartOfAccounts: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeChartOfAccountsRequest"];
+            };
+        };
+        responses: {
+            /** @description The new version */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChartOfAccounts"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
         };
     };
     getAccountBalances: {

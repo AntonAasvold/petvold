@@ -67,6 +67,7 @@ channels:
       invoiceOverdue: { $ref: '#/components/messages/invoiceOverdue' }
       refundOrdered: { $ref: '#/components/messages/refundOrdered' }
       paymentMatched: { $ref: '#/components/messages/paymentMatched' }
+      accountingDayClosed: { $ref: '#/components/messages/accountingDayClosed' }
       paymentSucceeded: { $ref: '#/components/messages/paymentSucceeded' }
       payoutPaid: { $ref: '#/components/messages/payoutPaid' }
       payoutFailed: { $ref: '#/components/messages/payoutFailed' }
@@ -118,6 +119,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/invoiceOverdue' }
       - { $ref: '#/channels/subscription/messages/refundOrdered' }
       - { $ref: '#/channels/subscription/messages/paymentMatched' }
+      - { $ref: '#/channels/subscription/messages/accountingDayClosed' }
       - { $ref: '#/channels/subscription/messages/paymentSucceeded' }
       - { $ref: '#/channels/subscription/messages/payoutPaid' }
       - { $ref: '#/channels/subscription/messages/payoutFailed' }
@@ -530,6 +532,18 @@ components:
             properties:
               type: { const: petvold.invoice.credited.v1 }
               data: { $ref: '#/components/schemas/InvoiceCreditedData' }
+    accountingDayClosed:
+      name: petvold.accounting.day_closed.v1
+      title: accounting.day_closed
+      summary: "A day of verifications is closed and handed to the insurer's system (ADR 0040). The subject is the day; the file with GET /v1/day-closes/{market}/{day}/file."
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.accounting.day_closed.v1 }
+              data: { $ref: '#/components/schemas/AccountingDayClosedData' }
     paymentMatched:
       name: petvold.payment.matched.v1
       title: payment.matched
@@ -670,7 +684,7 @@ components:
       properties:
         specversion: { const: '1.0' }
         id: { type: string, description: Unique per source. Use it to recognize repeats. }
-        source: { type: string, enum: [/petvold/claims, /petvold/animals, /petvold/policies, /petvold/communications, /petvold/scheduling, /petvold/billing, /petvold/payments] }
+        source: { type: string, enum: [/petvold/claims, /petvold/animals, /petvold/policies, /petvold/communications, /petvold/scheduling, /petvold/billing, /petvold/payments, /petvold/accounting] }
         type: { type: string, pattern: '^petvold\.[a-z]+\.[a-z_]+\.v[0-9]+$' }
         subject: { type: string, description: The id of the resource the event concerns. }
         time: { type: string, format: date-time }
@@ -981,6 +995,26 @@ components:
         from: { $ref: '#/components/schemas/Date' }
         deadline: { $ref: '#/components/schemas/Date' }
         deceasedOn: { $ref: '#/components/schemas/Date' }
+    AccountingDayClosedData:
+      type: object
+      additionalProperties: false
+      required: [day, verificationCount, totals, chartVersion, unmapped, csvSha256]
+      properties:
+        day: { $ref: '#/components/schemas/Date' }
+        verificationCount: { type: integer, minimum: 0 }
+        totals:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [currency, debit, credit]
+            properties:
+              currency: { type: string, pattern: '^[A-Z]{3}$' }
+              debit: { type: integer, minimum: 0 }
+              credit: { type: integer, minimum: 0 }
+        chartVersion: { type: integer, minimum: 0 }
+        unmapped: { type: array, items: { type: string } }
+        csvSha256: { type: string, pattern: '^[0-9a-f]{64}$' }
     PaymentMatchedData:
       type: object
       additionalProperties: false
