@@ -5,7 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
-- Systemdokumentation i back office, PR #NN: **Dokumentation** i menyn visar affärsprocesserna och affärsreglerna ([docs/processer](processer/README.md)), funktionerna och besluten, sökbara. Sidorna byggs in från `docs/`.
+- Systemdokumentation i back office, PR #154: **Dokumentation** i menyn visar affärsprocesserna och affärsreglerna ([docs/processer](processer/README.md)), funktionerna och besluten, sökbara. Sidorna byggs in från `docs/`.
   - Sex processer för pengarna, med 67 regler. Varje regel har id, källa och inställning, till exempel `OBET-05`.
 - Demon på en annan port, PR #144: `DEMO_PORT` och `DUCKDNS_TOKEN` i `setup.sh` ger certifikat med en TXT-post hos DuckDNS, när 80 och 443 leder till en annan maskin.
   - Caddy byggs i `deploy/demo/caddy/` med `caddy-dns/duckdns`. `DEMO_PUBLIC_URL` ger dokumentlänkarna rätt port. HTTP/3 är avstängt.
