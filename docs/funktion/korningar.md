@@ -13,6 +13,7 @@ Petvold har arbete som ska ske varje dag utan att någon trycker på en knapp: f
 | `billing.invoicing` | Delbetalningar som förfaller inom framförhållningen hamnar på en faktura per betalarkonto (ADR 0040, se [Premier och betalningar](premier.md#fakturor)) | 04:00 |
 | `billing.credits` | Tillgodohavanden betalar kontots obetalda fakturor, eller betalas tillbaka när kontot inte har mer att fakturera (ADR 0040, se [Premier och betalningar](premier.md#tillgodohavanden)) | 04:30 |
 | `billing.dunning` | Påminnelse om en förfallen faktura, och uppsägning för obetald premie när påminnelsen inte hjälpt (ADR 0040, se [Premier och betalningar](premier.md#obetald-premie)) | 05:00 |
+| `accounting.day-close` | Stänger varje dag före i dag och lämnar den till bolagets ekonomisystem, som CSV och `accounting.day_closed` (ADR 0040, se [Bokföring](bokforing.md#dagsavslutet)) | 06:00 |
 | `claims.information-requests` | Öppna begäranden om komplettering får sin påminnelse på påminnelsedagen och går ut dagen efter svarsdatumet. Ärendet går då tillbaka till en handläggare (ADR 0036, se [Komplettering](skadereglering.md#komplettering)). | 06:00 |
 
 - **En gång per dag och marknad.** Varje körning går en gång per marknad som installationen har, alltså marknader med en produkt eller en regel för gallring. Tiden räknas i marknadens tidszon, och en körning i en marknad påverkar aldrig en annan.
@@ -42,6 +43,7 @@ Resultatet har bara antal och id:n, aldrig personuppgifter. En ansökans svar om
 | `billing.invoicing` | `checked`, `invoiced`, `invoiceIds` |
 | `billing.credits` | `checked`, `applied`, `refunded`, `refundIds` |
 | `billing.dunning` | `checked`, `reminded`, `noticed`, `invoiceIds` |
+| `accounting.day-close` | `closed`, `days`, `verifications` |
 | `claims.information-requests` | `reminded`, `expired`, `remindedRequestIds`, `expiredRequestIds` |
 
 ## Se och styra

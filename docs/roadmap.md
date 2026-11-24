@@ -198,9 +198,9 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
   - [x] Tillgodohavanden, återbetalningar och kreditnotor med attest:
     - [x] 5a: tillgodohavanden på nästa faktura, och återbetalning som utbetalning
     - [x] 5b: kreditnotor och avskrivningar som en person gör, med attest över beloppsgränsen
-  - [ ] `accounting`: verifikationer, kontoplan, perioder och dagsavslut:
+  - [x] `accounting`: verifikationer, kontoplan, perioder och dagsavslut:
     - [x] 6a: verifikationer för varje händelse som rör pengar, och saldo per konto
-    - [ ] 6b: kontoplan, perioder, dagsavslut med CSV och `accounting.day_closed`
+    - [x] 6b: kontoplan, dagsavslut med CSV och `accounting.day_closed`. SIE 4 och perioder som stängs för hand när en installation behöver dem.
   - [ ] Betaltjänster: bankfiler (ISO 20022), Stripe eller Surfboard (kort och Swish), Autogiro och SEPA, och Swish direkt
   - [ ] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav
 - Premieåterbetalning vid avslut och ny premieplan vid förnyelse.

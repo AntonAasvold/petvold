@@ -28,7 +28,7 @@ Reglerna för `modules/api/openapi.yaml` (ADR 0034). `npm run lint:openapi` kont
 - **Fält och parametrar i camelCase** **(CI)**.
 - **Sökvägsparametrar:**
   - Ett id heter `{xId}` och har ett mönster med sitt prefix, till exempel `^pol_[A-Za-z0-9]+$` **(CI)**.
-  - Naturliga nycklar behåller sina namn: `{product}`, `{version}`, `{series}`, `{kind}`, `{code}`, `{seq}`, `{job}` (en körnings namn, till exempel `policies.renewal`) och `{deadLetter}` (`källa:händelse`, ADR 0037).
+  - Naturliga nycklar behåller sina namn: `{product}`, `{version}`, `{series}`, `{kind}`, `{code}`, `{seq}`, `{job}` (en körnings namn, till exempel `policies.renewal`), `{deadLetter}` (`källa:händelse`, ADR 0037), `{market}` (marknadskoden, till exempel `SE`) och `{day}` (ett datum, `2026-12-01`).
 - **Var något är i sin livscykel heter `status`, aldrig `state`** **(CI)**.
 - **Ett filter på en part heter `{roll}PartyId`** **(CI)**. Rollerna är `owner`, `policyholder` och `recipient`. En ny roll läggs till i `PARTY_ROLES` i `conventions.ts`.
 - **Datum som `YYYY-MM-DD`**, i marknadens kalender. Tidpunkter enligt RFC 3339 i UTC.

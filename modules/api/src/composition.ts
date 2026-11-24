@@ -405,7 +405,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   const scheduler = new Scheduler({
     store: schedulingStore,
     clock,
-    jobs: defaultJobs({ policies, retention, claims: service, billing }),
+    jobs: defaultJobs({ policies, retention, claims: service, billing, accounting }),
     markets: async () => {
       const fromProducts = (await products.allProducts()).flatMap((p) => p.versions.map((v) => v.content.market));
       const fromRetention = Object.keys((await retention.current()).markets);
@@ -507,6 +507,16 @@ export async function compose(config: InstallationConfig): Promise<Installation>
           if (queued) log(`[webhook] ${e.type} ${e.paymentId ?? e.payoutId} queued for ${queued} subscription(s)`);
         },
         markPublished: (ids, at) => paymentsStore.markPublished(ids, at),
+      }),
+      relaySource({
+        name: 'accounting',
+        pending: (limit) => accountingStore.pendingEvents(limit),
+        deliver: async (e) => {
+          log(`[event] ${e.type} ${e.market} ${e.day}`);
+          const queued = await webhooks.enqueue({ ...e });
+          if (queued) log(`[webhook] ${e.type} ${e.market} ${e.day} queued for ${queued} subscription(s)`);
+        },
+        markPublished: (ids, at) => accountingStore.markPublished(ids, at),
       }),
       relaySource({
         name: 'communications',

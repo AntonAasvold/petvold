@@ -13,12 +13,14 @@ import type { Application, PolicyService, Proposal, RenewalRunResult } from '@pe
 import type { RetentionRunResult, RetentionService } from '@petvold/parties';
 import type { ClaimsService, InformationRunResult } from '@petvold/claims-core';
 import type { BillingService, CreditsRunResult, DunningRunResult, InvoicingRunResult } from '@petvold/billing';
+import type { AccountingService } from '@petvold/accounting';
 
 export interface JobServices {
   policies: Pick<PolicyService, 'renewalRun' | 'expireApplications' | 'expireProposals'>;
   retention: Pick<RetentionService, 'run'>;
   claims: Pick<ClaimsService, 'informationRequestRun'>;
   billing: Pick<BillingService, 'invoicingRun' | 'dunningRun' | 'creditsRun'>;
+  accounting: Pick<AccountingService, 'closeDays'>;
 }
 
 /** A job with its full result, for the API, and the summary the history keeps. */
@@ -129,7 +131,15 @@ export function jobRunners(s: JobServices) {
     summarize: (r) => ({ checked: r.checked, reminded: r.reminded.length, noticed: r.noticed.length, invoiceIds: [...r.reminded, ...r.noticed.map((n) => n.invoiceId)] }),
     join: (fulls) => fulls,
   };
-  return { applicationExpiry, proposalExpiry, renewal, retention, informationRequests, invoicing, credits, dunning };
+  // The day close (ADR 0040, punkt 9): after the night's runs, every day before today is closed and handed over.
+  const dayClose: JobRunner<Awaited<ReturnType<AccountingService['closeDays']>>> = {
+    name: 'accounting.day-close',
+    schedule: { kind: 'daily', at: '06:00' },
+    execute: ({ market, onDate, by, dryRun }) => s.accounting.closeDays({ market, onDate, dryRun }, by),
+    summarize: (r) => ({ closed: r.dryRun ? 0 : r.closes.length, days: r.days, verifications: r.closes.reduce((n, c) => n + c.verificationCount, 0) }),
+    join: (fulls) => fulls,
+  };
+  return { applicationExpiry, proposalExpiry, renewal, retention, informationRequests, invoicing, credits, dunning, dayClose };
 }
 
 /** The jobs for the scheduler, with their default schedules in each market's time zone. */

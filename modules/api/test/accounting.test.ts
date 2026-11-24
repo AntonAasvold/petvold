@@ -10,6 +10,7 @@ import { accountBalance } from '@petvold/billing';
 import { compose } from '../src/composition.ts';
 import { DemoClock, demoIds, runDemo } from '../src/demo-data.ts';
 import { createApp, validatorFor, type Principal } from '../src/index.ts';
+import { eventValidator } from '../src/events-contract.ts';
 
 const SECRET = `whsec_${Buffer.alloc(32, 'accounting-test').toString('base64')}`;
 
@@ -60,4 +61,40 @@ test('after three months, every verification balances and every account agrees w
   assert.ok(validatorFor('AccountBalances')(structuredClone(balances.body)), JSON.stringify(validatorFor('AccountBalances').errors));
   assert.equal((await get('/v1/verifications', 'handler')).status, 403);
   assert.equal((await get('/v1/account-balances')).status, 422);
+});
+
+test('the night run closes every day in order; each file is made again the same and sums to the close', async () => {
+  const received: string[] = [];
+  const clock = new DemoClock('2026-06-01T06:00:00.000Z');
+  const inst = await compose({
+    databases: {},
+    engineVersion: 'test',
+    clock,
+    ids: demoIds(4),
+    payments: { fake: { secret: SECRET, markets: [{ market: 'SE', currency: 'SEK' }] } },
+    webhooks: { transport: { post: async (_u, _h, body) => (received.push(body), { status: 204 }) } },
+  });
+  await runDemo(inst, clock, { from: '2026-06-01', to: '2026-07-15', seed: 4, customersPerDay: 0.6, bankSecret: SECRET, webhookUrl: 'https://erp.example.com/petvold' });
+  const tokens: Record<string, Principal> = { accountant: { subject: 'redovisning@example.test', roles: ['accountant'], markets: ['SE'] } };
+  const app = createApp({ ...inst.deps, auth: { authenticate: async (t) => (t ? (tokens[t] ?? null) : null) } });
+  const closes = (await (await app.request('/v1/day-closes?market=SE&limit=200', { headers: { authorization: 'Bearer accountant' } })).json()) as any;
+  assert.ok(closes.items.length >= 40, `${closes.items.length} days closed`);
+  for (const c of closes.items) assert.ok(validatorFor('DayClose')(structuredClone(c)), JSON.stringify(validatorFor('DayClose').errors));
+  // Every day, in order, none missing; and nothing after a close was booked into it.
+  const days = closes.items.map((c: any) => c.day);
+  for (let i = 1; i < days.length; i++) assert.equal(Date.parse(days[i]) - Date.parse(days[i - 1]), 86_400_000, `${days[i - 1]} -> ${days[i]}`);
+  const busy = closes.items.find((c: any) => c.verificationCount > 3);
+  const res = await app.request(`/v1/day-closes/SE/${busy.day}/file`, { headers: { authorization: 'Bearer accountant' } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('x-content-sha256'), busy.csvSha256);
+  const rows = (await res.text()).trimEnd().split('\r\n').slice(1);
+  const cents = (s: string) => (s ? Math.round(Number(s) * 100) : 0);
+  const debit = rows.reduce((s, r) => s + cents(r.split(',')[6]!), 0);
+  assert.equal(debit, busy.totals[0].debit, 'the file sums to the close');
+  assert.equal(new Set(rows.map((r) => r.split(',')[0])).size, busy.verificationCount);
+  while ((await inst.webhookWorker.tick()).delivered > 0);
+  const closed = received.map((b) => JSON.parse(b)).filter((e) => e.type === 'petvold.accounting.day_closed.v1');
+  assert.equal(closed.length, closes.items.length);
+  for (const e of closed.slice(0, 3)) assert.ok(eventValidator('accounting.day_closed')(e), JSON.stringify(eventValidator('accounting.day_closed').errors));
+  assert.equal(closed[0].subject, days[0]);
 });

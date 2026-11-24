@@ -4075,6 +4075,133 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Verification' }
 
+  /v1/day-closes:
+    get:
+      tags: [accounting]
+      operationId: listDayCloses
+      x-permission: accounting:read
+      summary: Closed days, oldest first
+      description: |
+        Requires the permission `accounting:read` (ADR 0040). The run `accounting.day-close`
+        closes every day before today in order, at 06:00 in the market. Only the
+        caller's markets.
+      parameters:
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The closed days
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/DayClose' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/day-closes/{market}/{day}/file:
+    get:
+      tags: [accounting]
+      operationId: getDayFile
+      x-permission: accounting:read
+      summary: A closed day's verifications as CSV
+      description: |
+        Requires the permission `accounting:read` (ADR 0040). One row per verification
+        line (RFC 4180, comma, UTF-8): the account by the chart in force at the close,
+        amounts as decimals with a point, and the period of premium lines. Made again
+        from the verifications each time and checked against the close's checksum,
+        which `x-content-sha256` repeats.
+      parameters:
+        - { name: market, in: path, required: true, schema: { $ref: '#/components/schemas/Market' } }
+        - { name: day, in: path, required: true, schema: { type: string, format: date } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /v1/settings/chart-of-accounts:
+    get:
+      tags: [accounting]
+      operationId: getChartOfAccounts
+      x-permission: accounting:read
+      summary: The chart of accounts in force
+      description: Requires the permission `accounting:read` (ADR 0040). Version 0, empty, until the first change.
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The chart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChartOfAccounts' }
+
+  /v1/settings/chart-of-accounts/versions:
+    get:
+      tags: [accounting]
+      operationId: listChartOfAccounts
+      x-permission: accounting:read
+      summary: Every version of the chart of accounts, oldest first
+      description: Requires the permission `accounting:read`. Each closed day names the version its file uses.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ChartOfAccounts' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    post:
+      tags: [accounting]
+      operationId: changeChartOfAccounts
+      x-permission: accounting:configure
+      summary: Change the chart of accounts
+      description: |
+        Requires the permission `accounting:configure` (ADR 0040). A new version, based on
+        the one in force (409 otherwise). Days closed from then use it; a closed
+        day's file keeps the version it was closed with.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeChartOfAccountsRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: The new version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChartOfAccounts' }
+
   /v1/account-balances:
     get:
       tags: [accounting]
@@ -7302,6 +7429,70 @@ components:
                   from: { type: string, format: date }
                   to: { type: string, format: date }
         createdAt: { type: string, format: date-time }
+
+    DayClose:
+      type: object
+      additionalProperties: false
+      required: [market, day, closedAt, closedBy, verificationCount, totals, chartVersion, unmapped, csvSha256]
+      description: "A day of verifications closed and handed to the insurer's system (ADR 0040). Never changes; a verification for it that comes later is booked on the first open day."
+      properties:
+        market: { $ref: '#/components/schemas/Market' }
+        day: { type: string, format: date }
+        closedAt: { type: string, format: date-time }
+        closedBy: { type: string }
+        verificationCount: { type: integer, minimum: 0 }
+        totals:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [currency, debit, credit]
+            properties:
+              currency: { type: string, pattern: '^[A-Z]{3}$' }
+              debit: { type: integer, minimum: 0 }
+              credit: { type: integer, minimum: 0 }
+        chartVersion: { type: integer, minimum: 0, description: 'The chart of accounts the file uses. 0: none yet.' }
+        unmapped: { type: array, items: { $ref: '#/components/schemas/AccountKind' }, description: Kinds the chart has no account number for; the file has the kind instead. }
+        csvSha256: { type: string, pattern: '^[0-9a-f]{64}$', description: "SHA-256 of the day's file, which is made again the same." }
+
+    ChartOfAccounts:
+      type: object
+      additionalProperties: false
+      required: [version, markets, changedBy, changedAt, reason]
+      description: "Maps Petvold's kinds of account to the insurer's account numbers, per market (ADR 0040). A version never changes."
+      properties:
+        version: { type: integer, minimum: 0, description: '0: no chart yet.' }
+        markets:
+          type: object
+          propertyNames: { pattern: '^[A-Z]{2}$' }
+          additionalProperties: { $ref: '#/components/schemas/ChartAccounts' }
+        changedBy: { type: string }
+        changedAt: { type: string, format: date-time }
+        reason: { type: string }
+
+    ChartAccounts:
+      type: object
+      description: Kind of account -> the insurer's account.
+      propertyNames: { $ref: '#/components/schemas/AccountKind' }
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [number]
+        properties:
+          number: { type: string, pattern: '^[A-Za-z0-9.-]{1,20}$' }
+          name: { type: string, maxLength: 200 }
+
+    ChangeChartOfAccountsRequest:
+      type: object
+      additionalProperties: false
+      required: [basedOnVersion, markets, reason]
+      properties:
+        basedOnVersion: { type: integer, minimum: 0 }
+        markets:
+          type: object
+          propertyNames: { pattern: '^[A-Z]{2}$' }
+          additionalProperties: { $ref: '#/components/schemas/ChartAccounts' }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
 
     AccountBalances:
       type: object

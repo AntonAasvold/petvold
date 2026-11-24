@@ -1272,6 +1272,34 @@ export function createApp(d: AppDeps) {
     return send(c, v);
   });
 
+  // The day close (ADR 0040, punkt 9): closed days, each day's file, and the chart of accounts.
+  app.get('/v1/day-closes', async (c) => {
+    const q = (k: string) => c.req.query(k);
+    const items = await accounting.dayCloses({ ...(q('market') ? { market: q('market') } : {}), ...(q('from') ? { from: q('from') } : {}), ...(q('to') ? { to: q('to') } : {}) });
+    return sendPage(c, items.filter((x) => seesPayment(c.get('scope'), x.market)));
+  });
+
+  app.get('/v1/day-closes/:market/:day/file', async (c) => {
+    const market = c.req.param('market');
+    if (!seesPayment(c.get('scope'), market)) throw new AccountingError('not_found', `The day is not closed in ${market}`);
+    const { close, csv } = await accounting.dayFile(market, c.req.param('day'));
+    return c.body(csv, 200, {
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': `attachment; filename="petvold-${close.market}-${close.day}.csv"`,
+      'x-content-sha256': close.csvSha256,
+    });
+  });
+
+  app.get('/v1/settings/chart-of-accounts', async (c) => send(c, await accounting.chart()));
+
+  app.get('/v1/settings/chart-of-accounts/versions', async (c) => sendPage(c, await accounting.chartVersions()));
+
+  app.post('/v1/settings/chart-of-accounts/versions', async (c) => {
+    const r = await readJson(c, 'ChangeChartOfAccountsRequest');
+    if (!r.ok) return r.res;
+    return idempotent(c, r.body, async () => ({ status: 201, body: await accounting.changeChart(r.body, c.get('principal').subject) }));
+  });
+
   app.get('/v1/account-balances', async (c) => {
     const market = c.req.query('market');
     if (!market) return problem(c, 422, 'market is required');
@@ -1997,7 +2025,7 @@ export function createApp(d: AppDeps) {
       return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422, err.message);
     }
     if (err instanceof AccountingError) {
-      return problem(c, err.code === 'not_found' ? 404 : 422, err.message);
+      return problem(c, err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 422, err.message);
     }
     if (err instanceof PaymentsError) {
       const status = err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : err.code === 'forbidden' ? 403 : 422;
@@ -2042,13 +2070,13 @@ export function createApp(d: AppDeps) {
     new Scheduler({
       store: new InMemorySchedulingStore(),
       clock: d.clock,
-      jobs: defaultJobs({ policies, retention, claims: d.service, billing }),
+      jobs: defaultJobs({ policies, retention, claims: d.service, billing, accounting }),
       // As the installation does: markets with a product or a retention rule.
       markets: async () =>
         [...new Set([...(await products.allProducts()).flatMap((p) => p.versions.map((v) => v.content.market)), ...Object.keys((await retention.current()).markets)])].sort(),
       holder: 'api',
     });
-  const runners = jobRunners({ policies, retention, claims: d.service, billing }) as unknown as Record<string, JobRunner<unknown>>;
+  const runners = jobRunners({ policies, retention, claims: d.service, billing, accounting }) as unknown as Record<string, JobRunner<unknown>>;
   const byName = new Map(Object.values(runners).map((r) => [r.name, r]));
   const controlId = () => `ctl_${crypto.randomUUID().replaceAll('-', '')}`;
   const scopedMarkets = async (c: Context<Env>) => {
