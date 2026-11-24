@@ -51,6 +51,19 @@ DEMO_PORT=8443 ./setup.sh petvold.namn.duckdns.org 'ett långt lösenord'
 - **Caddy byggs på servern** med modulen [caddy-dns/duckdns](https://github.com/caddy-dns/duckdns) (`caddy/Dockerfile`), första gången av `reset.sh`. Utan `DEMO_TLS=duckdns` används inte modulen.
 - **DuckDNS har en TXT-post per namn.** Om ett annat system förnyar sitt certifikat för samma DuckDNS-namn i samma stund kan en av förnyelserna misslyckas. Caddy försöker då igen.
 
+### Uppdatera till en ny version
+
+Varje merge till `main` publicerar nya avbildningar (`Images` i Actions). På servern:
+
+```
+cd ~/petvold && git pull
+cd deploy/demo && ./reset.sh                                   # ny testdata
+# eller, med datan kvar:
+docker compose pull api web && docker compose up -d
+```
+
+`git pull` behövs när `deploy/demo` har ändrats. Med datan kvar körs först tjänsten `roles`, som skapar de modulroller som saknas, och sedan `migrate`. En ny modul med en egen roll fungerar alltså utan att datan rensas. Rollerna skapas av samma skript som när databasen skapas (`initdb/01-roles.sh`), så listan finns på ett ställe.
+
 ### Lokalt
 
 `./setup.sh localhost lösenord` och `./reset.sh --build` kör samma demo på den egna datorn, med Caddys egna certifikat i stället för Let's Encrypt. `docker compose down` i `deploy/demo/` stoppar den.
