@@ -1,4 +1,4 @@
-# Det fladdrande testet för skadans historik (PR #NN)
+# Det fladdrande testet för skadans historik (PR #159)
 
 **Datum:** 2026-11-24 **ADR:** 0036 **Moduler:** `apps/backoffice`
 

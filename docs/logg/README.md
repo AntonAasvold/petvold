@@ -43,7 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
-| 2026-11-24 | [Det fladdrande testet för skadans historik](2026-11-24-fladdrande-historik.md) | #NN |
+| 2026-11-24 | [Det fladdrande testet för skadans historik](2026-11-24-fladdrande-historik.md) | #159 |
 | 2026-11-24 | [Pengar, steg 8b: betalarens konto i back office](2026-11-24-betalarkonto.md) | #158 |
 | 2026-11-24 | [Pengar, steg 8a: köerna i back office](2026-11-24-pengar-i-back-office.md) | #157 |
 | 2026-11-24 | [Demon kan uppdateras med datan kvar](2026-11-24-demo-roller.md) | #156 |
