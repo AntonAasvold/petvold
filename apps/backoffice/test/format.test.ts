@@ -41,14 +41,15 @@ test('a list grows a page at a time with the cursor', () => {
   assert.deepEqual([p.items, p.next, hasMore(p)], [[1, 2, 3], undefined, false]);
 });
 
-test('sections follow the permissions from /v1/me', () => {
+test('sections follow the permissions from /v1/me; the documentation is there for everyone signed in', () => {
   const me = (permissions: string[]) => ({ subject: 's', roles: [], permissions, scope: { markets: '*' as const } });
-  assert.deepEqual(sectionsFor(me(['claims:read'])).map((s) => s.path), ['/claims']);
-  assert.deepEqual(sectionsFor(me(['policies:read'])).map((s) => s.path), ['/policies', '/applications', '/proposals']);
-  assert.deepEqual(sectionsFor(me(['notices:read'])).map((s) => s.path), ['/notices', '/settings']);
-  assert.deepEqual(sectionsFor(me(['access:read'])).map((s) => s.path), ['/settings']);
-  assert.deepEqual(sectionsFor(me(['catalog:read'])).map((s) => s.path), ['/products']);
-  assert.deepEqual(sectionsFor(me(['limits:read'])), []);
+  const paths = (permissions: string[]) => sectionsFor(me(permissions)).map((s) => s.path).filter((p) => p !== '/docs');
+  assert.deepEqual(paths(['claims:read']), ['/claims']);
+  assert.deepEqual(paths(['policies:read']), ['/policies', '/applications', '/proposals']);
+  assert.deepEqual(paths(['notices:read']), ['/notices', '/settings']);
+  assert.deepEqual(paths(['access:read']), ['/settings']);
+  assert.deepEqual(paths(['catalog:read']), ['/products']);
+  assert.deepEqual(sectionsFor(me(['limits:read'])).map((s) => s.path), ['/docs']);
   assert.deepEqual(sectionsFor(null), []);
 });
 

@@ -13,6 +13,7 @@ export interface Section {
   label: string;
   /** A Font Awesome icon in icons.json. */
   icon: string;
+  /** The permissions that show it. Empty: everyone signed in. */
   anyOf: string[];
   /** The queue whose waiting items the menu counts, as a list call with its filter. */
   count?: { path: CountPath; query: Record<string, string | boolean> };
@@ -39,9 +40,10 @@ export const SECTIONS: Section[] = [
   { path: '/products', label: 'nav.products', icon: 'box', anyOf: ['catalog:read'] },
   { path: '/rule-sets', label: 'nav.ruleSets', icon: 'scale-balanced', anyOf: ['rules:read'] },
   { path: '/settings', label: 'nav.settings', icon: 'gear', anyOf: ['access:read', 'parties:privacy', 'notices:read'] },
+  { path: '/docs', label: 'nav.docs', icon: 'book', anyOf: [] },
 ];
 
 export const can = (me: Me | null, permission: string): boolean => !!me?.permissions.includes(permission);
 
 /** The sections the caller sees, in order. */
-export const sectionsFor = (me: Me | null): Section[] => SECTIONS.filter((s) => s.anyOf.some((p) => can(me, p)));
+export const sectionsFor = (me: Me | null): Section[] => SECTIONS.filter((s) => (s.anyOf.length === 0 ? !!me : s.anyOf.some((p) => can(me, p))));

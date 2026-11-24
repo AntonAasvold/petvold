@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-24 | [Systemdokumentation i back office](2026-11-24-systemdokumentation.md) | #154 |
 | 2026-11-24 | [Pengar, steg 6b: dagsavslut och kontoplan](2026-11-24-dagsavslut.md) | #153 |
 | 2026-11-24 | [Pengar, steg 6a: verifikationer](2026-11-24-verifikationer.md) | #152 |
 | 2026-11-23 | [Pengar, steg 5b: kreditnotor och avskrivningar med attest](2026-11-23-kreditnotor-med-attest.md) | #151 |

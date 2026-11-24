@@ -282,6 +282,11 @@ export class AppShell extends LitElement {
       { pattern: /^\/jobs$/, render: () => html`<pv-jobs .api=${this.api} .me=${this.me}></pv-jobs>` },
       { pattern: /^\/jobs\/(?<id>[^/]+)$/, render: (p) => html`<pv-job-detail .api=${this.api} .me=${this.me} job=${p.id!}></pv-job-detail>` },
       { pattern: /^\/settings$/, render: () => html`<pv-settings .api=${this.api} .me=${this.me}></pv-settings>` },
+      { pattern: /^\/docs(?:\/(?<section>processer|funktion|adr)\/(?<slug>[^/]+))?$/, render: (p) => {
+        // The pages are large, so the view loads when it is opened.
+        void import('../views/docs-view.ts');
+        return html`<pv-docs section=${p.section ?? ''} slug=${p.slug ?? ''}></pv-docs>`;
+      } },
       { pattern: /^\/webhooks\/(?<id>[^/]+)$/, render: (p) => html`<pv-webhook-detail .api=${this.api} .me=${this.me} subscription-id=${p.id!}></pv-webhook-detail>` },
     ];
   }
@@ -370,6 +375,8 @@ export class AppShell extends LitElement {
         return msg('Rule sets', { id: 'nav.ruleSets' });
       case 'nav.settings':
         return msg('Settings', { id: 'nav.settings' });
+      case 'nav.docs':
+        return msg('Documentation', { id: 'nav.docs' });
       default:
         return id;
     }
