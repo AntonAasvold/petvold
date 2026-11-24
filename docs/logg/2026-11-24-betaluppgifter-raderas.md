@@ -1,4 +1,4 @@
-# Betaluppgifter raderas med parten (PR #NN)
+# Betaluppgifter raderas med parten (PR #163)
 
 **Datum:** 2026-11-24 **ADR:** 0040 punkt 11, 0028, 0001 **Moduler:** `payments`, `parties`, `api`
 
