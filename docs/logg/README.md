@@ -43,7 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
-| 2026-11-24 | [Besked om kreditnota till kunden](2026-11-24-besked-om-kreditnota.md) | #NN |
+| 2026-11-24 | [Besked om kreditnota till kunden](2026-11-24-besked-om-kreditnota.md) | #164 |
 | 2026-11-24 | [Betaluppgifter raderas med parten](2026-11-24-betaluppgifter-raderas.md) | #163 |
 | 2026-11-24 | [Pengar, steg 8d: bokföringen i back office](2026-11-24-bokforing-i-back-office.md) | #162 |
 | 2026-11-24 | [Menyns ordning](2026-11-24-menyns-ordning.md) | #161 |

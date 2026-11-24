@@ -1,4 +1,4 @@
-# Besked om kreditnota till kunden (PR #NN)
+# Besked om kreditnota till kunden (PR #164)
 
 **Datum:** 2026-11-24 **ADR:** 0040 punkt 5, 0032 **Moduler:** `communications`, `api`, `apps/backoffice`
 
