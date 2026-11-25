@@ -21,7 +21,7 @@ import type { Column } from '../components/data-grid.ts';
 import { IdempotencyKeys } from '../decide.ts';
 import { formatDate, formatDateTime, formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
-import { heldSince, matchBody, matchProblems, mayDecideProposal, mayRelease, moneyTabs, returnReasonOk, type MoneyTab } from '../money-logic.ts';
+import { heldSince, matchBody, matchProblems, mayDecideProposal, mayDecideRecovery, mayRelease, moneyTabs, returnReasonOk, type MoneyTab } from '../money-logic.ts';
 import { agreementBody, agreementProblems, endingProblems, inForce, type AgreementForm } from '../payee-logic.ts';
 import '../components/payee-accounts.ts';
 import { navigate } from '../router.ts';
@@ -35,7 +35,8 @@ type Proposal = components['schemas']['CreditProposal'];
 type Agreement = components['schemas']['ClinicAgreement'];
 type PaymentFile = components['schemas']['PaymentFile'];
 type PayoutFile = components['schemas']['PayoutFile'];
-type Row = Payment | Payout | Proposal | Agreement | PaymentFile;
+type RecoveryRow = components['schemas']['Recovery'];
+type Row = Payment | Payout | Proposal | Agreement | PaymentFile | RecoveryRow;
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -58,6 +59,7 @@ export class MoneyView extends LitElement {
   @state() private agreement: AgreementForm = { clinicId: '', market: 'SE', validFrom: today(), validTo: '' };
   @state() private ending = { validTo: '', reason: '' };
   @state() private bankFile: File | null = null;
+  @state() private outcome: 'recover' | 'offset' | 'write-off' = 'recover';
   @state() private payoutFiles: PayoutFile[] = [];
   @state() private payoutFileFor = { market: 'SE', currency: 'SEK' };
   private request = 0;
@@ -100,6 +102,22 @@ export class MoneyView extends LitElement {
         flex-direction: column;
         gap: var(--space-3);
       }
+      fieldset {
+        display: grid;
+        gap: var(--space-3);
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+      legend {
+        padding: 0 0 var(--space-2);
+        font: 500 13px/1.4 var(--font-sans);
+        color: var(--text-secondary);
+      }
+      .pv-choice:focus-within {
+        outline: var(--border-strong) solid var(--focus);
+        outline-offset: 2px;
+      }
       @media (max-width: 52rem) {
         .side {
           max-width: none;
@@ -135,6 +153,8 @@ export class MoneyView extends LitElement {
         return unwrap(this.api.GET('/v1/clinic-agreements', { params: { query } }));
       case 'files':
         return unwrap(this.api.GET('/v1/payment-files', { params: { query } }));
+      case 'recoveries':
+        return unwrap(this.api.GET('/v1/recoveries', { params: { query: { ...query, status: 'proposed' } } }));
       default:
         return unwrap(this.api.GET('/v1/credit-proposals', { params: { query: { ...query, status: 'proposed' } } }));
     }
@@ -182,6 +202,7 @@ export class MoneyView extends LitElement {
     this.problems = [];
     this.notice = null;
     this.ending = { validTo: '', reason: '' };
+    this.outcome = 'recover';
   }
 
   private tabLabel(t: MoneyTab) {
@@ -198,6 +219,8 @@ export class MoneyView extends LitElement {
         return msg('Clinics', { id: 'money.tab.clinics' });
       case 'files':
         return msg('Bank files', { id: 'money.tab.files' });
+      case 'recoveries':
+        return msg('Recoveries', { id: 'money.tab.recoveries' });
     }
   }
 
@@ -226,6 +249,13 @@ export class MoneyView extends LitElement {
           { key: 'amount', header: msg('Amount', { id: 'money.amount' }), value: (r) => amount(r as Payout), align: 'end' },
           { key: 'payee', header: msg('Payee', { id: 'money.payee' }), value: (r) => (r as Payout).clinicId ?? (r as Payout).partyId ?? '–' },
           { key: 'purpose', header: msg('For', { id: 'money.purpose' }), value: (r) => this.purposeLabel((r as Payout).purpose) },
+        ];
+      case 'recoveries':
+        return [
+          { key: 'proposedAt', header: msg('Proposed', { id: 'money.proposedAt' }), value: (r) => formatDateTime((r as RecoveryRow).proposedAt, lang) },
+          { key: 'claim', header: msg('Claim', { id: 'money.claimPayout' }), value: (r) => html`<span class="pv-mono">${(r as RecoveryRow).claimId}</span>` },
+          { key: 'amount', header: msg('Amount', { id: 'money.amount' }), value: (r) => amount(r as RecoveryRow), align: 'end' },
+          { key: 'party', header: msg('Customer', { id: 'money.customer' }), value: (r) => (r as RecoveryRow).partyId },
         ];
       case 'files':
         return [
@@ -626,6 +656,54 @@ export class MoneyView extends LitElement {
     </section>`;
   }
 
+  private async doDecideRecovery(e: Event, r: RecoveryRow) {
+    e.preventDefault();
+    const note = this.note.trim();
+    await this.send(
+      'recovery',
+      r.id,
+      (key) => this.api.POST('/v1/recoveries/{recoveryId}/decisions', { params: { path: { recoveryId: r.id }, header: { 'Idempotency-Key': key } }, body: { outcome: this.outcome, ...(note ? { note } : {}) } }),
+      msg('The recovery is decided.', { id: 'money.recoveryDecided' }),
+    );
+  }
+
+  private recoveryCard(r: RecoveryRow) {
+    const lang = getLocale();
+    const options: { value: 'recover' | 'offset' | 'write-off'; title: string; desc: string }[] = [
+      { value: 'recover', title: msg('Recover', { id: 'money.recover' }), desc: msg('A debt the insurer collects from the customer.', { id: 'money.recoverHow' }) },
+      { value: 'offset', title: msg('Offset against the credit', { id: 'money.offset' }), desc: msg("Taken from the customer's credit, premium that would be paid back. Only if it covers the amount.", { id: 'money.offsetHow' }) },
+      { value: 'write-off', title: msg('Write off', { id: 'money.writeOffRecovery' }), desc: msg('Given up. Only within your limit.', { id: 'money.writeOffHow' }) },
+    ];
+    return html`<section class="pv-card" aria-labelledby="sel">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="sel">${msg('Recovery', { id: 'money.recovery' })}</h2><span class="pv-card__meta pv-mono">${r.id}</span></div>
+      <div class="pv-card__body">
+        <dl class="pv-dl">
+          ${this.row(msg('Amount', { id: 'money.amount' }), formatMoney(r.amount, r.currency, lang))}
+          ${this.row(msg('Claim', { id: 'money.claimPayout' }), html`<a href="/claims/${r.claimId}" @click=${(e: Event) => (e.preventDefault(), navigate(`/claims/${encodeURIComponent(r.claimId)}`))}>${r.claimId}</a>`, true)}
+          ${this.row(msg('Customer', { id: 'money.customer' }), html`<a href="/parties/${r.partyId}" @click=${(e: Event) => (e.preventDefault(), navigate(`/parties/${encodeURIComponent(r.partyId)}`))}>${r.partyId}</a>`, true)}
+          ${r.accountId ? this.row(msg('Payer account', { id: 'money.account' }), html`<a href="/payer-accounts/${r.accountId}" @click=${(e: Event) => (e.preventDefault(), navigate(`/payer-accounts/${encodeURIComponent(r.accountId!)}`))}>${r.accountId}</a>`, true) : nothing}
+          ${this.row(msg('Proposed', { id: 'money.proposedAt' }), formatDateTime(r.proposedAt, lang))}
+        </dl>
+        <p>${msg("A decision lowered the claim's payout after it was ordered. Nothing is drawn back by itself.", { id: 'money.recoveryHow' })}</p>
+        ${mayDecideRecovery(r, this.me)
+          ? html`<form @submit=${(e: Event) => this.doDecideRecovery(e, r)} novalidate>
+              <fieldset>
+                <legend>${msg('Decision', { id: 'money.decision' })}</legend>
+                ${options.map(
+                  (o) => html`<label class="pv-choice">
+                    <input type="radio" name="outcome" value=${o.value} .checked=${this.outcome === o.value} ?disabled=${o.value === 'offset' && !r.accountId} @change=${() => (this.outcome = o.value)} />
+                    <span><span class="pv-choice__title">${o.title}</span><span class="pv-choice__desc">${o.desc}</span></span>
+                  </label>`,
+                )}
+              </fieldset>
+              <wa-textarea label=${msg('Why (optional)', { id: 'money.why' })} rows="2" .value=${this.note} @input=${(e: Event) => (this.note = value(e))}></wa-textarea>
+              <wa-button type="submit" variant="brand" ?loading=${this.busy === 'recovery'}>${msg('Decide', { id: 'money.decide' })}</wa-button>
+            </form>`
+          : nothing}
+      </div>
+    </section>`;
+  }
+
   private side() {
     const s = this.selected;
     const card = !s
@@ -644,7 +722,9 @@ export class MoneyView extends LitElement {
             ? this.agreementCard(s)
             : 'sha256' in s
               ? this.fileCard(s)
-              : this.proposalCard(s);
+              : 'partyId' in s && 'decisionId' in s
+                ? this.recoveryCard(s as RecoveryRow)
+                : this.proposalCard(s as Proposal);
     if (!this.notice && card === nothing) return nothing;
     return html`<div class="side">
       ${this.notice ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'success' ? 'status' : 'alert'}>${this.notice.text}</wa-callout>` : nothing}
