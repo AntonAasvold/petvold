@@ -30,12 +30,31 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 
 *Inte byggt än:* simulering av en regelversion mot sparade beslut, och formulär för tariffer, prisvillkor och teckningsregler.
 
+## Översikt
+
+Startsidan är **Översikt**, för alla som är inloggade. Den visar det som väntar på en person, i de köer rollen får se:
+
+| Grupp | Köer |
+| --- | --- |
+| Skador | att besluta, förslag att attestera (`claims:approve`) och begärda prövningar |
+| Policyer och kunder | ansökningar att pröva, förslag att besvara och meddelanden som behöver en person |
+| Pengar | okopplade inbetalningar, spärrade utbetalningar, utbetalningar som väntar på betaluppgifter, kreditförslag och återkrav |
+| Drift och personuppgifter | raderingar att besluta, webhooks som inte kom fram och händelser som fastnat |
+| Drift och bokföring | körningar vars senaste körning misslyckades (`jobs:read`), och senast stängda dag per marknad med en varning när kontoplanen saknar konton (`accounting:read`) |
+
+- **Varje kö är ett kort** med antal, namn och en rad om vad som väntar. Ett kort öppnar kön, på rätt flik, till exempel `/money?tab=recoveries`.
+- **Köer med något som väntar** står först i sin grupp. En tom kö har en streckad ram och texten "Inget väntar".
+- **Antalen** kommer från köernas egna listor, som menyns räknare, och visar högst 100, sedan "100+".
+
+**Exempel:** ekonomi loggar in och ser två utbetalningar som väntar på betaluppgifter och inget annat. Kortet öppnar fliken under Pengar.
+
 ## Toppraden och menyn
 
 - **Toppraden** visar Petvold och Back office, ett sökfält, språkval, vem som är inloggad och Logga ut.
 - **Sökfältet** öppnar en skada (`clm_…`), policy (`pol_…`), ansökan (`app_…`) eller ett meddelande (`ntc_…`) direkt. Allt annat söks bland policyerna: djur- eller part-id, personnummer och chipnummer. Ett personnummer hamnar aldrig i webbadressen.
 - **Menyn** visar de avsnitt användaren har rätt till, med det man använder mest överst:
-  1. det dagliga arbetet: Skador, Policyer, Parter och Djur
+  1. Översikt, startsidan
+  2. det dagliga arbetet: Skador, Policyer, Parter och Djur
   2. köerna som väntar på en person: Ansökningar, Förslag, Pengar och Meddelanden
   3. Radering, som används sällan
   4. konfigurationen: Produkter och Regeluppsättningar

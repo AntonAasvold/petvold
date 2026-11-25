@@ -32,7 +32,7 @@ test("a billing clerk gives a customer's payout details; the number is masked", 
 
 test('a billing clerk makes an agreement on direct settlement with a clinic, and ends it', async ({ page }) => {
   await signIn(page, 'dev-billing');
-  await page.getByRole('link', { name: /^Money/ }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Money/ }).click();
   await page.getByRole('tab', { name: 'Clinics' }).click();
 
   await page.getByRole('button', { name: 'Make the agreement' }).click();

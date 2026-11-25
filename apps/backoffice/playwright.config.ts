@@ -28,7 +28,8 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
-      command: `npx vite --host 127.0.0.1 --port ${UI_PORT} --strictPort`,
+      // The icons first, as npm run dev does: public/icons is made, not kept in git.
+      command: `npm run icons && npx vite --host 127.0.0.1 --port ${UI_PORT} --strictPort`,
       url: `http://127.0.0.1:${UI_PORT}`,
       env: { VITE_API_URL: `http://127.0.0.1:${API_PORT}` },
       reuseExistingServer: false,

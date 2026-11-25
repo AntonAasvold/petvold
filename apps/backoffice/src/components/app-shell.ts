@@ -48,6 +48,7 @@ import '../views/settings-view.ts';
 import '../views/money-view.ts';
 import '../views/payer-account.ts';
 import '../views/accounting-view.ts';
+import '../views/overview-view.ts';
 import '../views/catalog-views.ts';
 
 @customElement('pv-app')
@@ -232,7 +233,7 @@ export class AppShell extends LitElement {
     try {
       this.failed = '';
       this.me = (await unwrap(this.api.GET('/v1/me'))) as Me;
-      if (this.path === '/' || this.path === '/login' || this.path === '/callback') navigate(sectionsFor(this.me)[0]?.path ?? '/');
+      if (this.path === '/login' || this.path === '/callback') navigate('/');
       void this.loadCounts();
     } catch (e) {
       this.me = null;
@@ -285,6 +286,7 @@ export class AppShell extends LitElement {
       { pattern: /^\/jobs$/, render: () => html`<pv-jobs .api=${this.api} .me=${this.me}></pv-jobs>` },
       { pattern: /^\/jobs\/(?<id>[^/]+)$/, render: (p) => html`<pv-job-detail .api=${this.api} .me=${this.me} job=${p.id!}></pv-job-detail>` },
       { pattern: /^\/payer-accounts\/(?<id>[^/]+)$/, render: (p) => html`<pv-payer-account .api=${this.api} .me=${this.me} account-id=${p.id!}></pv-payer-account>` },
+      { pattern: /^\/$/, render: () => html`<pv-overview .api=${this.api} .me=${this.me}></pv-overview>` },
       { pattern: /^\/accounting$/, render: () => html`<pv-accounting .api=${this.api} .me=${this.me}></pv-accounting>` },
       { pattern: /^\/money$/, render: () => html`<pv-money .api=${this.api} .me=${this.me}></pv-money>` },
       { pattern: /^\/settings$/, render: () => html`<pv-settings .api=${this.api} .me=${this.me}></pv-settings>` },
@@ -337,7 +339,7 @@ export class AppShell extends LitElement {
           <div class="pv-nav">
             ${sections.map(
               (s) =>
-                html`<a class="pv-nav__item" href=${s.path} aria-current=${this.path.startsWith(s.path) ? 'page' : nothing} @click=${(e: Event) => (e.preventDefault(), navigate(s.path))}>
+                html`<a class="pv-nav__item" href=${s.path} aria-current=${(s.path === '/' ? this.path === '/' : this.path.startsWith(s.path)) ? 'page' : nothing} @click=${(e: Event) => (e.preventDefault(), navigate(s.path))}>
                   <wa-icon name=${s.icon} aria-hidden="true"></wa-icon><span>${this.label(s.label)}</span>
                   ${this.counts[s.path] ? html`<span class="pv-nav__count" aria-label=${`${this.counts[s.path]} ${msg('waiting', { id: 'nav.waiting' })}`}>${this.counts[s.path]}</span>` : nothing}
                 </a>`,
@@ -385,6 +387,8 @@ export class AppShell extends LitElement {
         return msg('Money', { id: 'nav.money' });
       case 'nav.accounting':
         return msg('Bookkeeping', { id: 'nav.accounting' });
+      case 'nav.overview':
+        return msg('Overview', { id: 'nav.overview' });
       case 'nav.docs':
         return msg('Documentation', { id: 'nav.docs' });
       default:

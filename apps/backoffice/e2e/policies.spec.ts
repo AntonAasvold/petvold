@@ -12,7 +12,7 @@ async function signIn(page: Page, token: string) {
 
 test('a policy is found by its id and by its policyholder, with terms, versions and history', async ({ page }) => {
   await signIn(page, 'dev-handler');
-  await page.getByRole('link', { name: 'Policies' }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Policies' }).click();
   await page.getByRole('textbox', { name: 'Search' }).fill('pty_owner001');
   await page.getByRole('button', { name: 'Search' }).click();
   const grid = page.getByRole('grid', { name: 'Policies' });
@@ -34,7 +34,7 @@ test('a policy is found by its id and by its policyholder, with terms, versions 
 
 test('an underwriter decides a referred application; the grounds are required', async ({ page }) => {
   await signIn(page, 'dev-underwriter');
-  await page.getByRole('link', { name: 'Applications' }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Applications' }).click();
   const grid = page.getByRole('grid', { name: 'Applications' });
   await expect(grid.getByRole('row').nth(1)).toContainText('ani_rocky');
   await grid.getByRole('row').nth(1).getByRole('gridcell').first().click();
@@ -61,12 +61,12 @@ test('a transfer to a new owner is accepted from the policy', async ({ page, req
   expect(res.status()).toBe(201);
 
   await signIn(page, 'dev-seller');
-  await page.getByRole('link', { name: 'Proposals' }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Proposals' }).click();
   const grid = page.getByRole('grid', { name: 'Proposals' });
   // The relay runs every second. The token lives in memory, so the list is fetched again by leaving and coming back, not by reloading.
   await expect(async () => {
-    await page.getByRole('link', { name: 'Policies' }).click();
-    await page.getByRole('link', { name: 'Proposals' }).click();
+    await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Policies' }).click();
+    await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Proposals' }).click();
     await expect(grid.getByRole('gridcell', { name: 'Transfer to a new owner' })).toBeVisible({ timeout: 1000 });
   }).toPass({ timeout: 15_000 });
   await grid.getByRole('gridcell', { name: 'Transfer to a new owner' }).click();

@@ -37,7 +37,7 @@ test('an accountant reads a closed day, downloads its file and changes the chart
   await page.getByRole('combobox', { name: 'Token' }).click();
   await page.getByRole('option', { name: 'dev-accountant', exact: true }).click();
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.getByRole('link', { name: /^Bookkeeping/ }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Bookkeeping/ }).click();
   await expect(page.getByRole('heading', { name: 'Bookkeeping', exact: true })).toBeVisible();
 
   await page.getByLabel('From').fill(new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10));

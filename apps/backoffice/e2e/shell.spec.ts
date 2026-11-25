@@ -10,12 +10,14 @@ test('the top bar names Petvold and the back office, and the menu counts what wa
   await expect(banner).toContainText('Petvold');
   await expect(banner).toContainText('Back office');
   const nav = page.getByRole('navigation', { name: 'Sections' });
-  const claims = nav.getByRole('link', { name: /^Claims/ });
-  await expect(claims).toHaveAttribute('aria-current', 'page');
+  // The start page is the overview, and its item is the selected one.
+  const overview = nav.getByRole('link', { name: 'Overview' });
+  await expect(overview).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: /^Claims/ })).not.toHaveAttribute('aria-current', 'page');
   // Sixten's refusal lacks the review text and stays in the notices that need a person.
   await expect(nav.getByRole('link', { name: /^Notices/ }).locator('.pv-nav__count')).toHaveText(/^\d+\+?$/);
   // The selected item is ink on paper: the design system's inverted state.
-  const bg = await claims.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const bg = await overview.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(bg).toBe('rgb(0, 0, 0)');
 });
 
@@ -36,7 +38,7 @@ test('dev-all has every section of the back office in the menu', async ({ page }
   await page.getByRole('option', { name: 'dev-all', exact: true }).click();
   await page.getByRole('button', { name: 'Sign in' }).click();
   const menu = page.getByRole('navigation', { name: 'Sections' });
-  for (const section of ['Claims', 'Policies', 'Parties', 'Animals', 'Erasure', 'Applications', 'Proposals', 'Notices', 'Webhooks', 'Runs', 'Products', 'Rule sets', 'Settings']) {
+  for (const section of ['Overview', 'Claims', 'Policies', 'Parties', 'Animals', 'Erasure', 'Applications', 'Proposals', 'Notices', 'Webhooks', 'Runs', 'Products', 'Rule sets', 'Settings']) {
     await expect(menu.getByRole('link', { name: new RegExp(`^${section}`) })).toBeVisible();
   }
 });

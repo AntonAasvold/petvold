@@ -6,7 +6,7 @@ async function signIn(page: Page, token: string) {
   await page.getByRole('combobox', { name: 'Token' }).click();
   await page.getByRole('option', { name: token, exact: true }).click();
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
 }
 

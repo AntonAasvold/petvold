@@ -42,7 +42,7 @@ test('a billing clerk matches a payment that came in without a reference', async
   await page.getByRole('combobox', { name: 'Token' }).click();
   await page.getByRole('option', { name: 'dev-billing', exact: true }).click();
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.getByRole('link', { name: /^Money/ }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Money/ }).click();
   await expect(page.getByRole('heading', { name: 'Money', exact: true })).toBeVisible();
 
   const grid = page.getByRole('grid', { name: 'Unmatched payments' });
