@@ -105,7 +105,18 @@ Inställningen `documentMaker` per marknad avgör vem som gör meddelandenas dok
 
 En sparad rollinställning behöver `npm run roles:sync -- --apply` för att få de nya rättigheterna.
 
+## Gallring
+
+Dokumenten gallras när parten de gäller anonymiseras ([Parter](parter.md#radering-och-begränsning-adr-0028), ADR 0028). Det gäller mottagaren av ett meddelande, och försäkringstagaren för en policy eller ett ärende.
+- **Filen tas bort** ur lagringen. Uppgifterna om dokumentet finns kvar med typ, datum och kontrollsumma, så att det går att visa att dokumentet fanns och att det gallrats.
+- **En länk till dokumentet** slutar fungera (`410`), och nya länkar går inte att skapa.
+- **Gallringen av parter** räknar policyer och skador som relationer. Ett dokument gallras därför inte förrän det det hör till har passerat lagringstiden.
+- **Efter en återställning** från säkerhetskopia tar `npm run erasures:reapply` bort filerna igen. Det kräver `DOCUMENTS_DATABASE_URL` och `PETVOLD_DOCUMENTS_BUCKET`.
+
+En bucket med versionshantering behåller gamla versioner av filen tills bucketens egen livscykelregel tar bort dem. Ställ in en sådan regel.
+
+**Exempel:** Annas lagringstid går ut, och en dataskyddsansvarig godkänner anonymiseringen. Hennes skadebesked och bilagor finns kvar i listan med typ och datum, men går inte att öppna.
+
 ## Det som kommer
 
-ADR 0038 byggs i fem steg. Steg 1–4 är byggda.
-5. Gallring av dokument som en körning.
+ADR 0038 är byggd i alla fem stegen. Steg 5 blev gallring med parten (se förtydligandet i ADR 0038).

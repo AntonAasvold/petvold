@@ -153,7 +153,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [x] Bilagor till skador laddas upp från back office till arkivet, och kundens sida visar alla kundens dokument, också de i bolagets arkiv (steg 2)
 - [x] [Gotenberg](https://gotenberg.dev) (MIT) i en egen container utan nätåtkomst, och mallar i HTML/CSS med designsystemets tokens, versionerade med kontrollsumma, som ger PDF/A (steg 3). Carbone valdes bort på grund av licensen.
 - [x] Meddelanden som PDF från Petvold eller från bolagets dokumentsystem, och dokumenten i back office (steg 4)
-- [ ] Gallring av dokument som en körning (steg 5)
+- [x] Gallring av dokument med parten, genom en krok i partsmodulen (steg 5, se förtydligandet i ADR 0038)
 
 **M4 – Pris och teckning**
 - [x] ADR om tariffen (ADR 0030)

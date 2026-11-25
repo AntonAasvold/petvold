@@ -46,6 +46,16 @@ export function documentStoreSuite(name: string, factory: StoreFactory): void {
         }
       });
 
+    it('a document is marked erased once; the record stays', async (s) => {
+      await s.save(doc('doc_1'));
+      assert.equal(await s.markErased('doc_1', '2026-12-01T10:00:00.000Z'), true);
+      assert.equal(await s.markErased('doc_1', '2026-12-02T10:00:00.000Z'), false, 'once');
+      const d = await s.get('doc_1');
+      assert.equal(d?.erasedAt, '2026-12-01T10:00:00.000Z');
+      assert.equal(d?.sha256, 'a'.repeat(64), 'the checksum stays, to show it was there');
+      assert.equal(await s.markErased('doc_missing', '2026-12-01T10:00:00.000Z'), false);
+    });
+
     it('a document is read back unchanged, once per id', async (s) => {
       const d = doc('doc_1');
       await s.save(d);

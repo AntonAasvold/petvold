@@ -558,6 +558,8 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     signingKey: documentKey ?? randomBytes(32),
     publicBaseUrl: config.documents?.publicBaseUrl ?? 'http://localhost:8787',
   });
+  // The documents about the party go with it: the file, not the record (ADR 0038 point 9).
+  erasureHooks.push({ name: 'documents', blocker: async () => null, erase: async (id) => void (await documents.erasePartyDocuments(id)) });
 
   return {
     deps: { service, clock, idempotency, access, decisioning, catalog, products, animals, parties, retention, policies, communications, webhooks, scheduler, relay, documents, billing, payments, accounting },

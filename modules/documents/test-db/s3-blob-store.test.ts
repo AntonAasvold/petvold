@@ -17,6 +17,10 @@ test('a file is stored and read back, a missing one is null, and a stored one is
     assert.equal(await s3.get(`${key}_missing`), null);
     await assert.rejects(s3.put(key, new TextEncoder().encode('%PDF-1.7 changed'), 'application/pdf'));
     assert.deepEqual(await s3.get(key), bytes);
+    // Retention deletes it, and deleting it again is nothing.
+    await s3.delete(key);
+    assert.equal(await s3.get(key), null);
+    await s3.delete(key);
     await s3.ping();
   } finally {
     s3.destroy();

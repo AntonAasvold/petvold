@@ -77,7 +77,7 @@ Ur token läses `sub` (vem), roller, marknader (en lista eller `*`), och för ro
 
 - **Migreringar** körs före start med dbmate, som ägarrollen (`npm run db:migrate`, eller avbildningen `api` som ovan). Tjänsterollerna kan inte ändra schemat.
 - **Tjänsteroller** skapas av installationen, till exempel med CloudNativePG `spec.managed.roles`. Lokalt skapas de av `db/init/`. Rollen måste finnas innan migreringen som ger den rättigheter körs. Migration 0031 kräver till exempel `communications_service`, migration 0050 kräver `billing_service`, migration 0054 kräver `payments_service` och migration 0064 kräver `accounting_service`.
-- **Efter en återställning** från säkerhetskopia körs `npm run erasures:reapply` innan servern startar (ADR 0028). Med `PAYMENTS_DATABASE_URL` raderas betaluppgifterna igen för de anonymiserade parterna.
+- **Efter en återställning** från säkerhetskopia körs `npm run erasures:reapply` innan servern startar (ADR 0028). Med `PAYMENTS_DATABASE_URL` raderas betaluppgifterna igen för de anonymiserade parterna. Med `DOCUMENTS_DATABASE_URL` och `PETVOLD_DOCUMENTS_BUCKET` tas dokumentens filer bort igen.
 - **Efter en uppgradering** visar `npm run roles:sync` nya standardroller, och `-- --apply` sparar dem (ADR 0020).
 
 ## Händelser
