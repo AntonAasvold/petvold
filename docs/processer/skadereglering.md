@@ -50,7 +50,7 @@ flowchart LR
 | SKADA-15 | Ett ärende har högst ett öppet förslag. Vid attesten måste underlaget vara detsamma som i förslaget. | ADR 0019 | – |
 | SKADA-16 | Ett avslag, ett automatiskt beslut och en omprövning kräver aldrig attest. | ADR 0019 | – |
 | SKADA-17 | Varje beslut sparar hela underlaget, regelversionen, beräkningsmodellen och Petvolds version, och kan räknas om till samma resultat. | ADR 0018 | – |
-| SKADA-18 | Ett beslut som höjer ersättningen ger en utbetalningsorder på ökningen. En sänkning ger ingen order. | ADR 0019, ADR 0040 | – |
+| SKADA-18 | Ett beslut som höjer ersättningen ger en utbetalningsorder på ökningen. En sänkning ger ett förslag till återkrav på minskningen, och inget dras tillbaka av sig självt (`UTB-12`). | ADR 0019, ADR 0040 | – |
 
 ## Regler för komplettering
 

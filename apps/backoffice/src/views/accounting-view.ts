@@ -214,6 +214,8 @@ export class AccountingView extends LitElement {
         return msg('Claims cost', { id: 'account.kind.claimsCost' });
       case 'claims-payable':
         return msg('Claims payable', { id: 'account.kind.claimsPayable' });
+      case 'recoveries-receivable':
+        return msg('Recoveries receivable', { id: 'account.kind.recoveries' });
       default:
         return k;
     }

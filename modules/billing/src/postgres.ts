@@ -4,7 +4,7 @@
  * plans never change.
  */
 import type pg from 'pg';
-import { InvoiceConflictError, MatchConflictError, type AccountLedger, type Allocation, type BillingEvent, type CreditApplication, type CreditProposal, type DunningStep, type Refund, type BillingStore, type CreditNote, type Invoice, type InvoiceFilter, type PayerAccount, type PaymentMatch, type PaymentReceipt, type PlanRecord } from './index.ts';
+import { InvoiceConflictError, MatchConflictError, type Recovery, type AccountLedger, type Allocation, type BillingEvent, type CreditApplication, type CreditProposal, type DunningStep, type Refund, type BillingStore, type CreditNote, type Invoice, type InvoiceFilter, type PayerAccount, type PaymentMatch, type PaymentReceipt, type PlanRecord } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -337,13 +337,14 @@ export class PostgresBillingStore implements BillingStore {
 
   /** The account's ledger, read with the given connection: inside a transaction, after the account's lock. */
   private async ledgerWith(db: Queryable, accountId: string): Promise<AccountLedger> {
-    const [inv, cred, alloc, rec, apps, refunded] = await Promise.all([
+    const [inv, cred, alloc, rec, apps, refunded, offset] = await Promise.all([
       db.query(`select ${INVOICE} from billing.invoice i where i.account_id = $1 order by i.created_at, i.invoice_no collate "C"`, [accountId]),
       db.query(`select ${CREDIT} from billing.credit_note c where c.account_id = $1 order by c.created_at, c.credit_note_no collate "C"`, [accountId]),
       db.query(`select payment_id, invoice_id, account_id, amount from billing.allocation where account_id = $1 order by payment_id collate "C", invoice_id collate "C"`, [accountId]),
       db.query(`select coalesce(sum(r.amount), 0) as received from billing.payment_receipt r join billing.payment_match m using (payment_id) where m.account_id = $1`, [accountId]),
       db.query(`select ${APPLICATION} from billing.credit_application where account_id = $1 order by at, application_id collate "C"`, [accountId]),
       db.query(`select coalesce(sum(amount), 0) as refunded from billing.refund where account_id = $1`, [accountId]),
+      db.query(`select coalesce(sum(r.amount), 0) as offset from billing.recovery r join billing.recovery_decision d using (recovery_id) where r.account_id = $1 and d.outcome = 'offset'`, [accountId]),
     ]);
     return {
       invoices: inv.rows.map(invoice),
@@ -352,11 +353,100 @@ export class PostgresBillingStore implements BillingStore {
       received: Number(rec.rows[0].received),
       creditApplications: apps.rows.map(application),
       refunded: Number(refunded.rows[0].refunded),
+      offset: Number(offset.rows[0].offset),
     };
   }
 
   async ledger(accountId: string) {
     return this.ledgerWith(this.pool, accountId);
+  }
+
+  async addRecovery(r: Recovery, events: BillingEvent[]): Promise<boolean> {
+    const db = await this.pool.connect();
+    try {
+      await db.query('begin');
+      const { rowCount } = await db.query(
+        `insert into billing.recovery (recovery_id, claim_id, decision_id, policy_id, party_id, account_id, market, currency, amount, source_event_id, proposed_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (source_event_id) do nothing`,
+        [r.id, r.claimId, r.decisionId, r.policyId, r.partyId, r.accountId ?? null, r.market, r.currency, r.amount, r.sourceEventId, r.proposedAt],
+      );
+      if (!rowCount) {
+        await db.query('rollback');
+        return false;
+      }
+      for (const e of events) await this.recoveryOutbox(db, e);
+      await db.query('commit');
+      return true;
+    } catch (err) {
+      await db.query('rollback');
+      throw err;
+    } finally {
+      db.release();
+    }
+  }
+
+  async decideRecovery(id: string, d: NonNullable<Recovery['decision']>, events: BillingEvent[], guard?: { accountId: string; check(ledger: AccountLedger): void }): Promise<void> {
+    const db = await this.pool.connect();
+    try {
+      await db.query('begin');
+      if (guard) {
+        // The same lock as payments and credit on the account: credit is never used twice.
+        await db.query(`select pg_advisory_xact_lock(hashtext('billing.account:' || $1))`, [guard.accountId]);
+        guard.check(await this.ledgerWith(db, guard.accountId));
+      }
+      await db.query(`insert into billing.recovery_decision (recovery_id, outcome, decided_by, decided_at, note) values ($1, $2, $3, $4, $5)`, [id, d.outcome, d.decidedBy, d.decidedAt, d.note ?? null]);
+      for (const e of events) await this.recoveryOutbox(db, e);
+      await db.query('commit');
+    } catch (err) {
+      await db.query('rollback');
+      if ((err as { code?: string }).code === UNIQUE_VIOLATION) throw new InvoiceConflictError(`Recovery ${id} is decided already`);
+      throw err;
+    } finally {
+      db.release();
+    }
+  }
+
+  private async recoveryOutbox(db: Queryable, e: BillingEvent): Promise<void> {
+    await db.query(`insert into billing.outbox (event_id, type, recovery_id, market, occurred_at, data) values ($1, $2, $3, $4, $5, $6)`, [e.id, e.type, e.recoveryId, e.market, e.occurredAt, JSON.stringify(e.data)]);
+  }
+
+  async recovery(id: string): Promise<Recovery | null> {
+    return (await this.recoveryRows(`r.recovery_id = $1`, [id]))[0] ?? null;
+  }
+
+  async recoveries(f: { status?: Recovery['status']; market?: string; claimId?: string; accountId?: string }): Promise<Recovery[]> {
+    const outcome = f.status === undefined ? undefined : f.status === 'proposed' ? null : ({ recovered: 'recover', offset: 'offset', 'written-off': 'write-off' } as const)[f.status];
+    return this.recoveryRows(
+      `($1::text is null or r.market = $1) and ($2::text is null or r.claim_id = $2) and ($3::text is null or r.account_id = $3)
+       and ($4::boolean is false or ($5::text is null and d.outcome is null) or d.outcome = $5)`,
+      [f.market ?? null, f.claimId ?? null, f.accountId ?? null, f.status !== undefined, outcome ?? null],
+    );
+  }
+
+  private async recoveryRows(where: string, params: unknown[]): Promise<Recovery[]> {
+    const { rows } = await this.pool.query(
+      `select r.recovery_id, r.claim_id, r.decision_id, r.policy_id, r.party_id, r.account_id, r.market, r.currency, r.amount, r.source_event_id, r.proposed_at,
+              d.outcome, d.decided_by, d.decided_at, d.note
+       from billing.recovery r left join billing.recovery_decision d using (recovery_id)
+       where ${where} order by r.proposed_at, r.recovery_id collate "C"`,
+      params,
+    );
+    const status = { recover: 'recovered', offset: 'offset', 'write-off': 'written-off' } as const;
+    return rows.map((x) => ({
+      id: x.recovery_id,
+      claimId: x.claim_id,
+      decisionId: x.decision_id,
+      policyId: x.policy_id,
+      partyId: x.party_id,
+      ...(x.account_id ? { accountId: x.account_id } : {}),
+      market: x.market,
+      currency: x.currency,
+      amount: Number(x.amount),
+      sourceEventId: x.source_event_id,
+      proposedAt: iso(x.proposed_at),
+      status: x.outcome ? status[x.outcome as keyof typeof status] : 'proposed',
+      ...(x.outcome ? { decision: { outcome: x.outcome, decidedBy: x.decided_by, decidedAt: iso(x.decided_at), ...(x.note ? { note: x.note } : {}) } } : {}),
+    }));
   }
 
   async addReceipt(receipt: PaymentReceipt, settle: null | { match: PaymentMatch; plan: (ledger: AccountLedger) => { allocations: Allocation[]; events: BillingEvent[] } }) {
@@ -648,7 +738,7 @@ export class PostgresBillingStore implements BillingStore {
 
   async pendingEvents(limit: number): Promise<BillingEvent[]> {
     const { rows } = await this.pool.query(
-      `select seq, event_id, type, invoice_id, refund_id, payment_id, market, occurred_at, data from billing.outbox where published_at is null order by seq limit $1`,
+      `select seq, event_id, type, invoice_id, refund_id, payment_id, recovery_id, market, occurred_at, data from billing.outbox where published_at is null order by seq limit $1`,
       [limit],
     );
     return rows.map((r) => ({
@@ -657,6 +747,7 @@ export class PostgresBillingStore implements BillingStore {
       ...(r.invoice_id ? { invoiceId: r.invoice_id } : {}),
       ...(r.refund_id ? { refundId: r.refund_id } : {}),
       ...(r.payment_id ? { paymentId: r.payment_id } : {}),
+      ...(r.recovery_id ? { recoveryId: r.recovery_id } : {}),
       market: r.market,
       occurredAt: iso(r.occurred_at),
       data: r.data,

@@ -15,7 +15,7 @@ import {
 } from '@petvold/parties';
 import { InMemoryPolicyStore, PolicyError, PolicyService, type Application, type ApplicationStatus, type PolicyGroup, type PolicyRecord, type Proposal } from '@petvold/policies';
 import { CommunicationsError, CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, NOTICE_TYPES, type NoticeType, type NoticeView } from '@petvold/communications';
-import { BillingError, BillingService, InMemoryBillingStore } from '@petvold/billing';
+import { BillingError, BillingService, InMemoryBillingStore, type Recovery } from '@petvold/billing';
 import { InMemoryPaymentsStore, PaymentsError, PaymentsService, ProviderNotificationError } from '@petvold/payments';
 import { AccountingError, AccountingService, InMemoryAccountingStore } from '@petvold/accounting';
 import { InMemoryWebhookStore, SecretBox, WebhookError, WebhookService, type Subscription } from '@petvold/webhooks';
@@ -1130,7 +1130,9 @@ export function createApp(d: AppDeps) {
     const id = c.req.param('invoiceId');
     const i = await billing.invoice(id);
     if (!seesInvoice(c.get('scope'), i)) throw new BillingError('not_found', `Invoice ${id} does not exist`);
-    const body = (await c.req.json()) as { provider?: string; successUrl: string; cancelUrl: string; locale?: string };
+    const r = await readJson(c, 'CheckoutSessionRequest');
+    if (!r.ok) return r.res;
+    const body = r.body as { provider?: string; successUrl: string; cancelUrl: string; locale?: string };
     for (const u of [body.successUrl, body.cancelUrl]) {
       const url = URL.canParse(u) ? new URL(u) : null;
       if (!url || !(url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)))) return problem(c, 422, 'successUrl and cancelUrl must be https, or http on localhost');
@@ -1185,6 +1187,32 @@ export function createApp(d: AppDeps) {
   };
 
   app.get('/v1/credit-proposals/:proposalId', async (c) => send(c, await visibleCreditProposal(c)));
+
+  // Recovery of a lowered claim payout (ADR 0040, punkt 8): proposed by billing, decided by a person.
+  const visibleRecovery = async (c: Context) => {
+    const id = c.req.param('recoveryId')!;
+    const r = await billing.recovery(id);
+    if (!seesPayment(c.get('scope'), r.market)) throw new BillingError('not_found', `Recovery ${id} does not exist`);
+    return r;
+  };
+
+  app.get('/v1/recoveries', async (c) => {
+    const status = c.req.query('status') as Recovery['status'] | undefined;
+    const market = c.req.query('market');
+    const claimId = c.req.query('claimId');
+    const items = await billing.recoveries({ ...(status ? { status } : {}), ...(market ? { market } : {}), ...(claimId ? { claimId } : {}) });
+    return sendPage(c, items.filter((x) => seesPayment(c.get('scope'), x.market)));
+  });
+
+  app.get('/v1/recoveries/:recoveryId', async (c) => send(c, await visibleRecovery(c)));
+
+  app.post('/v1/recoveries/:recoveryId/decisions', async (c) => {
+    const recovery = await visibleRecovery(c);
+    const r = await readJson(c, 'RecoveryDecisionRequest');
+    if (!r.ok) return r.res;
+    const p = c.get('principal');
+    return idempotent(c, r.body, async () => ({ status: 201, body: await billing.decideRecovery(recovery.id, r.body, p.subject, amountLimitsOf(p.roles, c.get('roles'), 'credit')) }));
+  });
 
   app.post('/v1/credit-proposals/:proposalId/approvals', async (c) => {
     const proposal = await visibleCreditProposal(c);
@@ -1301,7 +1329,9 @@ export function createApp(d: AppDeps) {
 
   // Payouts for the bank (ADR 0040, punkt 12): the pending ones in a pain.001, which the bank confirms in camt.054.
   app.post('/v1/payout-files', async (c) => {
-    const body = (await c.req.json()) as { provider?: string; market: string; currency: string; executionDate?: string };
+    const r = await readJson(c, 'PayoutFileRequest');
+    if (!r.ok) return r.res;
+    const body = r.body as { provider?: string; market: string; currency: string; executionDate?: string };
     if (!seesPayment(c.get('scope'), body.market)) throw new PaymentsError('not_found', `No payouts in ${body.market}`);
     return idempotent(c, body, async () => {
       const { content: _content, ...file } = await payments.makePayoutFile({ provider: body.provider ?? 'bank-file', market: body.market, currency: body.currency, ...(body.executionDate ? { executionDate: body.executionDate } : {}) }, c.get('principal').subject);

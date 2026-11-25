@@ -459,6 +459,9 @@ export async function compose(config: InstallationConfig): Promise<Installation>
           const outward = await claimsEventForWebhooks(entry, (claimId) => service.getClaim(claimId));
           // A payout order becomes a payout to the policyholder (ADR 0040, punkt 8).
           const payout = await payments.handleClaimEvent(outward);
+          // A lowered payout is proposed for recovery (ADR 0040, punkt 8).
+          const recovery = await billing.handleClaimEvent(outward);
+          if (recovery) log(`[recovery] ${recovery.id} ${recovery.amount} ${recovery.currency} for ${recovery.claimId}`);
           if (payout) log(`[payout] ${payout.id} ${payout.amount} ${payout.currency} for ${payout.claimId}: ${payout.status}`);
           const booked = await accounting.handleEvent(outward);
           if (booked) log(`[accounting] ${booked.number} ${booked.text}`);

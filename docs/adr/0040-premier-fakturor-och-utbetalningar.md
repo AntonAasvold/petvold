@@ -236,6 +236,15 @@ Stripe är byggd för inbetalningar med kort och Swish, genom Stripe Checkout:
 - **Inget Stripe-bibliotek.** Ett anrop med `fetch` och kontrollen med `node:crypto` räcker. Ett bibliotek hade gett ett större beroende att följa.
 - **Swish genom Stripe** gäller bara engångsbetalningar i SEK, och Stripe står som mottagare. Återkommande dragningar kräver Autogiro, som återstår.
 
+## Förtydligande 2026-11-25, återkrav
+
+Återkrav enligt punkt 8 är byggt. Det besvarar också den öppna frågan i ADR 0019:
+- **Skademotorn ger `claim.payout_reduced`** när ett beslut sänker ersättningen, med minskningen. Varje ändring av ersättningen blir då antingen en order (upp) eller en minskning (ned), och summan är alltid det beslutade.
+- **`billing` gör ett förslag** för försäkringstagaren den dagen, en gång per händelse, med betalarkontot om det finns.
+- **En handläggare med `billing:credit` beslutar en gång.** Att kräva tillbaka ger en fordran som bolaget driver in. Att avräkna minskar tillgodohavandet och kräver att det räcker, kontrollerat under kontots lås. Att skriva av kräver att beloppet ryms inom handläggarens gräns.
+- **Bokföringen:** att kräva tillbaka ger debet på fordringar på återkrav och kredit på skadekostnad. Att avräkna ger debet på premiefordran och kredit på skadekostnad. En avskrivning bokförs inte.
+- **Inte byggt:** att en betalning av ett återkrav kopplas till det, och att förslaget ser om den ursprungliga utbetalningen redan har betalats ut.
+
 ## Källor
 
 - Försäkringsavtalslagen (2005:104), 5 kap. 1, 2 och 6 §§. riksdagen.se

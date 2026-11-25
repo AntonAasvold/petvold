@@ -470,6 +470,23 @@ export interface PayoutOrder {
 }
 
 /**
+ * A decision that lowered the claim's payout (ADR 0040, punkt 8): the decrease,
+ * for billing to propose recovery. Every change to a payout is either an order
+ * (up) or a reduction (down), so their sum is always the payout decided.
+ */
+export interface PayoutReduction {
+  id: string;
+  claimId: string;
+  decisionId: string;
+  policyId: string;
+  /** The decrease in the claim's payout. Always positive. */
+  amount: MinorUnits;
+  currency: CurrencyCode;
+  channel: ClaimChannel;
+  clinicId?: string;
+}
+
+/**
  * A request for human review of an automated decision (ADR 0018, GDPR art. 22).
  * Open until a claims handler decides the claim; that decision closes it.
  */

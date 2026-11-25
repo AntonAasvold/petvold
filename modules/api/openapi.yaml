@@ -3843,6 +3843,91 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CreditProposal' }
 
+  /v1/recoveries:
+    get:
+      tags: [billing]
+      operationId: listRecoveries
+      x-permission: billing:read
+      summary: Recoveries of lowered claim payouts, oldest first
+      description: |
+        Requires the permission `billing:read` (ADR 0040, punkt 8). A decision that
+        lowers a claim's payout after it was ordered gives a recovery of the
+        difference. `status=proposed` is the queue to decide. Only in the
+        caller's markets.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [proposed, recovered, offset, written-off] } }
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - { name: claimId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The recoveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Recovery' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/recoveries/{recoveryId}:
+    get:
+      tags: [billing]
+      operationId: getRecovery
+      x-permission: billing:read
+      summary: A recovery
+      description: Requires the permission `billing:read`. Outside the caller's scope it answers 404.
+      parameters:
+        - { name: recoveryId, in: path, required: true, schema: { type: string, pattern: '^rcv_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: The recovery
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recovery' }
+
+  /v1/recoveries/{recoveryId}/decisions:
+    post:
+      tags: [billing]
+      operationId: decideRecovery
+      x-permission: billing:credit
+      summary: Decide a recovery
+      description: |
+        Requires the permission `billing:credit` (ADR 0040, punkt 8). Once:
+        recover (a debt the insurer collects from the customer), offset (taken
+        from the payer's credit, only if the credit covers it; 409 otherwise), or
+        write-off (only within the caller's creditLimits; 403 above it). Nothing
+        is drawn back by itself.
+      parameters:
+        - { name: recoveryId, in: path, required: true, schema: { type: string, pattern: '^rcv_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecoveryDecisionRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: The recovery, decided
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recovery' }
+
   /v1/credit-proposals:
     get:
       tags: [billing]
@@ -7536,6 +7621,42 @@ components:
         amount: { type: integer, minimum: 1, description: Minor units. }
         reason: { type: string, minLength: 1, maxLength: 2000 }
 
+    Recovery:
+      type: object
+      additionalProperties: false
+      required: [id, claimId, decisionId, policyId, partyId, market, currency, amount, sourceEventId, proposedAt, status]
+      description: "A claim's payout lowered after it was ordered, proposed for recovery (ADR 0040, punkt 8). Never changes; the decision is added once."
+      properties:
+        id: { type: string, pattern: '^rcv_[A-Za-z0-9]+$' }
+        claimId: { type: string }
+        decisionId: { type: string, description: The decision that lowered the payout. }
+        policyId: { type: string }
+        partyId: { type: string, description: The policyholder when the payout was lowered. }
+        accountId: { type: string, description: "The payer's account, where an offset goes. Omitted if the customer has none." }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        amount: { type: integer, minimum: 1 }
+        sourceEventId: { type: string }
+        proposedAt: { type: string, format: date-time }
+        status: { type: string, enum: [proposed, recovered, offset, written-off] }
+        decision:
+          type: object
+          additionalProperties: false
+          required: [outcome, decidedBy, decidedAt]
+          properties:
+            outcome: { type: string, enum: [recover, offset, write-off] }
+            decidedBy: { type: string }
+            decidedAt: { type: string, format: date-time }
+            note: { type: string }
+
+    RecoveryDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [outcome]
+      properties:
+        outcome: { type: string, enum: [recover, offset, write-off] }
+        note: { type: string, minLength: 1, maxLength: 2000, description: Why. No more personal data than needed. }
+
     CreditProposal:
       type: object
       additionalProperties: false
@@ -7567,7 +7688,7 @@ components:
 
     AccountKind:
       type: string
-      enum: [bank, premium-receivable, premium-income, premium-tax, installment-fees, unmatched-payments, customer-losses, claims-cost, claims-payable, refunds-payable]
+      enum: [bank, premium-receivable, premium-income, premium-tax, installment-fees, unmatched-payments, customer-losses, claims-cost, claims-payable, refunds-payable, recoveries-receivable]
       description: "Petvold's own kinds of account. The chart of accounts maps them to the insurer's account numbers. premium-receivable is per payer account; a negative balance is the payer's credit."
 
     Verification:

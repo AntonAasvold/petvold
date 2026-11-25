@@ -83,6 +83,8 @@ export interface AccountLedger {
   creditApplications: CreditApplication[];
   /** Credit paid back. */
   refunded: number;
+  /** Credit used to offset a recovery of a claim's payout (ADR 0040, punkt 8). */
+  offset: number;
 }
 
 export type InvoiceStatus = 'open' | 'partly-paid' | 'paid' | 'credited';
@@ -143,7 +145,7 @@ export function accountBalance(ledger: AccountLedger): { open: number; credit: n
     open += b.open;
     paid += b.paid;
   }
-  return { open, credit: ledger.received - paid - ledger.refunded };
+  return { open, credit: ledger.received - paid - ledger.refunded - ledger.offset };
 }
 
 /**

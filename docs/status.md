@@ -5,6 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
+- Återkrav, del 1, PR #170: en sänkt ersättning ger `claim.payout_reduced` och ett förslag till återkrav i `billing`. En handläggare kräver tillbaka, avräknar mot tillgodohavandet eller skriver av (`POST /v1/recoveries/{id}/decisions`). Det bokförs mot skadekostnaden. Rättat: två anrop från 7b och 7c validerade inte kroppen mot kontraktet. Migration 0070.
 - Pengar, steg 7c: Stripe, PR #168: en betalsida hos Stripe för en faktura (`POST /v1/invoices/{id}/checkout-sessions`, `payments:checkout`), med kort och Swish. Stripes signerade `checkout.session.completed` blir en inbetalning med fakturans referens. Knappen **Betallänk** finns på fakturan i back office. Inget nytt beroende.
 - Pengar, steg 7b: bankfiler ut, PR #167: utbetalningar med bankfil väntar på en `pain.001` som görs och hämtas under **Pengar** (`payments:export`). Bankens `camt.054` gör dem betalda eller returnerade. Filen töms när en mottagare raderas. Migration 0069.
 - Pengar, steg 7a: bankfiler in, PR #166: bankens `camt.054` läses in under **Pengar** eller av en integration (`POST /v1/payment-files`, `payments:import`). Inbetalningarna kopplas med OCR eller RF som förut. Varje fil sparas med vem, när och kontrollsumma. Migration 0068, ny roll `bank-file-job`.
@@ -35,12 +36,11 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 
 **Nästa steg**
 1. Demotjänstens fas 1 enligt [specen](teknik/demotjanst.md): ta emot och visa händelserna, och lägga den i demons Compose. Demon kör i Proxmox med DuckDNS sedan 2026-11-23.
-2. ADR 0040, steg 7: betaltjänster. Bankfiler först (ISO 20022, `pain.001` ut och `camt.054` in), sedan Stripe eller Surfboard, Autogiro och SEPA, och Swish.
-3. Återkrav som kö: kräver ett beslut om förslaget till återkrav (öppen fråga i ADR 0040).
+2. ADR 0040, steg 7: Autogiro via Bankgirot och SEPA-autogiro, och Swish direkt utan Stripe. Bankfiler och Stripe är byggda.
+3. Återkrav, del 2: kön under Pengar i back office.
 4. Back office: översikten på startsidan och omräkning av beslut.
 
 **Öppet**
 - Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.
-- En sänkt ersättning vid omprövning ger ingen återkravsorder. ADR 0040 föreslår ett förslag till återkrav i en kö.
 - Gallringen känner till djur, policyer, ansökningar och skador. Innan den körs skarpt hos ett försäkringsbolag behöver bolaget bekräfta lagringstiderna och att inga andra system har relationer som Petvold inte känner till, till exempel betalningar (M5).
 - Det sparas inte vem som slagit upp ett djur.

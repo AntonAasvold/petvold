@@ -12,6 +12,7 @@ import type {
   ReviewRequest,
   DecisionProposal,
   PayoutOrder,
+  PayoutReduction,
   Timestamp,
   Claim,
   ClaimClosure,
@@ -255,6 +256,7 @@ export type ClaimsEvent =
   | { type: 'claim.decision_proposed'; occurredAt: Timestamp; proposal: DecisionProposal }
   | { type: 'claim.proposal_returned'; occurredAt: Timestamp; proposal: DecisionProposal }
   | { type: 'claim.payout_ordered'; occurredAt: Timestamp; order: PayoutOrder }
+  | { type: 'claim.payout_reduced'; occurredAt: Timestamp; reduction: PayoutReduction }
   | { type: 'claim.withdrawn' | 'claim.dismissed'; occurredAt: Timestamp; closure: ClaimClosure }
   | { type: 'claim.corrected'; occurredAt: Timestamp; correction: ClaimCorrection }
   | { type: 'claim.attachment_added'; occurredAt: Timestamp; attachment: ClaimAttachment }
@@ -278,6 +280,8 @@ export function eventClaimId(e: ClaimsEvent): string {
       return e.proposal.claimId;
     case 'claim.payout_ordered':
       return e.order.claimId;
+    case 'claim.payout_reduced':
+      return e.reduction.claimId;
     case 'claim.withdrawn':
     case 'claim.dismissed':
       return e.closure.claimId;

@@ -628,7 +628,7 @@ test('an approved decision answers an open review request', async () => {
   assert.equal(d.reviewRequestId, req.id);
 });
 
-test('payout orders: only increases are ordered, for the difference', async () => {
+test('payout orders: only increases are ordered, for the difference; a decrease is a reduction', async () => {
   const { service, store, policies, clock } = setup();
   await service.registerClaim(otitisClaim()); // auto: SEK 1,500
   const orders = async () =>
@@ -640,6 +640,8 @@ test('payout orders: only increases are ordered, for the difference', async () =
   const re = await service.reassess('clm_021877', 'reassessment-job', 'Retroactive cancellation');
   assert.equal(re?.payout, 0);
   assert.deepEqual(await orders(), [150_000], 'a decrease is not ordered');
+  const reductions = (await store.pendingEvents(100)).flatMap((e) => (e.event.type === 'claim.payout_reduced' ? [e.event.reduction] : []));
+  assert.deepEqual(reductions.map((r) => [r.amount, r.claimId, r.decisionId, r.policyId]), [[150_000, 'clm_021877', re!.id, 'pol_bella']], 'it is a reduction, for billing to propose recovery');
 });
 
 // Reserve (roadmap M1) ---------------------------------------------------------------
