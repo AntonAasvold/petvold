@@ -272,6 +272,7 @@ Varje åtgärd skickas med en idempotensnyckel. Om nätverket svajar och man fö
   - förbehållen och var de kom ifrån
   - versionerna över tid, med när varje version blev känd och när den ersattes
   - historiken över alla ändringar
+  - **Policyn en viss dag:** det skademotorn ser en dag, så som det var känt vid en tidpunkt (ADR 0006). Det är versionen och dess status, produktversionen, försäkringsåret, den första dagen som karenstiden räknas från, försäkringsbeloppet, självrisken, karenstiden och förbehållen. Lämnas "känt vid" tomt visas det som är känt nu. Med en tidpunkt före en retroaktiv ändring syns det som skademotorn såg innan ändringen.
 - **En ansökan i kön** visar djuret som det var när ansökan kom in, svaren och varje kontroll i reglerna med regelversion. Den som prövar godkänner eller avslår, alltid med en motivering:
   - Ett godkännande tecknar policyn med de förbehåll som reglerna föreslår.
   - Ett avslag kräver en skälkod, och den sökande får ett meddelande med skälen (ADR 0032).

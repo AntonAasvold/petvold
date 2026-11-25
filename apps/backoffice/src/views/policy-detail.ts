@@ -22,6 +22,7 @@ import { act, type Notice } from '../actions.ts';
 import '../components/data-grid.ts';
 import '../components/event-log.ts';
 import '../components/policy-actions.ts';
+import '../components/policy-snapshot.ts';
 import type { Column } from '../components/data-grid.ts';
 import type { LogEntry } from '../components/event-log.ts';
 import { IdempotencyKeys } from '../decide.ts';
@@ -286,6 +287,7 @@ export class PolicyDetail extends LitElement {
           ${this.may('policies:write')
             ? html`<pv-policy-actions .api=${this.api} .policy=${p} .transactions=${this.history.transactions} @pv-changed=${() => this.load()}></pv-policy-actions>`
             : nothing}
+          <pv-policy-snapshot .api=${this.api} policy-id=${p.id}></pv-policy-snapshot>
           <pv-event-log heading=${msg('History', { id: 'policy.history' })} .entries=${this.historyEntries()}></pv-event-log>
         </div>
       </div>

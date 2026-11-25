@@ -129,7 +129,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 **Back office: det som saknas** (inventering 2026-11-18: back office använder 68 av API:ets 115 operationer)
 - [x] **Policy:** teckna med prisindikation och kundens godkännande, ändra, säga upp, ångra en uppsägning och förnya för hand
 - [x] **Policy:** policyns sida enligt designsystemet, med försäkringsbeloppet som återstår och skadorna
-- [ ] **Policy:** ögonblicksbild
+- [x] **Policy:** ögonblicksbild
 - [x] **Ansökans sida** enligt designsystemet
 - [x] **Meddelandets sida** enligt designsystemet
 - [x] **Webhookens sida** enligt designsystemet
