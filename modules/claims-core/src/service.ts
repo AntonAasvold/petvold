@@ -25,6 +25,7 @@ import type {
   DecisionProposal,
   Outcome,
   PayoutOrder,
+  PayoutReduction,
   Timestamp,
   InformationItem,
   InformationRecipient,
@@ -1082,6 +1083,20 @@ export class ClaimsService {
         ...(claim.clinicId ? { clinicId: claim.clinicId } : {}),
       };
       events.push({ type: 'claim.payout_ordered', occurredAt: now, order });
+    }
+    // A decrease is a reduction, for billing to propose recovery (ADR 0040, punkt 8). Nothing is drawn back by itself.
+    if (diff < 0 && policy) {
+      const reduction: PayoutReduction = {
+        id: this.d.ids.next('pr'),
+        claimId: claim.id,
+        decisionId: decision.id,
+        policyId: claim.policyId,
+        amount: -diff,
+        currency: claim.currency,
+        channel: claim.channel,
+        ...(claim.clinicId ? { clinicId: claim.clinicId } : {}),
+      };
+      events.push({ type: 'claim.payout_reduced', occurredAt: now, reduction });
     }
     await asConflict(
       this.d.store.commitDecision({

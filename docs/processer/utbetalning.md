@@ -42,6 +42,7 @@ flowchart LR
 | UTB-09 | En återbetalning av ett tillgodohavande betalas ut på samma sätt, till betalaren. | ADR 0040, punkt 8 | – |
 | UTB-10 | Kvittning av obetald premie mot en ersättning görs inte än. Den ska bara göras om marknaden tillåter det och produkten slår på det. | ADR 0040, punkt 8 | – |
 | UTB-11 | En utbetalning med bankfil väntar tills den har kommit med i en `pain.001` och banken bekräftat den i `camt.054`. Uttaget gör den betald, och en retur gör den misslyckad med bankens orsakskod. Varje utbetalning kommer med i en fil en gång. | ADR 0040, punkt 12 | `PETVOLD_BANK_FILE_DEBTOR_NAME` |
+| UTB-12 | Ett beslut som sänker en ersättning efter att den beställts ger ett förslag till återkrav. En handläggare väljer att kräva tillbaka, avräkna mot kundens tillgodohavande (om det räcker) eller skriva av (inom sin gräns). Inget dras tillbaka av sig självt. | ADR 0040, punkt 8 | Rollens `creditLimits` |
 
 ## Exempel
 

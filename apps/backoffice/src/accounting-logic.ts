@@ -17,6 +17,7 @@ export const ACCOUNT_KINDS = [
   'refunds-payable',
   'claims-cost',
   'claims-payable',
+  'recoveries-receivable',
 ] as const;
 export type AccountKind = (typeof ACCOUNT_KINDS)[number];
 

@@ -202,13 +202,15 @@ export interface Invoice {
 /** What the module tells others (ADR 0008, 0033). Written with the change. */
 export interface BillingEvent {
   id: string;
-  type: 'invoice.issued' | 'invoice.credited' | 'invoice.paid' | 'invoice.overdue' | 'refund.ordered' | 'payment.matched';
+  type: 'invoice.issued' | 'invoice.credited' | 'invoice.paid' | 'invoice.overdue' | 'refund.ordered' | 'payment.matched' | 'recovery.proposed' | 'recovery.decided';
   /** invoice.*: the invoice. */
   invoiceId?: string;
   /** refund.ordered: the refund. */
   refundId?: string;
   /** payment.matched: the payment. */
   paymentId?: string;
+  /** recovery.*: the recovery. */
+  recoveryId?: string;
   market: string;
   occurredAt: Timestamp;
   data: Record<string, unknown>;
@@ -343,6 +345,17 @@ export interface BillingStore {
   /** Oldest first. */
   refunds(filter: { accountId?: string; market?: string }): Promise<Refund[]>;
   addCreditProposal(p: CreditProposal): Promise<void>;
+  /** Stores the recovery with its event; false, and nothing stored, if its source event made one already. */
+  addRecovery(r: Recovery, events: BillingEvent[]): Promise<boolean>;
+  /**
+   * Adds the decision with its event. Throws InvoiceConflictError if it has one.
+   * With a guard, under the account's lock: the guard sees the ledger and throws
+   * to stop it, so an offset never uses credit something else used meanwhile.
+   */
+  decideRecovery(id: string, decision: NonNullable<Recovery['decision']>, events: BillingEvent[], guard?: { accountId: string; check(ledger: AccountLedger): void }): Promise<void>;
+  recovery(id: string): Promise<Recovery | null>;
+  /** Oldest first. */
+  recoveries(filter: { status?: Recovery['status']; market?: string; claimId?: string; accountId?: string }): Promise<Recovery[]>;
   /** Stores the decision once. Throws InvoiceConflictError if the proposal is decided already. */
   decideCreditProposal(id: string, decision: Pick<CreditProposal, 'status' | 'decidedBy' | 'decidedAt' | 'creditNoteId' | 'returnReason'>): Promise<void>;
   creditProposal(id: string): Promise<CreditProposal | null>;
@@ -393,6 +406,34 @@ export interface PolicyActions {
  * A credit note or a write-off a person asked for above their limit (ADR 0040,
  * punkt 10): someone else with a high enough limit approves or returns it.
  */
+/**
+ * A claim's payout lowered after it was ordered (ADR 0040, punkt 8): the
+ * difference, proposed for recovery. A person decides: recover it (a debt the
+ * insurer collects), offset it against the payer's credit (premium to be paid
+ * back), or write it off. Nothing is drawn back by itself. Never changes; the
+ * decision is added once.
+ */
+export interface Recovery {
+  id: string;
+  claimId: string;
+  decisionId: string;
+  policyId: string;
+  /** The policyholder when the payout was lowered. */
+  partyId: string;
+  /** The payer's account in the market and currency, if they have one: where an offset goes. */
+  accountId?: string;
+  market: string;
+  currency: string;
+  amount: number;
+  sourceEventId: string;
+  proposedAt: Timestamp;
+  status: 'proposed' | 'recovered' | 'offset' | 'written-off';
+  decision?: { outcome: RecoveryOutcome; decidedBy: string; decidedAt: Timestamp; note?: string };
+}
+
+export type RecoveryOutcome = 'recover' | 'offset' | 'write-off';
+const RECOVERY_STATUS: Record<RecoveryOutcome, Recovery['status']> = { recover: 'recovered', offset: 'offset', 'write-off': 'written-off' };
+
 export interface CreditProposal {
   id: string;
   invoiceId: string;
@@ -796,6 +837,104 @@ export class BillingService {
    * write-off gives up at most what is unpaid. Within the person's limit it is
    * made at once; above it, it is a proposal for someone else.
    */
+  /**
+   * claim.payout_reduced: the claim's payout went down after it was ordered
+   * (ADR 0040, punkt 8). Proposes recovery of the difference from the
+   * policyholder, once per event. Other claim events are nothing to billing.
+   */
+  async handleClaimEvent(e: { id: string; type: string; claimId?: string; market: string; occurredAt: Timestamp; data: Record<string, unknown> }): Promise<Recovery | null> {
+    if (e.type !== 'claim.payout_reduced' || !e.claimId) return null;
+    const existing = (await this.d.store.recoveries({ claimId: e.claimId })).find((r) => r.sourceEventId === e.id);
+    if (existing) return existing;
+    const policyId = String(e.data.policyId);
+    const currency = String(e.data.currency);
+    const partyId = await this.d.policies.policyholderOn(policyId, marketDate(e.market, e.occurredAt));
+    if (!partyId) throw new Error(`No policyholder for ${policyId} on the reduction ${e.id}`);
+    const account = await this.d.store.accountFor(partyId, e.market, currency);
+    const r: Recovery = {
+      id: this.d.ids.next('rcv'),
+      claimId: e.claimId,
+      decisionId: String(e.data.decisionId),
+      policyId,
+      partyId,
+      ...(account ? { accountId: account.id } : {}),
+      market: e.market,
+      currency,
+      amount: Number(e.data.amount),
+      sourceEventId: e.id,
+      proposedAt: this.d.clock.now(),
+      status: 'proposed',
+    };
+    const event = this.recoveryEvent('recovery.proposed', r);
+    if (!(await this.d.store.addRecovery(r, [event]))) return (await this.d.store.recoveries({ claimId: e.claimId })).find((x) => x.sourceEventId === e.id) ?? null;
+    return r;
+  }
+
+  private recoveryEvent(type: 'recovery.proposed' | 'recovery.decided', r: Recovery): BillingEvent {
+    return {
+      id: this.d.ids.next('bev'),
+      type,
+      recoveryId: r.id,
+      market: r.market,
+      occurredAt: this.d.clock.now(),
+      data: {
+        claimId: r.claimId,
+        policyId: r.policyId,
+        partyId: r.partyId,
+        ...(r.accountId ? { accountId: r.accountId } : {}),
+        amount: r.amount,
+        currency: r.currency,
+        ...(r.decision ? { outcome: r.decision.outcome } : {}),
+      },
+    };
+  }
+
+  /**
+   * A person decides a recovery (ADR 0040, punkt 8): recover it from the
+   * customer, offset it against their credit (only if the credit covers it),
+   * or write it off (only within the person's creditLimits). Once.
+   */
+  async decideRecovery(id: string, input: { outcome: RecoveryOutcome; note?: string }, by: string, limits: CreditLimits): Promise<Recovery> {
+    const r = await this.recovery(id);
+    if (r.status !== 'proposed') throw new BillingError('conflict', `Recovery ${id} is ${r.status}`);
+    if (!(input.outcome in RECOVERY_STATUS)) throw new BillingError('validation', 'outcome must be recover, offset or write-off');
+    const note = input.note?.trim();
+    if (note !== undefined && note.length > 2000) throw new BillingError('validation', 'The note is at most 2,000 characters');
+    if (input.outcome === 'offset') {
+      if (!r.accountId) throw new BillingError('conflict', 'The policyholder has no payer account to offset against');
+      const { credit } = accountBalance(await this.d.store.ledger(r.accountId));
+      if (credit < r.amount) throw new BillingError('conflict', `The payer's credit is ${credit}, less than the ${r.amount} to offset`);
+    }
+    if (input.outcome === 'write-off' && !withinLimit(limits, r.currency, r.amount)) throw new BillingError('forbidden', 'Writing off this much is above your limit');
+    const decided: Recovery = { ...r, status: RECOVERY_STATUS[input.outcome], decision: { outcome: input.outcome, decidedBy: by, decidedAt: this.d.clock.now(), ...(note ? { note } : {}) } };
+    try {
+      const guard =
+        input.outcome === 'offset'
+          ? {
+              accountId: r.accountId!,
+              check: (ledger: AccountLedger) => {
+                if (accountBalance(ledger).credit < r.amount) throw new BillingError('conflict', `The payer's credit is less than the ${r.amount} to offset`);
+              },
+            }
+          : undefined;
+      await this.d.store.decideRecovery(id, decided.decision!, [this.recoveryEvent('recovery.decided', decided)], guard);
+    } catch (err) {
+      if (err instanceof InvoiceConflictError) throw new BillingError('conflict', `Recovery ${id} was decided by someone else`);
+      throw err;
+    }
+    return decided;
+  }
+
+  async recovery(id: string): Promise<Recovery> {
+    const r = await this.d.store.recovery(id);
+    if (!r) throw new BillingError('not_found', `Recovery ${id} does not exist`);
+    return r;
+  }
+
+  recoveries(filter: { status?: Recovery['status']; market?: string; claimId?: string; accountId?: string } = {}): Promise<Recovery[]> {
+    return this.d.store.recoveries(filter);
+  }
+
   async credit(invoiceId: string, input: { kind: CreditNote['kind']; amount: number; reason: string }, by: string, limits: CreditLimits): Promise<{ creditNote: CreditNote } | { proposal: CreditProposal }> {
     const i = await this.invoice(invoiceId);
     this.checkCredit(i, input);
@@ -1410,12 +1549,43 @@ export class InMemoryBillingStore implements BillingStore {
       received,
       creditApplications: this.applicationList.filter((a) => a.accountId === accountId),
       refunded: this.refundList.filter((r) => r.accountId === accountId).reduce((s, r) => s + r.amount, 0),
+      offset: this.recoveryList.filter((r) => r.accountId === accountId && r.status === 'offset').reduce((s, r) => s + r.amount, 0),
     });
   }
 
   private readonly applicationList: CreditApplication[] = [];
   private readonly refundList: Refund[] = [];
   private readonly proposalList: CreditProposal[] = [];
+  private readonly recoveryList: Recovery[] = [];
+
+  async addRecovery(r: Recovery, events: BillingEvent[]) {
+    if (this.recoveryList.some((x) => x.sourceEventId === r.sourceEventId)) return false;
+    this.recoveryList.push(structuredClone(r));
+    this.outbox.push(...structuredClone(events));
+    return true;
+  }
+
+  async decideRecovery(id: string, decision: NonNullable<Recovery['decision']>, events: BillingEvent[], guard?: { accountId: string; check(ledger: AccountLedger): void }) {
+    const r = this.recoveryList.find((x) => x.id === id);
+    if (!r) throw new Error(`Recovery ${id} does not exist`);
+    if (r.decision) throw new InvoiceConflictError(`Recovery ${id} is decided already`);
+    if (guard) guard.check(await this.ledger(guard.accountId));
+    r.decision = structuredClone(decision);
+    r.status = RECOVERY_STATUS[decision.outcome];
+    this.outbox.push(...structuredClone(events));
+  }
+
+  async recovery(id: string) {
+    const r = this.recoveryList.find((x) => x.id === id);
+    return r ? structuredClone(r) : null;
+  }
+
+  async recoveries(filter: { status?: Recovery['status']; market?: string; claimId?: string; accountId?: string }) {
+    return structuredClone(
+      this.recoveryList.filter((r) => (!filter.status || r.status === filter.status) && (!filter.market || r.market === filter.market) && (!filter.claimId || r.claimId === filter.claimId) && (!filter.accountId || r.accountId === filter.accountId)),
+    );
+  }
+
 
   async addCreditProposal(p: CreditProposal) {
     this.proposalList.push(structuredClone(p));

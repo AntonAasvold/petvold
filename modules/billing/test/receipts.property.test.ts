@@ -69,7 +69,7 @@ test('every payment is allocated or credit, no invoice is overpaid, and the bala
         assert.ok(b.open >= 0 && b.paid >= 0);
         paid += b.paid;
       }
-      const balance = accountBalance({ invoices, creditNotes, allocations, received, creditApplications: [], refunded: 0 });
+      const balance = accountBalance({ invoices, creditNotes, allocations, received, creditApplications: [], refunded: 0, offset: 0 });
       assert.equal(balance.credit, received - paid);
       assert.ok(balance.credit >= unallocatedSum, 'credit notes only add to the credit');
     }),
@@ -84,7 +84,7 @@ test('credit used on invoices and paid back never goes below zero, and never pay
       fc.array(fc.oneof(fc.record({ kind: fc.constant('pay' as const), amount: fc.integer({ min: 1, max: 400_000 }) }), fc.record({ kind: fc.constant('use' as const) }), fc.record({ kind: fc.constant('refund' as const), share: fc.double({ min: 0, max: 1, noNaN: true }) })), { maxLength: 15 }),
       (specs, steps) => {
         const invoices = specs.map(([total, day], n) => invoice(n, total, day));
-        const ledger = { invoices, creditNotes: [] as CreditNote[], allocations: [] as Allocation[], received: 0, creditApplications: [] as { id: string; accountId: string; invoiceId: string; amount: number; at: string; by: string }[], refunded: 0 };
+        const ledger = { invoices, creditNotes: [] as CreditNote[], allocations: [] as Allocation[], received: 0, creditApplications: [] as { id: string; accountId: string; invoiceId: string; amount: number; at: string; by: string }[], refunded: 0, offset: 0 };
         for (const [k, s] of steps.entries()) {
           if (s.kind === 'pay') {
             // A payment without a reference matched to the account: oldest due first.

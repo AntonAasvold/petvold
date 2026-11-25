@@ -302,6 +302,28 @@ Fakturan visar i `dunning` vad körningen gjort, i ordning:
 ]
 ```
 
+## Återkrav
+
+När ett beslut sänker en skadas ersättning efter att en utbetalningsorder gjorts, till exempel vid ett retroaktivt avslut eller en omprövning, ger skademotorn händelsen `claim.payout_reduced` med minskningen. `billing` gör ett **förslag till återkrav** för försäkringstagaren (ADR 0040, punkt 8). Inget dras tillbaka av sig självt.
+
+En handläggare med `billing:credit` beslutar en gång:
+
+| Beslut | Betyder | Villkor |
+| --- | --- | --- |
+| `recover` | Kräv tillbaka: en fordran på kunden som bolaget driver in. Bokförs som fordran på återkrav. | – |
+| `offset` | Avräkna mot kundens tillgodohavande, alltså premie som annars skulle betalas tillbaka. Tillgodohavandet minskar. | Tillgodohavandet räcker (`409` annars) |
+| `write-off` | Skriv av. Skadekostnaden står kvar. | Inom handläggarens `creditLimits` (`403` annars) |
+
+| Anrop | Rättighet | Gör |
+| --- | --- | --- |
+| `GET /v1/recoveries?status=proposed` | `billing:read` | Kön med förslag, äldst först. Kan filtreras på `market` och `claimId`. |
+| `GET /v1/recoveries/{id}` | `billing:read` | Ett återkrav med beslutet |
+| `POST /v1/recoveries/{id}/decisions` | `billing:credit` | Beslutet: `{ "outcome": "offset", "note": "…" }` |
+
+**Exempel:** Bellas policy avslutas från den 1 mars, och en skada från den 10 mars som redan ersatts med 1 500 kr omprövas till 0. Anna, som är försäkringstagare, har 2 000 kr i tillgodohavande. Ekonomi avräknar de 1 500 kr, och 500 kr återstår att betala tillbaka.
+
+*Inte byggt än:* en betalning av ett återkrav kopplas inte till det. Bolaget driver in fordran och bokför betalningen i sitt ekonomisystem. Förslaget ser inte heller om den ursprungliga utbetalningen redan har betalats ut.
+
 ## Utbetalning av ersättning
 
 Ett beslut som ger ersättning blir en utbetalningsorder, `claim.payout_ordered` (ADR 0019). `payments` gör en **utbetalning** av ordern, och varje order betalas en gång (ADR 0040, punkt 8). En återbetalning av ett tillgodohavande blir en utbetalning på samma sätt (`purpose: premium-refund`). Mottagaren för en ersättning är:

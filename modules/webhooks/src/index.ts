@@ -17,7 +17,7 @@ export type Timestamp = string;
  * and 6). Anything else in a module's event stays inside Petvold: names, notes,
  * who did it. Types are versioned: a breaking change is a new `.vN`.
  */
-export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId' | 'invoiceId' | 'paymentId' | 'payoutId' | 'refundId' | 'day';
+export type SubjectField = 'policyId' | 'applicationId' | 'claimId' | 'animalId' | 'noticeId' | 'runId' | 'invoiceId' | 'paymentId' | 'payoutId' | 'refundId' | 'recoveryId' | 'day';
 
 /** A request for information (ADR 0036): what was asked for and when it is due, never the note. */
 const INFORMATION_FIELDS = ['requestId', 'recipient', 'items', 'dueDate', 'status'];
@@ -28,6 +28,7 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'claim.proposal_returned': { source: 'claims', subject: 'claimId', fields: ['proposalId'] },
   'claim.decided': { source: 'claims', subject: 'claimId', fields: ['decisionId', 'seq', 'outcome', 'payout', 'currency', 'automated', 'deviatesFromProposal', 'reasonCode', 'reviewRequestId'] },
   'claim.payout_ordered': { source: 'claims', subject: 'claimId', fields: ['payoutOrderId', 'decisionId', 'policyId', 'amount', 'currency', 'channel', 'clinicId'] },
+  'claim.payout_reduced': { source: 'claims', subject: 'claimId', fields: ['payoutReductionId', 'decisionId', 'policyId', 'amount', 'currency', 'channel', 'clinicId'] },
   'claim.review_requested': { source: 'claims', subject: 'claimId', fields: ['reviewRequestId', 'decisionId', 'decisionSeq'] },
   'claim.withdrawn': { source: 'claims', subject: 'claimId', fields: ['closureId'] },
   'claim.dismissed': { source: 'claims', subject: 'claimId', fields: ['closureId', 'reasonCode', 'duplicateOf'] },
@@ -51,6 +52,9 @@ export const PUBLIC_EVENTS: Record<string, { source: string; subject: SubjectFie
   'payout.failed': { source: 'payments', subject: 'payoutId', fields: ['purpose', 'claimId', 'policyId', 'partyId', 'clinicId', 'orderId', 'amount', 'currency'] },
   // A payer's credit paid back (ADR 0040): payments pays it out as payout.paid with purpose premium-refund.
   'refund.ordered': { source: 'billing', subject: 'refundId', fields: ['accountId', 'partyId', 'amount', 'currency', 'reason'] },
+  // A claim's payout lowered after it was ordered, proposed for recovery, and a person's decision on it (ADR 0040, punkt 8).
+  'recovery.proposed': { source: 'billing', subject: 'recoveryId', fields: ['claimId', 'policyId', 'partyId', 'accountId', 'amount', 'currency'] },
+  'recovery.decided': { source: 'billing', subject: 'recoveryId', fields: ['claimId', 'policyId', 'partyId', 'accountId', 'amount', 'currency', 'outcome'] },
   'payment.succeeded': { source: 'payments', subject: 'paymentId', fields: ['direction', 'provider', 'amount', 'currency', 'reference', 'bookedOn'] },
   // A payment belongs to a payer now (ADR 0040): by its reference, or matched by a person.
   'payment.matched': { source: 'billing', subject: 'paymentId', fields: ['accountId', 'amount', 'currency', 'how', 'bookedOn', 'invoiceId'] },
@@ -90,6 +94,7 @@ export interface SourceEvent {
   paymentId?: string;
   payoutId?: string;
   refundId?: string;
+  recoveryId?: string;
   /** accounting.day_closed: the day. */
   day?: string;
   market: string;

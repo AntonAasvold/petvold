@@ -36,6 +36,8 @@ export const ACCOUNT_KINDS = [
   'claims-payable',
   /** Credit to be paid back to payers and not yet paid out. */
   'refunds-payable',
+  /** A claim's payout lowered after it was paid, to be recovered from the customer (ADR 0040, punkt 8). */
+  'recoveries-receivable',
 ] as const;
 export type AccountKind = (typeof ACCOUNT_KINDS)[number];
 
@@ -95,6 +97,7 @@ export interface MoneyEvent {
   payoutId?: string;
   refundId?: string;
   claimId?: string;
+  recoveryId?: string;
 }
 
 /** What accounting reads from billing that the events do not carry. */
@@ -168,6 +171,9 @@ export function split(amount: number, weights: readonly number[]): number[] {
  * - refund.ordered: the payer's credit becomes a debt to pay back.
  * - claim.payout_ordered: a claim's cost and a debt to pay out.
  * - payout.paid: the debt paid from the bank.
+ * - recovery.decided: a lowered payout taken back from the claim's cost, as a
+ *   debt to recover or against the payer's credit. A write-off books nothing:
+ *   the cost stays.
  */
 export function verificationFor(
   e: MoneyEvent,
@@ -239,6 +245,18 @@ export function verificationFor(
       return {
         ...base(String(e.data.currency), day, `Payout order ${String(e.data.payoutOrderId)} on claim ${claimId}`, 'claim', claimId),
         lines: [debit('claims-cost', n('amount'), { claimId, policyId }), credit('claims-payable', n('amount'), { claimId, policyId })],
+      };
+    }
+    case 'recovery.decided': {
+      const outcome = String(e.data.outcome);
+      if (outcome !== 'recover' && outcome !== 'offset') return null;
+      const claimId = String(e.data.claimId);
+      const policyId = String(e.data.policyId);
+      const against =
+        outcome === 'recover' ? debit('recoveries-receivable', n('amount'), { claimId, policyId }) : debit('premium-receivable', n('amount'), { payerAccountId: String(e.data.accountId) });
+      return {
+        ...base(String(e.data.currency), day, outcome === 'recover' ? `Recovery ${e.recoveryId} on claim ${claimId}` : `Recovery ${e.recoveryId} on claim ${claimId} offset against payer account ${String(e.data.accountId)}`, 'claim', claimId),
+        lines: [against, credit('claims-cost', n('amount'), { claimId, policyId })],
       };
     }
     case 'payout.paid': {

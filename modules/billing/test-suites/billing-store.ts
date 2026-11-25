@@ -2,7 +2,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { premiumPlan } from '@petvold/billing-core';
-import { InvoiceConflictError, MatchConflictError, type AccountLedger, type BillingEvent, type PaymentMatch, type PaymentReceipt, type BillingStore, type CreditNote, type Invoice, type PayerAccount, type PlanInput, type PlanRecord } from '../src/index.ts';
+import { InvoiceConflictError, MatchConflictError, type AccountLedger, type BillingEvent, type PaymentMatch, type PaymentReceipt, type BillingStore, type CreditNote, type Invoice, type PayerAccount, type PlanInput, type PlanRecord, type Recovery } from '../src/index.ts';
 
 export function payer(n = 1, o: Partial<PayerAccount> = {}): PayerAccount {
   return { id: `bac_${n}`, partyId: 'pty_anna', market: 'SE', currency: 'SEK', paymentMethod: 'invoice', createdAt: `2026-11-21T10:00:0${n}.000Z`, ...o };
@@ -230,6 +230,40 @@ export function billingStoreSuite(name: string, make: () => Promise<{ store: Bil
       assert.deepEqual(await store.refunds({ market: 'FI' }), []);
       const [e] = (await store.pendingEvents(50)).filter((x) => x.type === 'refund.ordered');
       assert.deepEqual([e?.refundId, e?.invoiceId], ['ref_1', undefined]);
+    });
+
+    test('a recovery is stored once per event, decided once under a guard, and an offset lowers the credit', async () => {
+      const { store } = await make();
+      await store.addPlan(payer(), planRecord());
+      const r = (n: number, o: Partial<Recovery> = {}): Recovery => ({ id: `rcv_${n}`, claimId: `clm_${n}`, decisionId: `dec_${n}`, policyId: 'pol_1', partyId: 'pty_anna', accountId: 'bac_1', market: 'SE', currency: 'SEK', amount: 300, sourceEventId: `cev_${n}`, proposedAt: `2026-12-01T10:00:0${n}.000Z`, status: 'proposed', ...o });
+      const ev = (x: Recovery, type: 'recovery.proposed' | 'recovery.decided'): BillingEvent => ({ id: `bev_${type}_${x.id}`, type, recoveryId: x.id, market: 'SE', occurredAt: x.proposedAt, data: { amount: x.amount } });
+      assert.equal(await store.addRecovery(r(1), [ev(r(1), 'recovery.proposed')]), true);
+      assert.equal(await store.addRecovery(r(9, { sourceEventId: 'cev_1' }), []), false, 'the same event again');
+      await store.addRecovery(r(2, { accountId: undefined }), [ev(r(2), 'recovery.proposed')]);
+      assert.deepEqual(await store.recovery('rcv_1'), r(1));
+      assert.equal((await store.recovery('rcv_2'))?.accountId, undefined);
+
+      const decision = { outcome: 'offset' as const, decidedBy: 'ekonomi', decidedAt: '2026-12-01T11:00:00.000Z', note: 'Against credit' };
+      let seen: AccountLedger | null = null;
+      await assert.rejects(
+        store.decideRecovery('rcv_1', decision, [ev(r(1), 'recovery.decided')], { accountId: 'bac_1', check: () => { throw new Error('no credit'); } }),
+        /no credit/,
+      );
+      assert.equal((await store.recovery('rcv_1'))?.status, 'proposed', 'a guard that throws stops it');
+      await store.decideRecovery('rcv_1', decision, [ev(r(1), 'recovery.decided')], { accountId: 'bac_1', check: (l) => void (seen = l) });
+      assert.equal(seen!.offset, 0, 'the guard sees the ledger before');
+      await assert.rejects(store.decideRecovery('rcv_1', { ...decision, outcome: 'recover' }, []), (e) => e instanceof InvoiceConflictError);
+      assert.deepEqual(await store.recovery('rcv_1'), { ...r(1), status: 'offset', decision });
+      assert.equal((await store.ledger('bac_1')).offset, 300);
+      await store.decideRecovery('rcv_2', { outcome: 'write-off', decidedBy: 'chef', decidedAt: '2026-12-01T11:01:00.000Z' }, []);
+      assert.deepEqual((await store.recoveries({ status: 'written-off' })).map((x) => x.id), ['rcv_2']);
+      assert.deepEqual((await store.recoveries({ status: 'proposed' })).map((x) => x.id), []);
+      assert.deepEqual((await store.recoveries({ accountId: 'bac_1' })).map((x) => x.id), ['rcv_1']);
+      assert.deepEqual((await store.pendingEvents(50)).filter((e) => e.recoveryId).map((e) => [e.type, e.recoveryId]), [
+        ['recovery.proposed', 'rcv_1'],
+        ['recovery.proposed', 'rcv_2'],
+        ['recovery.decided', 'rcv_1'],
+      ]);
     });
 
     test('a credit proposal is decided once, and a credit note keeps its kind and reason', async () => {

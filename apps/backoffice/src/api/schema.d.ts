@@ -2631,6 +2631,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/recoveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recoveries of lowered claim payouts, oldest first
+         * @description Requires the permission `billing:read` (ADR 0040, punkt 8). A decision that
+         *     lowers a claim's payout after it was ordered gives a recovery of the
+         *     difference. `status=proposed` is the queue to decide. Only in the
+         *     caller's markets.
+         */
+        get: operations["listRecoveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/recoveries/{recoveryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A recovery
+         * @description Requires the permission `billing:read`. Outside the caller's scope it answers 404.
+         */
+        get: operations["getRecovery"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/recoveries/{recoveryId}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide a recovery
+         * @description Requires the permission `billing:credit` (ADR 0040, punkt 8). Once:
+         *     recover (a debt the insurer collects from the customer), offset (taken
+         *     from the payer's credit, only if the credit covers it; 409 otherwise), or
+         *     write-off (only within the caller's creditLimits; 403 above it). Nothing
+         *     is drawn back by itself.
+         */
+        post: operations["decideRecovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/credit-proposals": {
         parameters: {
             query?: never;
@@ -5218,6 +5285,40 @@ export interface components {
             amount: number;
             reason: string;
         };
+        /** @description A claim's payout lowered after it was ordered, proposed for recovery (ADR 0040, punkt 8). Never changes; the decision is added once. */
+        Recovery: {
+            id: string;
+            claimId: string;
+            /** @description The decision that lowered the payout. */
+            decisionId: string;
+            policyId: string;
+            /** @description The policyholder when the payout was lowered. */
+            partyId: string;
+            /** @description The payer's account, where an offset goes. Omitted if the customer has none. */
+            accountId?: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            amount: number;
+            sourceEventId: string;
+            /** Format: date-time */
+            proposedAt: string;
+            /** @enum {string} */
+            status: "proposed" | "recovered" | "offset" | "written-off";
+            decision?: {
+                /** @enum {string} */
+                outcome: "recover" | "offset" | "write-off";
+                decidedBy: string;
+                /** Format: date-time */
+                decidedAt: string;
+                note?: string;
+            };
+        };
+        RecoveryDecisionRequest: {
+            /** @enum {string} */
+            outcome: "recover" | "offset" | "write-off";
+            /** @description Why. No more personal data than needed. */
+            note?: string;
+        };
         /** @description A credit note or write-off above the proposer's limit, for someone else to approve or return (ADR 0040). */
         CreditProposal: {
             id: string;
@@ -5248,7 +5349,7 @@ export interface components {
          * @description Petvold's own kinds of account. The chart of accounts maps them to the insurer's account numbers. premium-receivable is per payer account; a negative balance is the payer's credit.
          * @enum {string}
          */
-        AccountKind: "bank" | "premium-receivable" | "premium-income" | "premium-tax" | "installment-fees" | "unmatched-payments" | "customer-losses" | "claims-cost" | "claims-payable" | "refunds-payable";
+        AccountKind: "bank" | "premium-receivable" | "premium-income" | "premium-tax" | "installment-fees" | "unmatched-payments" | "customer-losses" | "claims-cost" | "claims-payable" | "refunds-payable" | "recoveries-receivable";
         /** @description A verification in double entry (ADR 0040). Debit and credit balance. Never changes; a correction is a new verification. */
         Verification: {
             id: string;
@@ -11113,6 +11214,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreditProposal"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listRecoveries: {
+        parameters: {
+            query?: {
+                status?: "proposed" | "recovered" | "offset" | "written-off";
+                market?: components["schemas"]["Market"];
+                claimId?: string;
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The recoveries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Recovery"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getRecovery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recoveryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The recovery */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recovery"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    decideRecovery: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                recoveryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description The recovery, decided */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recovery"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

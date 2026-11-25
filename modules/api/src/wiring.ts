@@ -294,6 +294,13 @@ export async function claimsEventForWebhooks(
         data: { payoutOrderId: o.id, decisionId: o.decisionId, policyId: o.policyId, amount: o.amount, currency: o.currency, channel: o.channel, ...(o.clinicId ? { clinicId: o.clinicId } : {}) },
       };
     }
+    case 'claim.payout_reduced': {
+      const r = e.reduction;
+      return {
+        ...base,
+        data: { payoutReductionId: r.id, decisionId: r.decisionId, policyId: r.policyId, amount: r.amount, currency: r.currency, channel: r.channel, ...(r.clinicId ? { clinicId: r.clinicId } : {}) },
+      };
+    }
     case 'claim.review_requested':
       return { ...base, data: { reviewRequestId: e.request.id, decisionId: e.request.decisionId, decisionSeq: e.request.decisionSeq } };
     case 'claim.withdrawn':

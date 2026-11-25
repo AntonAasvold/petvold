@@ -31,6 +31,7 @@ channels:
       claimProposalReturned: { $ref: '#/components/messages/claimProposalReturned' }
       claimDecided: { $ref: '#/components/messages/claimDecided' }
       claimPayoutOrdered: { $ref: '#/components/messages/claimPayoutOrdered' }
+      claimPayoutReduced: { $ref: '#/components/messages/claimPayoutReduced' }
       claimReviewRequested: { $ref: '#/components/messages/claimReviewRequested' }
       claimWithdrawn: { $ref: '#/components/messages/claimWithdrawn' }
       claimDismissed: { $ref: '#/components/messages/claimDismissed' }
@@ -67,6 +68,8 @@ channels:
       invoiceOverdue: { $ref: '#/components/messages/invoiceOverdue' }
       refundOrdered: { $ref: '#/components/messages/refundOrdered' }
       paymentMatched: { $ref: '#/components/messages/paymentMatched' }
+      recoveryProposed: { $ref: '#/components/messages/recoveryProposed' }
+      recoveryDecided: { $ref: '#/components/messages/recoveryDecided' }
       accountingDayClosed: { $ref: '#/components/messages/accountingDayClosed' }
       paymentSucceeded: { $ref: '#/components/messages/paymentSucceeded' }
       payoutPaid: { $ref: '#/components/messages/payoutPaid' }
@@ -83,6 +86,7 @@ operations:
       - { $ref: '#/channels/subscription/messages/claimProposalReturned' }
       - { $ref: '#/channels/subscription/messages/claimDecided' }
       - { $ref: '#/channels/subscription/messages/claimPayoutOrdered' }
+      - { $ref: '#/channels/subscription/messages/claimPayoutReduced' }
       - { $ref: '#/channels/subscription/messages/claimReviewRequested' }
       - { $ref: '#/channels/subscription/messages/claimWithdrawn' }
       - { $ref: '#/channels/subscription/messages/claimDismissed' }
@@ -119,6 +123,8 @@ operations:
       - { $ref: '#/channels/subscription/messages/invoiceOverdue' }
       - { $ref: '#/channels/subscription/messages/refundOrdered' }
       - { $ref: '#/channels/subscription/messages/paymentMatched' }
+      - { $ref: '#/channels/subscription/messages/recoveryProposed' }
+      - { $ref: '#/channels/subscription/messages/recoveryDecided' }
       - { $ref: '#/channels/subscription/messages/accountingDayClosed' }
       - { $ref: '#/channels/subscription/messages/paymentSucceeded' }
       - { $ref: '#/channels/subscription/messages/payoutPaid' }
@@ -196,6 +202,18 @@ components:
             properties:
               type: { const: petvold.claim.payout_ordered.v1 }
               data: { $ref: '#/components/schemas/ClaimPayoutOrderedData' }
+    claimPayoutReduced:
+      name: petvold.claim.payout_reduced.v1
+      title: claim.payout_reduced
+      summary: 'A decision lowered the payout: billing proposes recovery of the difference (ADR 0040).'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.claim.payout_reduced.v1 }
+              data: { $ref: '#/components/schemas/ClaimPayoutReducedData' }
     claimReviewRequested:
       name: petvold.claim.review_requested.v1
       title: claim.review_requested
@@ -556,6 +574,30 @@ components:
             properties:
               type: { const: petvold.payment.matched.v1 }
               data: { $ref: '#/components/schemas/PaymentMatchedData' }
+    recoveryProposed:
+      name: petvold.recovery.proposed.v1
+      title: recovery.proposed
+      summary: "A claim's payout was lowered after it was ordered: the difference is proposed for recovery, for a person to decide (ADR 0040)."
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.recovery.proposed.v1 }
+              data: { $ref: '#/components/schemas/RecoveryProposedData' }
+    recoveryDecided:
+      name: petvold.recovery.decided.v1
+      title: recovery.decided
+      summary: 'A person decided a recovery: recover it from the customer, offset it against their credit, or write it off (ADR 0040).'
+      traits: [{ $ref: '#/components/messageTraits/webhook' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/CloudEvent'
+          - type: object
+            properties:
+              type: { const: petvold.recovery.decided.v1 }
+              data: { $ref: '#/components/schemas/RecoveryDecidedData' }
     refundOrdered:
       name: petvold.refund.ordered.v1
       title: refund.ordered
@@ -768,6 +810,19 @@ components:
         decisionId: { type: string }
         policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
         amount: { type: integer, minimum: 1, description: Minor units. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        channel: { type: string }
+        clinicId: { type: string }
+    ClaimPayoutReducedData:
+      type: object
+      additionalProperties: false
+      required: [claimId, payoutReductionId, decisionId, policyId, amount, currency, channel]
+      properties:
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        payoutReductionId: { type: string }
+        decisionId: { type: string }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        amount: { type: integer, minimum: 1, description: "Minor units: the decrease. Nothing is drawn back by itself; billing proposes recovery." }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
         channel: { type: string }
         clinicId: { type: string }
@@ -1027,6 +1082,31 @@ components:
         how: { type: string, enum: [reference, manual] }
         bookedOn: { $ref: '#/components/schemas/Date' }
         invoiceId: { type: string, pattern: '^inv_[A-Za-z0-9]+$', description: The invoice it paid first. }
+    RecoveryProposedData:
+      type: object
+      additionalProperties: false
+      required: [recoveryId, claimId, policyId, partyId, amount, currency]
+      properties:
+        recoveryId: { type: string, pattern: '^rcv_[A-Za-z0-9]+$' }
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        partyId: { type: string }
+        accountId: { type: string, pattern: '^bac_[A-Za-z0-9]+$', description: "The payer's account, if the customer has one." }
+        amount: { type: integer, minimum: 1, description: Minor units. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    RecoveryDecidedData:
+      type: object
+      additionalProperties: false
+      required: [recoveryId, claimId, policyId, partyId, amount, currency, outcome]
+      properties:
+        recoveryId: { type: string, pattern: '^rcv_[A-Za-z0-9]+$' }
+        claimId: { type: string, pattern: '^clm_[A-Za-z0-9_]+$' }
+        policyId: { type: string, pattern: '^pol_[A-Za-z0-9]+$' }
+        partyId: { type: string }
+        accountId: { type: string, pattern: '^bac_[A-Za-z0-9]+$', description: "The payer's account, if the customer has one." }
+        amount: { type: integer, minimum: 1, description: Minor units. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        outcome: { type: string, enum: [recover, offset, write-off], description: 'recover: a debt the insurer collects. offset: taken from the customer''s credit. write-off: given up.' }
     RefundOrderedData:
       type: object
       additionalProperties: false

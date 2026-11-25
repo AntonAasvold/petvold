@@ -24,8 +24,10 @@ Petvold bokför varje händelse som rör pengar som en verifikation med dubbel b
 | `claim.payout_ordered` | Skadekostnad | Ersättningar att betala |
 | `payout.paid`, ersättning | Ersättningar att betala | Bank |
 | `payout.paid`, återbetalning | Återbetalningar att betala | Bank |
+| `recovery.decided`, kräv tillbaka | Fordringar på återkrav | Skadekostnad |
+| `recovery.decided`, avräkna | Premiefordran (betalaren) | Skadekostnad |
 
-`invoice.paid`, `invoice.overdue` och `payout.failed` flyttar inga pengar och bokförs inte.
+`invoice.paid`, `invoice.overdue`, `payout.failed`, `recovery.proposed` och ett återkrav som skrivs av flyttar inga pengar och bokförs inte. Vid en avskrivning står skadekostnaden kvar.
 
 ## Kontona
 
@@ -43,6 +45,7 @@ Petvold bokför på sina egna slag av konton. [Kontoplanen](#kontoplanen) övers
 | `claims-cost` | Beslutad ersättning |
 | `claims-payable` | Beslutad ersättning som inte betalats ut |
 | `refunds-payable` | Tillgodohavanden som ska betalas tillbaka och inte betalats ut |
+| `recoveries-receivable` | Ersättning som betalats för mycket och ska krävas tillbaka av kunden (ADR 0040, punkt 8) |
 
 - **Varje inbetalning går först till okopplade inbetalningar.** När `billing` kopplat den till en betalare, med referensen eller av en person, flyttas den till premiefordran. Saldot på okopplade inbetalningar är alltså alltid det som ligger i kön.
 - **Tillgodohavanden** är ett negativt saldo på premiefordran per betalare. Bolaget kan flytta dem till skuld i sitt ekonomisystem vid periodens slut.

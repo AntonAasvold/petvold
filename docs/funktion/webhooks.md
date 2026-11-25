@@ -16,13 +16,14 @@ Bolagets system kan få veta när något händer i Petvold, utan att fråga. En 
 | Policyer | `policy.issued`, `policy.changed`, `policy.renewed`, `policy.transferred`, `policy.cancelled`, `policy.reinstated` | policyns id |
 | Ansökningar | `application.received`, `application.accepted`, `application.referred`, `application.declined`, `application.withdrawn`, `application.expired` | ansökans id |
 | Förslag | `proposal.created`: överlåtelse till en ny ägare, eller avslut när djuret dött | policyns id |
-| Skador | `claim.registered`, `claim.decision_proposed`, `claim.proposal_returned`, `claim.decided`, `claim.payout_ordered`, `claim.review_requested`, `claim.withdrawn`, `claim.dismissed`, `claim.corrected`, `claim.attachment_added`, `claim.information_requested`, `claim.information_reminded`, `claim.information_received`, `claim.information_expired`, `claim.information_cancelled` | skadans id |
+| Skador | `claim.registered`, `claim.decision_proposed`, `claim.proposal_returned`, `claim.decided`, `claim.payout_ordered`, `claim.payout_reduced`, `claim.review_requested`, `claim.withdrawn`, `claim.dismissed`, `claim.corrected`, `claim.attachment_added`, `claim.information_requested`, `claim.information_reminded`, `claim.information_received`, `claim.information_expired`, `claim.information_cancelled` | skadans id |
 | Djur | `animal.ownership_changed`, `animal.died` | djurets id |
 | Kundmeddelanden | `notice.created`, `notice.document_made`, `notice.delivered`, `notice.failed` | meddelandets id |
 | Fakturor | `invoice.issued`: nummer, konto, part, datum, belopp, valuta, betalningsreferens och policyer. `invoice.credited`: kreditnotans id och nummer, konto, part, belopp, valuta och policyhändelsen den kom av (ADR 0040) | fakturans id |
 | Kreditnotor | `invoice.credited` har `kind` (`credit` eller `write-off`), och `reason` är policyhändelsen, `manual` eller `write-off` | fakturans id |
 | Bokföring | `accounting.day_closed`: dagen (`subject`), antal verifikationer, debet och kredit per valuta, kontoplanens version, kontoslag utan nummer och filens kontrollsumma (ADR 0040) | dagen |
 | Kopplade inbetalningar | `payment.matched`: konto, belopp, valuta, hur (`reference` eller `manual`), bokföringsdag och fakturan den betalade först (ADR 0040) | inbetalningens id |
+| Återkrav | `recovery.proposed`: en sänkt ersättning föreslås för återkrav, med skada, policy, part, konto, belopp och valuta. `recovery.decided`: beslutet, med `outcome` (`recover`, `offset` eller `write-off`). | återkravets id |
 | Återbetalningar | `refund.ordered`: konto, part, belopp, valuta och skäl (ADR 0040). `invoice.paid` säger med `paidWith` om en betalning eller tillgodohavandet betalade fakturan. | återbetalningens id |
 | Förfallna fakturor | `invoice.overdue`: nummer, konto, part, förfallodag, obetalt belopp, valuta, referens och påminnelsens nummer (ADR 0040) | fakturans id |
 | Betalda fakturor | `invoice.paid`: nummer, konto, part, belopp, valuta, inbetalningen och dagen (ADR 0040) | fakturans id |
@@ -77,7 +78,7 @@ webhook-signature: v1,K5oZfzN95Z9UVu1EsfQmfVNQhnkZ2pj9o9NDN/H/pI4=
   - **`sequence`** (tillägg i CloudEvents) är händelsens plats i modulens outbox. Det ökar per `source` och är utfyllt med nollor till 20 siffror, så att det sorterar rätt som text. Ett glapp betyder inte att en händelse saknas, eftersom en transaktion som rullats tillbaka lämnar ett.
   - **`time`** sorterar mellan moduler.
   - `job.failed` kommer inte från någon outbox och har ingen `sequence`.
-- **Belopp i skadebeslut.** `payout` i `claim.decided` är skadans hela ersättning efter beslutet, inte förändringen. En höjning jämfört med förra beslutet ger `claim.payout_ordered` med skillnaden.
+- **Belopp i skadebeslut.** `payout` i `claim.decided` är skadans hela ersättning efter beslutet, inte förändringen. En höjning jämfört med förra beslutet ger `claim.payout_ordered` med skillnaden, och en sänkning `claim.payout_reduced`.
 
 ## Signaturen
 

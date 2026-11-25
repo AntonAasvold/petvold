@@ -276,7 +276,7 @@ Regler:
 
 **Exempel:** handläggarens gräns är 10 000 kr. Korsbandsoperationen i exempel 2 ger 12 165 kr, så beslutet blir ett förslag. Attestanten godkänner, och ett beslut på 12 165 kr bokförs med båda namnen.
 
-**Utbetalningsorder.** Varje beslut som höjer ärendets ersättning skriver händelsen `claim.payout_ordered` med ökningen, valutan, försäkringen, kanalen och kliniken. En omprövning från 1 500 kr till 1 700 kr ger en order på 200 kr. En sänkning ger ingen order: återkrav är en öppen fråga. Betalningsmodulen (M5, ADR 0017) tar emot ordern och väljer mottagare, klinik eller kund.
+**Utbetalningsorder.** Varje beslut som höjer ärendets ersättning skriver händelsen `claim.payout_ordered` med ökningen, valutan, försäkringen, kanalen och kliniken. En omprövning från 1 500 kr till 1 700 kr ger en order på 200 kr. En sänkning ger ingen negativ order. Den ger händelsen `claim.payout_reduced` med minskningen, och `billing` gör ett förslag till återkrav ([Premier och betalningar](premier.md#återkrav)). Betalningsmodulen (M5, ADR 0017) tar emot ordern och väljer mottagare, klinik eller kund.
 
 **Reserv.** När en skada går till handläggare bokas den ersättning som bedömningen förväntar sig som en reserv i ledgern, i samma transaktion som skadan registreras. Korsbandsoperationen i exempel 2 reserverar alltså 12 165 kr. Reserven ligger kvar medan ärendet väntar på handläggare eller attest. Beslutet löser upp den i samma transaktion som det bokförs, oavsett om ersättningen beviljas eller skadan avslås. Automatiskt reglerade skador och skador som bedömningen föreslår att avslå får ingen reserv.
 
