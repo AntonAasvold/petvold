@@ -1,4 +1,4 @@
-# Policyn en viss dag i back office (PR #NN)
+# Policyn en viss dag i back office (PR #176)
 
 **Datum:** 2026-11-25 **ADR:** 0006, 0035 **Moduler:** `apps/backoffice`
 
