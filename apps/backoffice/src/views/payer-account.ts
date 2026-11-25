@@ -49,6 +49,7 @@ export class PayerAccountView extends LitElement {
   @state() private refundShown: RefundProblem[] = [];
   @state() private notice: Notice | null = null;
   @state() private busy = '';
+  @state() private payLink: { url: string; expiresAt: string } | null = null;
   private keys = new IdempotencyKeys();
 
   constructor() {
@@ -203,6 +204,26 @@ export class PayerAccountView extends LitElement {
     this.credit = { kind: 'credit', amount: '', reason: '' };
     this.creditShown = [];
     this.notice = null;
+    this.payLink = null;
+  }
+
+  /** A page at the payment service where the customer pays what is left, e.g. card or Swish by Stripe. */
+  private async makePayLink(inv: Invoice) {
+    this.busy = 'paylink';
+    const back = `${location.origin}/payer-accounts/${encodeURIComponent(this.accountId)}`;
+    const key = `paylink:${inv.id}`;
+    const { data, error } = await this.api.POST('/v1/invoices/{invoiceId}/checkout-sessions', {
+      params: { path: { invoiceId: inv.id }, header: { 'Idempotency-Key': this.keys.for(key) } },
+      body: { successUrl: back, cancelUrl: back, locale: getLocale() === 'sv' ? 'sv' : 'en' },
+    });
+    this.busy = '';
+    if (data) {
+      this.keys.done(key);
+      this.payLink = { url: data.url, expiresAt: data.expiresAt };
+    } else {
+      const p = (error ?? {}) as { title?: string; detail?: string };
+      this.notice = { variant: 'danger', text: p.detail ?? p.title ?? msg('Something went wrong.', { id: 'common.error' }) };
+    }
   }
 
   private async send(what: string, call: (key: string) => Promise<{ response: Response; error?: unknown }>, success: (status: number) => string): Promise<boolean> {
@@ -275,6 +296,13 @@ export class PayerAccountView extends LitElement {
           ${row(msg('To pay', { id: 'account.open' }), money(inv.open))}
           ${row(msg('Policies', { id: 'invoice.policies' }), [...new Set(inv.lines.map((l) => l.policyId))].join(', '), true)}
         </dl>
+        ${this.may('payments:checkout') && inv.open > 0
+          ? html`<wa-button appearance="outlined" ?loading=${this.busy === 'paylink'} @click=${() => this.makePayLink(inv)}>${msg('Payment link (card, Swish)', { id: 'account.payLink' })}</wa-button>
+              ${this.payLink
+                ? html`<p>${msg('Send it to the customer. It works until', { id: 'account.payLinkHow' })} ${formatDateTime(this.payLink.expiresAt, lang)}:</p>
+                    <wa-input label=${msg('Payment link', { id: 'account.payLinkLabel' })} readonly .value=${this.payLink.url}></wa-input>`
+                : nothing}`
+          : nothing}
         ${this.may('billing:credit') && creditMax(inv, 'credit') > 0
           ? html`<form @submit=${(e: Event) => this.doCredit(e, inv)} novalidate>
               <wa-radio-group

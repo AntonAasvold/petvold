@@ -3772,6 +3772,40 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Invoice' }
 
+  /v1/invoices/{invoiceId}/checkout-sessions:
+    post:
+      tags: [billing]
+      operationId: createInvoiceCheckout
+      x-permission: payments:checkout
+      summary: A page where the customer pays the invoice
+      description: |
+        Requires the permission `payments:checkout` (ADR 0040, punkt 12). Makes a
+        page at the payment service, e.g. Stripe Checkout with card and Swish,
+        for what is still to pay on the invoice, with its reference. The channel
+        sends the customer to url. When the customer has paid, the service tells
+        Petvold, and the payment is matched to the invoice by its reference. The
+        page works an hour. 409 when nothing is left to pay; 404 when the
+        installation has no service with a payment page.
+      parameters:
+        - { name: invoiceId, in: path, required: true, schema: { type: string, pattern: '^inv_[A-Za-z0-9]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutSessionRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: The page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutSession' }
+
   /v1/invoices/{invoiceId}/credit-notes:
     post:
       tags: [billing]
@@ -7774,6 +7808,29 @@ components:
       additionalProperties: false
       properties:
         note: { type: string, minLength: 1, maxLength: 2000, description: "How the details were checked, e.g. a call to the customer's number in the register." }
+
+    CheckoutSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [successUrl, cancelUrl]
+      properties:
+        provider: { type: string, description: 'The payment service. Omitted: the first the installation has with a payment page, e.g. stripe.' }
+        successUrl: { type: string, maxLength: 2000, description: "The channel's page after the payment. https, or http on localhost." }
+        cancelUrl: { type: string, maxLength: 2000, description: "The channel's page if the customer turns back." }
+        locale: { type: string, pattern: '^[a-z]{2}(-[A-Z]{2})?$', description: 'The language of the page, e.g. sv.' }
+
+    CheckoutSession:
+      type: object
+      additionalProperties: false
+      required: [provider, id, url, expiresAt, invoiceId, amount, currency]
+      properties:
+        provider: { type: string }
+        id: { type: string, description: "The service's id for the page, e.g. cs_test_…." }
+        url: { type: string, description: The page to send the customer to. }
+        expiresAt: { type: string, format: date-time }
+        invoiceId: { type: string }
+        amount: { type: integer, minimum: 1, description: What is left to pay, in minor units. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
 
     PayoutFileRequest:
       type: object

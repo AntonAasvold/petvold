@@ -8,7 +8,8 @@
     "./postgres": "./src/postgres.ts",
     "./test-suites/payments-store": "./test-suites/payments-store.ts",
     "./test-suites/provider": "./test-suites/provider.ts",
-    "./bank-file": "./src/bank-file.ts"
+    "./bank-file": "./src/bank-file.ts",
+    "./stripe": "./src/stripe.ts"
   },
   "dependencies": {
     "@petvold/common": "^0.1.0",

@@ -206,6 +206,8 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
   - [ ] Betaltjänster: bankfiler (ISO 20022), Stripe eller Surfboard (kort och Swish), Autogiro och SEPA, och Swish direkt:
     - [x] 7a: bankens `camt.054` in, med inläsning i back office och av en integration
     - [x] 7b: utbetalningar som `pain.001`, och bankens bekräftelse i `camt.054`
+    - [x] 7c: Stripe Checkout för kort och Swish, en betalsida per faktura
+    - [ ] Autogiro via Bankgirot och SEPA-autogiro, och Swish direkt utan Stripe
   - [ ] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav:
     - [x] 8a: köerna i **Pengar**: okopplade inbetalningar, spärrade utbetalningar och kreditförslag
     - [x] 8b: betalarens konto på partens sida, med fakturor, saldo, kreditnota och återbetalning

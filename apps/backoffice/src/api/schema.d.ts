@@ -2581,6 +2581,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/invoices/{invoiceId}/checkout-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A page where the customer pays the invoice
+         * @description Requires the permission `payments:checkout` (ADR 0040, punkt 12). Makes a
+         *     page at the payment service, e.g. Stripe Checkout with card and Swish,
+         *     for what is still to pay on the invoice, with its reference. The channel
+         *     sends the customer to url. When the customer has paid, the service tells
+         *     Petvold, and the payment is matched to the invoice by its reference. The
+         *     page works an hour. 409 when nothing is left to pay; 404 when the
+         *     installation has no service with a payment page.
+         */
+        post: operations["createInvoiceCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/invoices/{invoiceId}/credit-notes": {
         parameters: {
             query?: never;
@@ -5421,6 +5447,29 @@ export interface components {
         ReleasePayoutRequest: {
             /** @description How the details were checked, e.g. a call to the customer's number in the register. */
             note?: string;
+        };
+        CheckoutSessionRequest: {
+            /** @description The payment service. Omitted: the first the installation has with a payment page, e.g. stripe. */
+            provider?: string;
+            /** @description The channel's page after the payment. https, or http on localhost. */
+            successUrl: string;
+            /** @description The channel's page if the customer turns back. */
+            cancelUrl: string;
+            /** @description The language of the page, e.g. sv. */
+            locale?: string;
+        };
+        CheckoutSession: {
+            provider: string;
+            /** @description The service's id for the page, e.g. cs_test_…. */
+            id: string;
+            /** @description The page to send the customer to. */
+            url: string;
+            /** Format: date-time */
+            expiresAt: string;
+            invoiceId: string;
+            /** @description What is left to pay */
+            amount: number;
+            currency: string;
         };
         PayoutFileRequest: {
             /** @default bank-file */
@@ -10996,6 +11045,39 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    createInvoiceCheckout: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                invoiceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckoutSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description The page */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutSession"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
         };
     };
     creditInvoice: {

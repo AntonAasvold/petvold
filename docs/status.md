@@ -5,6 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
+- Pengar, steg 7c: Stripe, PR #NN: en betalsida hos Stripe för en faktura (`POST /v1/invoices/{id}/checkout-sessions`, `payments:checkout`), med kort och Swish. Stripes signerade `checkout.session.completed` blir en inbetalning med fakturans referens. Knappen **Betallänk** finns på fakturan i back office. Inget nytt beroende.
 - Pengar, steg 7b: bankfiler ut, PR #167: utbetalningar med bankfil väntar på en `pain.001` som görs och hämtas under **Pengar** (`payments:export`). Bankens `camt.054` gör dem betalda eller returnerade. Filen töms när en mottagare raderas. Migration 0069.
 - Pengar, steg 7a: bankfiler in, PR #166: bankens `camt.054` läses in under **Pengar** eller av en integration (`POST /v1/payment-files`, `payments:import`). Inbetalningarna kopplas med OCR eller RF som förut. Varje fil sparas med vem, när och kontrollsumma. Migration 0068, ny roll `bank-file-job`.
 - Gallring av dokument, PR #165: dokumenten om en part gallras när parten anonymiseras, genom samma krok som betaluppgifterna. Filen tas bort och raden finns kvar. ADR 0038 är byggd, med ett förtydligande om steg 5.

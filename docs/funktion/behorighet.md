@@ -79,6 +79,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `payments:payee-write` | Ge en parts betaluppgifter. Det sparas vem som gav dem (ADR 0040) | `POST /v1/payees/{partyId}/accounts`, `POST /v1/clinics/{clinicId}/accounts` |
 | `payments:agreements` | Göra och avsluta avtal om direktreglering med kliniker (ADR 0040) | `POST /v1/clinic-agreements`, `.../{id}/endings` |
 | `payments:import` | Läsa in bankens filer, `camt.054` (ADR 0040, punkt 12). Det sparas vem som läste in varje fil. | `POST /v1/payment-files` |
+| `payments:checkout` | Skapa en betalsida där kunden betalar en faktura, till exempel med kort eller Swish via Stripe | `POST /v1/invoices/{id}/checkout-sessions` |
 | `payments:export` | Göra och hämta utbetalningsfiler till banken, `pain.001`, som innehåller mottagarnas namn och kontonummer | `POST /v1/payout-files`, `GET /v1/payout-files/{id}/file` |
 | `payments:release` | Släppa en utbetalning som spärrats för att betaluppgifterna är nya, men inte den man själv gav uppgifterna till | `POST /v1/payouts/{id}/releases` |
 | `accounting:read` | Läsa verifikationerna, saldot per konto, de stängda dagarna med filen och kontoplanen (ADR 0040) | `GET /v1/verifications`, `.../{id}`, `GET /v1/account-balances`, `GET /v1/day-closes`, `.../{market}/{day}/file`, `GET /v1/settings/chart-of-accounts` |
@@ -115,10 +116,10 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `catalog-publisher` | `catalog:read`, `catalog:publish` | – | Granskar och publicerar produktversioner |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview`, `catalog:read`, `animals:lookup` | klinik | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | – | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
-| `billing-clerk` | `billing:read`, `billing:write`, `billing:credit`, `payments:read`, `payments:payee-write`, `payments:release`, `payments:agreements`, `payments:import`, `payments:export`, `policies:read`, `parties:read`, `catalog:read` | – | Följer premierna, till exempel ekonomiavdelningen (ADR 0040). Krediterar och skriver av ensam upp till 1 000 kr eller 100 EUR (`creditLimits`). |
+| `billing-clerk` | `billing:read`, `billing:write`, `billing:credit`, `payments:read`, `payments:payee-write`, `payments:release`, `payments:agreements`, `payments:import`, `payments:export`, `payments:checkout`, `policies:read`, `parties:read`, `catalog:read` | – | Följer premierna, till exempel ekonomiavdelningen (ADR 0040). Krediterar och skriver av ensam upp till 1 000 kr eller 100 EUR (`creditLimits`). |
 | `accountant` | `accounting:read`, `accounting:configure`, `billing:read`, `payments:read` | – | Följer bokföringen som Petvold lämnar till bolagets ekonomisystem, till exempel redovisningen (ADR 0040) |
 | `billing-manager` | `billing:read`, `billing:credit`, `payments:read`, `policies:read`, `parties:read` | – | Attesterar större kreditnotor och avskrivningar, till exempel ekonomichefen. Upp till 50 000 kr eller 5 000 EUR. |
-| `customer-channel` | `claims:read`, `claims:request-review`, `catalog:read`, `policies:read`, `policies:quote`, `notices:read`, `billing:read` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
+| `customer-channel` | `claims:read`, `claims:request-review`, `catalog:read`, `policies:read`, `policies:quote`, `notices:read`, `documents:read`, `documents:share`, `billing:read`, `payments:checkout` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
 
 ## Omfång
 

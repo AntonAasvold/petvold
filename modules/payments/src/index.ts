@@ -81,6 +81,33 @@ export interface PaymentProvider {
   readonly uploadOnly?: boolean;
   /** The file of payment orders for the bank, e.g. pain.001, for payouts it left pending (makePayoutFile). */
   payoutFile?(input: PayoutFileInput): string;
+  /** A page where the customer pays, e.g. Stripe Checkout with card and Swish. Only with an 'incoming' capability. */
+  checkout?(req: CheckoutRequest): Promise<CheckoutSession>;
+}
+
+/** What the customer is to pay on a service's page: the amount and the reference that finds the invoice. */
+export interface CheckoutRequest {
+  market: string;
+  currency: string;
+  amount: number;
+  /** The invoice's OCR or RF: the payment carries it back. */
+  reference: string;
+  /** On the page, e.g. the invoice's number. */
+  description: string;
+  successUrl: string;
+  cancelUrl: string;
+  /** e.g. sv. */
+  locale?: string;
+  expiresAt: Timestamp;
+  /** The same key gives the same page. */
+  idempotencyKey: string;
+}
+
+export interface CheckoutSession {
+  provider: string;
+  id: string;
+  url: string;
+  expiresAt: Timestamp;
 }
 
 /** What a payout file is made of. */
@@ -312,6 +339,25 @@ export class PaymentsService {
     };
     await this.d.store.addPaymentFile(file);
     return file;
+  }
+
+  /**
+   * A page where the customer pays, through an adapter that has one (e.g.
+   * Stripe Checkout). The payment comes back through its notification with
+   * the reference, and billing matches it to the invoice.
+   */
+  async createCheckout(providerId: string, req: CheckoutRequest): Promise<CheckoutSession> {
+    const provider = this.providers.get(providerId);
+    if (!provider?.checkout) throw new PaymentsError('not_found', `No payment provider ${providerId} with a payment page`);
+    if (!provider.capabilities().some((c) => c.kind === 'incoming' && c.market === req.market && c.currency === req.currency)) {
+      throw new PaymentsError('validation', `The provider ${providerId} does not take payments in ${req.market} and ${req.currency}`);
+    }
+    return provider.checkout(req);
+  }
+
+  /** The adapters with a payment page, for the channels. */
+  checkoutProviders(): string[] {
+    return [...this.providers.values()].filter((p) => p.checkout).map((p) => p.id).sort();
   }
 
   paymentFiles(filter: { provider?: string } = {}): Promise<PaymentFile[]> {

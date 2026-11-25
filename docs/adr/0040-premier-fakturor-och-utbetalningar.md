@@ -228,6 +228,14 @@ Bankfiler ut, `pain.001.001.03`, och bankens bekräftelse i `camt.054` är byggd
 - **Filen sparas** så att den kan hämtas igen. Den innehåller namn och kontonummer, så den töms när en mottagare i den raderas (punkt 11). Raden och kontrollsumman finns kvar.
 - **Filerna följer meddelandedefinitionerna** på iso20022.org. Bankernas egna tillämpningsanvisningar kan kräva mer, och en bank behöver pröva filerna innan de används med riktiga pengar.
 
+## Förtydligande 2026-11-25, steg 7c
+
+Stripe är byggd för inbetalningar med kort och Swish, genom Stripe Checkout:
+- **En betalsida per faktura**, för det som är kvar att betala, med fakturans referens i `metadata`. Betalningen kopplas därför till fakturan som från banken. Sidan fungerar en timme, så att beloppet fortfarande stämmer.
+- **Stripes händelse `checkout.session.completed`** läses efter att signaturen kontrollerats (`Stripe-Signature`, HMAC-SHA256). Stripes id för betalningen gör att samma händelse inte ger två inbetalningar.
+- **Inget Stripe-bibliotek.** Ett anrop med `fetch` och kontrollen med `node:crypto` räcker. Ett bibliotek hade gett ett större beroende att följa.
+- **Swish genom Stripe** gäller bara engångsbetalningar i SEK, och Stripe står som mottagare. Återkommande dragningar kräver Autogiro, som återstår.
+
 ## Källor
 
 - Försäkringsavtalslagen (2005:104), 5 kap. 1, 2 och 6 §§. riksdagen.se
