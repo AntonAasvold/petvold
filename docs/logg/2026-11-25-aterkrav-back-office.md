@@ -1,4 +1,4 @@
-# Återkrav, del 2: kön i back office (PR #NN)
+# Återkrav, del 2: kön i back office (PR #171)
 
 **Datum:** 2026-11-25 **ADR:** 0040 punkt 8, 0035 **Moduler:** `apps/backoffice`
 

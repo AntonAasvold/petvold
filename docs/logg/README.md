@@ -43,7 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
-| 2026-11-25 | [Återkrav, del 2: kön i back office](2026-11-25-aterkrav-back-office.md) | #NN |
+| 2026-11-25 | [Återkrav, del 2: kön i back office](2026-11-25-aterkrav-back-office.md) | #171 |
 | 2026-11-25 | [Återkrav, del 1: förslag, beslut och bokföring](2026-11-25-aterkrav.md) | #170 |
 | 2026-11-25 | [Pengar, steg 7c: Stripe för kort och Swish](2026-11-25-stripe.md) | #168 |
 | 2026-11-25 | [Pengar, steg 7b: bankfiler ut](2026-11-25-bankfiler-ut.md) | #167 |
