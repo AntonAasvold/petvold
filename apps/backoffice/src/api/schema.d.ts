@@ -2754,6 +2754,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/payout-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The payout files, newest first
+         * @description Requires the permission `payments:read`. Only files in the caller's markets.
+         */
+        get: operations["listPayoutFiles"];
+        put?: never;
+        /**
+         * Make the bank's payout file
+         * @description Requires the permission `payments:export` (ADR 0040, punkt 12). Puts every
+         *     payout the bank file adapter left pending, and that is in no file yet,
+         *     in an ISO 20022 pain.001.001.03 for the market and currency: one credit
+         *     transfer per payout, paid from the insurer's account, with the payout
+         *     id without its prefix as EndToEndId. The bank's camt.054 then confirms
+         *     each paid or returned (POST /v1/payment-files). 409 when no payout waits.
+         */
+        post: operations["makePayoutFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payout-files/{fileId}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The payout file itself, pain.001
+         * @description Requires the permission `payments:export`: the file holds the payees' names
+         *     and account numbers. The same file every time, with its checksum in
+         *     x-content-sha256. 410 once a payee in it is erased (ADR 0040, punkt 11).
+         */
+        get: operations["getPayoutFileContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/payment-files": {
         parameters: {
             query?: never;
@@ -5370,6 +5421,35 @@ export interface components {
         ReleasePayoutRequest: {
             /** @description How the details were checked, e.g. a call to the customer's number in the register. */
             note?: string;
+        };
+        PayoutFileRequest: {
+            /** @default bank-file */
+            provider: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            /**
+             * Format: date
+             * @description The day the bank pays. Omitted: today in the market.
+             */
+            executionDate?: string;
+        };
+        /** @description A file of payouts for the bank, pain.001 (ADR 0040, punkt 12). Never changes, but its content is erased with a payee in it. */
+        PayoutFile: {
+            id: string;
+            provider: string;
+            market: components["schemas"]["Market"];
+            currency: string;
+            /** Format: date */
+            executionDate: string;
+            payoutIds: string[];
+            /** @description Minor units. */
+            total: number;
+            sha256: string;
+            createdBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description The file's content is erased with a payee in it; the record stays. */
+            erased: boolean;
         };
         PaymentFileUpload: {
             /**
@@ -11179,6 +11259,98 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["Unprocessable"];
+        };
+    };
+    listPayoutFiles: {
+        parameters: {
+            query?: {
+                market?: components["schemas"]["Market"];
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The files */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["PayoutFile"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    makePayoutFile: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayoutFileRequest"];
+            };
+        };
+        responses: {
+            /** @description The file's record; fetch the file itself with GET /v1/payout-files/{fileId}/file */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayoutFile"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getPayoutFileContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pain.001 */
+            200: {
+                headers: {
+                    /** @description The file's SHA-256. */
+                    "x-content-sha256"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/xml": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            410: components["responses"]["Gone"];
         };
     };
     listPaymentFiles: {

@@ -75,6 +75,22 @@ export function paymentsStoreSuite(name: string, make: () => Promise<{ store: Pa
       assert.deepEqual(await store.payeeAccounts({ partyId: 'pty_x' }), []);
     });
 
+    test("payout files are kept, read newest first, and emptied once when a payee in them is erased", async () => {
+      const { store } = await make();
+      await store.addPayeeAccount(payeeAccountOf(1));
+      await store.addPayout(payoutOf(1), { status: 'pending', at: '2026-12-01T10:00:00.000Z', by: 'payments', payeeAccountId: 'pya_1' }, []);
+      const f = (n: number, payoutIds: string[]) => ({ id: `pof_${n}`, provider: 'bank-file', market: 'SE', currency: 'SEK', executionDate: '2026-12-01', payoutIds, total: 1_234_500, sha256: String(n).repeat(64).slice(0, 64), createdBy: 'ekonomi@example.test', createdAt: `2026-12-0${n}T10:00:00.000Z`, content: `<Document n="${n}"/>` });
+      await store.addPayoutFile(f(1, ['pyo_1']));
+      await store.addPayoutFile(f(2, ['pyo_other']));
+      assert.deepEqual((await store.payoutFiles({ provider: 'bank-file', market: 'SE' })).map((x) => x.id), ['pof_2', 'pof_1']);
+      assert.deepEqual(await store.payoutFile('pof_1'), f(1, ['pyo_1']));
+      assert.equal(await store.erasePayoutFiles('pty_anna'), 1);
+      assert.equal(await store.erasePayoutFiles('pty_anna'), 0, 'once');
+      assert.equal((await store.payoutFile('pof_1'))?.content, null);
+      assert.equal((await store.payoutFile('pof_2'))?.content, '<Document n="2"/>', "another payee's file is kept");
+      assert.equal(await store.payoutFile('pof_x'), null);
+    });
+
     test('payment files are kept and read newest first, by provider', async () => {
       const { store } = await make();
       const f = (n: number, provider = 'bank-file') => ({ id: `pfl_${n}`, provider, sha256: String(n).repeat(64).slice(0, 64), size: 100 + n, importedBy: 'ekonomi@example.test', importedAt: `2026-12-0${n}T10:00:00.000Z`, received: n, duplicates: 0, paymentIds: [`pay_${n}`] });

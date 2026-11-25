@@ -16,7 +16,7 @@ after(async () => {
   await pool.end();
   await admin.end();
 });
-const clean = () => admin.query('truncate payments.clinic_agreement_ending, payments.clinic_agreement, payments.outbox, payments.payout_step, payments.payout, payments.payee_account, payments.payment cascade');
+const clean = () => admin.query('truncate payments.payout_file, payments.payment_file, payments.clinic_agreement_ending, payments.clinic_agreement, payments.outbox, payments.payout_step, payments.payout, payments.payee_account, payments.payment cascade');
 
 paymentsStoreSuite('PostgresPaymentsStore', async () => {
   await clean();
@@ -47,4 +47,7 @@ test('payee accounts are only ever erased, once; payouts and their steps never c
   await assert.rejects(pool.query(`update payments.payee_account set erased_at = now(), details = '{}'`), /except to be erased once/, 'once');
   await assert.rejects(pool.query(`update payments.payout set amount = 1`), /permission denied/);
   await assert.rejects(pool.query(`delete from payments.payout_step`), /permission denied/);
+  await store.addPayoutFile({ id: 'pof_1', provider: 'bank-file', market: 'SE', currency: 'SEK', executionDate: '2026-12-01', payoutIds: ['pyo_1'], total: 100, sha256: 'a'.repeat(64), createdBy: 'x', createdAt: '2026-12-01T10:00:00.000Z', content: '<x/>' });
+  await assert.rejects(pool.query(`update payments.payout_file set content = '<y/>'`), /except to have its content erased once/);
+  await assert.rejects(pool.query(`update payments.payout_file set total = 1`), /permission denied/);
 });

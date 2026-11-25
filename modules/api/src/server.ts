@@ -20,6 +20,7 @@
  * - PETVOLD_CLAIM_NUMBER_PREFIX: the claim number's prefix per market, e.g. SE=S,NO=N (ADR 0036). Default S.
  * - PETVOLD_FAKE_BANK_SECRET and PETVOLD_FAKE_BANK_MARKETS: the fake bank, for a demo (ADR 0017). Never with real money.
  * - PETVOLD_BANK_FILE_ACCOUNTS: the accounts the bank's camt.054 files are read for, e.g. SE:SEK:5050-1055 (ADR 0040).
+ * - PETVOLD_BANK_FILE_DEBTOR_NAME: the insurer's name as it pays out by pain.001. Without it, bank files only bring payments in.
  * - PETVOLD_NEW_PAYEE_HOLD_DAYS: days that new payee details hold a payout for a person (ADR 0040). Default 0.
  * - PORT: default 8080.
  * - PETVOLD_CORS_ORIGINS: browser applications allowed to call the API, comma-separated. Default none.

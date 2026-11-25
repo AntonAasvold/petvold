@@ -4002,6 +4002,89 @@ paths:
                   nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/payout-files:
+    post:
+      tags: [payments]
+      operationId: makePayoutFile
+      x-permission: payments:export
+      summary: Make the bank's payout file
+      description: |
+        Requires the permission `payments:export` (ADR 0040, punkt 12). Puts every
+        payout the bank file adapter left pending, and that is in no file yet,
+        in an ISO 20022 pain.001.001.03 for the market and currency: one credit
+        transfer per payout, paid from the insurer's account, with the payout
+        id without its prefix as EndToEndId. The bank's camt.054 then confirms
+        each paid or returned (POST /v1/payment-files). 409 when no payout waits.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayoutFileRequest' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: The file's record; fetch the file itself with GET /v1/payout-files/{fileId}/file
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayoutFile' }
+    get:
+      tags: [payments]
+      operationId: listPayoutFiles
+      x-permission: payments:read
+      summary: The payout files, newest first
+      description: Requires the permission `payments:read`. Only files in the caller's markets.
+      parameters:
+        - { name: market, in: query, schema: { $ref: '#/components/schemas/Market' } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The files
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayoutFile' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /v1/payout-files/{fileId}/file:
+    get:
+      tags: [payments]
+      operationId: getPayoutFileContent
+      x-permission: payments:export
+      summary: The payout file itself, pain.001
+      description: |
+        Requires the permission `payments:export`: the file holds the payees' names
+        and account numbers. The same file every time, with its checksum in
+        x-content-sha256. 410 once a payee in it is erased (ADR 0040, punkt 11).
+      parameters:
+        - { name: fileId, in: path, required: true, schema: { type: string, pattern: '^pof_[A-Za-z0-9]+$' } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '200':
+          description: The pain.001
+          headers:
+            x-content-sha256: { schema: { type: string }, description: The file's SHA-256. }
+          content:
+            application/xml:
+              schema: { type: string }
+
   /v1/payment-files:
     post:
       tags: [payments]
@@ -7691,6 +7774,34 @@ components:
       additionalProperties: false
       properties:
         note: { type: string, minLength: 1, maxLength: 2000, description: "How the details were checked, e.g. a call to the customer's number in the register." }
+
+    PayoutFileRequest:
+      type: object
+      additionalProperties: false
+      required: [market, currency]
+      properties:
+        provider: { type: string, default: bank-file }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        executionDate: { type: string, format: date, description: 'The day the bank pays. Omitted: today in the market.' }
+
+    PayoutFile:
+      type: object
+      additionalProperties: false
+      required: [id, provider, market, currency, executionDate, payoutIds, total, sha256, createdBy, createdAt, erased]
+      description: A file of payouts for the bank, pain.001 (ADR 0040, punkt 12). Never changes, but its content is erased with a payee in it.
+      properties:
+        id: { type: string, pattern: '^pof_[A-Za-z0-9]+$' }
+        provider: { type: string }
+        market: { $ref: '#/components/schemas/Market' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        executionDate: { type: string, format: date }
+        payoutIds: { type: array, minItems: 1, items: { type: string } }
+        total: { type: integer, minimum: 1, description: Minor units. }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        erased: { type: boolean, description: The file's content is erased with a payee in it; the record stays. }
 
     PaymentFileUpload:
       type: object

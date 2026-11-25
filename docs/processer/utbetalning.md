@@ -41,6 +41,7 @@ flowchart LR
 | UTB-08 | Utan en betaltjänst som kan betala ut i marknaden gör Petvold ingen utbetalning. Ordern ligger kvar hos bolagets system. | ADR 0017 | Installationens betaltjänster |
 | UTB-09 | En återbetalning av ett tillgodohavande betalas ut på samma sätt, till betalaren. | ADR 0040, punkt 8 | – |
 | UTB-10 | Kvittning av obetald premie mot en ersättning görs inte än. Den ska bara göras om marknaden tillåter det och produkten slår på det. | ADR 0040, punkt 8 | – |
+| UTB-11 | En utbetalning med bankfil väntar tills den har kommit med i en `pain.001` och banken bekräftat den i `camt.054`. Uttaget gör den betald, och en retur gör den misslyckad med bankens orsakskod. Varje utbetalning kommer med i en fil en gång. | ADR 0040, punkt 12 | `PETVOLD_BANK_FILE_DEBTOR_NAME` |
 
 ## Exempel
 

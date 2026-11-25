@@ -27,4 +27,11 @@ test("a billing clerk reads in the bank's camt.054; its payments come in once", 
   await grid.getByRole('row').nth(1).click();
   await expect(page.locator('.pv-dl__row').filter({ hasText: 'New payments' })).toContainText('0');
   await expect(page.locator('.pv-dl__row').filter({ hasText: 'Already read' })).toContainText('3');
+
+  // The dev server pays out with the fake bank, so no payout waits for a pain.001.
+  await page.getByRole('tab', { name: 'Held payouts' }).click();
+  await page.getByRole('tab', { name: 'Bank files' }).click();
+  await page.getByRole('button', { name: 'Make a payout file' }).click();
+  await expect(page.locator('wa-callout[variant="warning"]')).toContainText('No payouts wait for a file in the market and currency.');
+  await expect(page.getByText('No payout files yet.')).toBeVisible();
 });

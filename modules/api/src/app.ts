@@ -1268,6 +1268,34 @@ export function createApp(d: AppDeps) {
     });
   });
 
+  // Payouts for the bank (ADR 0040, punkt 12): the pending ones in a pain.001, which the bank confirms in camt.054.
+  app.post('/v1/payout-files', async (c) => {
+    const body = (await c.req.json()) as { provider?: string; market: string; currency: string; executionDate?: string };
+    if (!seesPayment(c.get('scope'), body.market)) throw new PaymentsError('not_found', `No payouts in ${body.market}`);
+    return idempotent(c, body, async () => {
+      const { content: _content, ...file } = await payments.makePayoutFile({ provider: body.provider ?? 'bank-file', market: body.market, currency: body.currency, ...(body.executionDate ? { executionDate: body.executionDate } : {}) }, c.get('principal').subject);
+      return { status: 201, body: { ...file, erased: false } };
+    });
+  });
+
+  app.get('/v1/payout-files', async (c) => {
+    const market = c.req.query('market');
+    const files = await payments.payoutFiles(market ? { market } : {});
+    return sendPage(c, files.filter((f) => seesPayment(c.get('scope'), f.market)).map(({ content, ...f }) => ({ ...f, erased: content === null })));
+  });
+
+  app.get('/v1/payout-files/:fileId/file', async (c) => {
+    const f = await payments.payoutFile(c.req.param('fileId'));
+    if (!seesPayment(c.get('scope'), f.market)) throw new PaymentsError('not_found', `Payout file ${f.id} does not exist`);
+    if (f.content === null) return problem(c, 410, 'The file is erased: a payee in it was erased');
+    return c.body(f.content, 200, {
+      'content-type': 'application/xml; charset=utf-8',
+      'content-disposition': `attachment; filename="petvold-payouts-${f.market}-${f.executionDate}-${f.id}.xml"`,
+      'x-content-sha256': f.sha256,
+      'cache-control': 'no-store',
+    });
+  });
+
   app.get('/v1/payment-files', async (c) => {
     const provider = c.req.query('provider');
     return sendPage(c, await payments.paymentFiles(provider ? { provider } : {}));

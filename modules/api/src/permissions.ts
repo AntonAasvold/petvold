@@ -124,6 +124,8 @@ export const PERMISSIONS = [
   'payments:agreements',
   /** Read the bank's files into payments, e.g. camt.054 (ADR 0040, punkt 12). Logged with who read each in. */
   'payments:import',
+  /** Make and fetch the payout files for the bank, pain.001, which hold the payees' names and account numbers (ADR 0040, punkt 12). */
+  'payments:export',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -225,7 +227,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** The scheduled retention run. Only asks; a privacy officer approves each request. */
   'retention-job': { permissions: ['parties:retention'] },
   /** Reads the bank's files into payments, e.g. an integration that fetches them over SFTP (ADR 0040, punkt 12). */
-  'bank-file-job': { permissions: ['payments:import', 'payments:read'] },
+  'bank-file-job': { permissions: ['payments:import', 'payments:export', 'payments:read'] },
   /** Maintains reference data and writes product drafts. */
   'catalog-manager': { permissions: ['catalog:read', 'catalog:write'] },
   /** Reviews and publishes product versions. */
@@ -238,7 +240,7 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read', 'documents:read', 'documents:share', 'billing:read'], bindsTo: 'policies' },
   /** Follows the premiums: payer accounts, premium plans and later invoices and payments (ADR 0040), e.g. the finance team. */
   'billing-clerk': {
-    permissions: ['billing:read', 'billing:write', 'billing:credit', 'payments:read', 'payments:payee-write', 'payments:release', 'payments:agreements', 'payments:import', 'policies:read', 'parties:read', 'catalog:read'],
+    permissions: ['billing:read', 'billing:write', 'billing:credit', 'payments:read', 'payments:payee-write', 'payments:release', 'payments:agreements', 'payments:import', 'payments:export', 'policies:read', 'parties:read', 'catalog:read'],
     // SEK 1,000 and EUR 100 alone; above that, a proposal someone with a higher limit approves.
     creditLimits: { SEK: 100_000, EUR: 10_000 },
   },
