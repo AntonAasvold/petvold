@@ -64,4 +64,6 @@ test('a billing clerk matches a payment that came in without a reference', async
   await expect(page.getByRole('grid', { name: 'Held payouts' })).toBeVisible();
   await page.getByRole('tab', { name: 'Credit proposals' }).click();
   await expect(page.getByRole('grid', { name: 'Credit proposals' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Recoveries' }).click();
+  await expect(page.getByRole('grid', { name: 'Recoveries' })).toBeVisible();
 });

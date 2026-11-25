@@ -7,12 +7,12 @@
  */
 import { can, type Me } from './permissions.ts';
 
-export type MoneyTab = 'unmatched' | 'held' | 'awaiting' | 'proposals' | 'clinics' | 'files';
+export type MoneyTab = 'unmatched' | 'held' | 'awaiting' | 'proposals' | 'recoveries' | 'clinics' | 'files';
 
-const TAB_PERMISSION: Record<MoneyTab, string> = { unmatched: 'billing:read', held: 'payments:read', awaiting: 'payments:read', proposals: 'billing:read', clinics: 'payments:read', files: 'payments:read' };
+const TAB_PERMISSION: Record<MoneyTab, string> = { unmatched: 'billing:read', held: 'payments:read', awaiting: 'payments:read', proposals: 'billing:read', recoveries: 'billing:read', clinics: 'payments:read', files: 'payments:read' };
 
 /** The tabs the caller may read, in order. */
-export const moneyTabs = (me: Me | null): MoneyTab[] => (['unmatched', 'held', 'awaiting', 'proposals', 'clinics', 'files'] as const).filter((t) => can(me, TAB_PERMISSION[t]));
+export const moneyTabs = (me: Me | null): MoneyTab[] => (['unmatched', 'held', 'awaiting', 'proposals', 'recoveries', 'clinics', 'files'] as const).filter((t) => can(me, TAB_PERMISSION[t]));
 
 export interface MatchForm {
   /** A payer account (bac_…) or an invoice (inv_…). */
@@ -48,6 +48,9 @@ export function heldSince(p: { steps: readonly { status: string; at: string }[] 
 /** A proposal may be approved or returned by someone with billing:credit who did not propose it (four eyes). Their limit, the API decides. */
 export const mayDecideProposal = (p: { status: string; proposedBy: string }, me: Me | null): boolean =>
   p.status === 'proposed' && can(me, 'billing:credit') && p.proposedBy !== me?.subject;
+
+/** A recovery may be decided by someone with billing:credit while it is proposed. Their limit and the credit, the API decides. */
+export const mayDecideRecovery = (r: { status: string }, me: Me | null): boolean => r.status === 'proposed' && can(me, 'billing:credit');
 
 /** A returned proposal needs a reason, at most 2,000 characters. */
 export const returnReasonOk = (reason: string): boolean => reason.trim().length > 0 && reason.trim().length <= 2000;

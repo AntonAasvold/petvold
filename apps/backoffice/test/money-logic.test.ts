@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { heldSince, matchBody, matchProblems, mayDecideProposal, mayRelease, moneyTabs, returnReasonOk } from '../src/money-logic.ts';
+import { heldSince, matchBody, matchProblems, mayDecideProposal, mayDecideRecovery, mayRelease, moneyTabs, returnReasonOk } from '../src/money-logic.ts';
 
 const me = (permissions: string[], subject = 'clerk-1') => ({ subject, roles: [], permissions, scope: { markets: '*' as const } });
 
 test('the tabs follow the permissions', () => {
-  assert.deepEqual(moneyTabs(me(['billing:read'])), ['unmatched', 'proposals']);
+  assert.deepEqual(moneyTabs(me(['billing:read'])), ['unmatched', 'proposals', 'recoveries']);
   assert.deepEqual(moneyTabs(me(['payments:read'])), ['held', 'awaiting', 'clinics', 'files']);
-  assert.deepEqual(moneyTabs(me(['billing:read', 'payments:read'])), ['unmatched', 'held', 'awaiting', 'proposals', 'clinics', 'files']);
+  assert.deepEqual(moneyTabs(me(['billing:read', 'payments:read'])), ['unmatched', 'held', 'awaiting', 'proposals', 'recoveries', 'clinics', 'files']);
   assert.deepEqual(moneyTabs(null), []);
 });
 
@@ -41,4 +41,10 @@ test('four eyes: the proposer never decides their own proposal', () => {
   assert.equal(mayDecideProposal({ ...p, status: 'approved' }, me(['billing:credit'], 'manager-1')), false);
   assert.equal(returnReasonOk('  '), false);
   assert.equal(returnReasonOk('The customer paid'), true);
+});
+
+test('a recovery is decided while proposed, by someone with billing:credit', () => {
+  assert.equal(mayDecideRecovery({ status: 'proposed' }, me(['billing:credit'])), true);
+  assert.equal(mayDecideRecovery({ status: 'offset' }, me(['billing:credit'])), false);
+  assert.equal(mayDecideRecovery({ status: 'proposed' }, me(['billing:read'])), false);
 });

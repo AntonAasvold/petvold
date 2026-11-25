@@ -214,7 +214,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
     - [x] 8c: betaluppgifter och avtal med kliniker
     - [x] 8d: dagsavslut och kontoplan
     - [x] Återkrav, del 1: förslag i `billing` från `claim.payout_reduced`, beslut och bokföring
-    - [ ] Återkrav, del 2: kön under Pengar i back office
+    - [x] Återkrav, del 2: kön under Pengar i back office
 - Premieåterbetalning vid avslut och ny premieplan vid förnyelse.
 - Distribution och provision (ny ADR):
   - vem som sålde en policy: försäkringsbolagets egen kanal, en säljare eller ett ombud (förmedlare), sparat på tecknandet och på varje förnyelse
