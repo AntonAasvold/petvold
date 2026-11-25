@@ -53,3 +53,15 @@ export function scheduleChangeProblems(f: { at: string; reason: string }): strin
   if (!f.reason.trim()) out.push('settings.needReason');
   return out;
 }
+
+/** How long ago, coarse: "45 s", "12 min", "3 h", "2 d". Pure. */
+export function ageText(at: string, now: string): string {
+  const s = Math.max(0, Math.floor((Date.parse(now) - Date.parse(at)) / 1000));
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} min`;
+  if (s < 86_400) return `${Math.floor(s / 3600)} h`;
+  return `${Math.floor(s / 86_400)} d`;
+}
+
+/** A queue is behind when its oldest event has waited longer than the limit, default five minutes. Pure. */
+export const isBehind = (oldestAt: string | undefined, now: string, limitMs = 300_000): boolean => !!oldestAt && Date.parse(now) - Date.parse(oldestAt) > limitMs;

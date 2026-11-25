@@ -126,6 +126,21 @@ export class Relay {
     return delivered;
   }
 
+  /**
+   * How far behind each source is, for an operator: the events waiting (up to
+   * limit, and whether there are more), and when the oldest was written. Read
+   * from the outboxes, so any server answers, the relay or not.
+   */
+  async status(limit = 1000): Promise<{ name: string; pending: number; more: boolean; oldestAt?: string }[]> {
+    const out: { name: string; pending: number; more: boolean; oldestAt?: string }[] = [];
+    for (const s of this.sources) {
+      const events = (await s.pending(limit + 1)) as ({ id: string; occurredAt?: string; event?: { occurredAt?: string } })[];
+      const times = events.map((e) => e.occurredAt ?? e.event?.occurredAt).filter((t): t is string => typeof t === 'string').sort();
+      out.push({ name: s.name, pending: Math.min(events.length, limit), more: events.length > limit, ...(times[0] ? { oldestAt: times[0] } : {}) });
+    }
+    return out;
+  }
+
   /** Events set aside after too many attempts, for the health check and an operator. */
   deadLetters(): DeadLetter[] {
     return [...this.dead.values()];

@@ -3884,6 +3884,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/relay-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How far behind the relay is, per module
+         * @description Requires the permission `jobs:read` (ADR 0008, 0037). For each module's
+         *     outbox: the events waiting for the relay, up to 1,000 and whether there
+         *     are more, when the oldest was written, and the dead letters. Read from
+         *     the outboxes, so any server answers.
+         */
+        get: operations["getRelayStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/relay-dead-letters": {
         parameters: {
             query?: never;
@@ -5571,6 +5594,25 @@ export interface components {
             /** @description What is left to pay */
             amount: number;
             currency: string;
+        };
+        RelayStatus: {
+            /** Format: date-time */
+            checkedAt: string;
+            sources: {
+                /** @description The module, e.g. claims or billing. */
+                name: string;
+                /** @description Events waiting */
+                pending: number;
+                /** @description More than 1 */
+                more: boolean;
+                /**
+                 * Format: date-time
+                 * @description When the oldest waiting event was written. Omitted when none waits.
+                 */
+                oldestAt?: string;
+                /** @description Events set aside after too many attempts (GET /v1/relay-dead-letters). */
+                deadLetters: number;
+            }[];
         };
         PayoutFileRequest: {
             /** @default bank-file */
@@ -13256,6 +13298,28 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["Unprocessable"];
+        };
+    };
+    getRelayStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The relay's state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayStatus"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listRelayDeadLetters: {
