@@ -7,7 +7,7 @@ test('anyone signed in searches the documentation for a rule and opens it', asyn
   await page.getByRole('combobox', { name: 'Token' }).click();
   await page.getByRole('option', { name: 'dev-handler', exact: true }).click();
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.getByRole('link', { name: 'Documentation' }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Documentation' }).click();
   await expect(page).toHaveURL(/\/docs$/);
   await expect(page.locator('pv-docs article h1')).toBeVisible();
 

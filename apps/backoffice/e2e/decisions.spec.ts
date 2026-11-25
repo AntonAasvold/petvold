@@ -12,6 +12,8 @@ async function signIn(page: Page, token: string) {
     await page.getByRole('option', { name: token, exact: true }).click();
   }
   await page.getByRole('button', { name: 'Sign in' }).click();
+  // The start page is the overview: to the claims queue.
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Claims/ }).click();
   await expect(page.getByRole('heading', { name: 'Claims' })).toBeVisible();
 }
 

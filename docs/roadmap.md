@@ -145,7 +145,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [ ] **Regler:** formulär för tariffer, prisvillkor och teckningsregler, och simulering av regelutkast mot sparade underlag
 - [ ] **Skador:** omräkning av ett sparat beslut (ADR 0018)
 - [x] **Policy:** försäkringsbeloppet som återstår (PR #122)
-- [ ] **Översikt:** en startsida med köerna, körningarna och det som fastnat
+- [x] **Översikt:** en startsida med köerna, körningarna och det som fastnat
 
 **Dokument**
 - [x] [ADR 0038](adr/0038-dokument-och-arkiv.md) om dokument, arkiv och länkar

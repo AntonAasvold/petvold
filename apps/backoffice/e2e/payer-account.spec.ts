@@ -49,7 +49,7 @@ test("a billing clerk opens a payer's account from the party and credits an invo
   await page.getByRole('button', { name: 'Make it' }).click();
   await expect(page.getByRole('status')).toContainText('Above your limit');
 
-  await page.getByRole('link', { name: /^Money/ }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Money/ }).click();
   await page.getByRole('tab', { name: 'Credit proposals' }).click();
   await page.getByRole('grid', { name: 'Credit proposals' }).getByRole('row').filter({ hasText: 'SEK 2,000.00' }).click();
   await expect(page.getByText('You proposed this. Someone else approves or returns it.')).toBeVisible();

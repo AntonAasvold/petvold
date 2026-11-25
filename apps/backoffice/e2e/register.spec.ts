@@ -5,6 +5,8 @@ import { expect, test } from '@playwright/test';
 test('a handler registers a claim from the policy, after a preview', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign in' }).click();
+  // The start page is the overview: to the claims queue.
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Claims/ }).click();
   await expect(page.getByRole('heading', { name: 'Claims' })).toBeVisible();
   await page.getByRole('button', { name: 'Register a claim' }).click();
   await expect(page).toHaveURL(/\/claims\/new$/);
@@ -39,6 +41,8 @@ test('a handler registers a claim from the policy, after a preview', async ({ pa
 test('the policy page opens the form with the policy filled in', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign in' }).click();
+  // The start page is the overview: to the claims queue.
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Claims/ }).click();
   const search = page.getByRole('searchbox', { name: 'Search for a claim, policy, animal or customer' });
   await search.fill('pol_bella');
   await search.press('Enter');
@@ -50,6 +54,8 @@ test('the policy page opens the form with the policy filled in', async ({ page }
 test('a registered claim is dismissed as a duplicate, and the queue shows it closed (ADR 0036)', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign in' }).click();
+  // The start page is the overview: to the claims queue.
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Claims/ }).click();
   await page.getByRole('button', { name: 'Register a claim' }).click();
   const form = page.locator('pv-claim-register');
   await form.getByRole('textbox', { name: 'Policy id' }).fill('pol_bella');
@@ -90,6 +96,8 @@ test('a registered claim is dismissed as a duplicate, and the queue shows it clo
 test('a handler asks the clinic for information; the claim waits, and the answer brings it back to a decision (ADR 0036)', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign in' }).click();
+  // The start page is the overview: to the claims queue.
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Claims/ }).click();
   await page.getByRole('button', { name: 'Register a claim' }).click();
   const form = page.locator('pv-claim-register');
   await form.getByRole('textbox', { name: 'Policy id' }).fill('pol_bella');
@@ -135,6 +143,8 @@ test('a handler asks the clinic for information; the claim waits, and the answer
 test("a handler corrects a decided claim; the person's decision is reopened and the history shows the revision (ADR 0036)", async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign in' }).click();
+  // The start page is the overview: to the claims queue.
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Claims/ }).click();
   await page.getByRole('button', { name: 'Register a claim' }).click();
   const form = page.locator('pv-claim-register');
   await form.getByRole('textbox', { name: 'Policy id' }).fill('pol_bella');
@@ -175,6 +185,8 @@ test("a handler corrects a decided claim; the person's decision is reopened and 
 test('an attachment is added as a reference to the archive, and a better scan replaces it (ADR 0036)', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign in' }).click();
+  // The start page is the overview: to the claims queue.
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Claims/ }).click();
   await page.getByRole('grid', { name: 'Claims' }).getByRole('row').nth(1).click();
   const card = page.locator('pv-claim-attachments');
   await card.getByRole('button', { name: 'Add an attachment' }).click();
@@ -203,6 +215,8 @@ test('an attachment is added as a reference to the archive, and a better scan re
 test('a request to the customer becomes a notice to the customer, shown in the claim history (ADR 0036)', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign in' }).click();
+  // The start page is the overview: to the claims queue.
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Claims/ }).click();
   await page.getByRole('grid', { name: 'Claims' }).getByRole('row').nth(1).click();
   const info = page.locator('pv-claim-information');
   await info.getByRole('button', { name: 'Ask for information' }).click();
@@ -227,6 +241,8 @@ test('a request to the customer becomes a notice to the customer, shown in the c
 test("a file is uploaded to Petvold's archive as an attachment, opens through a short link, and is in the customer's documents (ADR 0038)", async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign in' }).click();
+  // The start page is the overview: to the claims queue.
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Claims/ }).click();
   await page.getByRole('grid', { name: 'Claims' }).getByRole('row').nth(1).click();
   const card = page.locator('pv-claim-attachments');
   await card.getByRole('button', { name: 'Add an attachment' }).click();

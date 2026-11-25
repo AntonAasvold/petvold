@@ -28,6 +28,8 @@ export function countLabel(page: { items: unknown[]; nextCursor?: string }): str
 
 /** The menu, the most used first. Each role sees its own part of it, in this order. */
 export const SECTIONS: Section[] = [
+  // What waits for the caller, from every queue they may see.
+  { path: '/', label: 'nav.overview', icon: 'house', anyOf: [] },
   // The daily work: claims and finding the customer, the policy and the animal.
   { path: '/claims', label: 'nav.claims', icon: 'file-invoice', anyOf: ['claims:read'], count: { path: '/v1/claims', query: { status: 'awaiting-decision' } } },
   { path: '/policies', label: 'nav.policies', icon: 'paw', anyOf: ['policies:read'] },

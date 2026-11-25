@@ -9,7 +9,7 @@ test("a billing clerk reads in the bank's camt.054; its payments come in once", 
   await page.getByRole('combobox', { name: 'Token' }).click();
   await page.getByRole('option', { name: 'dev-billing', exact: true }).click();
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.getByRole('link', { name: /^Money/ }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Money/ }).click();
   await page.getByRole('tab', { name: 'Bank files' }).click();
 
   await page.getByRole('button', { name: 'Read in', exact: true }).click();

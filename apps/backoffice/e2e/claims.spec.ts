@@ -4,6 +4,8 @@ import { expect, test } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign in' }).click();
+  // The start page is the overview: to the claims queue.
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Claims/ }).click();
 });
 
 test('a handler sees the claims queue and opens a claim with its assessment', async ({ page }) => {

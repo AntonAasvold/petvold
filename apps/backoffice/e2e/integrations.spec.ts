@@ -12,7 +12,7 @@ const notice = (page: Page) => page.locator('wa-callout[role="status"]');
 
 test('the document system sees what needs a person and reports a delivery', async ({ page }) => {
   await signIn(page, 'dev-documents');
-  await page.getByRole('link', { name: 'Notices' }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Notices' }).click();
   // Sixten's refusal lacks the insurer's text on review, so it waits for a person.
   const grid = page.getByRole('grid', { name: 'Notices' });
   // The flow for applications may add a second decline for Sixten; both lack the review text.
@@ -32,7 +32,7 @@ test('the document system sees what needs a person and reports a delivery', asyn
 
 test('a subscription is created with its secret shown once, turned off and on, and given a new secret', async ({ page }) => {
   await signIn(page, 'dev-integration');
-  await page.getByRole('link', { name: 'Webhooks' }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Webhooks' }).click();
   await page.getByRole('textbox', { name: 'Address' }).fill('http://crm.example.com/hook');
   await page.getByRole('textbox', { name: 'Events' }).fill('policy.*, claim.decided');
   await page.getByRole('textbox', { name: 'Markets' }).fill('SE');
@@ -59,7 +59,7 @@ test('a subscription is created with its secret shown once, turned off and on, a
 
 test('the document system may have Petvold make a notice a PDF; without Gotenberg it says so (ADR 0038)', async ({ page }) => {
   await signIn(page, 'dev-documents');
-  await page.getByRole('link', { name: 'Notices' }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Notices' }).click();
   await page.getByRole('tab', { name: 'Waiting' }).click();
   const grid = page.getByRole('grid', { name: 'Notices' });
   await grid.getByRole('row').filter({ hasText: 'Claims decision' }).first().getByRole('gridcell').first().click();

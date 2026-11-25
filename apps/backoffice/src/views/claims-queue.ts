@@ -1,4 +1,5 @@
 /** <pv-claims-queue>: the work queues for claims, a page at a time (GET /v1/claims). */
+import { tabFromUrl } from '../overview-logic.ts';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { msg, updateWhenLocaleChanges } from '@lit/localize';
@@ -58,6 +59,8 @@ export class ClaimsQueue extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    // The overview links to a queue: /claims?tab=awaiting-approval.
+    this.queue = tabFromUrl(location.search, QUEUES) ?? this.queue;
     void this.load();
   }
 

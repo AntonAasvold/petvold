@@ -22,6 +22,7 @@ import { IdempotencyKeys } from '../decide.ts';
 import { formatDate, formatDateTime, formatMoney } from '../format.ts';
 import { getLocale } from '../i18n.ts';
 import { heldSince, matchBody, matchProblems, mayDecideProposal, mayDecideRecovery, mayRelease, moneyTabs, returnReasonOk, type MoneyTab } from '../money-logic.ts';
+import { tabFromUrl } from '../overview-logic.ts';
 import { agreementBody, agreementProblems, endingProblems, inForce, type AgreementForm } from '../payee-logic.ts';
 import '../components/payee-accounts.ts';
 import { navigate } from '../router.ts';
@@ -128,7 +129,8 @@ export class MoneyView extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
-    this.tab = moneyTabs(this.me)[0] ?? null;
+    // The overview links to a tab: /money?tab=held.
+    this.tab = tabFromUrl(location.search, moneyTabs(this.me)) ?? moneyTabs(this.me)[0] ?? null;
     void this.load();
   }
 
