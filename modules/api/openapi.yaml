@@ -4002,6 +4002,68 @@ paths:
                   nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/payment-files:
+    post:
+      tags: [payments]
+      operationId: importPaymentFile
+      x-permission: payments:import
+      summary: Read a bank file into payments
+      description: |
+        Requires the permission `payments:import` (ADR 0040, punkt 12). The bank's
+        notification of credits, ISO 20022 camt.054, for the accounts the
+        installation has (PETVOLD_BANK_FILE_ACCOUNTS). Every booked credit
+        becomes a payment, with the payer's structured reference (OCR or RF);
+        debits and entries not booked are left out. The file is read all or
+        nothing: an account that is not the insurer's, or an amount that cannot
+        be read, refuses it (422), so it can be sent again when corrected. A
+        payment already read is not read again, so the same file twice adds
+        nothing. Kept with who read it in, when and its checksum.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/PaymentFileUpload' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '201':
+          description: What the file gave
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentFile' }
+    get:
+      tags: [payments]
+      operationId: listPaymentFiles
+      x-permission: payments:read
+      summary: The files read into payments, newest first
+      description: Requires the permission `payments:read`. A file's record holds counts and ids, no personal data.
+      parameters:
+        - { name: provider, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The files
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PaymentFile' }
+                  nextCursor: { type: string, description: 'Give it as cursor for the next page. Omitted on the last page.' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /v1/payments/{paymentId}:
     get:
       tags: [payments]
@@ -5585,6 +5647,11 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
       description: Conflict with the current state
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooLarge:
+      description: The body is larger than the operation takes
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -7624,6 +7691,29 @@ components:
       additionalProperties: false
       properties:
         note: { type: string, minLength: 1, maxLength: 2000, description: "How the details were checked, e.g. a call to the customer's number in the register." }
+
+    PaymentFileUpload:
+      type: object
+      required: [file]
+      properties:
+        file: { type: string, format: binary, description: 'The bank file, ISO 20022 camt.054 as XML, at most 10 MB.' }
+        provider: { type: string, default: bank-file, description: 'The adapter that reads it. bank-file: camt.054.' }
+
+    PaymentFile:
+      type: object
+      additionalProperties: false
+      required: [id, provider, sha256, size, importedBy, importedAt, received, duplicates, paymentIds]
+      description: A file read into payments (ADR 0040, punkt 12). Never changes.
+      properties:
+        id: { type: string, pattern: '^pfl_[A-Za-z0-9]+$' }
+        provider: { type: string }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$', description: The file's checksum. The same file read again has the same. }
+        size: { type: integer, minimum: 1 }
+        importedBy: { type: string }
+        importedAt: { type: string, format: date-time }
+        received: { type: integer, minimum: 0, description: Payments the file added. }
+        duplicates: { type: integer, minimum: 0, description: Payments Petvold had already. }
+        paymentIds: { type: array, items: { type: string }, description: 'The payments it added, read with GET /v1/payments/{paymentId}.' }
 
     Payment:
       type: object

@@ -211,6 +211,14 @@ Punkt 9 byggdes så här (PR #152):
 - **Varje inbetalning bokförs först mot okopplade inbetalningar**, och flyttas till premiefordran med händelsen `payment.matched` när `billing` kopplat den. Bokföringen beror då inte på i vilken ordning modulerna läser händelserna.
 - **Tre slag till:** delbetalningsavgifter, kundförluster (avskrivningar) och återbetalningar att betala. Skadekostnad bokförs mot skuld för ersättning när utbetalningsordern kommer.
 
+## Förtydligande 2026-11-25, steg 7a
+
+Bankfiler in, `camt.054`, är byggda:
+- **En bankfil saknar egen signatur.** Den läses därför in av en inloggad person eller integration med `POST /v1/payment-files` och rättigheten `payments:import`, aldrig genom den öppna vägen för aviseringar. Adaptern har `uploadOnly` och nås bara genom `PaymentsService.importFile`.
+- **Varje inläsning sparas** med vem, när, filens kontrollsumma och vilka inbetalningar den gav, så att det går att visa var en inbetalning kom ifrån (ADR 0018).
+- **Bara bokförda insättningar** blir inbetalningar. Uttagen i samma fil är bankens bekräftelse på utbetalningar och läses i steg 7b, med `pain.001` ut.
+
+
 ## Källor
 
 - Försäkringsavtalslagen (2005:104), 5 kap. 1, 2 och 6 §§. riksdagen.se

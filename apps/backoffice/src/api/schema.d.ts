@@ -2754,6 +2754,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/payment-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The files read into payments, newest first
+         * @description Requires the permission `payments:read`. A file's record holds counts and ids, no personal data.
+         */
+        get: operations["listPaymentFiles"];
+        put?: never;
+        /**
+         * Read a bank file into payments
+         * @description Requires the permission `payments:import` (ADR 0040, punkt 12). The bank's
+         *     notification of credits, ISO 20022 camt.054, for the accounts the
+         *     installation has (PETVOLD_BANK_FILE_ACCOUNTS). Every booked credit
+         *     becomes a payment, with the payer's structured reference (OCR or RF);
+         *     debits and entries not booked are left out. The file is read all or
+         *     nothing: an account that is not the insurer's, or an amount that cannot
+         *     be read, refuses it (422), so it can be sent again when corrected. A
+         *     payment already read is not read again, so the same file twice adds
+         *     nothing. Kept with who read it in, when and its checksum.
+         */
+        post: operations["importPaymentFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/payments/{paymentId}": {
         parameters: {
             query?: never;
@@ -5339,6 +5371,35 @@ export interface components {
             /** @description How the details were checked, e.g. a call to the customer's number in the register. */
             note?: string;
         };
+        PaymentFileUpload: {
+            /**
+             * Format: binary
+             * @description The bank file, ISO 20022 camt.054 as XML, at most 10 MB.
+             */
+            file: string;
+            /**
+             * @description The adapter that reads it. bank-file: camt.054.
+             * @default bank-file
+             */
+            provider: string;
+        };
+        /** @description A file read into payments (ADR 0040, punkt 12). Never changes. */
+        PaymentFile: {
+            id: string;
+            provider: string;
+            /** @description The file's checksum. The same file read again has the same. */
+            sha256: string;
+            size: number;
+            importedBy: string;
+            /** Format: date-time */
+            importedAt: string;
+            /** @description Payments the file added. */
+            received: number;
+            /** @description Payments Petvold had already. */
+            duplicates: number;
+            /** @description The payments it added, read with GET /v1/payments/{paymentId}. */
+            paymentIds: string[];
+        };
         /** @description A payment Petvold has received (ADR 0017). Never changes. */
         Payment: {
             id: string;
@@ -6812,6 +6873,15 @@ export interface components {
         };
         /** @description Conflict with the current state */
         Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The body is larger than the operation takes */
+        TooLarge: {
             headers: {
                 [name: string]: unknown;
             };
@@ -11108,6 +11178,71 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listPaymentFiles: {
+        parameters: {
+            query?: {
+                provider?: string;
+                /** @description Items per page, 1-200. Default 50. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The nextCursor from the previous page (ADR 0002). Opaque. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The files */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["PaymentFile"][];
+                        /** @description Give it as cursor for the next page. Omitted on the last page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    importPaymentFile: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["PaymentFileUpload"];
+            };
+        };
+        responses: {
+            /** @description What the file gave */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentFile"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["TooLarge"];
             422: components["responses"]["Unprocessable"];
         };
     };

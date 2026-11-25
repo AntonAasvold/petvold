@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Made up for the tests: no real account, payer or payment. camt.054.001.02, as Swedish banks give it for a bankgiro. -->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.02">
+  <BkToCstmrDbtCdtNtfctn>
+    <GrpHdr><MsgId>MSG-2026-12-01-1</MsgId><CreDtTm>2026-12-01T06:00:00</CreDtTm></GrpHdr>
+    <Ntfctn>
+      <Id>NTF-1</Id>
+      <Acct><Id><Othr><Id>5050-1055</Id></Othr></Id><Ccy>SEK</Ccy></Acct>
+      <Ntry>
+        <Amt Ccy="SEK">1212.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-12-01</Dt></BookgDt>
+        <AcctSvcrRef>E-0001</AcctSvcrRef>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><AcctSvcrRef>T-0001</AcctSvcrRef></Refs>
+            <AmtDtls><TxAmt><Amt Ccy="SEK">412.00</Amt></TxAmt></AmtDtls>
+            <RmtInf><Strd><CdtrRefInf><Ref>202600000121</Ref></CdtrRefInf></Strd></RmtInf>
+          </TxDtls>
+          <TxDtls>
+            <Refs><AcctSvcrRef>T-0002</AcctSvcrRef></Refs>
+            <Amt Ccy="SEK">800.00</Amt>
+            <RmtInf><Ustrd>Bella forsakring</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="SEK">50.50</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-12-01</Dt></BookgDt>
+        <AcctSvcrRef>E-0002</AcctSvcrRef>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="SEK">3200.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-12-01</Dt></BookgDt>
+        <AcctSvcrRef>E-0003</AcctSvcrRef>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="SEK">99.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>PDNG</Sts>
+        <BookgDt><Dt>2026-12-02</Dt></BookgDt>
+        <AcctSvcrRef>E-0004</AcctSvcrRef>
+      </Ntry>
+    </Ntfctn>
+  </BkToCstmrDbtCdtNtfctn>
+</Document>

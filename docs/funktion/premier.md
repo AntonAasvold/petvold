@@ -136,6 +136,31 @@ Adaptern `fake` finns för tester, dev-servern och demotjänsten. Den talar ett 
 - **Dev-servern** har låtsasbanken för `SE:SEK` med hemligheten `whsec_cGV0dm9sZC1kZXYtZmFrZS1iYW5rcGV0dm9sZC1kZXY=`.
 - **Servern för drift** har den bara när `PETVOLD_FAKE_BANK_SECRET` är satt ([Drift](../teknik/drift.md)). Den är till för en demo och aldrig för riktiga pengar.
 
+### Bankfiler (`bank-file`)
+
+Banken aviserar inbetalningarna till bolagets bankgiro eller konto i en fil enligt ISO 20022, `camt.054` (ADR 0040, punkt 12). Filen läses in av en person under **Pengar** i back office, eller av en integration som hämtar den från banken, med `POST /v1/payment-files` och rättigheten `payments:import`.
+
+- **Varje bokförd insättning** (`CdtDbtInd` `CRDT` och status `BOOK`) blir en inbetalning. Det är en per transaktion i posten, eller posten själv när den saknar detaljer. Referensen är betalarens strukturerade referens, alltså OCR eller RF. Saknas den hamnar inbetalningen bland de okopplade.
+- **Uttag och poster som inte är bokförda** läses inte in.
+- **Bankens referens** (`AcctSvcrRef`) är inbetalningens id hos tjänsten. Samma fil två gånger ger därför inga nya inbetalningar.
+- **Hela filen eller ingenting.** Ett konto som inte är bolagets, en valuta som inte är kontots eller ett belopp som inte går att läsa avvisar filen (`422`), så att den kan läsas in igen när den är rättad.
+- **Varje inläsning sparas** med vem, när, filens kontrollsumma (SHA-256) och vilka inbetalningar den gav, och visas med `GET /v1/payment-files`.
+- **Kontona** ställs in med `PETVOLD_BANK_FILE_ACCOUNTS`, till exempel `SE:SEK:5050-1055` ([Drift](../teknik/drift.md)). Både `camt.054.001.02` och `.001.08` läses.
+- **Adaptern kan inte nås** genom `POST /provider-notifications/bank-file`. En bankfil har ingen egen signatur, så bara en inloggad anropare når den.
+
+```http
+POST /v1/payment-files
+Idempotency-Key: 3c1e…
+content-type: multipart/form-data; boundary=…
+
+(delen file: camt054.xml)
+
+201 { "id": "pfl_…", "provider": "bank-file", "sha256": "9f2c…", "received": 3, "duplicates": 0,
+      "importedBy": "ekonomi@example.test", "paymentIds": ["pay_…", "pay_…", "pay_…"], … }
+```
+
+Dev-servern läser filer för det påhittade bankgirot `5050-1055`. Testernas filer finns i `modules/payments/test/files/`.
+
 ## Koppling till fakturorna
 
 `billing` får varje inbetalning med `payment.succeeded` och kopplar den till ett betalarkonto (ADR 0040, punkt 6):

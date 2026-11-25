@@ -33,7 +33,8 @@ type Payment = components['schemas']['ReceivedPayment'];
 type Payout = components['schemas']['Payout'];
 type Proposal = components['schemas']['CreditProposal'];
 type Agreement = components['schemas']['ClinicAgreement'];
-type Row = Payment | Payout | Proposal | Agreement;
+type PaymentFile = components['schemas']['PaymentFile'];
+type Row = Payment | Payout | Proposal | Agreement | PaymentFile;
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -55,6 +56,7 @@ export class MoneyView extends LitElement {
   @state() private busy = '';
   @state() private agreement: AgreementForm = { clinicId: '', market: 'SE', validFrom: today(), validTo: '' };
   @state() private ending = { validTo: '', reason: '' };
+  @state() private bankFile: File | null = null;
   private request = 0;
   private keys = new IdempotencyKeys();
 
@@ -128,6 +130,8 @@ export class MoneyView extends LitElement {
         return unwrap(this.api.GET('/v1/payouts', { params: { query: { ...query, status: 'awaiting-details' } } }));
       case 'clinics':
         return unwrap(this.api.GET('/v1/clinic-agreements', { params: { query } }));
+      case 'files':
+        return unwrap(this.api.GET('/v1/payment-files', { params: { query } }));
       default:
         return unwrap(this.api.GET('/v1/credit-proposals', { params: { query: { ...query, status: 'proposed' } } }));
     }
@@ -183,6 +187,8 @@ export class MoneyView extends LitElement {
         return msg('Credit proposals', { id: 'money.tab.proposals' });
       case 'clinics':
         return msg('Clinics', { id: 'money.tab.clinics' });
+      case 'files':
+        return msg('Bank files', { id: 'money.tab.files' });
     }
   }
 
@@ -212,6 +218,13 @@ export class MoneyView extends LitElement {
           { key: 'payee', header: msg('Payee', { id: 'money.payee' }), value: (r) => (r as Payout).clinicId ?? (r as Payout).partyId ?? '–' },
           { key: 'purpose', header: msg('For', { id: 'money.purpose' }), value: (r) => this.purposeLabel((r as Payout).purpose) },
         ];
+      case 'files':
+        return [
+          { key: 'at', header: msg('Read in', { id: 'money.importedAt' }), value: (r) => formatDateTime((r as PaymentFile).importedAt, lang) },
+          { key: 'by', header: msg('By', { id: 'money.importedBy' }), value: (r) => (r as PaymentFile).importedBy },
+          { key: 'received', header: msg('New payments', { id: 'money.received' }), value: (r) => (r as PaymentFile).received, align: 'end' },
+          { key: 'duplicates', header: msg('Already read', { id: 'money.duplicates' }), value: (r) => (r as PaymentFile).duplicates, align: 'end' },
+        ];
       case 'clinics':
         return [
           { key: 'clinic', header: msg('Clinic', { id: 'money.clinic' }), value: (r) => html`<span class="pv-mono">${(r as Agreement).clinicId}</span>` },
@@ -238,7 +251,7 @@ export class MoneyView extends LitElement {
     }
   }
 
-  private async send(what: string, id: string, call: (key: string) => Promise<{ response: Response; error?: unknown }>, text: string) {
+  private async send(what: string, id: string, call: (key: string) => Promise<{ response: Response; error?: unknown }>, text: string): Promise<boolean> {
     this.busy = what;
     const key = `${what}:${id}`;
     const { ok, notice } = await act(() => call(this.keys.for(key)), () => ({ variant: 'success', text }));
@@ -248,6 +261,7 @@ export class MoneyView extends LitElement {
       this.reset();
     }
     this.notice = notice;
+    return ok;
   }
 
   private async doMatch(e: Event, p: Payment) {
@@ -484,12 +498,68 @@ export class MoneyView extends LitElement {
       <pv-payee-accounts .api=${this.api} .me=${this.me} clinic-id=${a.clinicId} market=${a.market}></pv-payee-accounts>`;
   }
 
+  private async doImport(e: Event) {
+    e.preventDefault();
+    if (!this.bankFile) {
+      this.problems = ['file'];
+      return;
+    }
+    this.problems = [];
+    const form = new FormData();
+    form.append('file', this.bankFile);
+    const ok = await this.send(
+      'import',
+      this.bankFile.name,
+      (key) => this.api.POST('/v1/payment-files', { params: { header: { 'Idempotency-Key': key } }, body: form as never, bodySerializer: (b: unknown) => b as FormData }),
+      msg('The file is read in. New payments without a usable reference wait under Unmatched payments.', { id: 'money.imported' }),
+    );
+    if (ok) {
+      this.bankFile = null;
+      // Empty the field too: the same file chosen again must give a change.
+      const input = this.renderRoot.querySelector<HTMLInputElement>('input[type=file]');
+      if (input) input.value = '';
+    }
+  }
+
+  private importCard() {
+    return html`<section class="pv-card" aria-labelledby="import">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="import">${msg('Read in a bank file', { id: 'money.importTitle' })}</h2></div>
+      <form class="pv-card__body" @submit=${(e: Event) => this.doImport(e)} novalidate>
+        <p>${msg("The bank's notification of payments in, camt.054 (XML). The whole file is read or none of it, and a payment already read is not read again.", { id: 'money.importHow' })}</p>
+        <label>
+          ${msg('File', { id: 'money.file' })}
+          <input type="file" accept=".xml,application/xml,text/xml" @change=${(e: Event) => (this.bankFile = (e.target as HTMLInputElement).files?.[0] ?? null)} />
+        </label>
+        ${this.problems.includes('file') ? html`<wa-callout variant="danger" role="alert">${msg('Choose the file.', { id: 'money.fileProblem' })}</wa-callout>` : nothing}
+        <wa-button type="submit" variant="brand" ?loading=${this.busy === 'import'}>${msg('Read in', { id: 'money.import' })}</wa-button>
+      </form>
+    </section>`;
+  }
+
+  private fileCard(f: PaymentFile) {
+    const lang = getLocale();
+    return html`<section class="pv-card" aria-labelledby="sel">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="sel">${msg('Bank file', { id: 'money.bankFile' })}</h2><span class="pv-card__meta pv-mono">${f.id}</span></div>
+      <div class="pv-card__body">
+        <dl class="pv-dl">
+          ${this.row(msg('Read in', { id: 'money.importedAt' }), `${formatDateTime(f.importedAt, lang)} · ${f.importedBy}`)}
+          ${this.row(msg('New payments', { id: 'money.received' }), f.received)}
+          ${this.row(msg('Already read', { id: 'money.duplicates' }), f.duplicates)}
+          ${this.row('SHA-256', `${f.sha256.slice(0, 16)}…`, true)}
+          ${f.paymentIds.length ? this.row(msg('Payments', { id: 'money.payments' }), f.paymentIds.join(', '), true) : nothing}
+        </dl>
+      </div>
+    </section>`;
+  }
+
   private side() {
     const s = this.selected;
     const card = !s
       ? this.tab === 'clinics' && this.me?.permissions.includes('payments:agreements')
         ? this.newAgreementCard()
-        : nothing
+        : this.tab === 'files' && this.me?.permissions.includes('payments:import')
+          ? this.importCard()
+          : nothing
       : 'paymentId' in s
         ? this.paymentCard(s)
         : 'purpose' in s
@@ -498,7 +568,9 @@ export class MoneyView extends LitElement {
             : this.payoutCard(s)
           : 'validFrom' in s
             ? this.agreementCard(s)
-            : this.proposalCard(s);
+            : 'sha256' in s
+              ? this.fileCard(s)
+              : this.proposalCard(s);
     if (!this.notice && card === nothing) return nothing;
     return html`<div class="side">
       ${this.notice ? html`<wa-callout variant=${this.notice.variant} role=${this.notice.variant === 'success' ? 'status' : 'alert'}>${this.notice.text}</wa-callout>` : nothing}

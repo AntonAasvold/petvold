@@ -5,7 +5,7 @@
  */
 import type pg from 'pg';
 import type { Timestamp } from '@petvold/common';
-import { PayoutConflictError, type ClinicAgreement, type Payee, type PayeeAccount, type PayoutFilter, type Payment, type PaymentEvent, type PaymentFilter, type PaymentsStore, type Payout, type PayoutStatus, type PayoutStep, type PayoutView } from './index.ts';
+import { PayoutConflictError, type ClinicAgreement, type PaymentFile, type Payee, type PayeeAccount, type PayoutFilter, type Payment, type PaymentEvent, type PaymentFilter, type PaymentsStore, type Payout, type PayoutStatus, type PayoutStep, type PayoutView } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -71,6 +71,32 @@ export class PostgresPaymentsStore implements PaymentsStore {
       [filter.market ?? null, filter.reference ?? null],
     );
     return rows.map(payment);
+  }
+
+  async addPaymentFile(f: PaymentFile): Promise<void> {
+    await this.pool.query(
+      `insert into payments.payment_file (payment_file_id, provider, sha256, size_bytes, imported_by, imported_at, received, duplicates, payment_ids) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [f.id, f.provider, f.sha256, f.size, f.importedBy, f.importedAt, f.received, f.duplicates, f.paymentIds],
+    );
+  }
+
+  async paymentFiles(filter: { provider?: string }): Promise<PaymentFile[]> {
+    const { rows } = await this.pool.query(
+      `select payment_file_id, provider, sha256, size_bytes, imported_by, imported_at, received, duplicates, payment_ids from payments.payment_file
+       where ($1::text is null or provider = $1) order by imported_at desc, payment_file_id desc`,
+      [filter.provider ?? null],
+    );
+    return rows.map((r) => ({
+      id: r.payment_file_id,
+      provider: r.provider,
+      sha256: r.sha256,
+      size: Number(r.size_bytes),
+      importedBy: r.imported_by,
+      importedAt: iso(r.imported_at),
+      received: r.received,
+      duplicates: r.duplicates,
+      paymentIds: r.payment_ids,
+    }));
   }
 
   async pendingEvents(limit: number): Promise<PaymentEvent[]> {
