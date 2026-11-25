@@ -1,4 +1,4 @@
-# Gallring av dokument (PR #NN)
+# Gallring av dokument (PR #165)
 
 **Datum:** 2026-11-25 **ADR:** 0038 punkt 9, 0028 **Moduler:** `documents`, `api`
 
