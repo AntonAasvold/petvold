@@ -29,8 +29,8 @@ const files = {
 };
 const pages = pagesFrom(files);
 
-test('pages come from processes, functions and decisions, README first, technical docs left out', () => {
-  assert.deepEqual(pages.map((p) => `${p.section}/${p.slug}`), ['processer/README', 'processer/obetald-premie', 'funktion/premier', 'adr/0040-pengar']);
+test('pages come from processes and functions, README first; decisions and technical docs are for GitHub', () => {
+  assert.deepEqual(pages.map((p) => `${p.section}/${p.slug}`), ['processer/README', 'processer/obetald-premie', 'funktion/premier']);
   assert.equal(pages[1]!.title, 'Unpaid premium');
 });
 
@@ -42,7 +42,7 @@ test('a page splits at its headings, but not inside code', () => {
 });
 
 test('search needs every word, ranks title and heading, and finds a rule id', () => {
-  assert.equal(search(pages, 'reminder').length, 4, 'every part with the word');
+  assert.equal(search(pages, 'reminder').length, 3, 'every part with the word');
   assert.deepEqual(search(pages, 'premium reminder').map((h) => `${h.page.slug}#${h.part.anchor}`)[0], 'obetald-premie#', 'a word in the title ranks first');
   assert.deepEqual(search(pages, 'prem-07').map((h) => `${h.page.slug}#${h.part.anchor}`), ['obetald-premie#rules']);
   const defining = { ...files, '../../../docs/processer/other.md': '# Other\n\n## Rules\n\n| X-01 | Refers to PREM-07 |\n' };
@@ -56,7 +56,7 @@ test('links lead within the documentation, and others keep their text', () => {
   const known = new Set(pages.map((p) => `${p.section}/${p.slug}`));
   const out = rewriteLinks(pages[1]!.markdown, pages[1]!, known);
   assert.ok(out.includes('[Premiums](/docs/funktion/premier#invoices)'));
-  assert.ok(out.includes('[ADR](/docs/adr/0040-pengar)'));
+  assert.ok(out.includes('See [Premiums](/docs/funktion/premier#invoices), ADR and operations.'), 'a decision and a technical page are only text');
   assert.ok(out.includes(' and operations.'), 'a technical page is only text');
   assert.equal(rewriteLinks('[ext](https://riksdagen.se) [here](#a) [same](obetald-premie.md)', pages[1]!, known), '[ext](https://riksdagen.se) [here](#a) [same](/docs/processer/obetald-premie)');
 });

@@ -1151,7 +1151,6 @@ export const templates: Record<string, string> = {
   'docs.title': 'Dokumentation',
   'docs.processes': 'Processer och regler',
   'docs.functions': 'Funktioner',
-  'docs.decisions': 'Beslut',
   'docs.search': 'Sök i dokumentationen',
   'docs.searchPlaceholder': 'Till exempel påminnelse eller PREM-07',
   'docs.results': 'Sökträffar',

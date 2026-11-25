@@ -290,7 +290,7 @@ export class AppShell extends LitElement {
       { pattern: /^\/accounting$/, render: () => html`<pv-accounting .api=${this.api} .me=${this.me}></pv-accounting>` },
       { pattern: /^\/money$/, render: () => html`<pv-money .api=${this.api} .me=${this.me}></pv-money>` },
       { pattern: /^\/settings$/, render: () => html`<pv-settings .api=${this.api} .me=${this.me}></pv-settings>` },
-      { pattern: /^\/docs(?:\/(?<section>processer|funktion|adr)\/(?<slug>[^/]+))?$/, render: (p) => {
+      { pattern: /^\/docs(?:\/(?<section>processer|funktion)\/(?<slug>[^/]+))?$/, render: (p) => {
         // The pages are large, so the view loads when it is opened.
         void import('../views/docs-view.ts');
         return html`<pv-docs section=${p.section ?? ''} slug=${p.slug ?? ''}></pv-docs>`;

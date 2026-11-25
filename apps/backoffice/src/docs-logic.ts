@@ -1,13 +1,13 @@
 /**
  * The system documentation in the back office: the pages in docs/ on business
- * processes and rules, functions and decisions, read at build time, split into
+ * processes and rules, and functions, read at build time, split into
  * sections, and searched in the browser. Pure, so it is tested without a
  * browser. The docs are Swedish whatever the interface's language.
  */
 
-export type DocSection = 'processer' | 'funktion' | 'adr';
+export type DocSection = 'processer' | 'funktion';
 
-export const DOC_SECTIONS: DocSection[] = ['processer', 'funktion', 'adr'];
+export const DOC_SECTIONS: DocSection[] = ['processer', 'funktion'];
 
 export interface DocPage {
   section: DocSection;
@@ -36,7 +36,7 @@ export interface DocHit {
 export function pagesFrom(files: Record<string, string>): DocPage[] {
   const out: DocPage[] = [];
   for (const [path, markdown] of Object.entries(files)) {
-    const m = /docs\/(processer|funktion|adr)\/([^/]+)\.md$/.exec(path);
+    const m = /docs\/(processer|funktion)\/([^/]+)\.md$/.exec(path);
     // 0000 is the template for a new decision, not a decision.
     if (!m || m[2]!.startsWith('0000')) continue;
     const title = /^#\s+(.+)$/m.exec(markdown)?.[1]?.trim() ?? m[2]!;
@@ -143,7 +143,7 @@ export function rewriteLinks(markdown: string, page: DocPage, known: ReadonlySet
   return markdown.replace(/(!?)\[([^\]]*)\]\(([^)\s]+)\)/g, (all, bang: string, text: string, href: string) => {
     if (bang || /^[a-z]+:/i.test(href) || href.startsWith('#')) return all;
     const [path, anchor] = href.split('#') as [string, string | undefined];
-    const m = /^(?:\.\.\/(processer|funktion|adr)\/)?([^/]+)\.md$/.exec(path);
+    const m = /^(?:\.\.\/(processer|funktion)\/)?([^/]+)\.md$/.exec(path);
     if (!m) return text;
     const section = (m[1] ?? page.section) as DocSection;
     const key = `${section}/${m[2]}`;
