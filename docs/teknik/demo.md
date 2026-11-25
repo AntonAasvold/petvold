@@ -2,6 +2,51 @@
 
 Demon är en installation av Petvold på en egen server, med demoanvändare och testdata (ADR 0041). Tjänsten som tar emot och visar händelserna beskrivs i [Demotjänsten](demotjanst.md). Allt för servern finns i `deploy/demo/`.
 
+## Så körs demon
+
+Allt körs med Docker Compose på en server: en VM hemma eller en hyrd server. Bara Caddy tar emot trafik utifrån. De andra tjänsterna finns bara på det interna nätet.
+
+```mermaid
+flowchart TB
+  user([Webbläsare]) -->|"443, eller en annan port via routern"| caddy
+  ghcr[("ghcr.io<br/>petvold-api, petvold-web")] -.->|"docker compose pull"| api & web
+  duckdns([DuckDNS]) -.-|TXT för certifikatet| caddy
+  subgraph server [Server: Docker Compose]
+    caddy["caddy<br/>TLS, lösenordsspärr"]
+    caddy -->|/| web["web<br/>back office"]
+    caddy -->|"/v1, /d"| api["api<br/>alla moduler, reläet, körningarna"]
+    api --> postgres[("postgres<br/>schema och roll per modul")]
+    api --> seaweedfs["seaweedfs<br/>S3 för dokument"]
+    api --> gotenberg["gotenberg<br/>HTML till PDF/A"]
+    roles["roles"] --> migrate["migrate"] --> api
+    roles -.-> postgres
+  end
+```
+
+- **Vid start** körs `roles`, `migrate` och sedan `api`. `roles` skapar de modulroller som saknas, och `migrate` kör dbmate som ägarrollen. Båda stannar när de är klara.
+- **Volymer:** `pgdata`, `s3data` och `caddy-data`. Hemligheterna finns i `.env`, som `setup.sh` skriver.
+- **DuckDNS** används bara när portarna 80 och 443 leder till en annan maskin, se [På en annan port](#på-en-annan-port-med-certifikat-från-duckdns).
+- **Skala:** hur demon eller en installation skalas ut finns i [Skalning](skalning.md).
+
+**Exempel: demon på en VM hemma.** Så körs demon i dag:
+
+```mermaid
+flowchart LR
+  user([Webbläsare]) -->|8443| router["Router<br/>8443 till VM:ens 443"]
+  router -.->|80 och 443| other["En annan tjänst<br/>till exempel Home Assistant"]
+  subgraph proxmox [Proxmox]
+    subgraph vm [VM: Debian 13, Docker Compose]
+      caddy[caddy] --> petvold["web, api, postgres,<br/>seaweedfs, gotenberg"]
+    end
+  end
+  router --> caddy
+  proxmox -.->|"vzdump, planerat"| nas[("NAS<br/>säkerhetskopior")]
+```
+
+- **VM:en** har 4 vCPU, 6 GB minne och 40 GB disk och skapas från Debians cloud-image med cloud-init.
+- **Certifikatet** hämtas med DuckDNS, eftersom 80 och 443 redan leder till en annan maskin: `DEMO_PORT=8443` och `DUCKDNS_TOKEN` till `setup.sh`.
+- **Uppdatera:** `git pull` och sedan `docker compose pull api web && docker compose up -d`, se [Uppdatera till en ny version](#uppdatera-till-en-ny-version).
+
 ## Sätta upp demon
 
 Det som behövs är en server med Docker och Docker Compose, och ett domännamn som pekar på den. Portarna 80 och 443 ska vara öppna, så att Caddy kan hämta ett certifikat från Let's Encrypt. Om de redan används av något annat, se [På en annan port](#på-en-annan-port-med-certifikat-från-duckdns).
@@ -23,6 +68,7 @@ git clone https://github.com/AntonAasvold/petvold.git && cd petvold/deploy/demo
 | `caddy` | HTTPS, lösenordet och vidarekopplingen |
 | `api` | Petvold (`server.ts` med `PETVOLD_AUTH=demo` och låtsasbanken) |
 | `web` | Back office |
+| `roles` | Skapar de modulroller som saknas, före `migrate` |
 | `migrate` | Migreringarna, före `api` |
 | `seed` | Testdatan, bara från `reset.sh` |
 | `postgres`, `seaweedfs`, `gotenberg` | Databasen, arkivet och PDF:erna, bara på det interna nätet |
