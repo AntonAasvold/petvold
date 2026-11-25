@@ -205,7 +205,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
     - [x] 6b: kontoplan, dagsavslut med CSV och `accounting.day_closed`. SIE 4 och perioder som stängs för hand när en installation behöver dem.
   - [ ] Betaltjänster: bankfiler (ISO 20022), Stripe eller Surfboard (kort och Swish), Autogiro och SEPA, och Swish direkt:
     - [x] 7a: bankens `camt.054` in, med inläsning i back office och av en integration
-    - [ ] 7b: utbetalningar som `pain.001`, och bankens bekräftelse i `camt.054`
+    - [x] 7b: utbetalningar som `pain.001`, och bankens bekräftelse i `camt.054`
   - [ ] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav:
     - [x] 8a: köerna i **Pengar**: okopplade inbetalningar, spärrade utbetalningar och kreditförslag
     - [x] 8b: betalarens konto på partens sida, med fakturor, saldo, kreditnota och återbetalning

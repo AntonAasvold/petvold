@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-25 | [Pengar, steg 7b: bankfiler ut](2026-11-25-bankfiler-ut.md) | #167 |
 | 2026-11-25 | [Pengar, steg 7a: bankfiler in](2026-11-25-bankfiler-in.md) | #166 |
 | 2026-11-25 | [Gallring av dokument](2026-11-25-gallring-av-dokument.md) | #165 |
 | 2026-11-24 | [Besked om kreditnota till kunden](2026-11-24-besked-om-kreditnota.md) | #164 |

@@ -159,7 +159,15 @@ content-type: multipart/form-data; boundary=…
       "importedBy": "ekonomi@example.test", "paymentIds": ["pay_…", "pay_…", "pay_…"], … }
 ```
 
-Dev-servern läser filer för det påhittade bankgirot `5050-1055`. Testernas filer finns i `modules/payments/test/files/`.
+**Utbetalningar med bankfil.** Med `PETVOLD_BANK_FILE_DEBTOR_NAME`, bolagets namn som avsändare, betalar adaptern också ut:
+1. **En utbetalning** till adaptern väntar som skickad (`pending`).
+2. **`POST /v1/payout-files`** med marknad och valuta gör en `pain.001.001.03` av alla utbetalningar som väntar och inte redan finns i en fil. Det kräver `payments:export`. Det blir en överföring per utbetalning, från bolagets konto i marknaden. Mottagarens namn kommer från parten, och för en klinik används klinikens id. Ett svenskt konto skickas som clearing- och kontonummer, och ett IBAN med BIC om den finns. Meddelandet till mottagaren är skadans id eller återbetalningens id.
+3. **Filen hämtas** med `GET /v1/payout-files/{id}/file`, alltid samma fil med kontrollsumman i `x-content-sha256`, och skickas till banken.
+4. **Bankens `camt.054`** läses in som vanligt. Ett bokfört uttag med utbetalningens `EndToEndId` gör den betald (`payout.paid`). En retur (`RtrInf`) gör den misslyckad (`payout.failed`) med bankens orsakskod.
+
+`EndToEndId` är utbetalningens id utan prefixet `pyo_`, eftersom fältet rymmer högst 35 tecken. Filen innehåller namn och kontonummer. När en mottagare i den raderas töms filen (`410`), och raden med kontrollsumman finns kvar.
+
+Dev-servern läser filer för det påhittade bankgirot `5050-1055`, men betalar ut med låtsasbanken. Testernas filer finns i `modules/payments/test/files/`.
 
 ## Koppling till fakturorna
 

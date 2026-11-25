@@ -34,6 +34,7 @@ type Payout = components['schemas']['Payout'];
 type Proposal = components['schemas']['CreditProposal'];
 type Agreement = components['schemas']['ClinicAgreement'];
 type PaymentFile = components['schemas']['PaymentFile'];
+type PayoutFile = components['schemas']['PayoutFile'];
 type Row = Payment | Payout | Proposal | Agreement | PaymentFile;
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -57,6 +58,8 @@ export class MoneyView extends LitElement {
   @state() private agreement: AgreementForm = { clinicId: '', market: 'SE', validFrom: today(), validTo: '' };
   @state() private ending = { validTo: '', reason: '' };
   @state() private bankFile: File | null = null;
+  @state() private payoutFiles: PayoutFile[] = [];
+  @state() private payoutFileFor = { market: 'SE', currency: 'SEK' };
   private request = 0;
   private keys = new IdempotencyKeys();
 
@@ -164,6 +167,12 @@ export class MoneyView extends LitElement {
     this.tab = tab;
     this.notice = null;
     this.reset();
+    if (tab === 'files') void this.loadPayoutFiles();
+  }
+
+  private async loadPayoutFiles() {
+    const { data } = await this.api.GET('/v1/payout-files', { params: { query: { limit: 20 } } });
+    this.payoutFiles = data?.items ?? [];
   }
 
   private select(row: Row) {
@@ -536,6 +545,71 @@ export class MoneyView extends LitElement {
     </section>`;
   }
 
+  private async doMakePayoutFile(e: Event) {
+    e.preventDefault();
+    const { market, currency } = this.payoutFileFor;
+    const ok = await this.send(
+      'payout-file',
+      `${market}-${currency}`,
+      (key) => this.api.POST('/v1/payout-files', { params: { header: { 'Idempotency-Key': key } }, body: { provider: 'bank-file', market, currency } }),
+      msg('The payout file is made. Fetch it and send it to the bank; its camt.054 then confirms the payouts.', { id: 'money.payoutFileMade' }),
+    );
+    if (ok) await this.loadPayoutFiles();
+    // 409 here is no payout waiting, not a change by someone else.
+    else if (this.notice?.reload) this.notice = { variant: 'warning', text: msg('No payouts wait for a file in the market and currency.', { id: 'money.noPayoutsWaiting' }) };
+  }
+
+  /** The file with its checksum, fetched with the token: a plain link cannot carry it. */
+  private async download(f: PayoutFile) {
+    this.busy = `download:${f.id}`;
+    const { data, error } = await this.api.GET('/v1/payout-files/{fileId}/file', { params: { path: { fileId: f.id } }, parseAs: 'text' });
+    this.busy = '';
+    if (typeof data !== 'string') {
+      this.notice = { variant: 'danger', text: (error as { title?: string } | undefined)?.title ?? msg('Something went wrong.', { id: 'common.error' }) };
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([data], { type: 'application/xml' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `petvold-payouts-${f.market}-${f.executionDate}-${f.id}.xml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  private payoutFilesCard() {
+    const lang = getLocale();
+    const may = this.me?.permissions.includes('payments:export');
+    return html`<section class="pv-card" aria-labelledby="payout-files">
+      <div class="pv-card__head"><h2 class="pv-card__title" id="payout-files">${msg('Payout files', { id: 'money.payoutFiles' })}</h2></div>
+      <div class="pv-card__body">
+        <p>${msg('Payouts by bank file wait for a pain.001 to the bank. The file takes every payout waiting in the market and currency.', { id: 'money.payoutFilesHow' })}</p>
+        ${may
+          ? html`<form @submit=${(e: Event) => this.doMakePayoutFile(e)} novalidate>
+              <wa-input label=${msg('Market', { id: 'money.market' })} .value=${this.payoutFileFor.market} @input=${(e: Event) => (this.payoutFileFor = { ...this.payoutFileFor, market: value(e).toUpperCase() })}></wa-input>
+              <wa-input label=${msg('Currency', { id: 'money.currency' })} .value=${this.payoutFileFor.currency} @input=${(e: Event) => (this.payoutFileFor = { ...this.payoutFileFor, currency: value(e).toUpperCase() })}></wa-input>
+              <wa-button type="submit" variant="brand" ?loading=${this.busy === 'payout-file'}>${msg('Make a payout file', { id: 'money.makePayoutFile' })}</wa-button>
+            </form>`
+          : nothing}
+        ${this.payoutFiles.length
+          ? html`<dl class="pv-dl">
+              ${this.payoutFiles.map(
+                (f) => html`<div class="pv-dl__row">
+                  <dt>${formatDate(f.executionDate, lang)} · ${f.payoutIds.length} · ${formatMoney(f.total, f.currency, lang)}</dt>
+                  <dd>
+                    ${f.erased
+                      ? msg('Erased', { id: 'money.fileErased' })
+                      : may
+                        ? html`<wa-button size="small" appearance="outlined" ?loading=${this.busy === `download:${f.id}`} @click=${() => this.download(f)}>${msg('Fetch', { id: 'money.fetch' })}</wa-button>`
+                        : nothing}
+                  </dd>
+                </div>`,
+              )}
+            </dl>`
+          : html`<p>${msg('No payout files yet.', { id: 'money.noPayoutFiles' })}</p>`}
+      </div>
+    </section>`;
+  }
+
   private fileCard(f: PaymentFile) {
     const lang = getLocale();
     return html`<section class="pv-card" aria-labelledby="sel">
@@ -557,8 +631,8 @@ export class MoneyView extends LitElement {
     const card = !s
       ? this.tab === 'clinics' && this.me?.permissions.includes('payments:agreements')
         ? this.newAgreementCard()
-        : this.tab === 'files' && this.me?.permissions.includes('payments:import')
-          ? this.importCard()
+        : this.tab === 'files'
+          ? html`${this.me?.permissions.includes('payments:import') ? this.importCard() : nothing}${this.payoutFilesCard()}`
           : nothing
       : 'paymentId' in s
         ? this.paymentCard(s)

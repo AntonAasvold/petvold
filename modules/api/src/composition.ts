@@ -27,7 +27,7 @@ import {
 import { PostgresProductStore, PostgresReferenceDataStore } from '@petvold/catalog/postgres';
 import { AnimalService, InMemoryAnimalStore, type AnimalStore } from '@petvold/animals';
 import { PostgresAnimalStore } from '@petvold/animals/postgres';
-import { InMemoryPartyStore, InMemoryRetentionStore, PartyService, RetentionService, type ErasureHook, type PartyStore } from '@petvold/parties';
+import { InMemoryPartyStore, InMemoryRetentionStore, PartyService, RetentionService, displayName, type ErasureHook, type PartyStore } from '@petvold/parties';
 import { PostgresPartyStore, PostgresRetentionStore } from '@petvold/parties/postgres';
 import { InMemoryPolicyStore, PolicyService, type PolicyStore } from '@petvold/policies';
 import { CommunicationsService, InMemoryNoticeSettingsStore, InMemoryNoticeStore, type NoticeStore } from '@petvold/communications';
@@ -104,7 +104,7 @@ export interface InstallationConfig {
     /** The fake bank, for the dev server and the demo (PETVOLD_FAKE_BANK_SECRET, PETVOLD_FAKE_BANK_MARKETS). */
     fake?: { secret: string; markets: { market: string; currency: string }[] };
     /** The bank's files, camt.054, for these accounts (PETVOLD_BANK_FILE_ACCOUNTS, ADR 0040 punkt 12). */
-    bankFile?: { accounts: BankAccount[] };
+    bankFile?: { accounts: BankAccount[]; debtorName?: string };
     /** Adapters instead of or beside the fake bank, e.g. in tests. */
     providers?: PaymentProvider[];
     /** Days that new payee details hold a payout for a person (PETVOLD_NEW_PAYEE_HOLD_DAYS). Default 0. */
@@ -388,6 +388,14 @@ export async function compose(config: InstallationConfig): Promise<Installation>
     // The policyholder is paid (ADR 0040, punkt 8).
     policies: billingPolicySource(policies),
     newPayeeHoldDays: config.payments?.newPayeeHoldDays ?? 0,
+    // A payout file names the payee (pain.001): the party's name, a clinic's id.
+    payeeNames: {
+      nameOf: async (payee) => {
+        if (payee.clinicId) return payee.clinicId;
+        const p = await parties.get(payee.partyId!).catch(() => null);
+        return p && !p.anonymized ? displayName(p) || null : null;
+      },
+    },
   });
   // Payee account numbers go with the party (ADR 0040, punkt 11).
   erasureHooks.push({ name: 'payments', blocker: (id) => payments.erasureBlocker(id), erase: async (id) => void (await payments.erasePayee(id)) });

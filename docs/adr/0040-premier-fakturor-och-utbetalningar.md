@@ -219,6 +219,15 @@ Bankfiler in, `camt.054`, är byggda:
 - **Bara bokförda insättningar** blir inbetalningar. Uttagen i samma fil är bankens bekräftelse på utbetalningar och läses i steg 7b, med `pain.001` ut.
 
 
+## Förtydligande 2026-11-25, steg 7b
+
+Bankfiler ut, `pain.001.001.03`, och bankens bekräftelse i `camt.054` är byggda:
+- **En utbetalning väntar som skickad** tills den har kommit med i en fil och banken har bekräftat den. Uttaget gör den betald. En retur gör den misslyckad med bankens orsakskod.
+- **`EndToEndId`** är utbetalningens id utan prefixet `pyo_`, eftersom fältet rymmer högst 35 tecken.
+- **Mottagarens namn**, som filen kräver, kommer från partsmodulen genom porten `payeeNames`. För en klinik används klinikens id, eftersom kliniker inte har namn i Petvold än.
+- **Filen sparas** så att den kan hämtas igen. Den innehåller namn och kontonummer, så den töms när en mottagare i den raderas (punkt 11). Raden och kontrollsumman finns kvar.
+- **Filerna följer meddelandedefinitionerna** på iso20022.org. Bankernas egna tillämpningsanvisningar kan kräva mer, och en bank behöver pröva filerna innan de används med riktiga pengar.
+
 ## Källor
 
 - Försäkringsavtalslagen (2005:104), 5 kap. 1, 2 och 6 §§. riksdagen.se

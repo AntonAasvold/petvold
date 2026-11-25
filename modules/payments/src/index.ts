@@ -44,7 +44,23 @@ export interface ReceivedPayment {
   bookedOn: ISODate;
 }
 
-export type ProviderNotification = ReceivedPayment;
+/**
+ * The service's answer on a payout Petvold sent it, e.g. the bank's debit of a
+ * payment in a pain.001 file, or its return (ADR 0040, punkt 12).
+ */
+export interface PayoutConfirmation {
+  kind: 'payout.confirmed';
+  /** Petvold's payout id, as the payout was sent. */
+  payoutId: string;
+  outcome: 'paid' | 'failed';
+  /** The service's id for the debit or the return. */
+  providerRef: string;
+  /** Why it failed, e.g. the bank's return code. */
+  reason?: string;
+  bookedOn: ISODate;
+}
+
+export type ProviderNotification = ReceivedPayment | PayoutConfirmation;
 
 /**
  * The port to a payment service (ADR 0017, punkt 2). Only what the steps so far
@@ -63,6 +79,40 @@ export interface PaymentProvider {
   payout?(req: PayoutRequest): Promise<PayoutResult>;
   /** Files a signed-in person or integration uploads (importFile), e.g. a bank file: never through the open notification route. */
   readonly uploadOnly?: boolean;
+  /** The file of payment orders for the bank, e.g. pain.001, for payouts it left pending (makePayoutFile). */
+  payoutFile?(input: PayoutFileInput): string;
+}
+
+/** What a payout file is made of. */
+export interface PayoutFileInput {
+  msgId: string;
+  createdAt: Timestamp;
+  market: string;
+  currency: string;
+  executionDate: ISODate;
+  transfers: {
+    payoutId: string;
+    amount: number;
+    currency: string;
+    creditor: { name: string; account: { method: 'se-bank'; clearing: string; account: string } | { method: 'iban'; iban: string; bic?: string } };
+    message: string;
+  }[];
+}
+
+/** A file of payouts for the bank, e.g. pain.001 (ADR 0040, punkt 12). Never changes, but its content goes when a payee in it is erased. */
+export interface PayoutFile {
+  id: string;
+  provider: string;
+  market: string;
+  currency: string;
+  executionDate: ISODate;
+  payoutIds: string[];
+  total: number;
+  sha256: string;
+  createdBy: string;
+  createdAt: Timestamp;
+  /** The file. It holds names and account numbers: null once a payee in it is erased (ADR 0040, punkt 11). */
+  content: string | null;
 }
 
 export class ProviderNotificationError extends Error {
@@ -122,6 +172,12 @@ export interface PaymentsStore {
   payments(filter: PaymentFilter): Promise<Payment[]>;
   pendingEvents(limit: number): Promise<PaymentEvent[]>;
   addPaymentFile(file: PaymentFile): Promise<void>;
+  addPayoutFile(file: PayoutFile): Promise<void>;
+  /** Newest first. */
+  payoutFiles(filter: { provider?: string; market?: string }): Promise<PayoutFile[]>;
+  payoutFile(id: string): Promise<PayoutFile | null>;
+  /** Empties the content of the files with a payout to the party: they hold its name and account. The number emptied now. */
+  erasePayoutFiles(partyId: string): Promise<number>;
   /** Newest first. */
   paymentFiles(filter: { provider?: string }): Promise<PaymentFile[]>;
   markPublished(ids: string[], at: Timestamp): Promise<void>;
@@ -187,6 +243,8 @@ export interface PaymentsDeps {
   policies?: { policyholderOn(policyId: string, date: ISODate): Promise<string | null> };
   /** Days that new payee details hold a payout for a person (payments.newPayeeHoldDays). Default 0: never. */
   newPayeeHoldDays?: number;
+  /** The payee's name, for a payout file (pain.001 needs it): the party's from the parties module, a clinic's id. null if there is none, e.g. anonymized. */
+  payeeNames?: { nameOf(payee: Payee): Promise<string | null> };
 }
 
 /** A file read into payments, e.g. a bank's camt.054 (ADR 0040, punkt 12). Never changes. */
@@ -209,6 +267,8 @@ export interface PaymentFile {
 export interface ReceiveResult {
   received: Payment[];
   duplicates: Payment[];
+  /** Payouts the notification confirmed paid or failed now. A confirmation of one already settled, or of a debit that is not Petvold's, is left out. */
+  confirmed: PayoutView[];
 }
 
 export class PaymentsService {
@@ -270,8 +330,13 @@ export class PaymentsService {
     const parsed = await provider.parseNotification(raw, now);
     const caps = provider.capabilities();
     for (const n of parsed) checkReceived(n, caps);
-    const out: ReceiveResult = { received: [], duplicates: [] };
+    const out: ReceiveResult = { received: [], duplicates: [], confirmed: [] };
     for (const n of parsed) {
+      if (n.kind === 'payout.confirmed') {
+        const settled = await this.confirm(provider, n);
+        if (settled) out.confirmed.push(settled);
+        continue;
+      }
       const payment: Payment = {
         id: this.d.ids.next('pay'),
         direction: 'incoming',
@@ -487,7 +552,67 @@ export class PaymentsService {
   async erasePayee(partyId: string): Promise<number> {
     const blocker = await this.erasureBlocker(partyId);
     if (blocker) throw new PaymentsError('conflict', blocker);
-    return this.d.store.erasePayeeAccounts(partyId, this.d.clock.now());
+    const n = await this.d.store.erasePayeeAccounts(partyId, this.d.clock.now());
+    await this.d.store.erasePayoutFiles(partyId);
+    return n;
+  }
+
+  /**
+   * The bank's payment orders, e.g. pain.001, for the payouts an adapter left
+   * pending and that are in no file yet, in a market and currency (ADR 0040,
+   * punkt 12). Kept, so it can be fetched again; the bank's camt.054 then
+   * confirms each payout paid or returned.
+   */
+  async makePayoutFile(input: { provider: string; market: string; currency: string; executionDate?: ISODate }, by: string): Promise<PayoutFile> {
+    const provider = this.providers.get(input.provider);
+    if (!provider?.payoutFile) throw new PaymentsError('not_found', `No payment provider ${input.provider} that makes payout files`);
+    const inFiles = new Set((await this.d.store.payoutFiles({ provider: provider.id })).flatMap((f) => f.payoutIds));
+    const pending = (await this.d.store.payouts({ status: 'pending', market: input.market })).filter((p) => p.provider === provider.id && p.currency === input.currency && !inFiles.has(p.id));
+    if (!pending.length) throw new PaymentsError('conflict', `No payouts waiting for a file in ${input.market} and ${input.currency}`);
+    const transfers: PayoutFileInput['transfers'] = [];
+    for (const p of pending) {
+      const accountId = p.steps.at(-1)?.payeeAccountId;
+      const account = accountId ? await this.d.store.payeeAccount(accountId) : null;
+      const name = await this.d.payeeNames?.nameOf(payeeOf(p));
+      if (!account || !name) throw new PaymentsError('conflict', `Payout ${p.id} has no payee name or account details to pay to`);
+      const details = account.details as Record<string, string>;
+      transfers.push({
+        payoutId: p.id,
+        amount: p.amount,
+        currency: p.currency,
+        creditor: { name, account: account.method === 'se-bank' ? { method: 'se-bank', clearing: details.clearing!, account: details.account! } : { method: 'iban', iban: details.iban!, ...(details.bic ? { bic: details.bic } : {}) } },
+        // A reference, no language: the claim, or the refund.
+        message: p.claimId ?? p.orderId,
+      });
+    }
+    const createdAt = this.d.clock.now();
+    const id = this.d.ids.next('pof');
+    const content = provider.payoutFile({ msgId: id.replace(/^pof_/, '').slice(0, 35), createdAt, market: input.market, currency: input.currency, executionDate: input.executionDate ?? marketDate(input.market, createdAt), transfers });
+    const file: PayoutFile = {
+      id,
+      provider: provider.id,
+      market: input.market,
+      currency: input.currency,
+      executionDate: input.executionDate ?? marketDate(input.market, createdAt),
+      payoutIds: transfers.map((t) => t.payoutId),
+      total: transfers.reduce((s, t) => s + t.amount, 0),
+      sha256: createHash('sha256').update(content, 'utf8').digest('hex'),
+      createdBy: by,
+      createdAt,
+      content,
+    };
+    await this.d.store.addPayoutFile(file);
+    return file;
+  }
+
+  payoutFiles(filter: { provider?: string; market?: string } = {}): Promise<PayoutFile[]> {
+    return this.d.store.payoutFiles(filter);
+  }
+
+  async payoutFile(id: string): Promise<PayoutFile> {
+    const f = await this.d.store.payoutFile(id);
+    if (!f) throw new PaymentsError('not_found', `Payout file ${id} does not exist`);
+    return f;
   }
 
   /**
@@ -556,23 +681,41 @@ export class PaymentsService {
   }
 
   /** Asks the adapter to pay a pending payout, and stores what it says as step `seq`. */
+  /**
+   * The service's answer on a payout it was sent: paid or failed, with the event.
+   * Only a payout of this provider that is pending moves; one already settled is
+   * a repeat, and a debit with no payout of Petvold's is not Petvold's. null then.
+   */
+  private async confirm(provider: PaymentProvider, n: PayoutConfirmation): Promise<PayoutView | null> {
+    const p = await this.d.store.payout(n.payoutId);
+    if (!p || p.provider !== provider.id) return null;
+    const view = await this.payout(p.id);
+    if (view.status !== 'pending') return null;
+    const last = view.steps.at(-1)!;
+    await this.settle(p, view.steps.length + 1, { status: n.outcome, at: this.d.clock.now(), by: provider.id, ...(last.payeeAccountId ? { payeeAccountId: last.payeeAccountId } : {}), providerRef: n.providerRef, ...(n.reason ? { note: n.reason } : {}) });
+    return this.payout(p.id);
+  }
+
+  /** A paid or failed step with its event, payout.paid or payout.failed. */
+  private async settle(p: Payout, seq: number, step: PayoutStep): Promise<void> {
+    const event: PaymentEvent = {
+      id: this.d.ids.next('evt'),
+      type: step.status === 'paid' ? 'payout.paid' : 'payout.failed',
+      payoutId: p.id,
+      market: p.market,
+      occurredAt: step.at,
+      data: { purpose: p.purpose, ...(p.claimId ? { claimId: p.claimId, policyId: p.policyId } : {}), ...payeeOf(p), orderId: p.orderId, amount: p.amount, currency: p.currency },
+    };
+    await this.d.store.addPayoutStep(p.id, seq, step, [event]);
+  }
+
   private async send(payoutId: string, seq: number, account: PayeeAccount): Promise<void> {
     const p = (await this.d.store.payout(payoutId))!;
     const provider = this.providers.get(p.provider);
     if (!provider?.payout) throw new Error(`The provider ${p.provider} does not pay out`);
     const r = await provider.payout({ payoutId: p.id, market: p.market, currency: p.currency, amount: p.amount, account: { method: account.method, ...account.details } });
     if (r.status === 'pending') return;
-    const at = this.d.clock.now();
-    const step: PayoutStep = { status: r.status, at, by: provider.id, payeeAccountId: account.id, providerRef: r.providerRef, ...(r.reason ? { note: r.reason } : {}) };
-    const event: PaymentEvent = {
-      id: this.d.ids.next('evt'),
-      type: r.status === 'paid' ? 'payout.paid' : 'payout.failed',
-      payoutId: p.id,
-      market: p.market,
-      occurredAt: at,
-      data: { purpose: p.purpose, ...(p.claimId ? { claimId: p.claimId, policyId: p.policyId } : {}), ...payeeOf(p), orderId: p.orderId, amount: p.amount, currency: p.currency },
-    };
-    await this.d.store.addPayoutStep(p.id, seq, step, [event]);
+    await this.settle(p, seq, { status: r.status, at: this.d.clock.now(), by: provider.id, payeeAccountId: account.id, providerRef: r.providerRef, ...(r.reason ? { note: r.reason } : {}) });
   }
 }
 
@@ -598,6 +741,12 @@ export function succeeded(eventId: string, p: Payment): PaymentEvent {
 /** Throws unless the payment is well formed and within the adapter's capabilities. Pure. */
 export function checkReceived(n: ProviderNotification, caps: readonly ProviderCapability[]): void {
   const bad = (m: string) => new ProviderNotificationError('invalid', m);
+  if (n.kind === 'payout.confirmed') {
+    if (!/^pyo_[A-Za-z0-9]+$/.test(n.payoutId) || !n.providerRef || n.providerRef.length > 200) throw bad('A payout confirmation needs a payout id and the service\'s id');
+    if (n.outcome !== 'paid' && n.outcome !== 'failed') throw bad('A payout is confirmed paid or failed');
+    if (!isISODate(n.bookedOn)) throw bad('bookedOn is not a date');
+    return;
+  }
   if (n.kind !== 'payment.received') throw bad(`Unknown notification ${String((n as { kind?: unknown }).kind)}`);
   if (!n.providerRef || n.providerRef.length > 200) throw bad('The payment has no id, or one over 200 characters');
   if (!Number.isSafeInteger(n.amount) || n.amount <= 0) throw bad('The amount must be a whole number of minor units above zero');
@@ -769,6 +918,33 @@ export class InMemoryPaymentsStore implements PaymentsStore {
   }
 
   private readonly files: PaymentFile[] = [];
+  private readonly payoutFileList: PayoutFile[] = [];
+
+  async addPayoutFile(file: PayoutFile) {
+    this.payoutFileList.push(structuredClone(file));
+  }
+
+  async payoutFiles(filter: { provider?: string; market?: string }) {
+    return structuredClone(this.payoutFileList.filter((f) => (!filter.provider || f.provider === filter.provider) && (!filter.market || f.market === filter.market)).reverse());
+  }
+
+  async payoutFile(id: string) {
+    const f = this.payoutFileList.find((x) => x.id === id);
+    return f ? structuredClone(f) : null;
+  }
+
+  async erasePayoutFiles(partyId: string) {
+    const ids = new Set(this.payoutList.filter((p) => p.partyId === partyId).map((p) => p.id));
+    let n = 0;
+    for (const f of this.payoutFileList) {
+      if (f.content !== null && f.payoutIds.some((id) => ids.has(id))) {
+        f.content = null;
+        n++;
+      }
+    }
+    return n;
+  }
+
 
   async addPaymentFile(file: PaymentFile) {
     this.files.push(structuredClone(file));

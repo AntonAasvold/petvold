@@ -5,7 +5,7 @@
  */
 import type pg from 'pg';
 import type { Timestamp } from '@petvold/common';
-import { PayoutConflictError, type ClinicAgreement, type PaymentFile, type Payee, type PayeeAccount, type PayoutFilter, type Payment, type PaymentEvent, type PaymentFilter, type PaymentsStore, type Payout, type PayoutStatus, type PayoutStep, type PayoutView } from './index.ts';
+import { PayoutConflictError, type ClinicAgreement, type PaymentFile, type PayoutFile, type Payee, type PayeeAccount, type PayoutFilter, type Payment, type PaymentEvent, type PaymentFilter, type PaymentsStore, type Payout, type PayoutStatus, type PayoutStep, type PayoutView } from './index.ts';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -97,6 +97,36 @@ export class PostgresPaymentsStore implements PaymentsStore {
       duplicates: r.duplicates,
       paymentIds: r.payment_ids,
     }));
+  }
+
+  async addPayoutFile(f: PayoutFile): Promise<void> {
+    await this.pool.query(
+      `insert into payments.payout_file (payout_file_id, provider, market, currency, execution_date, payout_ids, total, sha256, created_by, created_at, content)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [f.id, f.provider, f.market, f.currency, f.executionDate, f.payoutIds, f.total, f.sha256, f.createdBy, f.createdAt, f.content],
+    );
+  }
+
+  async payoutFiles(filter: { provider?: string; market?: string }): Promise<PayoutFile[]> {
+    const { rows } = await this.pool.query(
+      `select ${PAYOUT_FILE} from payments.payout_file where ($1::text is null or provider = $1) and ($2::text is null or market = $2) order by created_at desc, payout_file_id desc`,
+      [filter.provider ?? null, filter.market ?? null],
+    );
+    return rows.map(payoutFile);
+  }
+
+  async payoutFile(id: string): Promise<PayoutFile | null> {
+    const { rows } = await this.pool.query(`select ${PAYOUT_FILE} from payments.payout_file where payout_file_id = $1`, [id]);
+    return rows[0] ? payoutFile(rows[0]) : null;
+  }
+
+  async erasePayoutFiles(partyId: string): Promise<number> {
+    const { rowCount } = await this.pool.query(
+      `update payments.payout_file f set content = null
+       where f.content is not null and exists (select 1 from payments.payout p where p.party_id = $1 and p.payout_id = any (f.payout_ids))`,
+      [partyId],
+    );
+    return rowCount ?? 0;
   }
 
   async pendingEvents(limit: number): Promise<PaymentEvent[]> {
@@ -282,6 +312,24 @@ export class PostgresPaymentsStore implements PaymentsStore {
       };
     });
   }
+}
+
+const PAYOUT_FILE = `payout_file_id, provider, market, currency, execution_date::text as execution_date, payout_ids, total, sha256, created_by, created_at, content`;
+
+function payoutFile(r: Record<string, any>): PayoutFile {
+  return {
+    id: r.payout_file_id,
+    provider: r.provider,
+    market: r.market,
+    currency: r.currency,
+    executionDate: r.execution_date,
+    payoutIds: r.payout_ids,
+    total: Number(r.total),
+    sha256: r.sha256,
+    createdBy: r.created_by,
+    createdAt: iso(r.created_at),
+    content: r.content,
+  };
 }
 
 const ACCOUNT = `payee_account_id, party_id, clinic_id, market, method, details, created_at, created_by`;
