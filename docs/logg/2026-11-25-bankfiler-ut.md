@@ -1,4 +1,4 @@
-# Pengar, steg 7b: bankfiler ut (PR #NN)
+# Pengar, steg 7b: bankfiler ut (PR #167)
 
 **Datum:** 2026-11-25 **ADR:** 0040 punkt 8, 11 och 12 **Moduler:** `payments`, `api`, `apps/backoffice`
 
