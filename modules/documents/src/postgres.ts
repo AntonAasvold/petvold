@@ -68,6 +68,11 @@ export class PostgresDocumentStore implements DocumentStore {
     return rows[0] ? toDocument(rows[0]) : null;
   }
 
+  async markErased(id: string, at: Timestamp): Promise<boolean> {
+    const { rowCount } = await this.pool.query(`update documents.document set erased_at = $2 where id = $1 and erased_at is null`, [id, at]);
+    return (rowCount ?? 0) > 0;
+  }
+
   async list(f: DocumentFilter): Promise<StoredDocument[]> {
     const { rows } = await this.pool.query(
       `select ${DOC} from documents.document

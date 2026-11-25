@@ -37,6 +37,7 @@ flowchart LR
 | PERS-15 | Priset sparar zonen, inte postnumret. Meddelanden har id, inte namn och adress. Händelser till bolagets system har inga fritexter. | GDPR artikel 5.1 c, ADR 0032, ADR 0033 | – |
 | PERS-16 | Fakturor, betalningar och verifikationer sparas i sju år och raderas inte vid en begäran om radering. | Bokföringslagen 7 kap. 2 §, ADR 0040, punkt 11 | – |
 | PERS-17 | Partens betaluppgifter raderas när parten anonymiseras. Raderna finns kvar så att utbetalningarna hänger ihop. En utbetalning som är på väg till parten stoppar raderingen tills den är betald eller misslyckad. | GDPR artikel 17, ADR 0040, punkt 11 | – |
+| PERS-18 | Dokumenten om parten gallras när parten anonymiseras: filen tas bort, och uppgifterna om dokumentet finns kvar. | GDPR artikel 5.1 e och 17, ADR 0038 | – |
 
 ## Exempel
 

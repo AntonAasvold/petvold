@@ -104,6 +104,8 @@ export interface DocumentStore {
   /** Throws DocumentConflictError if the link is revoked already. */
   revokeLink(id: string, by: string, at: Timestamp): Promise<void>;
   logAccess(linkId: string, at: Timestamp): Promise<void>;
+  /** Marks the file erased (ADR 0028); false if it was already. The record stays. */
+  markErased(id: string, at: Timestamp): Promise<boolean>;
 }
 
 /** The archive's files, by key. An S3-compatible store in production (s3.ts), memory in tests. */
@@ -111,6 +113,8 @@ export interface BlobStore {
   put(key: string, bytes: Uint8Array, mediaType: string): Promise<void>;
   /** null if there is no such file. */
   get(key: string): Promise<Uint8Array | null>;
+  /** Removes the file, for retention (ADR 0038 point 9). Nothing if there is none. */
+  delete(key: string): Promise<void>;
 }
 
 export class DocumentConflictError extends Error {
@@ -256,6 +260,24 @@ export class DocumentService {
     await this.d.blobs.put(doc.id, bytes, doc.mediaType);
     await this.d.store.save(doc);
     return doc;
+  }
+
+  /**
+   * Erases the files of every document about a party, when the party is
+   * anonymized (ADR 0028, ADR 0038 point 9): the file goes from the store, and
+   * the record stays with its checksum, kind and dates, to show the document
+   * was there and is erased. Its links stop working. Deletes the file also of
+   * a document already marked, so it is safe to run again after a restore.
+   * Returns how many were erased now.
+   */
+  async erasePartyDocuments(partyId: string): Promise<number> {
+    let n = 0;
+    for (const doc of await this.d.store.list({ partyId })) {
+      // The file first: if the record below fails, the next run finds the document again.
+      await this.d.blobs.delete(doc.id);
+      if (await this.d.store.markErased(doc.id, this.d.clock.now())) n++;
+    }
+    return n;
   }
 
   async get(id: string): Promise<StoredDocument> {
@@ -410,6 +432,12 @@ export class InMemoryDocumentStore implements DocumentStore {
   async logAccess(linkId: string, at: Timestamp) {
     this.linksById.get(linkId)?.accesses.push(at);
   }
+  async markErased(id: string, at: Timestamp) {
+    const d = this.docs.find((x) => x.id === id);
+    if (!d || d.erasedAt) return false;
+    d.erasedAt = at;
+    return true;
+  }
 }
 
 /** In-memory files, for tests and the dev server without object storage. */
@@ -422,5 +450,8 @@ export class InMemoryBlobStore implements BlobStore {
   async get(key: string) {
     const b = this.files.get(key);
     return b ? new Uint8Array(b) : null;
+  }
+  async delete(key: string) {
+    this.files.delete(key);
   }
 }

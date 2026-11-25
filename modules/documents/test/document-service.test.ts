@@ -94,3 +94,19 @@ test('documents are listed per party, claim or policy, never all at once', async
   assert.equal((await s.list({ partyId: 'pty_anna' })).length, 1);
   await assert.rejects(s.list({}), code('validation'));
 });
+
+test("an anonymized party's documents lose their files, keep their records, and their links stop (ADR 0038 point 9)", async () => {
+  const { s, blobs, upload, at } = setup();
+  const mine = await upload();
+  const theirs = await upload({ partyIds: ['pty_bo'] });
+  const { url } = await s.createLink(mine.id, { audience: 'customer' }, 'h@example.test');
+  at('2027-01-10T10:00:00.000Z');
+  assert.equal(await s.erasePartyDocuments('pty_anna'), 1);
+  assert.equal(await blobs.get(mine.id), null, 'the file is gone');
+  const kept = await s.get(mine.id);
+  assert.deepEqual([kept.erasedAt, kept.sha256], ['2027-01-10T10:00:00.000Z', mine.sha256], 'the record stays');
+  await assert.rejects(s.open(tokenOf(url)), code('gone'));
+  await assert.rejects(s.createLink(mine.id, { audience: 'internal' }, 'h@example.test'), code('gone'));
+  assert.equal(await s.erasePartyDocuments('pty_anna'), 0, 'safe to run again');
+  assert.ok(await blobs.get(theirs.id), "another party's are left");
+});

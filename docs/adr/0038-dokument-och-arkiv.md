@@ -99,6 +99,16 @@ Det behövs alltså ett sätt att göra PDF:er från Petvolds egna mallar, och e
     4. meddelanden som PDF med inställningen `petvold` eller `insurer`
     5. gallring av dokument som en körning
 
+## Förtydligande 2026-11-25, steg 5
+
+Punkt 9 tänkte sig ett gallringsdatum per dokument och en egen körning, `documents.retention`. Det blev i stället så här:
+- **Dokumenten gallras när parten de gäller anonymiseras (ADR 0028)**, genom en krok i partsmodulen (`ErasureHook`), samma väg som betaluppgifterna (ADR 0040, punkt 11).
+- **Gallringen av parter räknar redan med policyer och skador** som partens sista relation. Ett dokument som hör till en policy eller ett ärende gallras därför inte förrän det som det hör till har passerat lagringstiden. Det är vad punkt 9 vill, utan att ett datum måste räknas fram och flyttas för varje dokument.
+- **Filen tas bort ur lagringen.** Raden finns kvar med kontrollsumman, typen och datumen, och `erased_at` sätts. Länkarna slutar fungera.
+- **`npm run erasures:reapply`** tar bort filerna igen efter en återställning från säkerhetskopia.
+
+En egen körning behövs om ett dokument någon gång ska gallras före parten, till exempel en uppladdad bilaga med kortare lagringstid. Då läggs ett gallringsdatum till.
+
 ## Konsekvenser
 
 - **Ett bolag utan dokumentsystem kan använda Petvold.** Beslutsbrev, försäkringsbrev och avslag kommer som PDF med bevis.

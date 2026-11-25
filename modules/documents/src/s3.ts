@@ -3,7 +3,7 @@
  * in production, SeaweedFS in docker compose locally. Files never change: a
  * put to a key that exists is refused by the store (If-None-Match).
  */
-import { GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import type { BlobStore } from './index.ts';
 
 export interface S3Config {
@@ -41,6 +41,11 @@ export class S3BlobStore implements BlobStore {
       if (e instanceof NoSuchKey || (e as { name?: string }).name === 'NoSuchKey') return null;
       throw e;
     }
+  }
+
+  /** S3 answers 204 also for a key that is not there. With versioning on, the bucket keeps old versions until its own lifecycle rule removes them. */
+  async delete(key: string): Promise<void> {
+    await this.s3.send(new DeleteObjectCommand({ Bucket: this.config.bucket, Key: key }));
   }
 
   /** Checks that the bucket answers, for the health check. */
