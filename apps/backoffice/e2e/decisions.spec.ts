@@ -83,7 +83,7 @@ test("a requested review is answered by a person's decision", async ({ page }) =
   await expect(page.locator('pv-claim-actions').getByRole('heading', { name: 'Review requested' })).toHaveCount(0);
 });
 
-test('the explanation shows why a decision came out as it did', async ({ page }) => {
+test('the explanation shows why a decision came out as it did, and the evidence gives it again', async ({ page }) => {
   await signIn(page, 'dev-handler');
   await openClaim(page, 'S-2026-021877', 'Decided');
   // The history is newest first, on the inverted panel, with the event names the API uses.
@@ -96,6 +96,9 @@ test('the explanation shows why a decision came out as it did', async ({ page })
   // The content is slotted into Web Awesome's dialog, so it is looked for on the page.
   await expect(page.getByRole('heading', { name: 'The calculation' })).toBeVisible();
   await expect(page.locator('pv-explanation-dialog').getByRole('listitem').filter({ hasText: 'Fixed deductible' })).toBeVisible();
+  // The stored evidence gives the decision again (ADR 0018).
+  await page.locator('pv-explanation-dialog').getByRole('button', { name: 'Recalculate from the evidence' }).click();
+  await expect(page.locator('pv-explanation-dialog').getByRole('status')).toContainText('The same result.');
 });
 
 test('the calculation is a waterfall: billed, each deduction with its rule, and the payout', async ({ page }) => {

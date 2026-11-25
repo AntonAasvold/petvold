@@ -258,6 +258,7 @@ Går svarsdatumet ut utan svar står det i kortet att underlaget inte kom in. K�
 3. **Attestera.** Den som har rätt att attestera ser förslaget, vem som gjorde det och deras gräns, och kan attestera eller skicka tillbaka med en motivering. Den som gjorde förslaget ser att någon annan måste attestera det.
 4. **Underlaget ändrades.** Varje beslut skickar bedömningens `inputHash`. Om ärendet har ändrats sedan det öppnades, till exempel för att en annan skada förbrukat försäkringsbeloppet, svarar API:t `409`. Appen säger det och erbjuder att ladda om.
 5. **Förklaringen.** "Varför?" på ett beslut visar huvudskälet, eventuell avvikelse från förslaget och beräkningen steg för steg, på användarens språk.
+6. **Omräkningen.** I förklaringen räknar **Räkna om från underlaget** om beslutet från det sparade underlaget med dagens motor (ADR 0018). Svaret är *samma resultat*, vilka värden som skiljer sig med sparat och omräknat värde, eller att motorn inte längre har beräkningsmodellen. Inget sparas och inget bokförs. Det visar en revisor eller kunden att beslutet går att göra om.
 
 Varje åtgärd skickas med en idempotensnyckel. Om nätverket svajar och man försöker igen blir det inte två beslut.
 
