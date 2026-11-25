@@ -4,7 +4,7 @@ Demon är en installation av Petvold på en egen server, med demoanvändare och 
 
 ## Sätta upp demon
 
-Det som behövs är en server med Docker och Docker Compose, och ett domännamn som pekar på den. Portarna 80 och 443 ska vara öppna, så att Caddy kan hämta ett certifikat från Let's Encrypt. Om de redan används av något annat, se [På en annan port](#på-en-annan-port-med-certifikat-från-duckdns).
+Det som behövs är en server med Docker och Docker Compose, och ett domännamn som pekar på den. Portarna 80 och 443 ska vara öppna, så att Caddy kan hämta ett certifikat från Let's Encrypt. Om de redan används av något annat, se [På en annan port](#på-en-annan-port-med-certifikat-från-duckdns). Om ingen port kan öppnas, eller om besökarna bara når port 443, se [Bakom Cloudflare Tunnel](#bakom-cloudflare-tunnel).
 
 ```
 git clone https://github.com/AntonAasvold/petvold.git && cd petvold/deploy/demo
@@ -21,6 +21,7 @@ git clone https://github.com/AntonAasvold/petvold.git && cd petvold/deploy/demo
 | Tjänst | Vad |
 | --- | --- |
 | `caddy` | HTTPS, lösenordet och vidarekopplingen |
+| `cloudflared` | Tunneln till Cloudflare, bara med `DEMO_TLS=tunnel` |
 | `api` | Petvold (`server.ts` med `PETVOLD_AUTH=demo` och låtsasbanken) |
 | `web` | Back office |
 | `migrate` | Migreringarna, före `api` |
@@ -50,6 +51,27 @@ DEMO_PORT=8443 ./setup.sh petvold.namn.duckdns.org 'ett långt lösenord'
 - **`setup.sh`** skriver `DEMO_TLS=duckdns`, tokenen och `DEMO_PUBLIC_URL` med porten i `.env`. Petvold använder adressen i dokumentens länkar (`PETVOLD_PUBLIC_URL`).
 - **Caddy byggs på servern** med modulen [caddy-dns/duckdns](https://github.com/caddy-dns/duckdns) (`caddy/Dockerfile`), första gången av `reset.sh`. Utan `DEMO_TLS=duckdns` används inte modulen.
 - **DuckDNS har en TXT-post per namn.** Om ett annat system förnyar sitt certifikat för samma DuckDNS-namn i samma stund kan en av förnyelserna misslyckas. Caddy försöker då igen.
+
+### Bakom Cloudflare Tunnel
+
+Med en tunnel öppnas ingen port mot servern. Containern `cloudflared` kopplar själv upp sig utåt mot Cloudflare, som tar emot besökarna på sin port 443 och skickar anropen genom tunneln. Det passar när routern inte kan öppna portar, när 80 och 443 redan används av något annat, och när besökarna sitter bakom en brandvägg som bara släpper igenom 443. En port som 8443 är ofta stängd på en arbetsplats.
+
+**Det som behövs** är en domän vars namnservrar är Cloudflares. Free-planen räcker, och tunneln kostar inget.
+
+1. **Skapa tunneln** i Cloudflares Zero Trust under *Networks → Tunnels* med typen *Cloudflared*. Kopiera token ur installationskommandot, den långa strängen efter `--token`.
+2. **Lägg till ett publikt värdnamn** för tunneln, till exempel `demo.dindomän.se`, med tjänsten `HTTP` och adressen `caddy:80`.
+3. **Kör `setup.sh` med token,** utan att den hamnar i historiken:
+
+   ```
+   read -r CLOUDFLARE_TUNNEL_TOKEN && export CLOUDFLARE_TUNNEL_TOKEN
+   ./setup.sh demo.dindomän.se 'ett långt lösenord'
+   ./reset.sh
+   ```
+
+- **`setup.sh`** skriver `DEMO_TLS=tunnel`, `DEMO_SITE=http://<domänen>`, token och `COMPOSE_PROFILES=tunnel` i `.env`. Med profilen startar compose också `cloudflared`.
+- **Caddy** lyssnar då bara på http på det interna nätet och hämtar inget certifikat. Cloudflare sköter HTTPS. Lösenordsspärren och vägarna till `web` och `api` är desamma.
+- **Ingen port forward** behövs, och de som fanns för demon kan tas bort i routern.
+- **Cloudflare ser trafiken,** eftersom HTTPS avslutas där. För demon, som bara har påhittad data, gör det inget.
 
 ### Uppdatera till en ny version
 

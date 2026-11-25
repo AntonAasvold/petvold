@@ -10,12 +10,19 @@
 #   DEMO_PORT=8443 DUCKDNS_TOKEN=... ./setup.sh petvold.name.duckdns.org 'a long password'
 #
 # The router then forwards that port (8443) to port 443 on the server.
+#
+# Behind Cloudflare Tunnel no port is forwarded at all, and the demo is reached
+# on Cloudflare's port 443. Create the tunnel in Cloudflare, point its public
+# hostname to http://caddy:80, and give its token:
+#
+#   CLOUDFLARE_TUNNEL_TOKEN=... ./setup.sh demo.example.com 'a long password'
 set -eu
 cd "$(dirname "$0")"
 domain=${1:?give the domain of the demo, e.g. demo.example.com}
 password=${2:?give the shared password}
 port=${DEMO_PORT:-443}
 token=${DUCKDNS_TOKEN:-}
+tunnel=${CLOUDFLARE_TUNNEL_TOKEN:-}
 if [ -e .env ]; then
   echo ".env exists already. Remove it first to make new secrets (the data is then unreadable)." >&2
   exit 1
@@ -23,7 +30,15 @@ fi
 case $port in
   ''|*[!0-9]*) echo "DEMO_PORT must be a port number, got: $port" >&2; exit 1 ;;
 esac
-if [ -n "$token" ]; then
+site=$domain
+profiles=
+if [ -n "$tunnel" ]; then
+  [ -z "$token" ] && [ "$port" = 443 ] || { echo "Behind Cloudflare Tunnel the demo is on port 443 and needs no DuckDNS: leave out DEMO_PORT and DUCKDNS_TOKEN." >&2; exit 1; }
+  [ ${#tunnel} -ge 100 ] || { echo "CLOUDFLARE_TUNNEL_TOKEN looks too short: give the whole token from the tunnel's install command." >&2; exit 1; }
+  tls=tunnel
+  site="http://$domain"
+  profiles=tunnel
+elif [ -n "$token" ]; then
   [ ${#token} -eq 36 ] || { echo "DUCKDNS_TOKEN must be the 36 characters shown at duckdns.org." >&2; exit 1; }
   case $domain in
     *.duckdns.org) ;;
@@ -44,8 +59,11 @@ umask 077
 cat > .env <<ENV
 DEMO_DOMAIN=$domain
 DEMO_PUBLIC_URL=$url
+DEMO_SITE=$site
 DEMO_TLS=$tls
 DUCKDNS_TOKEN=$token
+CLOUDFLARE_TUNNEL_TOKEN=$tunnel
+COMPOSE_PROFILES=$profiles
 DEMO_USER=demo
 DEMO_PASSWORD_HASH='$hash'
 DEMO_GATE=$(hex)

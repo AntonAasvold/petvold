@@ -27,7 +27,13 @@
 	}
 }
 
-{$DEMO_DOMAIN} {
+# tunnel: Cloudflare Tunnel serves HTTPS on Cloudflare's port 443 and sends the
+# requests here over the internal network, so Caddy listens on http only
+# (DEMO_SITE is http://<domain>) and gets no certificate.
+(tls-tunnel) {
+}
+
+{$DEMO_SITE} {
 	import tls-{$DEMO_TLS:http}
 	encode zstd gzip
 	header -Server

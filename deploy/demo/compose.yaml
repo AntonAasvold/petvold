@@ -45,6 +45,19 @@ x-petvold: &petvold
     PETVOLD_WEBHOOK_ALLOW_HOSTS: demo
 
 services:
+  # Cloudflare Tunnel (DEMO_TLS=tunnel): connects out to Cloudflare, which serves
+  # the demo on its port 443, so no port is forwarded to the server. It starts
+  # only with the tunnel profile, which setup.sh puts in COMPOSE_PROFILES.
+  # In Cloudflare the tunnel's public hostname points to http://caddy:80.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.11.0
+    restart: unless-stopped
+    profiles: [tunnel]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on: [caddy]
+
   # Built here: Caddy with the DuckDNS module (caddy/Dockerfile).
   caddy:
     image: petvold-demo-caddy:2.11.7
@@ -53,8 +66,11 @@ services:
     ports: ["80:80", "443:443"]
     environment:
       DEMO_DOMAIN: ${DEMO_DOMAIN}
+      # The site's address: the domain, or http://<domain> behind Cloudflare Tunnel.
+      DEMO_SITE: ${DEMO_SITE:-${DEMO_DOMAIN}}
       # http (default): Let's Encrypt checks the domain on port 80 or 443.
       # duckdns: by a TXT record at DuckDNS, so the ports may lead elsewhere.
+      # tunnel: Cloudflare Tunnel serves HTTPS, and Caddy gets no certificate.
       DEMO_TLS: ${DEMO_TLS:-http}
       DUCKDNS_TOKEN: ${DUCKDNS_TOKEN:-}
       DEMO_USER: ${DEMO_USER:-demo}
