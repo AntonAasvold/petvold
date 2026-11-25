@@ -20,6 +20,7 @@
  * - PETVOLD_CLAIM_NUMBER_PREFIX: the claim number's prefix per market, e.g. SE=S,NO=N (ADR 0036). Default S.
  * - PETVOLD_FAKE_BANK_SECRET and PETVOLD_FAKE_BANK_MARKETS: the fake bank, for a demo (ADR 0017). Never with real money.
  * - PETVOLD_BANK_FILE_ACCOUNTS: the accounts the bank's camt.054 files are read for, e.g. SE:SEK:5050-1055 (ADR 0040).
+ * - PETVOLD_STRIPE_SECRET_KEY, PETVOLD_STRIPE_WEBHOOK_SECRET and PETVOLD_STRIPE_MARKETS: Stripe Checkout for card and Swish (ADR 0040).
  * - PETVOLD_BANK_FILE_DEBTOR_NAME: the insurer's name as it pays out by pain.001. Without it, bank files only bring payments in.
  * - PETVOLD_NEW_PAYEE_HOLD_DAYS: days that new payee details hold a payout for a person (ADR 0040). Default 0.
  * - PORT: default 8080.
@@ -33,6 +34,7 @@
  */
 import { serve } from '@hono/node-server';
 import { bankFileFromEnv } from '@petvold/payments/bank-file';
+import { stripeFromEnv } from '@petvold/payments/stripe';
 import { claimNumberPrefixFromEnv, compose, fakeBankFromEnv, newPayeeHoldDaysFromEnv, DATABASE_ENV, DATABASES, databasesFromEnv, documentsFromEnv, webhooksFromEnv } from './composition.ts';
 import { authenticatorFromEnv } from './auth.ts';
 import { demoAuthenticator } from './demo-tokens.ts';
@@ -63,11 +65,13 @@ const auth = demo ? demoAuthenticator() : await authenticatorFromEnv(process.env
 let claimNumberPrefix: Record<string, string>;
 let fake: ReturnType<typeof fakeBankFromEnv>;
 let bankFile: ReturnType<typeof bankFileFromEnv>;
+let stripe: ReturnType<typeof stripeFromEnv>;
 let holdDays: number;
 try {
   claimNumberPrefix = claimNumberPrefixFromEnv(process.env);
   fake = fakeBankFromEnv(process.env);
   bankFile = bankFileFromEnv(process.env);
+  stripe = stripeFromEnv(process.env);
   holdDays = newPayeeHoldDaysFromEnv(process.env);
 } catch (err) {
   console.error((err as Error).message);
@@ -80,8 +84,9 @@ const inst = await compose({
   webhooks: webhooksFromEnv(process.env),
   documents: documentsFromEnv(process.env),
   claimNumberPrefix,
-  payments: { ...(fake ? { fake } : {}), ...(bankFile ? { bankFile } : {}), newPayeeHoldDays: holdDays },
+  payments: { ...(fake ? { fake } : {}), ...(bankFile ? { bankFile } : {}), ...(stripe ? { stripe } : {}), newPayeeHoldDays: holdDays },
 });
+if (stripe) log(`Stripe takes card and Swish in ${stripe.markets.map((m) => `${m.market}:${m.currency}`).join(', ')}${stripe.secretKey.startsWith('sk_test_') ? ' in its sandbox (sk_test_)' : ' with real money (sk_live_)'}; its webhook to POST /provider-notifications/stripe.`);
 if (bankFile) log(`Bank files (camt.054) are read for ${bankFile.accounts.map((a) => `${a.market}:${a.currency}`).join(', ')} at POST /v1/payment-files.`);
 if (fake) log(`The fake bank takes payments in ${fake.markets.map((m) => `${m.market}:${m.currency}`).join(', ')} at POST /provider-notifications/fake. Not for real money.`);
 await inst.ping().catch((err: Error) => {

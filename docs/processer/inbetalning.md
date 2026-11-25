@@ -26,6 +26,7 @@ Pengar kommer in på bolagets konto via en betaltjänst. De kopplas till rätt b
 | BET-09 | Inget av det ändrar fakturan. Det betalda och obetalda räknas ut från det inbetalningarna betalat och från kreditnotorna. | ADR 0040, punkt 5 | – |
 | BET-10 | Betalas en faktura som är uppsagd för obetald premie innan uppsägningen fått verkan, återkallas uppsägningen (se OBET-05). | FAL 5 kap. 2 § | – |
 | BET-11 | En bankfil läses in av en inloggad person eller integration, hela eller ingenting, och sparas med vem som läste in den, när och filens kontrollsumma. Samma fil igen ger inga nya inbetalningar. | ADR 0040, punkt 12, ADR 0018 | `PETVOLD_BANK_FILE_ACCOUNTS` |
+| BET-12 | Kunden kan betala en faktura på en betalsida hos en betaltjänst, till exempel med kort eller Swish via Stripe. Sidan gäller det som är kvar att betala, med fakturans referens, i en timme. Betalningen kopplas med referensen som andra inbetalningar. | ADR 0040, punkt 12 | `PETVOLD_STRIPE_SECRET_KEY` |
 
 ## Exempel
 

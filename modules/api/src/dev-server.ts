@@ -14,6 +14,7 @@
  * The API page is at /docs and example requests are in examples/claims.http.
  */
 import { bankFileFromEnv } from '@petvold/payments/bank-file';
+import { stripeFromEnv } from '@petvold/payments/stripe';
 import { execFileSync } from 'node:child_process';
 import { serve } from '@hono/node-server';
 import { compose, databasesFromEnv, documentsFromEnv, fakeBankFromEnv, webhooksFromEnv } from './composition.ts';
@@ -56,7 +57,7 @@ const inst = await compose({
   webhooks: { key: webhookEnv.key ?? DEV_WEBHOOK_KEY, allowHosts: webhookEnv.allowHosts.length ? webhookEnv.allowHosts : ['localhost', '127.0.0.1'] },
   documents: { ...documentEnv, key: documentEnv.key ?? DEV_DOCUMENT_KEY, publicBaseUrl: documentEnv.publicBaseUrl ?? `http://localhost:${process.env.PORT ?? 8787}` },
   // Bank files for a made-up bankgiro, as in the tests' camt.054 files (ADR 0040, punkt 12).
-  payments: { fake: fakeBank, bankFile: bankFileFromEnv(process.env) ?? { accounts: [{ market: 'SE', currency: 'SEK', id: '5050-1055' }] } },
+  payments: { fake: fakeBank, bankFile: bankFileFromEnv(process.env) ?? { accounts: [{ market: 'SE', currency: 'SEK', id: '5050-1055' }] }, ...(stripeFromEnv(process.env) ? { stripe: stripeFromEnv(process.env)! } : {}) },
 });
 await inst.ping().catch((err: Error) => {
   console.error(`Cannot reach Postgres or the document archive (${err.message}). Run npm run dev:up, or remove the database URLs and PETVOLD_DOCUMENTS_BUCKET from .env to run in memory.`);

@@ -1125,6 +1125,37 @@ export function createApp(d: AppDeps) {
     return send(c, i);
   });
 
+  // A page where the customer pays what is left on an invoice, e.g. Stripe Checkout (ADR 0040, punkt 12).
+  app.post('/v1/invoices/:invoiceId/checkout-sessions', async (c) => {
+    const id = c.req.param('invoiceId');
+    const i = await billing.invoice(id);
+    if (!seesInvoice(c.get('scope'), i)) throw new BillingError('not_found', `Invoice ${id} does not exist`);
+    const body = (await c.req.json()) as { provider?: string; successUrl: string; cancelUrl: string; locale?: string };
+    for (const u of [body.successUrl, body.cancelUrl]) {
+      const url = URL.canParse(u) ? new URL(u) : null;
+      if (!url || !(url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)))) return problem(c, 422, 'successUrl and cancelUrl must be https, or http on localhost');
+    }
+    if (i.open <= 0) throw new BillingError('conflict', `Invoice ${i.number} has nothing left to pay`);
+    const provider = body.provider ?? payments.checkoutProviders()[0];
+    if (!provider) throw new PaymentsError('not_found', 'The installation has no payment provider with a payment page');
+    return idempotent(c, body, async () => {
+      const session = await payments.createCheckout(provider, {
+        market: i.market,
+        currency: i.currency,
+        amount: i.open,
+        reference: i.reference.value,
+        description: `${i.number}`,
+        successUrl: body.successUrl,
+        cancelUrl: body.cancelUrl,
+        ...(body.locale ? { locale: body.locale } : {}),
+        // An hour: long enough to pay, short enough that the amount is still what is left.
+        expiresAt: new Date(Date.parse(d.clock.now()) + 3_600_000).toISOString(),
+        idempotencyKey: `petvold-checkout-${c.req.header('idempotency-key')}`,
+      });
+      return { status: 201, body: { ...session, invoiceId: i.id, amount: i.open, currency: i.currency } };
+    });
+  });
+
   // Credit notes and write-offs a person makes (ADR 0040, punkt 5 and 10): alone within the limit, else a proposal.
   app.post('/v1/invoices/:invoiceId/credit-notes', async (c) => {
     const id = c.req.param('invoiceId');

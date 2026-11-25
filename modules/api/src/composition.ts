@@ -55,6 +55,7 @@ import { BillingService, InMemoryBillingStore, type BillingStore } from '@petvol
 import { PostgresBillingStore } from '@petvold/billing/postgres';
 import { FakeProvider, InMemoryPaymentsStore, PaymentsService, type PaymentProvider, type PaymentsStore } from '@petvold/payments';
 import { BankFileProvider, type BankAccount } from '@petvold/payments/bank-file';
+import { StripeProvider, type StripeConfig } from '@petvold/payments/stripe';
 import { PostgresPaymentsStore } from '@petvold/payments/postgres';
 import { AccountingService, InMemoryAccountingStore, type AccountingStore } from '@petvold/accounting';
 import { PostgresAccountingStore } from '@petvold/accounting/postgres';
@@ -105,6 +106,8 @@ export interface InstallationConfig {
     fake?: { secret: string; markets: { market: string; currency: string }[] };
     /** The bank's files, camt.054, for these accounts (PETVOLD_BANK_FILE_ACCOUNTS, ADR 0040 punkt 12). */
     bankFile?: { accounts: BankAccount[]; debtorName?: string };
+    /** Stripe Checkout for card and Swish (PETVOLD_STRIPE_SECRET_KEY, PETVOLD_STRIPE_WEBHOOK_SECRET, ADR 0040 punkt 12). */
+    stripe?: StripeConfig;
     /** Adapters instead of or beside the fake bank, e.g. in tests. */
     providers?: PaymentProvider[];
     /** Days that new payee details hold a payout for a person (PETVOLD_NEW_PAYEE_HOLD_DAYS). Default 0. */
@@ -378,6 +381,7 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   const providers: PaymentProvider[] = [
     ...(config.payments?.fake ? [new FakeProvider(config.payments.fake)] : []),
     ...(config.payments?.bankFile ? [new BankFileProvider(config.payments.bankFile)] : []),
+    ...(config.payments?.stripe ? [new StripeProvider(config.payments.stripe)] : []),
     ...(config.payments?.providers ?? []),
   ];
   const payments = new PaymentsService({

@@ -136,6 +136,36 @@ Adaptern `fake` finns för tester, dev-servern och demotjänsten. Den talar ett 
 - **Dev-servern** har låtsasbanken för `SE:SEK` med hemligheten `whsec_cGV0dm9sZC1kZXYtZmFrZS1iYW5rcGV0dm9sZC1kZXY=`.
 - **Servern för drift** har den bara när `PETVOLD_FAKE_BANK_SECRET` är satt ([Drift](../teknik/drift.md)). Den är till för en demo och aldrig för riktiga pengar.
 
+### Stripe: kort och Swish (`stripe`)
+
+Kunden kan betala en faktura med kort, eller med Swish om det är påslaget i bolagets Stripe-konto, på en betalsida hos Stripe (Stripe Checkout, ADR 0040, punkt 12).
+
+1. **Kanalen eller ekonomi skapar en betalsida** med `POST /v1/invoices/{id}/checkout-sessions`, som kräver `payments:checkout`. Sidan gäller det som är kvar att betala och har fakturans OCR eller RF. Kunden skickas till `url`, och sidan fungerar en timme. En faktura som redan är betald ger `409`.
+2. **Kunden betalar.** Stripe visar de betalsätt som är påslagna i kontot. Swish fungerar bara i SEK, mellan 3 och 150 000 kr, och Stripe står som mottagare i Swish-appen.
+3. **Stripe meddelar Petvold** med `checkout.session.completed` på `POST /provider-notifications/stripe`, signerat med `Stripe-Signature`. En betalning som blir klar senare kommer som `checkout.session.async_payment_succeeded`.
+4. **Inbetalningen kopplas till fakturan** med referensen, som från banken. Stripes id för betalningen (`pi_…`) är inbetalningens id hos tjänsten, så samma händelse två gånger ger ingen ny inbetalning.
+
+- **En session som Petvold inte gjort**, till exempel ett annat systems på samma konto, saknar `petvold_market` i `metadata` och läses inte in.
+- **Stripe betalar inte ut** till kundens konto. Utbetalningar går med bankfil.
+- **I back office** har en vald faktura knappen **Betallänk (kort, Swish)**.
+
+```http
+POST /v1/invoices/inv_…/checkout-sessions
+Idempotency-Key: 8a1f…
+{ "successUrl": "https://kund.example.test/tack", "cancelUrl": "https://kund.example.test/faktura", "locale": "sv" }
+
+201 { "provider": "stripe", "id": "cs_test_…", "url": "https://checkout.stripe.com/c/pay/cs_test_…",
+      "expiresAt": "2026-12-01T11:00:00.000Z", "invoiceId": "inv_…", "amount": 41200, "currency": "SEK" }
+```
+
+**Prova i Stripes testmiljö:**
+1. Lägg dina testnycklar i `.env`: `PETVOLD_STRIPE_SECRET_KEY=sk_test_…` från Stripes dashboard. Hemligheten för webhooks får du i nästa steg.
+2. Kör `stripe listen --forward-to localhost:8787/provider-notifications/stripe` med Stripes CLI. Den skriver ut `whsec_…`, som blir `PETVOLD_STRIPE_WEBHOOK_SECRET`.
+3. Starta `npm run dev`. Kör faktureringen under Körningar, öppna en kunds betalarkonto i back office, välj en faktura och skapa en betallänk.
+4. Betala med testkortet `4242 4242 4242 4242`, med valfritt datum framåt och valfri CVC. Fakturan blir betald inom några sekunder.
+
+Nycklarna börjar med `sk_test_` i testmiljön. Med `sk_live_` flyttas riktiga pengar.
+
 ### Bankfiler (`bank-file`)
 
 Banken aviserar inbetalningarna till bolagets bankgiro eller konto i en fil enligt ISO 20022, `camt.054` (ADR 0040, punkt 12). Filen läses in av en person under **Pengar** i back office, eller av en integration som hämtar den från banken, med `POST /v1/payment-files` och rättigheten `payments:import`.

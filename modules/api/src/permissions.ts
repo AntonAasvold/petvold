@@ -126,6 +126,8 @@ export const PERMISSIONS = [
   'payments:import',
   /** Make and fetch the payout files for the bank, pain.001, which hold the payees' names and account numbers (ADR 0040, punkt 12). */
   'payments:export',
+  /** Make a page where the customer pays an invoice, e.g. Stripe Checkout with card and Swish (ADR 0040, punkt 12). */
+  'payments:checkout',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -237,10 +239,10 @@ export const DEFAULT_ROLES: RoleDefinitions = {
   /** Watches and steers Petvold's runs and the relay (ADR 0037), e.g. the operations team. */
   operations: { permissions: ['jobs:read', 'jobs:operate', 'jobs:configure', 'webhooks:read'] },
   /** The insurer's customer portal or app, acting for a signed-in customer. */
-  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read', 'documents:read', 'documents:share', 'billing:read'], bindsTo: 'policies' },
+  'customer-channel': { permissions: ['claims:read', 'claims:request-review', 'catalog:read', 'policies:read', 'policies:quote', 'notices:read', 'documents:read', 'documents:share', 'billing:read', 'payments:checkout'], bindsTo: 'policies' },
   /** Follows the premiums: payer accounts, premium plans and later invoices and payments (ADR 0040), e.g. the finance team. */
   'billing-clerk': {
-    permissions: ['billing:read', 'billing:write', 'billing:credit', 'payments:read', 'payments:payee-write', 'payments:release', 'payments:agreements', 'payments:import', 'payments:export', 'policies:read', 'parties:read', 'catalog:read'],
+    permissions: ['billing:read', 'billing:write', 'billing:credit', 'payments:read', 'payments:payee-write', 'payments:release', 'payments:agreements', 'payments:import', 'payments:export', 'payments:checkout', 'policies:read', 'parties:read', 'catalog:read'],
     // SEK 1,000 and EUR 100 alone; above that, a proposal someone with a higher limit approves.
     creditLimits: { SEK: 100_000, EUR: 10_000 },
   },
