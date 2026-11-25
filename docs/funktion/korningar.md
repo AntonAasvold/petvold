@@ -65,6 +65,7 @@ Rollen `operations` har rättigheterna, och dev-tokenen `dev-operations` ger den
 | `GET /v1/jobs/{job}/runs` | `jobs:read` | Historiken, nyast först |
 | `POST /v1/jobs/{job}/runs` | `jobs:operate` | Kör nu i en marknad (`market`, `dryRun`). `409` om en annan server kör den. |
 | `POST /v1/jobs/{job}/pauses`, `.../resumptions` | `jobs:operate` | Pausa och återuppta, med `reason` |
+| `GET /v1/relay-status` | `jobs:read` | Hur långt efter reläet är: per modul de händelser som väntar (upp till 1 000), när den äldsta skrevs och de döda posterna |
 | `GET /v1/relay-dead-letters` | `jobs:read` | Reläets döda poster |
 | `POST /v1/relay-dead-letters/{deadLetter}/retries` | `jobs:operate` | Skicka en död post igen |
 

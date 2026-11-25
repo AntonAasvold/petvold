@@ -16,7 +16,7 @@ import type { Column } from '../components/data-grid.ts';
 import { IdempotencyKeys } from '../decide.ts';
 import { formatDateTime } from '../format.ts';
 import { getLocale } from '../i18n.ts';
-import { isLate, jobRows, mayOperateJobs } from '../jobs-logic.ts';
+import { ageText, isBehind, isLate, jobRows, mayOperateJobs } from '../jobs-logic.ts';
 import type { Me } from '../permissions.ts';
 import { navigate } from '../router.ts';
 import { pvComponents } from '../styles/pv-components.ts';
@@ -24,6 +24,8 @@ import { jobLabel, runStatusLabel, runStatusVariant, scheduleLabel } from './lab
 
 type Job = components['schemas']['Job'];
 type DeadLetter = components['schemas']['RelayDeadLetter'];
+/** A queue: a module's outbox at the relay, or the webhooks to the insurer's systems. */
+type QueueRow = { name: string; pending: number; more: boolean; oldestAt?: string; deadLetters: number };
 type Row = ReturnType<typeof jobRows<Job>>[number];
 
 @customElement('pv-jobs')
@@ -32,6 +34,8 @@ export class JobsView extends LitElement {
   @property({ attribute: false }) me: Me | null = null;
   @state() private jobs: Job[] = [];
   @state() private dead: DeadLetter[] = [];
+  @state() private queues: QueueRow[] = [];
+  @state() private checkedAt = '';
   @state() private loading = false;
   @state() private error = '';
   @state() private notice: Notice | null = null;
@@ -75,6 +79,20 @@ export class JobsView extends LitElement {
       const [jobs, dead] = await Promise.all([unwrap(this.api.GET('/v1/jobs', {})), unwrap(this.api.GET('/v1/relay-dead-letters', {}))]);
       this.jobs = jobs.items;
       this.dead = dead.items;
+      const status = await unwrap(this.api.GET('/v1/relay-status', {}));
+      this.checkedAt = status.checkedAt;
+      this.queues = status.sources;
+      // The webhooks to the insurer's systems: their own queue, oldest first.
+      if (this.me?.permissions.includes('webhooks:read')) {
+        const [pending, dead] = await Promise.all([
+          unwrap(this.api.GET('/v1/webhook-deliveries', { params: { query: { status: 'pending', limit: 100 } } })),
+          unwrap(this.api.GET('/v1/webhook-deliveries', { params: { query: { status: 'dead', limit: 100 } } })),
+        ]);
+        this.queues = [
+          ...this.queues,
+          { name: 'webhooks', pending: pending.items.length, more: !!pending.nextCursor, ...(pending.items[0] ? { oldestAt: pending.items[0].createdAt } : {}), deadLetters: dead.items.length },
+        ];
+      }
     } catch (e) {
       this.error = (e as { title?: string }).title ?? msg('Something went wrong.', { id: 'common.error' });
     } finally {
@@ -96,6 +114,13 @@ export class JobsView extends LitElement {
           label=${msg('Runs', { id: 'nav.jobs' })}
           @pv-row-activate=${(e: CustomEvent<{ row: Row }>) => navigate(`/jobs/${encodeURIComponent(e.detail.row.job.id)}`)}
         ></pv-data-grid>
+      </section>
+      <section class="pv-card" aria-labelledby="queues">
+        <div class="pv-card__head">
+          <h2 class="pv-card__title" id="queues">${msg('Queues', { id: 'jobs.queues' })}</h2>
+          <span class="pv-card__meta">${msg('Events waiting for the relay in each module, and the webhooks to your systems. Behind: the oldest has waited over five minutes.', { id: 'jobs.queuesMeta' })}</span>
+        </div>
+        <pv-data-grid .columns=${this.queueColumns()} .rows=${this.queues} ?loading=${this.loading} label=${msg('Queues', { id: 'jobs.queues' })}></pv-data-grid>
       </section>
       <section class="pv-card" aria-labelledby="dead">
         <div class="pv-card__head">
@@ -140,6 +165,23 @@ export class JobsView extends LitElement {
               ? html`${isLate(r.nextRunAt, new Date().toISOString()) ? html`<wa-badge variant="danger">${msg('Late', { id: 'jobs.late' })}</wa-badge> ` : nothing}${formatDateTime(r.nextRunAt, lang)}`
               : '–',
       },
+    ];
+  }
+
+  private queueColumns(): Column<QueueRow>[] {
+    const now = this.checkedAt || new Date().toISOString();
+    return [
+      { key: 'name', header: msg('Queue', { id: 'jobs.col.queue' }), value: (q) => html`<span class="pv-mono">${q.name}</span>` },
+      { key: 'pending', header: msg('Waiting', { id: 'notices.tab.pending' }), value: (q) => `${q.pending}${q.more ? '+' : ''}`, align: 'end' },
+      {
+        key: 'oldest',
+        header: msg('Oldest', { id: 'jobs.col.oldest' }),
+        value: (q) =>
+          q.oldestAt
+            ? html`${ageText(q.oldestAt, now)} ${isBehind(q.oldestAt, now) ? html`<span class="pv-badge pv-badge--pending">${msg('Behind', { id: 'jobs.behind' })}</span>` : nothing}`
+            : '–',
+      },
+      { key: 'dead', header: msg('Dead', { id: 'jobs.col.dead' }), value: (q) => q.deadLetters, align: 'end' },
     ];
   }
 

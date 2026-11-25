@@ -146,7 +146,7 @@ Partens sida visar också djuren parten äger i dag, med "Registrera djur".
 
 ## Körningar
 
-Sidan Körningar (rätten `jobs:read`) visar Petvolds dagliga körningar och reläets döda poster. Den som har `jobs:operate` kan köra en körning nu, pausa och återuppta den, och skicka en död post igen. Se [Körningar](korningar.md).
+Sidan Körningar (rätten `jobs:read`) visar Petvolds dagliga körningar, köerna och reläets döda poster. **Köer** har en rad per modul: hur många händelser som väntar på reläet, hur gammal den äldsta är och hur många som är döda. Med `webhooks:read` finns också en rad för webhooks till bolagets system. En kö vars äldsta händelse väntat mer än fem minuter är märkt *Efter*. Den som har `jobs:operate` kan köra en körning nu, pausa och återuppta den, och skicka en död post igen. Se [Körningar](korningar.md).
 
 ## Logga in
 

@@ -123,7 +123,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [x] Reläet bakom ett lån, med döda poster som sparas (steg 2)
 - [x] API och back office: lista över körningar med nästa och senaste körning, historik, "Kör nu", paus med spår, och reläets döda poster med "Skicka igen" (steg 3)
 - [x] Schema som går att ändra med fyra ögon, `job.failed` och larm i `/healthz` (steg 4)
-- [ ] Back office: reläets och webhook-arbetarens kö och eftersläpning
+- [x] Back office: reläets och webhook-arbetarens kö och eftersläpning
 - [x] Påminnelser och utgång för komplettering (skadeprocessen, steg 3) som en körning bland de andra
 
 **Back office: det som saknas** (inventering 2026-11-18: back office använder 68 av API:ets 115 operationer)

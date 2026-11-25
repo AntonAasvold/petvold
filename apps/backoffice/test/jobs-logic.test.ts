@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { controlProblems, jobRows, mayOperateJobs, resultLine } from '../src/jobs-logic.ts';
+import { controlProblems, jobRows, mayOperateJobs, resultLine, ageText, isBehind } from '../src/jobs-logic.ts';
 
 test('one row per job and market', () => {
   const jobs = [
@@ -40,4 +40,16 @@ test('a schedule change needs a time and a reason, and is approved by someone el
   assert.equal(mayApproveChange(ops, { proposedBy: 'b', status: 'approved' }), false);
   assert.deepEqual(scheduleChangeProblems({ at: '4:30', reason: '' }), ['jobs.badTime', 'settings.needReason']);
   assert.deepEqual(scheduleChangeProblems({ at: '04:30', reason: 'After the batch' }), []);
+});
+
+test("a queue's age, coarse, and when it is behind", () => {
+  const now = '2026-11-25T12:00:00.000Z';
+  assert.equal(ageText('2026-11-25T11:59:15.000Z', now), '45 s');
+  assert.equal(ageText('2026-11-25T11:48:00.000Z', now), '12 min');
+  assert.equal(ageText('2026-11-25T09:00:00.000Z', now), '3 h');
+  assert.equal(ageText('2026-11-23T12:00:00.000Z', now), '2 d');
+  assert.equal(ageText('2026-11-25T12:00:05.000Z', now), '0 s', 'never negative');
+  assert.equal(isBehind(undefined, now), false);
+  assert.equal(isBehind('2026-11-25T11:56:00.000Z', now), false);
+  assert.equal(isBehind('2026-11-25T11:54:00.000Z', now), true);
 });

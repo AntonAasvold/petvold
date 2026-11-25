@@ -64,3 +64,15 @@ test('a schedule change is proposed by one and approved by another (four eyes)',
   await expect(page.getByRole('region', { name: 'Schedule' })).toContainText('Daily at 04:30');
   await expect(page.getByRole('region', { name: 'Changes' }).getByRole('listitem').first()).toContainText('drift@example.test → drift2@example.test');
 });
+
+test("the queues: what waits for the relay in each module, and the webhooks to the insurer's systems", async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('combobox', { name: 'Token' }).click();
+  await page.getByRole('option', { name: 'dev-all', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Runs/ }).click();
+  const queues = page.getByRole('grid', { name: 'Queues' });
+  await expect(queues.getByRole('row').filter({ hasText: 'claims' })).toBeVisible();
+  await expect(queues.getByRole('row').filter({ hasText: 'billing' })).toBeVisible();
+  await expect(queues.getByRole('row').filter({ hasText: 'webhooks' })).toBeVisible();
+});

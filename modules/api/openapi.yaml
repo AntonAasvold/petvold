@@ -5640,6 +5640,26 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /v1/relay-status:
+    get:
+      tags: [jobs]
+      operationId: getRelayStatus
+      x-permission: jobs:read
+      summary: How far behind the relay is, per module
+      description: |
+        Requires the permission `jobs:read` (ADR 0008, 0037). For each module's
+        outbox: the events waiting for the relay, up to 1,000 and whether there
+        are more, when the oldest was written, and the dead letters. Read from
+        the outboxes, so any server answers.
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: The relay's state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RelayStatus' }
+
   /v1/relay-dead-letters:
     get:
       tags: [jobs]
@@ -7952,6 +7972,25 @@ components:
         invoiceId: { type: string }
         amount: { type: integer, minimum: 1, description: What is left to pay, in minor units. }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
+
+    RelayStatus:
+      type: object
+      additionalProperties: false
+      required: [checkedAt, sources]
+      properties:
+        checkedAt: { type: string, format: date-time }
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, pending, more, deadLetters]
+            properties:
+              name: { type: string, description: "The module, e.g. claims or billing." }
+              pending: { type: integer, minimum: 0, description: Events waiting, at most 1,000. }
+              more: { type: boolean, description: More than 1,000 wait. }
+              oldestAt: { type: string, format: date-time, description: When the oldest waiting event was written. Omitted when none waits. }
+              deadLetters: { type: integer, minimum: 0, description: 'Events set aside after too many attempts (GET /v1/relay-dead-letters).' }
 
     PayoutFileRequest:
       type: object

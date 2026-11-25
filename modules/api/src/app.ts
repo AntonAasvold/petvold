@@ -147,7 +147,7 @@ export interface AppDeps {
   /** Runs (ADR 0037). Omitted: the four jobs over these services, with history in memory. */
   scheduler?: Scheduler;
   /** The relay, to send a dead letter again (ADR 0037). Omitted: the dead letter is only removed from the store. */
-  relay?: Pick<Relay, 'retryDeadLetter'>;
+  relay?: Pick<Relay, 'retryDeadLetter' | 'status'>;
   /** Version 1 of the role settings when `access` is omitted (ADR 0016). Defaults to DEFAULT_ROLES. */
   roles?: RoleDefinitions;
   /**
@@ -2329,6 +2329,16 @@ export function createApp(d: AppDeps) {
     const r = await readJson(c, 'JobControlRequest');
     if (!r.ok) return r.res;
     return idempotent(c, r.body, async () => ({ status: 201, body: await scheduler.store.rejectChange(change.id, c.get('principal').subject, d.clock.now(), r.body.reason.trim()) }));
+  });
+
+  // How far behind the relay is, per module's outbox, with its dead letters (ADR 0008, 0037).
+  app.get('/v1/relay-status', async (c) => {
+    const dead = await scheduler.store.deadLetters();
+    const sources = d.relay ? await d.relay.status() : [];
+    return send(c, {
+      checkedAt: d.clock.now(),
+      sources: sources.map((s) => ({ ...s, deadLetters: dead.filter((x) => x.source === s.name).length })),
+    });
   });
 
   app.get('/v1/relay-dead-letters', async (c) =>
