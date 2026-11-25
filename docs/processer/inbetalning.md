@@ -6,7 +6,7 @@ Pengar kommer in på bolagets konto via en betaltjänst. De kopplas till rätt b
 
 ## Flödet
 
-1. **Betaltjänsten aviserar en inbetalning** till Petvold, signerad. Den sparas en gång, och händelsen `payment.succeeded` skickas.
+1. **Betaltjänsten aviserar en inbetalning** till Petvold, signerad, eller så läses bankens fil (`camt.054`) in. Den sparas en gång, och händelsen `payment.succeeded` skickas.
 2. **Med en fakturas OCR eller RF** kopplas inbetalningen till fakturans betalarkonto. Den betalar först den fakturan, sedan kontots äldsta förfallna faktura, och det som blir över blir ett tillgodohavande.
 3. **Utan en användbar referens** hamnar inbetalningen i kön för okopplade inbetalningar. En handläggare kopplar den till ett konto eller en faktura.
 4. **En faktura som blir helt betald** ger `invoice.paid`. Varje koppling ger `payment.matched`.
@@ -25,6 +25,7 @@ Pengar kommer in på bolagets konto via en betaltjänst. De kopplas till rätt b
 | BET-08 | En okopplad inbetalning kopplas en gång, av en person med `billing:write`, till ett konto eller en faktura i samma marknad och valuta. | ADR 0040, punkt 6 och 10 | – |
 | BET-09 | Inget av det ändrar fakturan. Det betalda och obetalda räknas ut från det inbetalningarna betalat och från kreditnotorna. | ADR 0040, punkt 5 | – |
 | BET-10 | Betalas en faktura som är uppsagd för obetald premie innan uppsägningen fått verkan, återkallas uppsägningen (se OBET-05). | FAL 5 kap. 2 § | – |
+| BET-11 | En bankfil läses in av en inloggad person eller integration, hela eller ingenting, och sparas med vem som läste in den, när och filens kontrollsumma. Samma fil igen ger inga nya inbetalningar. | ADR 0040, punkt 12, ADR 0018 | `PETVOLD_BANK_FILE_ACCOUNTS` |
 
 ## Exempel
 

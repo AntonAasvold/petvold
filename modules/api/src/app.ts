@@ -245,6 +245,9 @@ function send(c: Context, body: unknown, status = 200) {
   });
 }
 
+/** A bank file is at most 10 MB: a day's camt.054 for a large insurer is far less. */
+const MAX_PAYMENT_FILE_BYTES = 10 * 1024 * 1024;
+
 /**
  * The HTTP layer. Thin on purpose: validate against the contract, authenticate,
  * handle idempotency, call the service and translate domain errors to problem+json.
@@ -1242,6 +1245,32 @@ export function createApp(d: AppDeps) {
     const reference = c.req.query('reference');
     const items = await payments.payments({ ...(market ? { market } : {}), ...(reference ? { reference } : {}) });
     return sendPage(c, items.filter((p) => seesPayment(c.get('scope'), p.market)));
+  });
+
+  // The bank's files (ADR 0040, punkt 12): read in by a signed-in person or integration, all or nothing.
+  app.post('/v1/payment-files', async (c) => {
+    const length = Number(c.req.header('content-length') ?? 0);
+    if (length > MAX_PAYMENT_FILE_BYTES + 64 * 1024) return problem(c, 413, `The file is larger than ${MAX_PAYMENT_FILE_BYTES / 1024 / 1024} MB`);
+    const form = await c.req.parseBody().catch(() => null);
+    const file = form?.file;
+    if (!(file instanceof File)) return problem(c, 422, 'The request is multipart/form-data with the file in the part file');
+    if (file.size > MAX_PAYMENT_FILE_BYTES) return problem(c, 413, `The file is larger than ${MAX_PAYMENT_FILE_BYTES / 1024 / 1024} MB`);
+    const provider = typeof form?.provider === 'string' && form.provider ? form.provider : 'bank-file';
+    const body = await file.text();
+    return idempotent(c, { sha256: sha256(new TextEncoder().encode(body)), provider }, async () => {
+      try {
+        return { status: 201, body: await payments.importFile(provider, body, c.get('principal').subject) };
+      } catch (e) {
+        if (e instanceof PaymentsError && e.code === 'unknown_provider') throw new PaymentsError('not_found', `The installation has no adapter ${provider} that takes files`);
+        if (e instanceof ProviderNotificationError) throw new PaymentsError('validation', e.message);
+        throw e;
+      }
+    });
+  });
+
+  app.get('/v1/payment-files', async (c) => {
+    const provider = c.req.query('provider');
+    return sendPage(c, await payments.paymentFiles(provider ? { provider } : {}));
   });
 
   app.get('/v1/payments/:paymentId', async (c) => {

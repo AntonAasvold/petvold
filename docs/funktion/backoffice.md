@@ -285,7 +285,7 @@ Varje inställning är versionerad (ADR 0020, 0028, 0032). En ändring blir en n
 
 ## Pengar
 
-**Pengar** i menyn har fem flikar (ADR 0040, steg 8). Flikarna följer behörigheten: inbetalningar och kreditförslag kräver `billing:read`, och utbetalningar och kliniker kräver `payments:read`. En rad öppnas till höger med uppgifterna och åtgärden. Efter åtgärden försvinner raden ur kön, och ett besked visar hur det gick.
+**Pengar** i menyn har sex flikar (ADR 0040, steg 8). Flikarna följer behörigheten: inbetalningar och kreditförslag kräver `billing:read`, och utbetalningar, kliniker och bankfiler kräver `payments:read`. En rad öppnas till höger med uppgifterna och åtgärden. Efter åtgärden försvinner raden ur kön, och ett besked visar hur det gick.
 
 | Flik | Visar | Åtgärd |
 | --- | --- | --- |
@@ -294,6 +294,7 @@ Varje inställning är versionerad (ADR 0020, 0028, 0032). En ändring blir en n
 | Väntar på betaluppgifter | Utbetalningar till en mottagare som inte gett något konto | **Öppna mottagaren** och ge uppgifterna där. För en klinik ges de direkt i kortet. Utbetalningen skickas när uppgifterna finns (`UTB-06`). |
 | Kreditförslag | Kreditnotor och avskrivningar över förslagsställarens gräns | **Attestera** eller **skicka tillbaka** med ett skäl. Den som föreslog ser förslaget men inte knapparna (`KRED-08`). Räcker inte den egna gränsen säger API:t nej. |
 
+| Bankfiler | Bankens filer som lästs in: när, av vem, nya inbetalningar och sådana som redan lästs in | Med `payments:import`: **läs in** bankens `camt.054`. Nya inbetalningar utan användbar referens hamnar under Okopplade inbetalningar (`BET-11`). |
 | Kliniker | Avtal om direktreglering: klinik, marknad, från, till och om det gäller i dag | Med `payments:agreements`: **gör ett avtal** (klinik, marknad, första dag och eventuellt sista dag, som inte ingår), och **avsluta** ett avtal från en dag med ett skäl. Ett valt avtal visar också klinikens betaluppgifter (`UTB-03`). |
 
 ### Betaluppgifter

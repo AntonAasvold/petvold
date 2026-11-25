@@ -10,7 +10,7 @@
  * another module's tables (ADR 0001).
  */
 import { isISODate, isMarketCode, marketDate, type ISODate, type Timestamp } from '@petvold/common';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { agreementInForce, maskDetails, payeeDetailsProblem, payeeOf, payoutGate, type ClinicAgreement, type Payee, type PayeeAccount, type PayeeMethod, type Payout, type PayoutRequest, type PayoutResult, type PayoutStatus, type PayoutStep, type PayoutView } from './payouts.ts';
 export * from './payouts.ts';
 
@@ -61,6 +61,8 @@ export interface PaymentProvider {
   parseNotification(raw: RawNotification, now: Timestamp): Promise<ProviderNotification[]>;
   /** Pays out. The payout's id is the idempotency key: asked twice, it pays once. Only with an 'outgoing' capability. */
   payout?(req: PayoutRequest): Promise<PayoutResult>;
+  /** Files a signed-in person or integration uploads (importFile), e.g. a bank file: never through the open notification route. */
+  readonly uploadOnly?: boolean;
 }
 
 export class ProviderNotificationError extends Error {
@@ -119,6 +121,9 @@ export interface PaymentsStore {
   /** Oldest first. */
   payments(filter: PaymentFilter): Promise<Payment[]>;
   pendingEvents(limit: number): Promise<PaymentEvent[]>;
+  addPaymentFile(file: PaymentFile): Promise<void>;
+  /** Newest first. */
+  paymentFiles(filter: { provider?: string }): Promise<PaymentFile[]>;
   markPublished(ids: string[], at: Timestamp): Promise<void>;
   addPayeeAccount(account: PayeeAccount): Promise<void>;
   /** The payee's accounts, oldest first; the last in the market is the current one. Erased ones are left out. */
@@ -184,6 +189,22 @@ export interface PaymentsDeps {
   newPayeeHoldDays?: number;
 }
 
+/** A file read into payments, e.g. a bank's camt.054 (ADR 0040, punkt 12). Never changes. */
+export interface PaymentFile {
+  id: string;
+  provider: string;
+  /** SHA-256 of the file as uploaded. The same file read again has the same. */
+  sha256: string;
+  size: number;
+  importedBy: string;
+  importedAt: Timestamp;
+  /** Payments the file added, and those Petvold already had. */
+  received: number;
+  duplicates: number;
+  /** The payments it added. */
+  paymentIds: string[];
+}
+
 /** What one notification gave: the payments it added, and those Petvold already had. */
 export interface ReceiveResult {
   received: Payment[];
@@ -208,9 +229,43 @@ export class PaymentsService {
    * outside the adapter's markets and currencies is refused, and a payment
    * already received is not received again.
    */
+  /**
+   * A file a signed-in person or integration uploads to an adapter that takes
+   * files, e.g. the bank's camt.054 (ADR 0040, punkt 12). Read like a
+   * notification, all or nothing, and kept with who read it in, when, its
+   * checksum and what it gave.
+   */
+  async importFile(providerId: string, body: string, by: string): Promise<PaymentFile> {
+    const provider = this.providers.get(providerId);
+    if (!provider?.uploadOnly) throw new PaymentsError('unknown_provider', `No payment provider ${providerId} that takes files`);
+    const r = await this.receiveWith(provider, { headers: {}, body });
+    const file: PaymentFile = {
+      id: this.d.ids.next('pfl'),
+      provider: provider.id,
+      sha256: createHash('sha256').update(body, 'utf8').digest('hex'),
+      size: Buffer.byteLength(body, 'utf8'),
+      importedBy: by,
+      importedAt: this.d.clock.now(),
+      received: r.received.length,
+      duplicates: r.duplicates.length,
+      paymentIds: r.received.map((p) => p.id),
+    };
+    await this.d.store.addPaymentFile(file);
+    return file;
+  }
+
+  paymentFiles(filter: { provider?: string } = {}): Promise<PaymentFile[]> {
+    return this.d.store.paymentFiles(filter);
+  }
+
   async receive(providerId: string, raw: RawNotification): Promise<ReceiveResult> {
     const provider = this.providers.get(providerId);
-    if (!provider) throw new PaymentsError('unknown_provider', `No payment provider ${providerId}`);
+    // An adapter for files has no signature: only importFile, after a sign-in, reaches it.
+    if (!provider || provider.uploadOnly) throw new PaymentsError('unknown_provider', `No payment provider ${providerId}`);
+    return this.receiveWith(provider, raw);
+  }
+
+  private async receiveWith(provider: PaymentProvider, raw: RawNotification): Promise<ReceiveResult> {
     const now = this.d.clock.now();
     const parsed = await provider.parseNotification(raw, now);
     const caps = provider.capabilities();
@@ -711,6 +766,16 @@ export class InMemoryPaymentsStore implements PaymentsStore {
         .filter((p) => (!filter.market || p.market === filter.market) && (!filter.reference || p.reference === filter.reference))
         .sort((a, b) => (a.receivedAt === b.receivedAt ? (a.id < b.id ? -1 : 1) : a.receivedAt < b.receivedAt ? -1 : 1)),
     );
+  }
+
+  private readonly files: PaymentFile[] = [];
+
+  async addPaymentFile(file: PaymentFile) {
+    this.files.push(structuredClone(file));
+  }
+
+  async paymentFiles(filter: { provider?: string }) {
+    return structuredClone(this.files.filter((f) => !filter.provider || f.provider === filter.provider).reverse());
   }
 
   async pendingEvents(limit: number) {

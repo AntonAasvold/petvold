@@ -75,6 +75,16 @@ export function paymentsStoreSuite(name: string, make: () => Promise<{ store: Pa
       assert.deepEqual(await store.payeeAccounts({ partyId: 'pty_x' }), []);
     });
 
+    test('payment files are kept and read newest first, by provider', async () => {
+      const { store } = await make();
+      const f = (n: number, provider = 'bank-file') => ({ id: `pfl_${n}`, provider, sha256: String(n).repeat(64).slice(0, 64), size: 100 + n, importedBy: 'ekonomi@example.test', importedAt: `2026-12-0${n}T10:00:00.000Z`, received: n, duplicates: 0, paymentIds: [`pay_${n}`] });
+      await store.addPaymentFile(f(1));
+      await store.addPaymentFile(f(2));
+      await store.addPaymentFile(f(3, 'other'));
+      assert.deepEqual((await store.paymentFiles({ provider: 'bank-file' })).map((x) => x.id), ['pfl_2', 'pfl_1']);
+      assert.deepEqual((await store.paymentFiles({}))[0], f(3, 'other'));
+    });
+
     test("a party's payee accounts are erased once, the rows kept for the payouts, and are read no more", async () => {
       const { store } = await make();
       await store.addPayeeAccount(payeeAccountOf(1));

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Made up for the tests: camt.054.001.08, an IBAN account with an RF reference. -->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.08">
+  <BkToCstmrDbtCdtNtfctn>
+    <GrpHdr><MsgId>MSG-FI-1</MsgId><CreDtTm>2026-12-01T06:00:00</CreDtTm></GrpHdr>
+    <Ntfctn>
+      <Id>NTF-FI-1</Id>
+      <Acct><Id><IBAN>FI21 1234 5600 0007 85</IBAN></Id></Acct>
+      <Ntry>
+        <Amt Ccy="EUR">41.20</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><DtTm>2026-12-01T09:30:00+02:00</DtTm></BookgDt>
+        <AcctSvcrRef>FI-E-1</AcctSvcrRef>
+        <NtryDtls><TxDtls>
+          <Refs><AcctSvcrRef>FI-T-1</AcctSvcrRef><EndToEndId>NOTPROVIDED</EndToEndId></Refs>
+          <Amt Ccy="EUR">41.20</Amt>
+          <RmtInf><Strd><CdtrRefInf><Tp><CdOrPrtry><Cd>SCOR</Cd></CdOrPrtry></Tp><Ref>RF18 5390 0754 7034</Ref></CdtrRefInf></Strd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+    </Ntfctn>
+  </BkToCstmrDbtCdtNtfctn>
+</Document>

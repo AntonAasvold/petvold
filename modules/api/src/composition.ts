@@ -54,6 +54,7 @@ import { S3BlobStore, s3ConfigFromEnv, type S3Config } from '@petvold/documents/
 import { BillingService, InMemoryBillingStore, type BillingStore } from '@petvold/billing';
 import { PostgresBillingStore } from '@petvold/billing/postgres';
 import { FakeProvider, InMemoryPaymentsStore, PaymentsService, type PaymentProvider, type PaymentsStore } from '@petvold/payments';
+import { BankFileProvider, type BankAccount } from '@petvold/payments/bank-file';
 import { PostgresPaymentsStore } from '@petvold/payments/postgres';
 import { AccountingService, InMemoryAccountingStore, type AccountingStore } from '@petvold/accounting';
 import { PostgresAccountingStore } from '@petvold/accounting/postgres';
@@ -102,6 +103,8 @@ export interface InstallationConfig {
   payments?: {
     /** The fake bank, for the dev server and the demo (PETVOLD_FAKE_BANK_SECRET, PETVOLD_FAKE_BANK_MARKETS). */
     fake?: { secret: string; markets: { market: string; currency: string }[] };
+    /** The bank's files, camt.054, for these accounts (PETVOLD_BANK_FILE_ACCOUNTS, ADR 0040 punkt 12). */
+    bankFile?: { accounts: BankAccount[] };
     /** Adapters instead of or beside the fake bank, e.g. in tests. */
     providers?: PaymentProvider[];
     /** Days that new payee details hold a payout for a person (PETVOLD_NEW_PAYEE_HOLD_DAYS). Default 0. */
@@ -372,7 +375,11 @@ export async function compose(config: InstallationConfig): Promise<Installation>
   // Payments (ADR 0017, 0040): payments in from the payment services' adapters.
   const paymentsPool = pool('payments', 2);
   const paymentsStore: PaymentsStore = paymentsPool ? new PostgresPaymentsStore(paymentsPool) : new InMemoryPaymentsStore();
-  const providers: PaymentProvider[] = [...(config.payments?.fake ? [new FakeProvider(config.payments.fake)] : []), ...(config.payments?.providers ?? [])];
+  const providers: PaymentProvider[] = [
+    ...(config.payments?.fake ? [new FakeProvider(config.payments.fake)] : []),
+    ...(config.payments?.bankFile ? [new BankFileProvider(config.payments.bankFile)] : []),
+    ...(config.payments?.providers ?? []),
+  ];
   const payments = new PaymentsService({
     store: paymentsStore,
     providers,

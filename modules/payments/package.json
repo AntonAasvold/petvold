@@ -7,10 +7,12 @@
     ".": "./src/index.ts",
     "./postgres": "./src/postgres.ts",
     "./test-suites/payments-store": "./test-suites/payments-store.ts",
-    "./test-suites/provider": "./test-suites/provider.ts"
+    "./test-suites/provider": "./test-suites/provider.ts",
+    "./bank-file": "./src/bank-file.ts"
   },
   "dependencies": {
     "@petvold/common": "^0.1.0",
+    "fast-xml-parser": "5.12.0",
     "pg": "^8.23.1"
   }
 }

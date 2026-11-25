@@ -78,6 +78,7 @@ En roll som inte finns i inställningarna ger inga rättigheter. Det finns ingen
 | `payments:read` | Läsa inbetalningar, utbetalningar och maskade betaluppgifter (ADR 0017, 0040) | `GET /v1/payments`, `.../{id}`, `GET /v1/payouts`, `.../{id}`, `GET /v1/payees/{partyId}/accounts`, `GET /v1/clinics/{clinicId}/accounts`, `GET /v1/clinic-agreements` |
 | `payments:payee-write` | Ge en parts betaluppgifter. Det sparas vem som gav dem (ADR 0040) | `POST /v1/payees/{partyId}/accounts`, `POST /v1/clinics/{clinicId}/accounts` |
 | `payments:agreements` | Göra och avsluta avtal om direktreglering med kliniker (ADR 0040) | `POST /v1/clinic-agreements`, `.../{id}/endings` |
+| `payments:import` | Läsa in bankens filer, `camt.054` (ADR 0040, punkt 12). Det sparas vem som läste in varje fil. | `POST /v1/payment-files` |
 | `payments:release` | Släppa en utbetalning som spärrats för att betaluppgifterna är nya, men inte den man själv gav uppgifterna till | `POST /v1/payouts/{id}/releases` |
 | `accounting:read` | Läsa verifikationerna, saldot per konto, de stängda dagarna med filen och kontoplanen (ADR 0040) | `GET /v1/verifications`, `.../{id}`, `GET /v1/account-balances`, `GET /v1/day-closes`, `.../{market}/{day}/file`, `GET /v1/settings/chart-of-accounts` |
 | `accounting:configure` | Ändra kontoplanen | `POST /v1/settings/chart-of-accounts/versions` |
@@ -108,11 +109,12 @@ Petvold levereras med de här rollerna som utgångspunkt:
 | `renewal-job` | `policies:renew` | – | Schemalagd förnyelse, avslut av överlåtelser som inte godkändes i tid och utgång av ansökningar |
 | `privacy-officer` | `parties:read`, `parties:privacy`, `parties:erase`, `parties:retention` | – | Dataskyddsansvarig. Två personer behövs för att anonymisera. |
 | `retention-job` | `parties:retention` | – | Schemalagd gallringskörning. Begär bara, och en dataskyddsansvarig godkänner. |
+| `bank-file-job` | `payments:import`, `payments:read` | – | En integration som hämtar bankens filer, till exempel över SFTP, och läser in dem. |
 | `catalog-manager` | `catalog:read`, `catalog:write` | – | Underhåller referensdata och skriver produktutkast |
 | `catalog-publisher` | `catalog:read`, `catalog:publish` | – | Granskar och publicerar produktversioner |
 | `clinic` | `claims:register`, `claims:read`, `claims:preview`, `catalog:read`, `animals:lookup` | klinik | Veterinärklinik med direktreglering |
 | `reassessment-job` | `claims:read`, `claims:reassess` | – | Maskinklient som omprövar ärenden, till exempel efter en retroaktiv ändring |
-| `billing-clerk` | `billing:read`, `billing:write`, `billing:credit`, `payments:read`, `payments:payee-write`, `payments:release`, `payments:agreements`, `policies:read`, `parties:read`, `catalog:read` | – | Följer premierna, till exempel ekonomiavdelningen (ADR 0040). Krediterar och skriver av ensam upp till 1 000 kr eller 100 EUR (`creditLimits`). |
+| `billing-clerk` | `billing:read`, `billing:write`, `billing:credit`, `payments:read`, `payments:payee-write`, `payments:release`, `payments:agreements`, `payments:import`, `policies:read`, `parties:read`, `catalog:read` | – | Följer premierna, till exempel ekonomiavdelningen (ADR 0040). Krediterar och skriver av ensam upp till 1 000 kr eller 100 EUR (`creditLimits`). |
 | `accountant` | `accounting:read`, `accounting:configure`, `billing:read`, `payments:read` | – | Följer bokföringen som Petvold lämnar till bolagets ekonomisystem, till exempel redovisningen (ADR 0040) |
 | `billing-manager` | `billing:read`, `billing:credit`, `payments:read`, `policies:read`, `parties:read` | – | Attesterar större kreditnotor och avskrivningar, till exempel ekonomichefen. Upp till 50 000 kr eller 5 000 EUR. |
 | `customer-channel` | `claims:read`, `claims:request-review`, `catalog:read`, `policies:read`, `policies:quote`, `notices:read`, `billing:read` | försäkringar | Försäkringsbolagets kundportal eller app, som loggar in kunden själv och anropar Petvold för kundens räkning |
