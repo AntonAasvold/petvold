@@ -25,7 +25,7 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Produkter | Produkterna och varje produktversion med innehåll, säljperiod och livscykel. Produktens sida är byggd som skadans: rubrik och fakta (den publicerade versionen, antal utkast och versioner), versionerna och den valda versionens innehåll till vänster, och den valda versionen med status och åtgärder till höger (skicka till granskning, publicera, ändra, nytt utkast, skicka tillbaka, avsluta försäljning). Ett utkast redigeras i vänsterkolumnen. | `catalog:read`, `catalog:write` för utkast, `catalog:publish` för att publicera, skicka tillbaka och avsluta försäljning |
 | Pengar | Köerna för pengarna: okopplade inbetalningar som kopplas för hand, utbetalningar som spärrats för nya betaluppgifter och släpps av någon annan, utbetalningar som väntar på betaluppgifter, kreditnotor och avskrivningar över gränsen som attesteras eller skickas tillbaka, och avtal med kliniker. Räknaren visar okopplade inbetalningar. | `billing:read` eller `payments:read`. `billing:write` för att koppla, `payments:release` för att släppa, `billing:credit` för att attestera. |
 | Bokföring | Dagsavslut med summor, kontrollsumma och fil, saldo per konto, verifikationer med rader, och kontoplanen med versioner | `accounting:read`, och `accounting:configure` för att ändra kontoplanen |
-| Dokumentation | Affärsprocesserna och affärsreglerna, funktionerna och besluten (ADR), sökbara | Inloggad |
+| Dokumentation | Affärsprocesserna och affärsreglerna, och funktionerna, sökbara | Inloggad |
 | Regeluppsättningar | Serierna (skaderegler, tariffer, prisvillkor och teckningsregler) och varje version med livscykel. Seriens sida är byggd som produktens. | `rules:read`, `rules:write` för utkast, `rules:publish` för att publicera, skicka tillbaka och avveckla |
 
 *Inte byggt än:* simulering av en regelversion mot sparade beslut, och formulär för tariffer, prisvillkor och teckningsregler.
@@ -360,17 +360,16 @@ Nya uppgifter ersätter de gamla. Om marknaden spärrar nya uppgifter väntar n�
 
 ## Dokumentation
 
-**Dokumentation** i menyn visar systemdokumentationen för alla som är inloggade. Den har tre delar:
+**Dokumentation** i menyn visar dokumentationen för användarna, för alla som är inloggade. Den har två delar:
 
 - **Processer och regler** ([docs/processer](../processer/README.md)): affärsprocesserna steg för steg, med reglerna i tabeller med id, källa och inställning.
 - **Funktioner** (`docs/funktion`): hur funktionerna används och ställs in.
-- **Beslut** (`docs/adr`): arkitekturbesluten.
 
-Sidorna är filerna i `docs/` och byggs in i back office. Det finns ingen egen kopia att hålla i takt, och en ändring i dokumentationen syns efter nästa bygge. Teknisk dokumentation och byggloggen är för utvecklare och visas inte här.
+Sidorna är filerna i `docs/` och byggs in i back office. Det finns ingen egen kopia att hålla i takt, och en ändring i dokumentationen syns efter nästa bygge. Arkitekturbesluten (ADR), den tekniska dokumentationen, API:ts kontrakt och byggloggen är för utvecklare. De finns på GitHub och på dokumentationssajten, inte här. En länk från en process till ett beslut visas som text.
 
 **Sökningen** hittar avsnitt där alla orden finns. Ett ord i sidans rubrik väger mest, sedan avsnittets rubrik och en rad som börjar med ordet. Därför kommer raden som definierar en regel före en rad som hänvisar till den. Sökningen ligger i adressen (`/docs?q=OBET-05`), så en sökning går att länka till, och en träff leder till avsnittet (`/docs/processer/obetald-premie#regler`).
 
-**Exempel:** sök på `tillgodohavande`. Först kommer processen *Kreditering och tillgodohavanden*, sedan avsnitten i *Premier och betalningar* och i ADR 0040.
+**Exempel:** sök på `tillgodohavande`. Först kommer processen *Kreditering och tillgodohavanden*, sedan avsnitten i *Premier och betalningar*.
 
 Dokumentationen är på svenska oavsett språket i gränssnittet. Flödesdiagrammen visas som text och ritas på dokumentationssajten (`npm run site`).
 

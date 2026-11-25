@@ -157,8 +157,6 @@ export class DocsView extends LitElement {
         return msg('Processes and rules', { id: 'docs.processes' });
       case 'funktion':
         return msg('Functions', { id: 'docs.functions' });
-      case 'adr':
-        return msg('Decisions', { id: 'docs.decisions' });
     }
   }
 

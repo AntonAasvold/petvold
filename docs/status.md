@@ -5,6 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
+- Dokumentationen för användarna, PR #173: dokumentationen i back office visar bara processerna och reglerna, och funktionerna. Besluten (ADR), den tekniska dokumentationen och API:t finns på GitHub.
 - Översikt, PR #172: startsidan visar det som väntar på en person i de köer rollen får se, gruppvis, med köer som väntar först, och körningar som misslyckats och senast stängda dag. Ett kort öppnar kön på rätt flik.
 - Återkrav, del 2, PR #171: fliken **Återkrav** under Pengar, där en handläggare väljer att kräva tillbaka, avräkna eller skriva av.
 - Återkrav, del 1, PR #170: en sänkt ersättning ger `claim.payout_reduced` och ett förslag till återkrav i `billing`. En handläggare kräver tillbaka, avräknar mot tillgodohavandet eller skriver av (`POST /v1/recoveries/{id}/decisions`). Det bokförs mot skadekostnaden. Rättat: två anrop från 7b och 7c validerade inte kroppen mot kontraktet. Migration 0070.
