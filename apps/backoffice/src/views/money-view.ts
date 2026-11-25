@@ -551,7 +551,7 @@ export class MoneyView extends LitElement {
     const ok = await this.send(
       'payout-file',
       `${market}-${currency}`,
-      (key) => this.api.POST('/v1/payout-files', { params: { header: { 'Idempotency-Key': key } }, body: { market, currency } }),
+      (key) => this.api.POST('/v1/payout-files', { params: { header: { 'Idempotency-Key': key } }, body: { provider: 'bank-file', market, currency } }),
       msg('The payout file is made. Fetch it and send it to the bank; its camt.054 then confirms the payouts.', { id: 'money.payoutFileMade' }),
     );
     if (ok) await this.loadPayoutFiles();
