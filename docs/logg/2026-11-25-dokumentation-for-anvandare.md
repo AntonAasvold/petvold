@@ -1,4 +1,4 @@
-# Dokumentationen i back office är för användarna (PR #NN)
+# Dokumentationen i back office är för användarna (PR #173)
 
 **Datum:** 2026-11-25 **ADR:** 0035 **Moduler:** `apps/backoffice`
 
