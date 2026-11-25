@@ -1,4 +1,4 @@
-# Pengar, steg 7a: bankfiler in (PR #NN)
+# Pengar, steg 7a: bankfiler in (PR #166)
 
 **Datum:** 2026-11-25 **ADR:** 0040 punkt 12, 0017, 0018 **Moduler:** `payments`, `api`, `apps/backoffice`
 

@@ -5,7 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
-- Pengar, steg 7a: bankfiler in, PR #NN: bankens `camt.054` läses in under **Pengar** eller av en integration (`POST /v1/payment-files`, `payments:import`). Inbetalningarna kopplas med OCR eller RF som förut. Varje fil sparas med vem, när och kontrollsumma. Migration 0068, ny roll `bank-file-job`.
+- Pengar, steg 7a: bankfiler in, PR #166: bankens `camt.054` läses in under **Pengar** eller av en integration (`POST /v1/payment-files`, `payments:import`). Inbetalningarna kopplas med OCR eller RF som förut. Varje fil sparas med vem, när och kontrollsumma. Migration 0068, ny roll `bank-file-job`.
 - Gallring av dokument, PR #165: dokumenten om en part gallras när parten anonymiseras, genom samma krok som betaluppgifterna. Filen tas bort och raden finns kvar. ADR 0038 är byggd, med ett förtydligande om steg 5.
 - Besked om kreditnota, PR #164: kunden får meddelandet `credit-note` när en faktura krediteras, men inte vid en avskrivning. Bolaget kan stänga av det. Migration 0067.
 - Betaluppgifter raderas med parten, PR #163: ett godkännande av en radering raderar betaluppgifterna i `payments` först, och stoppas medan en utbetalning är på väg. `erasures:reapply` raderar dem igen. Migration 0066 med en trigger som bara tillåter radering.
