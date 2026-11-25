@@ -43,7 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
-| 2026-11-25 | [Omräkning av beslut i back office](2026-11-25-omrakning-av-beslut.md) | #NN |
+| 2026-11-25 | [Omräkning av beslut i back office](2026-11-25-omrakning-av-beslut.md) | #175 |
 | 2026-11-25 | [Dokumentationen i back office är för användarna](2026-11-25-dokumentation-for-anvandare.md) | #173 |
 | 2026-11-25 | [Översikt i back office](2026-11-25-oversikt.md) | #172 |
 | 2026-11-25 | [Återkrav, del 2: kön i back office](2026-11-25-aterkrav-back-office.md) | #171 |

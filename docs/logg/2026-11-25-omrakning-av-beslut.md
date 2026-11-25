@@ -1,4 +1,4 @@
-# Omräkning av beslut i back office (PR #NN)
+# Omräkning av beslut i back office (PR #175)
 
 **Datum:** 2026-11-25 **ADR:** 0018, 0035 **Moduler:** `apps/backoffice`
 

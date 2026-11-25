@@ -5,7 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
-- Omräkning av beslut, PR #NN: förklaringen av ett beslut har **Räkna om från underlaget**, som visar samma resultat, vad som skiljer sig, eller att beräkningsmodellen saknas.
+- Omräkning av beslut, PR #175: förklaringen av ett beslut har **Räkna om från underlaget**, som visar samma resultat, vad som skiljer sig, eller att beräkningsmodellen saknas.
 - Dokumentationen för användarna, PR #173: dokumentationen i back office visar bara processerna och reglerna, och funktionerna. Besluten (ADR), den tekniska dokumentationen och API:t finns på GitHub.
 - Översikt, PR #172: startsidan visar det som väntar på en person i de köer rollen får se, gruppvis, med köer som väntar först, och körningar som misslyckats och senast stängda dag. Ett kort öppnar kön på rätt flik.
 - Återkrav, del 2, PR #171: fliken **Återkrav** under Pengar, där en handläggare väljer att kräva tillbaka, avräkna eller skriva av.
