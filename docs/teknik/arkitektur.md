@@ -7,24 +7,50 @@ Hur Petvold är byggt och varför. Besluten bakom finns i [ADR](../adr/README.md
 Petvold är en modulär monolit (ADR 0001): en process och en databas per installation, men moduler med hårda gränser. En modul läser aldrig en annan moduls tabeller. Den använder modulens API, ett gränssnitt (port) eller händelser.
 
 ```mermaid
-flowchart LR
-  client[Bolagets system: kanaler, handläggare, kliniker, dokumentsystem] -->|HTTP + JWT| api[api<br/>kontrakt, behörighet, omfång, idempotens]
-  api --> claims[claims-core<br/>skador]
-  api --> policies[policies<br/>policyer och ansökningar]
-  api --> catalog[catalog<br/>produkter och referensdata]
-  api --> decisioning[decisioning<br/>regler, tariffer, teckningsregler]
-  api --> animals[animals]
-  api --> parties[parties]
-  api --> comms[communications<br/>kundmeddelanden]
-  api --> access[access<br/>roller]
+flowchart TB
+  client["Bolagets system, handläggare, kliniker och back office"] -->|HTTP + JWT| api["api: kontrakt, behörighet, omfång, idempotens, språk"]
+  api --> salj & skador & pengar & kunden & plattform
+  subgraph salj [Försäljning]
+    catalog["catalog<br/>produkter"]
+    decisioning["decisioning<br/>regler, tariffer"]
+    policies["policies<br/>policyer, ansökan"]
+    animals["animals<br/>djurregister"]
+    parties["parties<br/>parter"]
+  end
+  subgraph skador [Skador]
+    claims["claims-core<br/>bedömning, beslut"]
+  end
+  subgraph pengar [Pengar]
+    billing["billing<br/>premier, fakturor"]
+    payments["payments<br/>in- och utbetalning"]
+    accounting["accounting<br/>bokföring"]
+  end
+  subgraph kunden [Kunden]
+    communications["communications<br/>kundmeddelanden"]
+    documents["documents<br/>PDF, länkar"]
+    webhooks["webhooks<br/>till bolagets system"]
+  end
+  subgraph plattform [Plattform]
+    scheduling["scheduling<br/>körningar, lån"]
+    access["access<br/>roller"]
+  end
+  subgraph karnor [Rena kärnor, ingen I/O]
+    pricing[pricing-core]
+    underwriting[underwriting-core]
+    billingcore[billing-core]
+    common[common]
+  end
   claims -->|PolicyPort| policies
   claims -->|RulesPort| decisioning
   policies -->|portar| catalog & animals & parties & decisioning
-  db[(Postgres<br/>ett schema och en roll per modul)]
-  claims & policies & animals --> outbox[outboxar] --> relay[Relä] --> policies & comms & claims
+  decisioning & policies -.-> pricing & underwriting
+  billing -.-> billingcore
+  db[("Postgres<br/>ett schema och en roll per modul")]
 ```
 
-Modulerna talar med varandra genom portar som `composition.ts` kopplar ihop, och genom händelser via reläet. Ingen modul läser en annan moduls tabeller.
+Heldragna pilar är portar som `composition.ts` kopplar ihop. Streckade pilar är anrop till de rena kärnorna. Händelserna mellan modulerna går genom reläet, se [Händelser](#händelser).
+
+Modulerna talar med varandra genom portar och genom händelser via reläet. Ingen modul läser en annan moduls tabeller.
 
 ## Moduler i dag
 
@@ -305,14 +331,31 @@ Databasen kontrollerar källan (migration 0010). En beslutsjournal pekar alltid 
 
 ## Händelser
 
-Händelser skrivs till modulens outbox i samma transaktion som ändringen (ADR 0008): `claims.outbox`, `animals.outbox`, `policies.outbox` och `communications.outbox`. Reläet i `modules/api/src/relay.ts` läser varje outbox i ordning, lämnar händelsen till mottagarna och markerar den som publicerad först efteråt. Leveransen sker minst en gång, så mottagarna tål dubbletter.
+Händelser skrivs till modulens outbox i samma transaktion som ändringen (ADR 0008). Sju moduler har en outbox: `claims`, `animals`, `policies`, `billing`, `payments`, `accounting` och `communications`. Reläet i `modules/api/src/relay.ts` läser varje outbox i ordning, lämnar händelsen till mottagarna i `composition.ts` och markerar den som publicerad först efteråt. Leveransen sker minst en gång, så mottagarna tål dubbletter.
+
+```mermaid
+flowchart LR
+  claims[claims] -->|"claim.decided, claim.payout_ordered"| communications & payments & accounting
+  policies[policies] -->|"policy.issued, policy.renewed"| billing & communications
+  policies -->|policy.version_superseded| claims
+  animals[animals] -->|ägarbyte, dödsfall| policies
+  billing[billing] -->|"invoice.issued, refund.ordered"| communications & payments & accounting
+  payments[payments] -->|payment.succeeded| billing & accounting
+  communications[communications] -->|notice.created| documents[documents]
+  claims & policies & animals & billing & payments & accounting & communications -.-> webhooks[webhooks]
+```
+
+Streckade pilar: varje källa lämnar också sina publika händelser till `WebhookService.enqueue`.
 
 | Källa | Mottagare |
 | --- | --- |
-| `claims` | `WebhookService.enqueue`, efter `claimsEventForWebhooks` i `wiring.ts` som plattar ut händelsen till tillåtna fält |
+| `claims` | `CommunicationsService.handleClaimEvent` (meddelanden om skador), `PaymentsService.handleClaimEvent` (utbetalning av `claim.payout_ordered`), `AccountingService.handleEvent` och `WebhookService.enqueue`, efter `claimsEventForWebhooks` i `wiring.ts` som plattar ut händelsen till tillåtna fält |
 | `animals` | `PolicyService.handleAnimalEvent`: ägarbyte och dödsfall blir förslag. `WebhookService.enqueue`. |
-| `policies` | `CommunicationsService.handlePolicyEvent` (kundmeddelanden), `WebhookService.enqueue` för de publika händelserna, och `ClaimsService.reassessForPolicyChange` för `policy.version_superseded` |
-| `communications` | `WebhookService.enqueue`: `notice.created`, `notice.delivered` och `notice.failed` (outboxen från migration 0034) |
+| `policies` | `CommunicationsService.handlePolicyEvent` (kundmeddelanden), `BillingService.handlePolicyEvent` (premieplan), `WebhookService.enqueue` för de publika händelserna, och `ClaimsService.reassessForPolicyChange` för `policy.version_superseded` |
+| `billing` | `CommunicationsService.handleBillingEvent` (fakturor och påminnelser), `PaymentsService.handleBillingEvent` (återbetalning av tillgodohavande), `AccountingService.handleEvent` och `WebhookService.enqueue` |
+| `payments` | `BillingService.handlePaymentEvent` (kopplar inbetalningen till fakturan), `AccountingService.handleEvent` och `WebhookService.enqueue` |
+| `accounting` | `WebhookService.enqueue`: `accounting.day_closed` |
+| `communications` | `WebhookService.enqueue`: `notice.created`, `notice.delivered` och `notice.failed`. Med `documentMaker: petvold` gör `ensureNoticePdf` meddelandets PDF efter `notice.created`. |
 
 **Webhooks (migration 0033):**
 - **Kö per prenumeration.** `enqueue` gör om händelsen till en CloudEvent med `toCloudEvent`, som bara tar med fälten i `PUBLIC_EVENTS`, och lägger en rad i `webhooks.delivery` för varje aktiv prenumeration som matchar typ och marknad. `unique (subscription_id, event_id)` gör att en ny leverans från reläet inte ger dubbletter. Marknaden slås upp från policyn eller ansökan i `composition.ts`.
@@ -324,7 +367,7 @@ Händelser skrivs till modulens outbox i samma transaktion som ändringen (ADR 0
   - Arbetaren kör `prune` en gång i timmen. Den tömmer `event.data` för levererade och döda händelser som är äldre än 30 dagar.
 - **Hemligheterna** krypteras med AES-256-GCM och `PETVOLD_WEBHOOK_KEY` (`SecretBox`). Databasen ser dem aldrig i klartext. Efter ett byte signerar den gamla i 24 timmar.
 
-Ett fel stoppar källan i den rundan, så att senare händelser inte går förbi. Efter tio försök blir händelsen död post och syns i hälsokontrollen. Flera instanser av servern kör var sitt relä. Ett lås per outbox behövs före drift med flera instanser.
+Ett fel stoppar källan i den rundan, så att senare händelser inte går förbi. Efter tio försök blir händelsen död post och syns i hälsokontrollen. Med flera instanser av servern är en i taget reläet: den håller lånet `relay` i `scheduling.lease` (ADR 0037, se [Drift](drift.md#händelser)).
 
 **Kundmeddelanden (migration 0031, ADR 0032):**
 - **Från händelser.** Reläets källa `policies` i `composition.ts` lämnar varje händelse till `CommunicationsService.handlePolicyEvent`, efter loggen och före omprövningen av skador. `policy.issued`, `policy.renewed`, `policy.cancelled` och `application.declined` ger ett meddelande. Typen vid en uppsägning följer skälet: bolagets skäl ger `insurer-termination`, kundens `cancellation-confirmation`.
@@ -355,4 +398,4 @@ Ett fel stoppar källan i den rundan, så att senare händelser inte går förbi
 
 ## Installation
 
-En installation per försäkringsbolag (ADR 0010), på Kubernetes med CloudNativePG (ADR 0004). Lokalt kör Postgres i docker compose med samma version (ADR 0013).
+En installation per försäkringsbolag (ADR 0010), på Kubernetes med CloudNativePG (ADR 0004). Lokalt kör Postgres i docker compose med samma version (ADR 0013). Hur demon körs i containrar på en server finns i [Demon](demo.md#så-körs-demon), och hur en installation skalas i [Skalning](skalning.md).

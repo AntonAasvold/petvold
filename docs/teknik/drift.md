@@ -91,7 +91,7 @@ Varje modul skriver sina händelser i en egen outbox i samma transaktion som än
 - **Död kö.** Efter 10 försök blir händelsen en **död bokstav**. Den loggas och ligger kvar opublicerad i outboxen, men hoppas över så att resten kan flöda. Den sparas i `scheduling.relay_dead_letter` och finns kvar efter en omstart, tills någon skickar den igen (ADR 0037). `/healthz` visar antalet.
 - **Mottagare i dag:** djurregistrets händelser blir förslag i policymodulen, policymodulens ersatta versioner ger omprövning i skademotorn, och skademotorns händelser loggas.
 
-**Flera servrar.** En server i taget är reläet (ADR 0037). Den håller lånet `relay` i `scheduling.lease` och förnyar det varje runda. De andra väntar och tar över när lånet går ut, efter 30 sekunder, eller direkt när servern stängs i ordning. Ordningen per outbox hålls därför också med flera servrar. Webhook-arbetaren klarar redan flera servrar med `for update skip locked`.
+**Flera servrar.** Se också [Skalning](skalning.md). En server i taget är reläet (ADR 0037). Den håller lånet `relay` i `scheduling.lease` och förnyar det varje runda. De andra väntar och tar över när lånet går ut, efter 30 sekunder, eller direkt när servern stängs i ordning. Ordningen per outbox hålls därför också med flera servrar. Webhook-arbetaren klarar redan flera servrar med `for update skip locked`.
 
 ## Hälsa och avstängning
 

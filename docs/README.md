@@ -30,11 +30,12 @@ För försäkringsbolag, produktägare och handläggare. Ingen kod krävs för a
 
 För utvecklare och drift.
 
-- [Arkitektur](teknik/arkitektur.md): moduler, portar, lagring, händelser och API
+- [Arkitektur](teknik/arkitektur.md): moduler, portar, lagring, händelser och API, med diagram
 - [Utvecklingsmiljö](teknik/utvecklingsmiljo.md): kom igång lokalt
 - [Testning](teknik/testning.md): testlager och vad som krävs
 - [Drift](teknik/drift.md): starta en installation, konfiguration, inloggning, händelser och hälsa
 - [Demon](teknik/demo.md): sätta upp demon på en server, testdatan och inloggningen (ADR 0041)
+- [Skalning](teknik/skalning.md): skala en installation för prestanda, från större server till Kubernetes
 - [Demotjänsten](teknik/demotjanst.md): specen för tjänsten som tar emot och visar alla händelser, spelar bank och kontrollerar att allt stämmer
 - [API-konventioner](teknik/api-konventioner.md): hur adresser, filter, id och versioner namnges
 - [Back office](teknik/backoffice.md): appen i `apps/backoffice`, datatabellen, språk, ikoner och test

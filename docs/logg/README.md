@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-25 | [Diagram över arkitekturen, driften och skalningen](2026-11-25-arkitektur-skisser.md) | #169 |
 | 2026-11-25 | [Pengar, steg 7c: Stripe för kort och Swish](2026-11-25-stripe.md) | #168 |
 | 2026-11-25 | [Pengar, steg 7b: bankfiler ut](2026-11-25-bankfiler-ut.md) | #167 |
 | 2026-11-25 | [Pengar, steg 7a: bankfiler in](2026-11-25-bankfiler-in.md) | #166 |
