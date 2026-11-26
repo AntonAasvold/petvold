@@ -49,6 +49,7 @@ import '../views/money-view.ts';
 import '../views/payer-account.ts';
 import '../views/accounting-view.ts';
 import '../views/overview-view.ts';
+import '../views/reference-view.ts';
 import '../views/catalog-views.ts';
 
 @customElement('pv-app')
@@ -287,6 +288,7 @@ export class AppShell extends LitElement {
       { pattern: /^\/jobs\/(?<id>[^/]+)$/, render: (p) => html`<pv-job-detail .api=${this.api} .me=${this.me} job=${p.id!}></pv-job-detail>` },
       { pattern: /^\/payer-accounts\/(?<id>[^/]+)$/, render: (p) => html`<pv-payer-account .api=${this.api} .me=${this.me} account-id=${p.id!}></pv-payer-account>` },
       { pattern: /^\/$/, render: () => html`<pv-overview .api=${this.api} .me=${this.me}></pv-overview>` },
+      { pattern: /^\/reference-data$/, render: () => html`<pv-reference-data .api=${this.api} .me=${this.me}></pv-reference-data>` },
       { pattern: /^\/accounting$/, render: () => html`<pv-accounting .api=${this.api} .me=${this.me}></pv-accounting>` },
       { pattern: /^\/money$/, render: () => html`<pv-money .api=${this.api} .me=${this.me}></pv-money>` },
       { pattern: /^\/settings$/, render: () => html`<pv-settings .api=${this.api} .me=${this.me}></pv-settings>` },
@@ -389,6 +391,8 @@ export class AppShell extends LitElement {
         return msg('Bookkeeping', { id: 'nav.accounting' });
       case 'nav.overview':
         return msg('Overview', { id: 'nav.overview' });
+      case 'nav.reference':
+        return msg('Reference data', { id: 'nav.reference' });
       case 'nav.docs':
         return msg('Documentation', { id: 'nav.docs' });
       default:

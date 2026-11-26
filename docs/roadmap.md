@@ -140,7 +140,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [x] **Partens livscykel (ADR 0039):** sökning på namn och e-post, nummer som tas bort, begränsning och avslut
 - [x] **Radering (ADR 0028):** begära radering av en part och kön för radering med fyra ögon
 - [x] **Grupper (ADR 0007):** kull och hushåll, med medlemmar och utträde
-- [ ] **Referensdata (ADR 0022):** arter, raser och kön med översättningar och historik
+- [x] **Referensdata (ADR 0022):** arter, raser och kön med översättningar och historik
 - [x] **Produkter och regler:** formulär för produkter och skaderegler, med JSON som alternativ, och en sammanfattning av vald version
 - [ ] **Regler:** formulär för tariffer, prisvillkor och teckningsregler, och simulering av regelutkast mot sparade underlag
 - [x] **Skador:** omräkning av ett sparat beslut (ADR 0018)

@@ -26,6 +26,7 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Pengar | Köerna för pengarna: okopplade inbetalningar som kopplas för hand, utbetalningar som spärrats för nya betaluppgifter och släpps av någon annan, utbetalningar som väntar på betaluppgifter, kreditnotor och avskrivningar över gränsen som attesteras eller skickas tillbaka, och avtal med kliniker. Räknaren visar okopplade inbetalningar. | `billing:read` eller `payments:read`. `billing:write` för att koppla, `payments:release` för att släppa, `billing:credit` för att attestera. |
 | Bokföring | Dagsavslut med summor, kontrollsumma och fil, saldo per konto, verifikationer med rader, och kontoplanen med versioner | `accounting:read`, och `accounting:configure` för att ändra kontoplanen |
 | Dokumentation | Affärsprocesserna och affärsreglerna, och funktionerna, sökbara | Inloggad |
+| Referensdata | Arter, raser och kön med namn per språk, om koden erbjuds för ny data och historiken. En ny kod, och en ändring som ny revision med skäl. | `catalog:read`, `catalog:write` för att ändra |
 | Regeluppsättningar | Serierna (skaderegler, tariffer, prisvillkor och teckningsregler) och varje version med livscykel. Seriens sida är byggd som produktens. | `rules:read`, `rules:write` för utkast, `rules:publish` för att publicera, skicka tillbaka och avveckla |
 
 *Inte byggt än:* simulering av en regelversion mot sparade beslut, och formulär för tariffer, prisvillkor och teckningsregler.
@@ -374,6 +375,15 @@ Sidorna är filerna i `docs/` och byggs in i back office. Det finns ingen egen k
 **Exempel:** sök på `tillgodohavande`. Först kommer processen *Kreditering och tillgodohavanden*, sedan avsnitten i *Premier och betalningar*.
 
 Dokumentationen är på svenska oavsett språket i gränssnittet. Flödesdiagrammen visas som text och ritas på dokumentationssajten (`npm run site`).
+
+## Referensdata
+
+**Referensdata** i menyn visar arterna, raserna och könen (ADR 0022), en flik för varje.
+- **Listan** visar koden, namnet på svenska och engelska, rasens art och om koden erbjuds för ny data.
+- **En vald kod** visar namnen på alla språk och historiken. Med `catalog:write` sparas en ändring som en ny revision med skäl. Koden själv ändras aldrig, och data som redan sparats behåller den. En kod som inte längre ska erbjudas stängs av, men går fortfarande att läsa.
+- **En ny kod** föreslås från det engelska namnet, till exempel *Labrador Retriever* för hund som `dog-labrador-retriever`. En ny ras kräver sin art.
+
+[Referensdata](referensdata.md) beskriver koderna och API:t.
 
 ## Produkter och regler
 

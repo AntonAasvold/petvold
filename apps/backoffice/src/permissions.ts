@@ -45,6 +45,7 @@ export const SECTIONS: Section[] = [
   { path: '/erasures', label: 'nav.erasures', icon: 'user-slash', anyOf: ['parties:privacy'], count: { path: '/v1/erasure-requests', query: { status: 'pending' } } },
   // Configuration.
   { path: '/products', label: 'nav.products', icon: 'box', anyOf: ['catalog:read'] },
+  { path: '/reference-data', label: 'nav.reference', icon: 'tags', anyOf: ['catalog:read'] },
   { path: '/rule-sets', label: 'nav.ruleSets', icon: 'scale-balanced', anyOf: ['rules:read'] },
   // Integration and operations.
   { path: '/webhooks', label: 'nav.webhooks', icon: 'plug', anyOf: ['webhooks:read'], count: { path: '/v1/webhook-deliveries', query: { status: 'dead' } } },
