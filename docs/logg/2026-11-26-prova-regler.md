@@ -1,4 +1,4 @@
-# Pröva regler mot sparade beslut i back office (PR #NN)
+# Pröva regler mot sparade beslut i back office (PR #179)
 
 **Datum:** 2026-11-26 **ADR:** 0018, 0021, 0035 **Moduler:** `apps/backoffice`
 
