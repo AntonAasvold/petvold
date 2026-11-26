@@ -1,4 +1,4 @@
-# Formulär för tariffer och prisvillkor (PR #NN)
+# Formulär för tariffer och prisvillkor (PR #180)
 
 **Datum:** 2026-11-26 **ADR:** 0030, 0021, 0035 **Moduler:** `apps/backoffice`
 

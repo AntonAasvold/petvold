@@ -5,7 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
-- Formulär för tariffer och prisvillkor, PR #NN: belopp i kronor, faktorer som decimaltal, rabatter i procent och tabeller en rad per post, med kontroller innan något skickas.
+- Formulär för tariffer och prisvillkor, PR #180: belopp i kronor, faktorer som decimaltal, rabatter i procent och tabeller en rad per post, med kontroller innan något skickas.
 - Pröva regler mot sparade beslut, PR #179: på en serie med skaderegler prövas en version mot de sparade besluten i en period, med ändringar, flyttar mellan automatiskt och manuellt, ersättningar per valuta och de beslut som ändras.
 - Referensdata i back office, PR #178: arter, raser och kön med namn per språk och historik. En ny kod med föreslagen kod, och ändringar som revisioner med skäl.
 - Köer under Körningar, PR #177: `GET /v1/relay-status` och kortet **Köer** visar per modul vad som väntar på reläet, hur gammalt det äldsta är och de döda posterna, och webhooks till bolagets system.
