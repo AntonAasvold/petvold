@@ -43,7 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
-| 2026-11-26 | [Formulär för teckningsregler](2026-11-26-formular-for-teckning.md) | #NN |
+| 2026-11-26 | [Formulär för teckningsregler](2026-11-26-formular-for-teckning.md) | #181 |
 | 2026-11-26 | [Formulär för tariffer och prisvillkor](2026-11-26-formular-for-pris.md) | #180 |
 | 2026-11-26 | [Pröva regler mot sparade beslut i back office](2026-11-26-prova-regler.md) | #179 |
 | 2026-11-26 | [Referensdata i back office](2026-11-26-referensdata.md) | #178 |

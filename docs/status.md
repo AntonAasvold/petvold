@@ -5,7 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
-- Formulär för teckningsregler, PR #NN: åldersgränser och raser en per rad, hälsofrågor med text per språk och regler för vad ett ja leder till, med motorns kontroller innan något skickas.
+- Formulär för teckningsregler, PR #181: åldersgränser och raser en per rad, hälsofrågor med text per språk och regler för vad ett ja leder till, med motorns kontroller innan något skickas.
 - Formulär för tariffer och prisvillkor, PR #180: belopp i kronor, faktorer som decimaltal, rabatter i procent och tabeller en rad per post, med kontroller innan något skickas.
 - Pröva regler mot sparade beslut, PR #179: på en serie med skaderegler prövas en version mot de sparade besluten i en period, med ändringar, flyttar mellan automatiskt och manuellt, ersättningar per valuta och de beslut som ändras.
 - Referensdata i back office, PR #178: arter, raser och kön med namn per språk och historik. En ny kod med föreslagen kod, och ändringar som revisioner med skäl.
