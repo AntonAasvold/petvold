@@ -43,6 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
+| 2026-11-26 | [Pröva regler mot sparade beslut i back office](2026-11-26-prova-regler.md) | #179 |
 | 2026-11-26 | [Referensdata i back office](2026-11-26-referensdata.md) | #178 |
 | 2026-11-25 | [Köer under Körningar](2026-11-25-koer.md) | #177 |
 | 2026-11-25 | [Policyn en viss dag i back office](2026-11-25-policyn-en-viss-dag.md) | #176 |
