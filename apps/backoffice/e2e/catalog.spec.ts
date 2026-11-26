@@ -82,3 +82,34 @@ test('a rule set version: a new draft is submitted and published by someone else
   await expect(status(page)).toContainText('Done.');
   await expect(versions.getByRole('row').filter({ hasText: 'In review' })).toHaveCount(0);
 });
+
+test('a tariff and price terms are edited as forms', async ({ page }) => {
+  await signIn(page, 'dev-author', 'Rule sets');
+  const versions = page.getByRole('grid', { name: 'Versions' });
+  const panel = page.locator('pv-versions-panel');
+
+  await page.getByRole('grid', { name: 'Rule sets' }).getByRole('gridcell', { name: 'SE-HUND-TARIFF', exact: true }).click();
+  await page.getByRole('button', { name: 'New draft from this' }).click();
+  await page.getByLabel('In force from').fill(`${nextYear}-01-01`);
+  const tariff = page.locator('pv-tariff-content');
+  await expect(tariff.getByRole('textbox', { name: 'Base premiums a year' })).toHaveValue('dog; 30000; 2400\ndog; 60000; 3000');
+  await tariff.getByRole('textbox', { name: 'Zone of other postal codes' }).fill('suburb');
+  await page.getByRole('button', { name: 'Save the draft' }).click();
+  await expect(panel.getByRole('alert')).toContainText('Every zone, also the one for other postal codes, needs a factor.');
+  await tariff.getByRole('textbox', { name: 'Factor per zone' }).fill('city = 1.15\ncentre = 1.2\nrural = 0.95\nsuburb = 1,05');
+  await page.getByRole('button', { name: 'Save the draft' }).click();
+  await expect(status(page)).toContainText('Done.');
+  await versions.getByRole('row').filter({ hasText: 'Draft' }).getByRole('gridcell').first().click();
+  await expect(panel.locator('pre')).toContainText('"suburb": 10500');
+
+  await page.getByRole('link', { name: 'Rule sets' }).first().click();
+  await page.getByRole('grid', { name: 'Rule sets' }).getByRole('gridcell', { name: 'SE-HUND-TERMS', exact: true }).click();
+  await page.getByRole('button', { name: 'New draft from this' }).click();
+  await page.getByLabel('In force from').fill(`${nextYear}-01-01`);
+  const terms = page.locator('pv-price-terms-content');
+  await terms.getByRole('textbox', { name: 'Campaign codes' }).fill('PUPPY2026; 2026-01-01; 2027-01-01; 20; new\nSPRING; 2027-03-01; ; 5; all');
+  await page.getByRole('button', { name: 'Save the draft' }).click();
+  await expect(status(page)).toContainText('Done.');
+  await versions.getByRole('row').filter({ hasText: 'Draft' }).getByRole('gridcell').first().click();
+  await expect(panel.locator('pre')).toContainText('"code": "SPRING"');
+});

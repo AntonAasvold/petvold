@@ -174,6 +174,32 @@ export function problemLabel(id: string): string {
       return msg('The waiting period is a number of days.', { id: 'product.badWaiting' });
     case 'product.badSetting':
       return msg('The policy settings are whole numbers.', { id: 'product.badSetting' });
+    case 'tariff.badBase':
+      return msg('Write the base premiums one per line as species; annual limit; premium.', { id: 'tariff.badBase' });
+    case 'tariff.badAgeBands':
+      return msg('Write the ages one per line as species; from age in years; factor.', { id: 'tariff.badAgeBands' });
+    case 'tariff.needAgeZero':
+      return msg('Each species with a base premium needs an age from 0 years.', { id: 'tariff.needAgeZero' });
+    case 'tariff.badBreedGroups':
+      return msg('Write the breed groups as breed = group and the factors as group = factor, each once.', { id: 'tariff.badBreedGroups' });
+    case 'tariff.groupWithoutFactor':
+      return msg('Every breed group, also the one for other breeds, needs a factor.', { id: 'tariff.groupWithoutFactor' });
+    case 'tariff.badDeductibleFactors':
+      return msg('Give a factor for at least one deductible, as code = factor.', { id: 'tariff.badDeductibleFactors' });
+    case 'tariff.badZones':
+      return msg('Write the zones as postal code prefix = zone, the prefix in digits, and the factors as zone = factor.', { id: 'tariff.badZones' });
+    case 'tariff.zoneWithoutFactor':
+      return msg('Every zone, also the one for other postal codes, needs a factor.', { id: 'tariff.zoneWithoutFactor' });
+    case 'tariff.badMinimum':
+      return msg('Give the lowest premium a year.', { id: 'tariff.badMinimum' });
+    case 'tariff.badRoundTo':
+      return msg('Give what the price is rounded to, more than zero.', { id: 'tariff.badRoundTo' });
+    case 'terms.badGroupDiscounts':
+      return msg('Write the group discounts one per line as litter, household or any; from the nth animal; per cent.', { id: 'terms.badGroupDiscounts' });
+    case 'terms.badCampaigns':
+      return msg('Write the campaigns one per line as CODE; from; to; per cent; new or all. Each code once, the end after the start.', { id: 'terms.badCampaigns' });
+    case 'terms.badMax':
+      return msg('Give the largest discount in all, 0 to 100 per cent.', { id: 'terms.badMax' });
     case 'rules.badGroups':
       return msg('Write the diagnosis groups one per line as code = group, each code once.', { id: 'rules.badGroups' });
     case 'rules.badAutoSettle':
