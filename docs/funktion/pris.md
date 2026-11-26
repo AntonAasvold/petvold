@@ -114,4 +114,15 @@ En tariffversion skapas med `POST /v1/rule-sets/{serie}/versions` och `calculati
 
 Faktorer anges i baspunkter, där 10 000 betyder 1,0.
 
+**I back office** redigeras en tariff och prisvillkor i ett formulär under **Regeluppsättningar**, med samma livscykel som andra regler. Formuläret visar belopp i kronor, faktorer som decimaltal och rabatter i procent, och tabellerna en rad per post. Exempel ur exempeltariffen:
+
+```
+Grundpremier per år:   dog; 30000; 2400
+Ålder:                 dog; 7; 1.3
+Faktor per zon:        city = 1.15
+Kampanjkoder:          PUPPY2026; 2026-01-01; 2027-01-01; 20; new
+```
+
+Formuläret säger vad som är fel innan något skickas, till exempel en zon utan faktor eller en art utan åldersband från 0 år. Det går också att växla till JSON.
+
 *Inte byggt än:* skatt per marknad, och simulering av tariffer och prisvilkor mot sparade priser.

@@ -18,6 +18,7 @@ import { act, type Notice } from '../actions.ts';
 import { lifecycleActions, parseJson, type Kind } from '../catalog-logic.ts';
 import type { Api } from '../api/client.ts';
 import { isClaimsRules, productFormFrom, rulesFormFrom } from '../product-form.ts';
+import { isPriceTerms, isTariff, priceTermsFormFrom, tariffFormFrom } from '../pricing-form.ts';
 import { problemLabel } from '../views/labels.ts';
 import { pvComponents } from '../styles/pv-components.ts';
 import './content-forms.ts';
@@ -334,9 +335,17 @@ export class VersionsPanel extends LitElement {
     >`;
   }
 
-  /** A product and claims rules have a form; other content is JSON only. */
+  /** The form for the content: a product, claims rules, a tariff or price terms. Other content is JSON only. */
+  private formKind(content: unknown): 'product' | 'rules' | 'tariff' | 'terms' | null {
+    if (this.adapter.kind === 'product') return 'product';
+    if (isClaimsRules(content)) return 'rules';
+    if (isTariff(content)) return 'tariff';
+    if (isPriceTerms(content)) return 'terms';
+    return null;
+  }
+
   private hasForm(content: unknown): boolean {
-    return this.adapter.kind === 'product' || isClaimsRules(content);
+    return this.formKind(content) !== null;
   }
 
   /** The main facts of a product or claims rules, to read without the JSON. */
@@ -356,6 +365,25 @@ export class VersionsPanel extends LitElement {
         ${row(msg('Waiting period, days', { id: 'product.waiting' }), f.waitingPeriodDays)}
       </dl>`;
     }
+    if (this.formKind(c) === 'tariff') {
+      const t = tariffFormFrom(c);
+      return html`<dl class="pv-dl">
+        ${row(msg('Market', { id: 'claim.market' }), `${t.market}, ${t.currency}`)}
+        ${row(msg('Base premiums a year', { id: 'tariff.base' }), t.basePremiums.split('\n').length)}
+        ${row(msg('Breed groups', { id: 'tariff.breedLegend' }), t.breedGroupFactors.split('\n').join(', '))}
+        ${row(msg('Zones', { id: 'tariff.zones' }), t.zoneFactors.split('\n').join(', '))}
+        ${row(msg('Lowest premium a year', { id: 'tariff.minimum' }), t.minimumAnnual)}
+      </dl>`;
+    }
+    if (this.formKind(c) === 'terms') {
+      const t = priceTermsFormFrom(c);
+      return html`<dl class="pv-dl">
+        ${row(msg('Market', { id: 'claim.market' }), `${t.market}, ${t.currency}`)}
+        ${row(msg('Group discounts', { id: 'terms.groups' }), t.groupDiscounts.split('\n').join(', '))}
+        ${row(msg('Campaign codes', { id: 'terms.campaigns' }), ((c.campaigns as { code: string }[]) ?? []).map((k) => k.code).join(', '))}
+        ${row(msg('Largest discount in all, per cent', { id: 'terms.max' }), t.maxTotalDiscount)}
+      </dl>`;
+    }
     const r = rulesFormFrom(c);
     return html`<dl class="pv-dl">
       ${row(msg('Market', { id: 'claim.market' }), r.market)}
@@ -367,7 +395,7 @@ export class VersionsPanel extends LitElement {
 
   /** The form's result, or null with its problems shown. */
   private formResult(): ContentResult | null {
-    const el = this.renderRoot.querySelector<HTMLElement & { result(): ContentResult }>('pv-product-content, pv-rules-content');
+    const el = this.renderRoot.querySelector<HTMLElement & { result(): ContentResult }>('pv-product-content, pv-rules-content, pv-tariff-content, pv-price-terms-content');
     if (!el) return null;
     const r = el.result();
     if (r.problems.length) {
@@ -409,6 +437,19 @@ export class VersionsPanel extends LitElement {
     };
   }
 
+  private contentForm() {
+    switch (this.formKind(this.formContent)) {
+      case 'product':
+        return html`<pv-product-content .api=${this.api} .content=${this.formContent}></pv-product-content>`;
+      case 'tariff':
+        return html`<pv-tariff-content .content=${this.formContent}></pv-tariff-content>`;
+      case 'terms':
+        return html`<pv-price-terms-content .content=${this.formContent}></pv-price-terms-content>`;
+      default:
+        return html`<pv-rules-content .content=${this.formContent}></pv-rules-content>`;
+    }
+  }
+
   private editor() {
     const isNew = this.editing === 'new';
     const set = (k: keyof VersionsPanel['form']) => (e: Event) => (this.form = { ...this.form, [k]: (e.target as HTMLInputElement).value });
@@ -433,9 +474,7 @@ export class VersionsPanel extends LitElement {
             </div>`
           : nothing}
         ${this.mode === 'form'
-          ? this.adapter.kind === 'product'
-            ? html`<pv-product-content .api=${this.api} .content=${this.formContent}></pv-product-content>`
-            : html`<pv-rules-content .content=${this.formContent}></pv-rules-content>`
+          ? this.contentForm()
           : html`<wa-textarea label=${msg('Content (JSON)', { id: 'catalog.json' })} rows="24" .value=${this.form.json} @input=${set('json')}></wa-textarea>`}
         <div class="row">
           <wa-button type="submit" variant="brand" ?loading=${this.busy === 'save'}>${msg('Save the draft', { id: 'catalog.save' })}</wa-button>

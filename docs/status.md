@@ -5,6 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
+- Formulär för tariffer och prisvillkor, PR #NN: belopp i kronor, faktorer som decimaltal, rabatter i procent och tabeller en rad per post, med kontroller innan något skickas.
 - Pröva regler mot sparade beslut, PR #179: på en serie med skaderegler prövas en version mot de sparade besluten i en period, med ändringar, flyttar mellan automatiskt och manuellt, ersättningar per valuta och de beslut som ändras.
 - Referensdata i back office, PR #178: arter, raser och kön med namn per språk och historik. En ny kod med föreslagen kod, och ändringar som revisioner med skäl.
 - Köer under Körningar, PR #177: `GET /v1/relay-status` och kortet **Köer** visar per modul vad som väntar på reläet, hur gammalt det äldsta är och de döda posterna, och webhooks till bolagets system.
@@ -45,7 +46,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 **Nästa steg**
 1. Demotjänstens fas 1 enligt [specen](teknik/demotjanst.md): ta emot och visa händelserna, och lägga den i demons Compose. Demon kör i Proxmox med DuckDNS sedan 2026-11-23.
 2. ADR 0040, steg 7: Autogiro via Bankgirot och SEPA-autogiro, och Swish direkt utan Stripe. Bankfiler och Stripe är byggda.
-3. Back office: formulär för tariffer, prisvillkor och teckningsregler.
+3. Back office: formulär för teckningsregler.
 
 **Öppet**
 - Kanalerna måste skicka `acceptance` på `POST /v1/policies`. Det bryter mot äldre anrop, men inga kanaler finns i drift än.

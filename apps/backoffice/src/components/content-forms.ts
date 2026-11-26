@@ -1,6 +1,7 @@
 /**
- * <pv-product-content> and <pv-rules-content>: a product's content and claims
- * rules as forms (ADR 0021, 0023). Each starts from the content it is given and
+ * <pv-product-content>, <pv-rules-content>, <pv-tariff-content> and
+ * <pv-price-terms-content>: a product's content, claims rules, a tariff and
+ * price terms as forms (ADR 0021, 0023, 0030). Each starts from the content it is given and
  * hands back new content with result(); what the form does not show is kept.
  */
 import { LitElement, css, html, nothing } from 'lit';
@@ -30,6 +31,16 @@ import {
   type PolicySetting,
   type ProductForm,
 } from '../product-form.ts';
+import {
+  priceTermsContentFrom,
+  priceTermsFormFrom,
+  priceTermsFormProblems,
+  tariffContentFrom,
+  tariffFormFrom,
+  tariffFormProblems,
+  type PriceTermsForm,
+  type TariffForm,
+} from '../pricing-form.ts';
 import { loadReferences, type RefItem } from '../reference.ts';
 import { pvComponents } from '../styles/pv-components.ts';
 
@@ -393,6 +404,172 @@ export class RulesContentForm extends LitElement {
           <wa-input type="number" label=${msg('Reminder after, days', { id: 'rules.reminderDays' })} placeholder="14" .value=${f.reminderAfterDays} @input=${(e: Event) => this.set({ reminderAfterDays: value(e) })}></wa-input>
           <wa-input type="number" label=${msg('Due after, days', { id: 'rules.expiresDays' })} placeholder="30" .value=${f.expiresAfterDays} @input=${(e: Event) => this.set({ expiresAfterDays: value(e) })}></wa-input>
         </div>
+      </fieldset>
+    `;
+  }
+}
+
+/** A textarea for a table, one row per line, in a monospace font. */
+const table = (label: string, hint: string, text: string, rows: number, on: (v: string) => void) =>
+  html`<wa-textarea class="mono" label=${label} hint=${hint} rows=${rows} .value=${text} @input=${(e: Event) => on(value(e))}></wa-textarea>`;
+
+@customElement('pv-tariff-content')
+export class TariffContentForm extends LitElement {
+  @property({ attribute: false }) content: unknown = {};
+  @state() private form: TariffForm = tariffFormFrom({});
+
+  constructor() {
+    super();
+    updateWhenLocaleChanges(this);
+  }
+
+  static styles = styles;
+
+  protected willUpdate(changed: Map<string, unknown>): void {
+    if (changed.has('content')) this.form = tariffFormFrom((this.content ?? {}) as Record<string, unknown>);
+  }
+
+  result(): ContentResult {
+    const problems = tariffFormProblems(this.form);
+    return { problems, content: problems.length ? null : tariffContentFrom(this.form, (this.content ?? {}) as Record<string, unknown>) };
+  }
+
+  private set(patch: Partial<TariffForm>) {
+    this.form = { ...this.form, ...patch };
+  }
+
+  render() {
+    const f = this.form;
+    const factorHint = msg('A factor of 1 is no change, 1.15 is 15 % more and 0.9 is 10 % less.', { id: 'tariff.factorHint' });
+    return html`
+      <fieldset>
+        <legend>${msg('Tariff', { id: 'tariff.legend' })}</legend>
+        <p class="pv-note">
+          ${msg('The price is the base premium times the factors for age, breed group, deductible and zone, at least the minimum, rounded to the nearest step.', { id: 'tariff.how' })}
+        </p>
+        <div class="row">
+          <wa-input label=${msg('Market', { id: 'claim.market' })} .value=${f.market} @input=${(e: Event) => this.set({ market: value(e).toUpperCase() })}></wa-input>
+          <wa-input label=${msg('Currency', { id: 'product.currency' })} .value=${f.currency} @input=${(e: Event) => this.set({ currency: value(e).toUpperCase() })}></wa-input>
+          <wa-input label=${msg('Lowest premium a year', { id: 'tariff.minimum' })} inputmode="decimal" .value=${f.minimumAnnual} @input=${(e: Event) => this.set({ minimumAnnual: value(e) })}></wa-input>
+          <wa-input
+            label=${msg('Round to', { id: 'tariff.roundTo' })}
+            hint=${msg('e.g. 1: whole kronor', { id: 'tariff.roundToHint' })}
+            inputmode="decimal"
+            .value=${f.roundTo}
+            @input=${(e: Event) => this.set({ roundTo: value(e) })}
+          ></wa-input>
+        </div>
+        ${table(
+          msg('Base premiums a year', { id: 'tariff.base' }),
+          msg('One per line: species; annual limit; premium. e.g. dog; 60000; 3000', { id: 'tariff.baseHint' }),
+          f.basePremiums,
+          4,
+          (v) => this.set({ basePremiums: v }),
+        )}
+        ${table(
+          msg('Age', { id: 'tariff.ageBands' }),
+          msg('One per line: species; from age in years; factor. The highest age not above the animal’s applies.', { id: 'tariff.ageBandsHint' }),
+          f.ageBands,
+          5,
+          (v) => this.set({ ageBands: v }),
+        )}
+      </fieldset>
+      <fieldset>
+        <legend>${msg('Breed groups', { id: 'tariff.breedLegend' })}</legend>
+        ${table(msg('Breeds', { id: 'reference.breeds' }), msg('One per line: breed = group, e.g. dog-bulldog = C', { id: 'tariff.breedGroupsHint' }), f.breedGroups, 5, (v) => this.set({ breedGroups: v }))}
+        <div class="row">
+          <wa-input
+            label=${msg('Group of other breeds', { id: 'tariff.defaultGroup' })}
+            .value=${f.defaultBreedGroup}
+            @input=${(e: Event) => this.set({ defaultBreedGroup: value(e) })}
+          ></wa-input>
+        </div>
+        ${table(msg('Factor per group', { id: 'tariff.groupFactors' }), `${msg('One per line: group = factor.', { id: 'tariff.groupFactorsHint' })} ${factorHint}`, f.breedGroupFactors, 3, (v) =>
+          this.set({ breedGroupFactors: v }),
+        )}
+      </fieldset>
+      <fieldset>
+        <legend>${msg('Deductible and zone', { id: 'tariff.otherLegend' })}</legend>
+        ${table(
+          msg('Factor per deductible', { id: 'tariff.deductibleFactors' }),
+          msg('One per line: the product’s deductible code = factor, e.g. high = 0.85', { id: 'tariff.deductibleFactorsHint' }),
+          f.deductibleFactors,
+          3,
+          (v) => this.set({ deductibleFactors: v }),
+        )}
+        ${table(
+          msg('Zones', { id: 'tariff.zones' }),
+          msg('One per line: postal code prefix = zone, e.g. 411 = centre. The longest match applies.', { id: 'tariff.zonesHint' }),
+          f.zones,
+          4,
+          (v) => this.set({ zones: v }),
+        )}
+        <div class="row">
+          <wa-input label=${msg('Zone of other postal codes', { id: 'tariff.defaultZone' })} .value=${f.defaultZone} @input=${(e: Event) => this.set({ defaultZone: value(e) })}></wa-input>
+        </div>
+        ${table(msg('Factor per zone', { id: 'tariff.zoneFactors' }), msg('One per line: zone = factor.', { id: 'tariff.zoneFactorsHint' }), f.zoneFactors, 3, (v) => this.set({ zoneFactors: v }))}
+      </fieldset>
+    `;
+  }
+}
+
+@customElement('pv-price-terms-content')
+export class PriceTermsContentForm extends LitElement {
+  @property({ attribute: false }) content: unknown = {};
+  @state() private form: PriceTermsForm = priceTermsFormFrom({});
+
+  constructor() {
+    super();
+    updateWhenLocaleChanges(this);
+  }
+
+  static styles = styles;
+
+  protected willUpdate(changed: Map<string, unknown>): void {
+    if (changed.has('content')) this.form = priceTermsFormFrom((this.content ?? {}) as Record<string, unknown>);
+  }
+
+  result(): ContentResult {
+    const problems = priceTermsFormProblems(this.form);
+    return { problems, content: problems.length ? null : priceTermsContentFrom(this.form, (this.content ?? {}) as Record<string, unknown>) };
+  }
+
+  private set(patch: Partial<PriceTermsForm>) {
+    this.form = { ...this.form, ...patch };
+  }
+
+  render() {
+    const f = this.form;
+    return html`
+      <fieldset>
+        <legend>${msg('Price terms', { id: 'terms.legend' })}</legend>
+        <p class="pv-note">
+          ${msg('Discounts on the tariff’s price. The best group discount applies, and a campaign code adds its own. Together never more than the cap, and never below the lowest premium.', { id: 'terms.how' })}
+        </p>
+        <div class="row">
+          <wa-input label=${msg('Market', { id: 'claim.market' })} .value=${f.market} @input=${(e: Event) => this.set({ market: value(e).toUpperCase() })}></wa-input>
+          <wa-input label=${msg('Currency', { id: 'product.currency' })} .value=${f.currency} @input=${(e: Event) => this.set({ currency: value(e).toUpperCase() })}></wa-input>
+          <wa-input
+            label=${msg('Largest discount in all, per cent', { id: 'terms.max' })}
+            inputmode="decimal"
+            .value=${f.maxTotalDiscount}
+            @input=${(e: Event) => this.set({ maxTotalDiscount: value(e) })}
+          ></wa-input>
+        </div>
+        ${table(
+          msg('Group discounts', { id: 'terms.groups' }),
+          msg('One per line: litter, household or any; from the nth animal; per cent. e.g. litter; 2; 15', { id: 'terms.groupsHint' }),
+          f.groupDiscounts,
+          3,
+          (v) => this.set({ groupDiscounts: v }),
+        )}
+        ${table(
+          msg('Campaign codes', { id: 'terms.campaigns' }),
+          msg('One per line: CODE; from; to (empty: no end); per cent; new or all. e.g. PUPPY2026; 2026-01-01; 2027-01-01; 20; new', { id: 'terms.campaignsHint' }),
+          f.campaigns,
+          4,
+          (v) => this.set({ campaigns: v }),
+        )}
       </fieldset>
     `;
   }
