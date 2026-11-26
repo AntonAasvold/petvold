@@ -144,7 +144,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [x] **Produkter och regler:** formulär för produkter och skaderegler, med JSON som alternativ, och en sammanfattning av vald version
 - [x] **Regler:** pröva en version av skaderegler mot sparade beslut
 - [x] **Regler:** formulär för tariffer och prisvillkor
-- [ ] **Regler:** formulär för teckningsregler
+- [x] **Regler:** formulär för teckningsregler
 - [x] **Skador:** omräkning av ett sparat beslut (ADR 0018)
 - [x] **Policy:** försäkringsbeloppet som återstår (PR #122)
 - [x] **Översikt:** en startsida med köerna, körningarna och det som fastnat

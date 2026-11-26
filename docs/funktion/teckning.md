@@ -15,6 +15,13 @@ Teckningsreglerna är en versionerad serie i regelmodulen, med beräkningsmodell
 | `answerRules` | Vad ett ja leder till: `rider` (förbehåll), `refer` (manuell prövning) eller `decline` (avslag), alltid med en skälskod. En regel kan gälla bara vissa diagnoser (`onlyFor`). |
 | `breedRules` | Raser som går till manuell prövning eller avslås, med skälskod. |
 
+**I back office** redigeras teckningsreglerna i ett formulär under **Regeluppsättningar**:
+- **Åldersgränser och raser** skrivs en per rad, till exempel `dog; 42; 9` och `dog-wolfhybrid; decline; breed-not-covered`.
+- **Varje hälsofråga** har id, svarstyp, arter och frågan på varje språk.
+- **Varje regel** har frågan, utfallet och skälkoden. En regel för en diagnosfråga kan gälla bara vissa diagnoser, och ett förbehåll har sin beskrivning och sina undantagna diagnoser.
+
+Formuläret gör samma kontroller som motorn innan något skickas. Till exempel säger det till när ett förbehåll på en ja- eller nej-fråga saknar undantagna diagnoser. Det går också att växla till JSON.
+
 ## Utfallet
 
 Alla regler prövas, och det strängaste utfallet vinner:

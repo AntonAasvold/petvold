@@ -29,7 +29,6 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Referensdata | Arter, raser och kön med namn per språk, om koden erbjuds för ny data och historiken. En ny kod, och en ändring som ny revision med skäl. | `catalog:read`, `catalog:write` för att ändra |
 | Regeluppsättningar | Serierna (skaderegler, tariffer, prisvillkor och teckningsregler) och varje version med livscykel. Seriens sida är byggd som produktens. | `rules:read`, `rules:write` för utkast, `rules:publish` för att publicera, skicka tillbaka och avveckla |
 
-*Inte byggt än:* formulär för teckningsregler.
 
 ## Översikt
 
@@ -395,7 +394,7 @@ Produkter och regeluppsättningar har samma livscykel (ADR 0021, 0023): utkast, 
    - **Skaderegler:** marknad, gränsen för automatiskt beslut, om moms ersätts, kategorier som aldrig ersätts, diagnosgrupper (en per rad, `kod = grupp`), och dagarna för komplettering.
    - **En tariff:** marknad och valuta, grundpremier per art och försäkringsbelopp, faktorer för ålder, rasgrupp, självrisk och zon, lägsta premie och avrundning. Belopp i kronor och faktorer som decimaltal, till exempel 1,15. Tabellerna skrivs en rad per post, till exempel `dog; 60000; 3000` eller `411 = centre`.
    - **Prisvillkor:** grupprabatter, kampanjkoder och den största rabatten sammanlagt, i procent.
-   - **Teckningsregler** redigeras som JSON.
+   - **Teckningsregler:** marknad, åldersgränser och raser en per rad, hälsofrågorna med text per språk, och vad ett ja leder till: förbehåll, en person eller avslag, med skälkod. Ett förbehåll har beskrivning och undantagna diagnoser.
    - **Kontrollerna:** formuläret säger vad som är fel innan något skickas. Det som formuläret inte visar finns kvar när utkastet sparas. API:t kontrollerar innehållet mot kontraktet och produktens regler, och appen visar varje fält som är fel.
    - **En vald version** visar en sammanfattning, och innehållet som JSON går att fälla ut.
 3. **Skicka till granskning.** Innehållet låses med en kontrollsumma.

@@ -200,6 +200,20 @@ export function problemLabel(id: string): string {
       return msg('Write the campaigns one per line as CODE; from; to; per cent; new or all. Each code once, the end after the start.', { id: 'terms.badCampaigns' });
     case 'terms.badMax':
       return msg('Give the largest discount in all, 0 to 100 per cent.', { id: 'terms.badMax' });
+    case 'uwform.badAgeLimits':
+      return msg('Write the age limits one per line as species; youngest in days; oldest in years, each species once.', { id: 'uwform.badAgeLimits' });
+    case 'uwform.badQuestion':
+      return msg('Each question needs an id in small letters, digits and dashes, and its text in at least one language.', { id: 'uwform.badQuestion' });
+    case 'uwform.duplicateQuestion':
+      return msg('Two questions have the same id.', { id: 'uwform.duplicateQuestion' });
+    case 'uwform.badAnswerRule':
+      return msg('Each rule needs one of the questions and a reason code in small letters, digits and dashes.', { id: 'uwform.badAnswerRule' });
+    case 'uwform.onlyForNeedsDiagnoses':
+      return msg('Only a question answered with diagnoses can limit a rule to some of them.', { id: 'uwform.onlyForNeedsDiagnoses' });
+    case 'uwform.badRider':
+      return msg('A rider needs a description, and for a yes-or-no question the excluded diagnoses.', { id: 'uwform.badRider' });
+    case 'uwform.badBreedRules':
+      return msg('Write the breeds one per line as breed; refer or decline; reason code, each breed once.', { id: 'uwform.badBreedRules' });
     case 'rules.badGroups':
       return msg('Write the diagnosis groups one per line as code = group, each code once.', { id: 'rules.badGroups' });
     case 'rules.badAutoSettle':

@@ -113,3 +113,38 @@ test('a tariff and price terms are edited as forms', async ({ page }) => {
   await versions.getByRole('row').filter({ hasText: 'Draft' }).getByRole('gridcell').first().click();
   await expect(panel.locator('pre')).toContainText('"code": "SPRING"');
 });
+
+test('underwriting rules are edited as a form: a new question and what a yes leads to', async ({ page }) => {
+  await signIn(page, 'dev-author', 'Rule sets');
+  const versions = page.getByRole('grid', { name: 'Versions' });
+  const panel = page.locator('pv-versions-panel');
+  await page.getByRole('grid', { name: 'Rule sets' }).getByRole('gridcell', { name: 'SE-HUND-UW', exact: true }).click();
+  await page.getByRole('button', { name: 'New draft from this' }).click();
+  await page.getByLabel('In force from').fill(`${nextYear}-01-01`);
+  const uw = page.locator('pv-underwriting-content');
+  await expect(uw.getByRole('textbox', { name: 'Age limits' })).toHaveValue(/^dog; \d+/);
+
+  await uw.getByRole('button', { name: 'Add a question' }).click();
+  const questions = uw.getByRole('group', { name: /^Question \d+$/ });
+  const q = questions.last();
+  await q.getByRole('textbox', { name: 'Id' }).fill('allergy');
+  await q.getByRole('textbox', { name: 'The question (sv)' }).fill('Har djuret en allergi?');
+  await q.getByRole('textbox', { name: 'The question (en)' }).fill('Does the animal have an allergy?');
+
+  await uw.getByRole('button', { name: 'Add a rule' }).click();
+  const r = uw.getByRole('group', { name: /^Rule \d+$/ }).last();
+  await r.getByRole('combobox', { name: 'When the answer is yes to' }).click();
+  await r.getByRole('option', { name: 'allergy' }).click();
+  await r.getByRole('combobox', { name: 'Then' }).click();
+  await r.getByRole('option', { name: 'Accept with a rider' }).click();
+  await r.getByRole('textbox', { name: 'Reason code' }).fill('allergy');
+  await r.getByRole('textbox', { name: 'The rider' }).fill('Allergy and its consequences');
+  await page.getByRole('button', { name: 'Save the draft' }).click();
+  await expect(panel.getByRole('alert')).toContainText('A rider needs a description, and for a yes-or-no question the excluded diagnoses.');
+  await r.getByRole('textbox', { name: 'Excluded diagnoses' }).fill('DER-ALLERGI');
+  await page.getByRole('button', { name: 'Save the draft' }).click();
+  await expect(status(page)).toContainText('Done.');
+  await versions.getByRole('row').filter({ hasText: 'Draft' }).getByRole('gridcell').first().click();
+  await expect(panel.locator('pre')).toContainText('"Har djuret en allergi?"');
+  await expect(panel.locator('pre')).toContainText('"DER-ALLERGI"');
+});

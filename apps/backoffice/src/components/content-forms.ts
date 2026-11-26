@@ -1,7 +1,8 @@
 /**
- * <pv-product-content>, <pv-rules-content>, <pv-tariff-content> and
- * <pv-price-terms-content>: a product's content, claims rules, a tariff and
- * price terms as forms (ADR 0021, 0023, 0030). Each starts from the content it is given and
+ * <pv-product-content>, <pv-rules-content>, <pv-tariff-content>,
+ * <pv-price-terms-content> and <pv-underwriting-content>: a product's content,
+ * claims rules, a tariff, price terms and underwriting rules as forms (ADR
+ * 0021, 0023, 0030, 0031). Each starts from the content it is given and
  * hands back new content with result(); what the form does not show is kept.
  */
 import { LitElement, css, html, nothing } from 'lit';
@@ -42,6 +43,16 @@ import {
   type TariffForm,
 } from '../pricing-form.ts';
 import { loadReferences, type RefItem } from '../reference.ts';
+import {
+  emptyAnswerRule,
+  emptyQuestion,
+  underwritingContentFrom,
+  underwritingFormFrom,
+  underwritingFormProblems,
+  type AnswerRuleForm,
+  type QuestionForm,
+  type UnderwritingForm,
+} from '../underwriting-form.ts';
 import { pvComponents } from '../styles/pv-components.ts';
 
 export interface ContentResult {
@@ -570,6 +581,164 @@ export class PriceTermsContentForm extends LitElement {
           4,
           (v) => this.set({ campaigns: v }),
         )}
+      </fieldset>
+    `;
+  }
+}
+
+@customElement('pv-underwriting-content')
+export class UnderwritingContentForm extends LitElement {
+  @property({ attribute: false }) content: unknown = {};
+  @state() private form: UnderwritingForm = underwritingFormFrom({});
+
+  constructor() {
+    super();
+    updateWhenLocaleChanges(this);
+  }
+
+  static styles = styles;
+
+  protected willUpdate(changed: Map<string, unknown>): void {
+    if (changed.has('content')) this.form = underwritingFormFrom((this.content ?? {}) as Record<string, unknown>);
+  }
+
+  result(): ContentResult {
+    const problems = underwritingFormProblems(this.form);
+    return { problems, content: problems.length ? null : underwritingContentFrom(this.form, (this.content ?? {}) as Record<string, unknown>) };
+  }
+
+  private set(patch: Partial<UnderwritingForm>) {
+    this.form = { ...this.form, ...patch };
+  }
+
+  private setQuestion(i: number, patch: Partial<QuestionForm>) {
+    this.set({ questions: this.form.questions.map((q, j) => (j === i ? { ...q, ...patch } : q)) });
+  }
+
+  private setRule(i: number, patch: Partial<AnswerRuleForm>) {
+    this.set({ answerRules: this.form.answerRules.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
+  }
+
+  private question(q: QuestionForm, i: number) {
+    const n = i + 1;
+    const remove = `${msg('Remove the question', { id: 'uwform.removeQuestion' })} ${n}`;
+    return html`<div class="deductible" role="group" aria-label=${`${msg('Question', { id: 'uwform.question' })} ${n}`}>
+      <div class="row">
+        <wa-input class="mono" label=${msg('Id', { id: 'uwform.questionId' })} .value=${q.id} @input=${(e: Event) => this.setQuestion(i, { id: value(e) })}></wa-input>
+        <wa-select label=${msg('Answer', { id: 'uwform.type' })} value=${q.type} @change=${(e: Event) => this.setQuestion(i, { type: value(e) as QuestionForm['type'] })}>
+          <wa-option value="boolean">${msg('Yes or no', { id: 'uwform.boolean' })}</wa-option>
+          <wa-option value="diagnoses">${msg('Yes with diagnoses', { id: 'uwform.diagnoses' })}</wa-option>
+        </wa-select>
+        <wa-input
+          label=${msg('Only for species', { id: 'uwform.species' })}
+          hint=${msg('Separated by commas. Empty: every species.', { id: 'uwform.speciesHint' })}
+          .value=${q.species}
+          @input=${(e: Event) => this.setQuestion(i, { species: value(e) })}
+        ></wa-input>
+        <wa-button appearance="plain" label=${remove} @click=${() => this.set({ questions: this.form.questions.filter((_, j) => j !== i) })}
+          ><wa-icon name="trash" label=${remove}></wa-icon
+        ></wa-button>
+      </div>
+      ${labelLanguages(q.labels).map(
+        (lang) => html`<wa-input
+          label=${`${msg('The question', { id: 'uwform.label' })} (${lang})`}
+          .value=${q.labels[lang] ?? ''}
+          @input=${(e: Event) => this.setQuestion(i, { labels: { ...q.labels, [lang]: value(e) } })}
+        ></wa-input>`,
+      )}
+    </div>`;
+  }
+
+  private rule(r: AnswerRuleForm, i: number) {
+    const n = i + 1;
+    const remove = `${msg('Remove the rule', { id: 'uwform.removeRule' })} ${n}`;
+    const q = this.form.questions.find((x) => x.id === r.question);
+    return html`<div class="deductible" role="group" aria-label=${`${msg('Rule', { id: 'uwform.rule' })} ${n}`}>
+      <div class="row">
+        <wa-select label=${msg('When the answer is yes to', { id: 'uwform.ruleQuestion' })} value=${r.question} @change=${(e: Event) => this.setRule(i, { question: value(e) })}>
+          ${this.form.questions.filter((x) => x.id).map((x) => html`<wa-option value=${x.id}>${x.id}</wa-option>`)}
+        </wa-select>
+        <wa-select label=${msg('Then', { id: 'uwform.outcome' })} value=${r.outcome} @change=${(e: Event) => this.setRule(i, { outcome: value(e) as AnswerRuleForm['outcome'] })}>
+          <wa-option value="rider">${msg('Accept with a rider', { id: 'uwform.rider' })}</wa-option>
+          <wa-option value="refer">${msg('Refer to a person', { id: 'uwform.refer' })}</wa-option>
+          <wa-option value="decline">${msg('Decline', { id: 'uwform.decline' })}</wa-option>
+        </wa-select>
+        <wa-input
+          class="mono"
+          label=${msg('Reason code', { id: 'uwform.reason' })}
+          hint=${msg('The channel explains it, e.g. heart-disease', { id: 'uwform.reasonHint' })}
+          .value=${r.reason}
+          @input=${(e: Event) => this.setRule(i, { reason: value(e) })}
+        ></wa-input>
+        <wa-button appearance="plain" label=${remove} @click=${() => this.set({ answerRules: this.form.answerRules.filter((_, j) => j !== i) })}
+          ><wa-icon name="trash" label=${remove}></wa-icon
+        ></wa-button>
+      </div>
+      ${q?.type === 'diagnoses'
+        ? html`<wa-input
+            class="mono"
+            label=${msg('Only for these diagnoses (optional)', { id: 'uwform.onlyFor' })}
+            hint=${msg('Codes separated by commas. Empty: any declared diagnosis.', { id: 'uwform.onlyForHint' })}
+            .value=${r.onlyFor}
+            @input=${(e: Event) => this.setRule(i, { onlyFor: value(e) })}
+          ></wa-input>`
+        : nothing}
+      ${r.outcome === 'rider'
+        ? html`<div class="row">
+            <wa-input label=${msg('The rider', { id: 'uwform.riderDescription' })} .value=${r.riderDescription} @input=${(e: Event) => this.setRule(i, { riderDescription: value(e) })}></wa-input>
+            <wa-input
+              class="mono"
+              label=${q?.type === 'boolean' ? msg('Excluded diagnoses', { id: 'uwform.codes' }) : msg('Also excluded (optional)', { id: 'uwform.moreCodes' })}
+              hint=${msg('Codes separated by commas', { id: 'uwform.codesHint' })}
+              .value=${r.diagnosisCodes}
+              @input=${(e: Event) => this.setRule(i, { diagnosisCodes: value(e) })}
+            ></wa-input>
+          </div>`
+        : nothing}
+    </div>`;
+  }
+
+  render() {
+    const f = this.form;
+    return html`
+      <fieldset>
+        <legend>${msg('Underwriting rules', { id: 'uwform.legend' })}</legend>
+        <p class="pv-note">${msg('The strictest outcome wins: decline before refer, refer before a rider. Every refer and decline has a reason code.', { id: 'uwform.how' })}</p>
+        <div class="row">
+          <wa-input label=${msg('Market', { id: 'claim.market' })} .value=${f.market} @input=${(e: Event) => this.set({ market: value(e).toUpperCase() })}></wa-input>
+        </div>
+        ${table(
+          msg('Age limits', { id: 'uwform.ageLimits' }),
+          msg('One per line: species; youngest in days; oldest in whole years (empty: no limit). e.g. dog; 42; 9. A species not listed is declined.', { id: 'uwform.ageLimitsHint' }),
+          f.ageLimits,
+          3,
+          (v) => this.set({ ageLimits: v }),
+        )}
+        ${table(
+          msg('Breeds', { id: 'reference.breeds' }),
+          msg('One per line: breed; refer or decline; reason code. e.g. dog-wolfhybrid; decline; breed-not-covered', { id: 'uwform.breedRulesHint' }),
+          f.breedRules,
+          3,
+          (v) => this.set({ breedRules: v }),
+        )}
+      </fieldset>
+      <fieldset>
+        <legend>${msg('Health questions', { id: 'uwform.questions' })}</legend>
+        ${f.questions.map((q, i) => this.question(q, i))}
+        <div class="row">
+          <wa-button appearance="outlined" @click=${() => this.set({ questions: [...f.questions, emptyQuestion()] })}
+            ><wa-icon slot="start" name="plus"></wa-icon>${msg('Add a question', { id: 'uwform.addQuestion' })}</wa-button
+          >
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>${msg('What a yes leads to', { id: 'uwform.rules' })}</legend>
+        ${f.answerRules.map((r, i) => this.rule(r, i))}
+        <div class="row">
+          <wa-button appearance="outlined" @click=${() => this.set({ answerRules: [...f.answerRules, emptyAnswerRule(f.questions[0]?.id ?? '')] })}
+            ><wa-icon slot="start" name="plus"></wa-icon>${msg('Add a rule', { id: 'uwform.addRule' })}</wa-button
+          >
+        </div>
       </fieldset>
     `;
   }

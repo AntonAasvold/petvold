@@ -19,6 +19,7 @@ import { lifecycleActions, parseJson, type Kind } from '../catalog-logic.ts';
 import type { Api } from '../api/client.ts';
 import { isClaimsRules, productFormFrom, rulesFormFrom } from '../product-form.ts';
 import { isPriceTerms, isTariff, priceTermsFormFrom, tariffFormFrom } from '../pricing-form.ts';
+import { isUnderwriting, underwritingFormFrom } from '../underwriting-form.ts';
 import { problemLabel } from '../views/labels.ts';
 import { pvComponents } from '../styles/pv-components.ts';
 import './content-forms.ts';
@@ -335,12 +336,13 @@ export class VersionsPanel extends LitElement {
     >`;
   }
 
-  /** The form for the content: a product, claims rules, a tariff or price terms. Other content is JSON only. */
-  private formKind(content: unknown): 'product' | 'rules' | 'tariff' | 'terms' | null {
+  /** The form for the content: a product, claims rules, a tariff, price terms or underwriting rules. Other content is JSON only. */
+  private formKind(content: unknown): 'product' | 'rules' | 'tariff' | 'terms' | 'underwriting' | null {
     if (this.adapter.kind === 'product') return 'product';
     if (isClaimsRules(content)) return 'rules';
     if (isTariff(content)) return 'tariff';
     if (isPriceTerms(content)) return 'terms';
+    if (isUnderwriting(content)) return 'underwriting';
     return null;
   }
 
@@ -384,6 +386,16 @@ export class VersionsPanel extends LitElement {
         ${row(msg('Largest discount in all, per cent', { id: 'terms.max' }), t.maxTotalDiscount)}
       </dl>`;
     }
+    if (this.formKind(c) === 'underwriting') {
+      const u = underwritingFormFrom(c);
+      return html`<dl class="pv-dl">
+        ${row(msg('Market', { id: 'claim.market' }), u.market)}
+        ${row(msg('Age limits', { id: 'uwform.ageLimits' }), u.ageLimits.split('\n').join(' · '))}
+        ${row(msg('Health questions', { id: 'uwform.questions' }), u.questions.map((q) => q.id).join(', '))}
+        ${row(msg('What a yes leads to', { id: 'uwform.rules' }), u.answerRules.length)}
+        ${row(msg('Breeds', { id: 'reference.breeds' }), u.breedRules.split('\n').filter(Boolean).length)}
+      </dl>`;
+    }
     const r = rulesFormFrom(c);
     return html`<dl class="pv-dl">
       ${row(msg('Market', { id: 'claim.market' }), r.market)}
@@ -395,7 +407,7 @@ export class VersionsPanel extends LitElement {
 
   /** The form's result, or null with its problems shown. */
   private formResult(): ContentResult | null {
-    const el = this.renderRoot.querySelector<HTMLElement & { result(): ContentResult }>('pv-product-content, pv-rules-content, pv-tariff-content, pv-price-terms-content');
+    const el = this.renderRoot.querySelector<HTMLElement & { result(): ContentResult }>('pv-product-content, pv-rules-content, pv-tariff-content, pv-price-terms-content, pv-underwriting-content');
     if (!el) return null;
     const r = el.result();
     if (r.problems.length) {
@@ -445,6 +457,8 @@ export class VersionsPanel extends LitElement {
         return html`<pv-tariff-content .content=${this.formContent}></pv-tariff-content>`;
       case 'terms':
         return html`<pv-price-terms-content .content=${this.formContent}></pv-price-terms-content>`;
+      case 'underwriting':
+        return html`<pv-underwriting-content .content=${this.formContent}></pv-underwriting-content>`;
       default:
         return html`<pv-rules-content .content=${this.formContent}></pv-rules-content>`;
     }
