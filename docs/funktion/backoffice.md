@@ -29,7 +29,7 @@ Ett gränssnitt för handläggare och back office, byggt på Petvolds API (ADR 0
 | Referensdata | Arter, raser och kön med namn per språk, om koden erbjuds för ny data och historiken. En ny kod, och en ändring som ny revision med skäl. | `catalog:read`, `catalog:write` för att ändra |
 | Regeluppsättningar | Serierna (skaderegler, tariffer, prisvillkor och teckningsregler) och varje version med livscykel. Seriens sida är byggd som produktens. | `rules:read`, `rules:write` för utkast, `rules:publish` för att publicera, skicka tillbaka och avveckla |
 
-*Inte byggt än:* simulering av en regelversion mot sparade beslut, och formulär för tariffer, prisvillkor och teckningsregler.
+*Inte byggt än:* formulär för tariffer, prisvillkor och teckningsregler.
 
 ## Översikt
 
@@ -399,6 +399,16 @@ Produkter och regeluppsättningar har samma livscykel (ADR 0021, 0023): utkast, 
 3. **Skicka till granskning.** Innehållet låses med en kontrollsumma.
 4. **Publicera eller skicka tillbaka.** Den som skickade in kan inte publicera (fyra ögon), och appen säger det. Att skicka tillbaka kräver ett skäl.
 5. **Avsluta.** En produkts försäljning avslutas från en dag, med skäl. Två versioner av en produkt kan inte säljas samma dag, så den gamla avslutas innan den nya publiceras. En regelversion avvecklas med skäl.
+
+**Pröva en version mot sparade beslut** (`rules:simulate`, ADR 0018). Under versionerna av en serie med skaderegler går det att välja en version, ofta utkastet, och en period, förvalt de senaste 90 dagarna. Varje skadas senaste beslut under perioden bedöms igen med versionen, från det sparade underlaget. Resultatet visar:
+- hur många beslut som prövades och hur många som skulle ändras
+- hur många som skulle gå från automatiskt beslut till en person, och tvärtom
+- ersättningarna per valuta före och efter
+- de beslut som ändras, med länk till skadan, sparat och nytt utfall, och vad som ändras
+
+Inget sparas. Varje beslut prövas för sig, så följder mellan skador, som självriskperioder, prövas inte. En tariff kan inte prövas än.
+
+**Exempel:** ett utkast höjer gränsen för automatiskt beslut från 10 000 kr till 15 000 kr. Prövningen visar att 12 beslut skulle gå från en person till automatiskt, och att ingen ersättning ändras.
 
 ## Språk
 

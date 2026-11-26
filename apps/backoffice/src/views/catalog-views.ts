@@ -2,7 +2,7 @@
  * Products and rule sets (ADR 0021, 0023): the lists, and a product or a rule
  * set series with its versions in <pv-versions-panel>.
  */
-import { LitElement, css, html } from 'lit';
+import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { msg, updateWhenLocaleChanges } from '@lit/localize';
 import '@awesome.me/webawesome/dist/components/button/button.js';
@@ -11,6 +11,7 @@ import '@awesome.me/webawesome/dist/components/badge/badge.js';
 import { unwrap, type Api } from '../api/client.ts';
 import type { components } from '../api/schema';
 import { nextProductVersion } from '../catalog-logic.ts';
+import '../components/rule-simulation.ts';
 import '../components/data-grid.ts';
 import '../components/versions-panel.ts';
 import type { Column } from '../components/data-grid.ts';
@@ -261,6 +262,7 @@ export class RuleSetDetail extends LitElement {
 
   render() {
     return html`${detailHead('/rule-sets', msg('Rule sets', { id: 'catalog.ruleSets' }), `${msg('Rule set', { id: 'catalog.ruleSet' })} ${this.series}`, this.series)}
-      <pv-versions-panel .adapter=${this.adapter()} .me=${this.me}></pv-versions-panel>`;
+      <pv-versions-panel .adapter=${this.adapter()} .me=${this.me}></pv-versions-panel>
+      ${this.me?.permissions.includes('rules:simulate') ? html`<pv-rule-simulation .api=${this.api} series=${this.series}></pv-rule-simulation>` : nothing}`;
   }
 }
