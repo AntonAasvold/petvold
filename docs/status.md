@@ -5,7 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-24 (pass 28)
 
 **Gjort**
-- Referensdata i back office, PR #NN: arter, raser och kön med namn per språk och historik. En ny kod med föreslagen kod, och ändringar som revisioner med skäl.
+- Referensdata i back office, PR #178: arter, raser och kön med namn per språk och historik. En ny kod med föreslagen kod, och ändringar som revisioner med skäl.
 - Köer under Körningar, PR #177: `GET /v1/relay-status` och kortet **Köer** visar per modul vad som väntar på reläet, hur gammalt det äldsta är och de döda posterna, och webhooks till bolagets system.
 - Policyn en viss dag, PR #176: ett kort på policyns sida visar det skademotorn ser en dag, så som det var känt vid en tidpunkt.
 - Omräkning av beslut, PR #175: förklaringen av ett beslut har **Räkna om från underlaget**, som visar samma resultat, vad som skiljer sig, eller att beräkningsmodellen saknas.

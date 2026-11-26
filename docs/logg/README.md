@@ -43,7 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
-| 2026-11-26 | [Referensdata i back office](2026-11-26-referensdata.md) | #NN |
+| 2026-11-26 | [Referensdata i back office](2026-11-26-referensdata.md) | #178 |
 | 2026-11-25 | [Köer under Körningar](2026-11-25-koer.md) | #177 |
 | 2026-11-25 | [Policyn en viss dag i back office](2026-11-25-policyn-en-viss-dag.md) | #176 |
 | 2026-11-25 | [Omräkning av beslut i back office](2026-11-25-omrakning-av-beslut.md) | #175 |

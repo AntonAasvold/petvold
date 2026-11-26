@@ -1,4 +1,4 @@
-# Referensdata i back office (PR #NN)
+# Referensdata i back office (PR #178)
 
 **Datum:** 2026-11-26 **ADR:** 0022, 0035 **Moduler:** `apps/backoffice`
 
