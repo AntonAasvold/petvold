@@ -171,6 +171,20 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
   - [x] Kö och beslut för manuell prövning, återkallelse och utgång
 - [ ] Rabatter som regler
 
+**Referensprodukter** ([kravunderlag](referensprodukter/README.md): hund, katt, häst och brittisk livstid)
+- [ ] ADR: kodsystem för diagnoser (F20) och insjuknandedag på skadan (F6)
+- [ ] Livförsäkring som moment, med nedtrappning efter ålder och slutålder per art och ras (F1)
+- [ ] Användbarhet och avelsförmåga, med delersättning och förbehåll efteråt (F2)
+- [ ] Delbelopp per år och kategori, och belopp per livstid för en diagnos (F3, F4)
+- [ ] Karens per diagnosgrupp, krav på obruten försäkring och undantag från karens (F7, F8, F9)
+- [ ] Självrisk som beror på orsak eller moment (F10)
+- [ ] Rasregler och djurets användning i skaderegleringen (F13)
+- [ ] Räknare över djurets livstid (F14)
+- [ ] Unga djur på moderns försäkring, och dolda fel (F15, F16)
+- [ ] Villkor för bevis och förhandsgodkännande i skadan (F17)
+- [ ] Vård utomlands med fakturor i annan valuta (F21)
+- [ ] Storbritannien: sjukdomen som eget objekt med belopp per sjukdom (F5, F12), andra moment (F18) och marknadsprofil (F19)
+
 ## Senare
 
 **Demo** (ADR 0041)

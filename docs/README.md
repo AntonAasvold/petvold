@@ -23,6 +23,7 @@ För försäkringsbolag, produktägare och handläggare. Ingen kod krävs för a
 - [Körningar](funktion/korningar.md): förnyelse, utgång och gallring varje dag, en server i taget, med historik
 - [Dokument](funktion/dokument.md): filer i Petvolds arkiv, kundens dokument och länkar som slutar gälla
 - [Back office](funktion/backoffice.md): gränssnittet för handläggare och back office
+- [Referensprodukter](referensprodukter/README.md): hund, katt och häst i Sverige och brittisk livstidsförsäkring, med krav ur publika villkor och vad Petvold klarar
 - [End-to-end-scenarier](end-to-end-scenario.md): en hel kundresa att testa för hand i back office, och det som saknas i gränssnittet
 - [Behörighet](funktion/behorighet.md): roller, rättigheter, omfång och hur en installation ställer in dem
 
