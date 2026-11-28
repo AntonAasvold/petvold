@@ -89,6 +89,8 @@ Signaturen följer Standard Webhooks. Det finns bibliotek för mottagaren i fler
 3. Jämför med värdet efter `v1,` i `webhook-signature`. Rubriken kan ha flera signaturer, separerade med mellanslag, och en räcker.
 4. Vägra en tidsstämpel som ligger mer än fem minuter fel. Det skyddar mot att någon spelar upp ett gammalt anrop.
 
+Ett exempel på en mottagare finns i [demotjänsten](../teknik/demotjanst.md): `apps/demo/src/signature.ts` kontrollerar signaturen och `apps/demo/src/app.ts` tar emot händelsen.
+
 **Byta hemlighet:** `POST /v1/webhook-subscriptions/{id}/secret-rotations` ger en ny hemlighet. Den gamla signerar också i 24 timmar, så att mottagaren hinner byta utan att tappa händelser.
 
 ## Försök och fel
@@ -139,3 +141,5 @@ POST /v1/webhook-subscriptions
 ## Lokalt
 
 Token `dev-integration` hanterar prenumerationer. Dev-servern tillåter `http://localhost` som adress, så en mottagare på den egna datorn kan ta emot händelserna. Dev-servern använder en fast nyckel för hemligheterna, som aldrig får användas i drift.
+
+Demotjänsten är en färdig mottagare: `npm run dev -w @petvold/demo` prenumererar på alla händelser och visar dem på `http://localhost:8790`.

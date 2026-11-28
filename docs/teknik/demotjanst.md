@@ -2,7 +2,7 @@
 
 Specen för Petvold Demo: en fristående tjänst som spelar försäkringsbolagets andra system. Den tar emot Petvolds händelser, spelar bank och kund, och kontrollerar hela tiden att händelserna och pengarna stämmer. Den använder bara Petvolds publika kontrakt och körs aldrig i drift.
 
-**Läge 2026-11-23:** inget av tjänsten är byggt. Petvold har det fas 1 och 2 behöver, och för fas 3 finns steg 3 i ADR 0040: låtsasbanken, inbetalningar, koppling till fakturor och utbetalningar. Specen skrevs först som ett eget dokument (2026-11-21) och flyttades hit, där den hålls aktuell med koden. Demon den ska köras i beskrivs i [Demon](demo.md) och ADR 0041.
+**Läge 2026-11-28:** fas 1 är byggd i `apps/demo`. Tjänsten prenumererar, tar emot och kontrollerar signaturen, sparar och visar händelserna, och finns i demons Compose på `/demo/`. Fas 2 (kontrollerna och vyerna per policy, skada och kund) och fas 3 (låtsasbanken) återstår. Petvold har det de behöver. Specen skrevs först som ett eget dokument (2026-11-21) och flyttades hit, där den hålls aktuell med koden. Demon den ska köras i beskrivs i [Demon](demo.md) och ADR 0041.
 
 ## Syfte och avgränsning
 
@@ -59,6 +59,8 @@ Tjänsten pratar med Petvold på tre sätt, alla genom kontraktet:
 - Med token `dev-integration` hämtar tjänsten `GET /v1/webhook-subscriptions` och letar efter en prenumeration på sin egen adress (`DEMO_PUBLIC_URL` och `/webhooks/petvold`).
 - **Saknas den** skapas den med `POST /v1/webhook-subscriptions`: typerna `*` och marknaderna `*`. Hemligheten (`whsec_…`) finns bara i svaret och sparas i tjänstens egen lagring.
 - **Finns den men tjänsten saknar hemligheten,** byts hemligheten med `POST /v1/webhook-subscriptions/{id}/secret-rotations`. Det är det vanliga i demon, se nedan.
+- **Har Petvold stängt av den,** till exempel efter fem dagar utan svar, slås den på igen med `PUT /v1/webhook-subscriptions/{id}` och `status: active`.
+- **Svarar Petvold inte,** försöker tjänsten igen var femte sekund och visar det överst på sidan.
 - **Dev-servern** tillåter `http://localhost`. Demon på servern tillåter `http://demo` på det interna nätet (`PETVOLD_WEBHOOK_ALLOW_HOSTS=demo`).
 
 **Historiken i demon.** `npm run demo:seed` skapar händelserna för sex månader innan Petvold startar ([Demon](demo.md#testdata)). Med `DEMO_WEBHOOK_URL` prenumererar testdatan själv på demotjänstens adress innan något händer. Varje händelse väntar då på demotjänsten. När Petvold startar skickas allt, signerat med den tid det skickas, så tidskontrollen godtar det. Händelsernas `time` är fortfarande dagen de hände. Demotjänsten byter hemligheten när den startar och får då hela historiken. Ingen hemlighet behöver stå i någon logg.
@@ -67,8 +69,11 @@ Tjänsten pratar med Petvold på tre sätt, alla genom kontraktet:
 
 - **Signaturen** kontrolleras enligt Standard Webhooks: HMAC-SHA256 av `webhook-id.webhook-timestamp.innehåll` med hemligheten, jämförd i konstant tid. Rubriken kan ha två signaturer när hemligheten byts, och en som stämmer räcker.
 - **En tidsstämpel** som ligger mer än fem minuter fel avvisas.
+- **Innan tjänsten har hemligheten** svarar den `503` och sparar inget. Petvold försöker igen efter fem sekunder.
 - **Händelsen sparas rå** (CloudEvent med `id`, `type`, `subject`, `time`, `market`, `sequence` och `data`), och tjänsten svarar `204` direkt. All tolkning sker efteråt, så att Petvolds omförsök inte styrs av tjänstens fel.
-- **En dubblett** känns igen på `webhook-id` och sparas som ett försök till, inte som en ny händelse, så att den syns i kontrollerna.
+- **En dubblett** känns igen på händelsens `id` (Petvold sätter `webhook-id` till samma) och sparas som ett anrop till, inte som en ny händelse, så att den syns i kontrollerna.
+- **Ett signerat innehåll som inte är en CloudEvent** avvisas med `400` och sparas bland de avvisade.
+- **Knappen Tappa nästa svar** gör att nästa händelse sparas men besvaras med `500`. Petvold skickar den då igen, och den syns som dubblett. Det är så en dubblett uppstår på riktigt: mottagaren sparade, men svaret kom aldrig fram.
 - **En händelse med fel signatur** sparas i en egen lista med skälet och besvaras med `401`. Den räknas aldrig in i kontrollerna.
 
 ### 3. Hämta detaljer
@@ -205,7 +210,7 @@ Samma stack som Petvold, så att den är lätt att läsa för den som känner k�
 | Del | Val |
 | --- | --- |
 | Språk och server | TypeScript på Node 24 med Hono, en process som både tar emot webhooks och serverar gränssnittet |
-| Gränssnitt | Lit och Web Awesome med Petvolds tokens från `design/tokens.json`, uppdateringar med server-sent events |
+| Gränssnitt | Sidor som servern bygger med `hono/html`, med Petvolds tokens och referenskomponenter (`design/components.css`). Listan uppdateras med server-sent events. Lit och Web Awesome kan komma med låtsasbanken i fas 3, om den behöver mer än formulär. |
 | Lagring | En egen databas `petvold_demo` i samma Postgres som Petvold, med en egen roll `demo_service`, node-postgres och migreringar med dbmate i `apps/demo/db/`. Aldrig Petvolds databas. |
 | Typer | Genererade från `modules/api/openapi.yaml` och `modules/api/asyncapi.yaml`, så att en ändring i kontraktet syns som typfel |
 | Tester | Kontrollerna som rena funktioner med inspelade händelser, signaturen mot Standard Webhooks testvektorer, och ett flöde med Playwright |
@@ -215,7 +220,7 @@ Samma stack som Petvold, så att den är lätt att läsa för den som känner k�
 | Tabell | Innehåll |
 | --- | --- |
 | `event` | En rad per händelse (CloudEvent `id`): typ, subject, marknad, `time`, `sequence`, `data` som JSON, första mottagning |
-| `delivery` | En rad per mottaget anrop: `webhook-id`, tid och om signaturen stämde. Visar dubbletter. |
+| `delivery` | En rad per godkänt anrop: `webhook-id`, tid och Petvolds rubriker. Fler än en per händelse är en dubblett. |
 | `rejected` | Anrop med fel signatur eller för gammal tidsstämpel, med skälet |
 | `check_result` | Senaste utfall per kontroll och objekt, med skäl och tid |
 | `bank_account`, `bank_movement` | Låtsasbankens konton och rörelser |
@@ -236,9 +241,9 @@ Samma stack som Petvold, så att den är lätt att läsa för den som känner k�
 | `DEMO_CHECK_TIMEOUT_SECONDS` | `120` | `120` |
 | `DEMO_START_BALANCE` | `1000000` (10 000 kr i öre) | Samma |
 
-**Lokalt:** `npm run dev` i `apps/demo` startar tjänsten. Den kräver att Petvolds dev-server kör. En knapp "Börja om" tömmer demons databas och skapar prenumerationen igen, utan att röra Petvold.
+**Lokalt:** `npm run dev -w @petvold/demo` kör migreringarna och startar tjänsten på `http://localhost:8790`. Den kräver att Petvolds dev-server kör (`npm run dev`) och att `npm run dev:up` har körts. `DEMO_DATABASE_URL=memory` håller allt i minnet. En knapp "Börja om", som tömmer demons databas och skapar prenumerationen igen, kommer i fas 2.
 
-**I demon på servern** blir tjänsten `demo` i `deploy/demo/compose.yaml`, på det interna nätet och bakom Caddy på `/demo` med samma kaka som resten. `reset.sh` gör då i den här ordningen:
+**I demon på servern** är tjänsten `demo` i `deploy/demo/compose.yaml`, på det interna nätet och bakom Caddy på `/demo/` med samma kaka som resten. Caddy tar bort `/demo` från sökvägen, och sidornas länkar börjar med `DEMO_BASE_PATH`. Tjänsten `demo-migrate` skapar databasen `petvold_demo` om den saknas och kör migreringarna som ägaren. Rollen `demo_service` skapas av `initdb/01-roles.sh` som modulernas roller. `reset.sh` gör i den här ordningen:
 1. Töm Petvolds och demotjänstens databaser.
 2. Kör testdatan med `DEMO_WEBHOOK_URL=http://demo:8790/webhooks/petvold`.
 3. Starta allt. Demotjänsten byter hemligheten, och Petvold skickar historiken.
@@ -264,10 +269,10 @@ Körningar startas redan med `POST /v1/jobs/{job}/runs`, så det behöver inte �
 Fas 1 och 2 kan byggas nu. Fas 3 kan börja med B1–B4 och B8, eftersom steg 3 i ADR 0040 är klart.
 
 1. **Fas 1: ta emot.** Prenumerationen vid start, mottagning med signaturkontroll, lagring och listan Händelser.
-    - Klart när en policy som tecknas i back office syns i listan inom tio sekunder, med giltig signatur.
-    - Klart när ett anrop med fel signatur eller för gammal tidsstämpel får `401` och syns bland avvisade.
-    - Klart när en leverans som skickas igen från Petvolds back office syns som dubblett, inte som en ny händelse.
-    - Klart när demon på servern visar hela historiken efter `reset.sh`.
+    - Klart när en policy som tecknas i back office syns i listan inom tio sekunder, med giltig signatur. **Klart:** en skada som anmäldes lokalt syntes efter två sekunder.
+    - Klart när ett anrop med fel signatur eller för gammal tidsstämpel får `401` och syns bland avvisade. **Klart.**
+    - Klart när en händelse som Petvold skickar igen syns som dubblett, inte som en ny händelse. **Klart**, med knappen Tappa nästa svar. Back office skickar bara om leveranser som gett upp (`dead`), och de har aldrig kommit fram.
+    - Klart när demon på servern visar hela historiken efter `reset.sh`. Prövas på servern.
 2. **Fas 2: visa och kontrollera.** Översikten, vyerna för policy, skada och kund, och kontrollerna H1–M1.
     - Klart när alla fem scenarier i [End-to-end-scenarier](../end-to-end-scenario.md) kan köras i back office och ger "Allt stämmer" i demon.
     - Klart när varje kontroll har ett test där den stämmer och ett där den inte gör det.

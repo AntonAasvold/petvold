@@ -1,0 +1,24 @@
+{
+  "name": "@petvold/demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Petvold Demo: plays the insurer's other systems, receives Petvold's webhooks and shows them (docs/teknik/demotjanst.md). Never in production.",
+  "scripts": {
+    "dev": "npm run db:migrate && node --env-file-if-exists=../../.env --import tsx --watch src/server.ts",
+    "start": "node --import tsx src/server.ts",
+    "db:migrate": "dbmate --url \"${DEMO_OWNER_DATABASE_URL:-postgres://petvold:petvold@127.0.0.1:5432/petvold_demo?sslmode=disable}\" --wait --no-dump-schema up && dbmate --url \"${DEMO_TEST_DATABASE_URL:-postgres://petvold:petvold@127.0.0.1:5432/petvold_demo_test?sslmode=disable}\" --wait --no-dump-schema up",
+    "types": "openapi-typescript ../../modules/api/openapi.yaml -o src/api/schema.d.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --import tsx --test \"test/*.test.ts\"",
+    "test:db": "node --import tsx --test --test-concurrency=1 \"test-db/*.test.ts\""
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.8",
+    "hono": "^4.13.18",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0"
+  }
+}

@@ -23,6 +23,7 @@ const ALLOWED: Record<string, string> = {
   'modules/api/seed/rule-sets.json': 'the test products\' rule series, with Swedish health questions (sv)',
   'modules/api/seed/demo-notice-texts.json': "the demo insurer's texts in notices (sv)",
   'apps/backoffice/src/locales/sv.ts': 'Swedish texts of the back office (sv)',
+  'apps/demo/src/texts-sv.ts': 'Swedish texts of the demo service (sv)',
   'modules/documents/src/templates/texts-sv.ts': 'Swedish texts of the document templates (sv)',
   'db/migrations/0001_claims.sql': 'migration already applied; never edited',
   'db/migrations/0002_claims_grants.sql': 'migration already applied; never edited',

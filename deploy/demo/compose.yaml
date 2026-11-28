@@ -63,7 +63,7 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
-    depends_on: [api, web]
+    depends_on: [api, web, demo]
 
   api:
     <<: *petvold
@@ -106,10 +106,40 @@ services:
     restart: "no"
     profiles: [seed]
     command: ["node", "--import", "tsx", "modules/api/scripts/demo-seed.ts", "--months", "${DEMO_MONTHS:-6}", "--seed", "${DEMO_SEED:-1}"]
+    environment:
+      <<: *petvold-env
+      # The demo service is subscribed first and gets the whole history when Petvold starts.
+      DEMO_WEBHOOK_URL: http://demo:8790/webhooks/petvold
     depends_on:
       migrate: { condition: service_completed_successfully }
       seaweedfs: { condition: service_healthy }
       gotenberg: { condition: service_healthy }
+
+  # The demo service (docs/teknik/demotjanst.md): receives Petvold's webhooks
+  # on the internal network and shows them at /demo. Its own database,
+  # petvold_demo, in the same Postgres.
+  demo:
+    image: ghcr.io/antonaasvold/petvold-demo:${PETVOLD_TAG:-main}
+    build: { context: ../.., target: demo }
+    restart: unless-stopped
+    environment:
+      PETVOLD_API_URL: http://api:8080
+      PETVOLD_BACKOFFICE_URL: ${DEMO_PUBLIC_URL:-https://${DEMO_DOMAIN}}
+      # The address Petvold sends webhooks to, inside the network (PETVOLD_WEBHOOK_ALLOW_HOSTS: demo).
+      DEMO_PUBLIC_URL: http://demo:8790
+      DEMO_BASE_PATH: /demo/
+      DEMO_DATABASE_URL: postgres://demo_service:${SERVICE_DB_PASSWORD}@postgres:5432/petvold_demo?sslmode=disable
+    depends_on:
+      demo-migrate: { condition: service_completed_successfully }
+
+  # Makes petvold_demo if it is missing and runs the demo service's migrations, then stops.
+  demo-migrate:
+    image: ghcr.io/antonaasvold/petvold-demo:${PETVOLD_TAG:-main}
+    build: { context: ../.., target: demo }
+    restart: "no"
+    command: ["node_modules/.bin/dbmate", "--url", "postgres://petvold:${POSTGRES_PASSWORD}@postgres:5432/petvold_demo?sslmode=disable", "--migrations-dir", "apps/demo/db/migrations", "--wait", "--no-dump-schema", "up"]
+    depends_on:
+      roles: { condition: service_completed_successfully }
 
   web:
     image: ghcr.io/antonaasvold/petvold-web:${PETVOLD_TAG:-main}

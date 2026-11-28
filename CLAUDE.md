@@ -34,5 +34,6 @@ npm run roles:sync     # nya standardroller till sparad rollinställning (-- --a
 npm run erasures:reapply  # efter återställning från säkerhetskopia (ADR 0028)
 npm run catalog:seed   # nya serier och produkter från exempeldatan till en installation med data (-- --apply lägger till)
 npm run dev
+npm run dev -w @petvold/demo   # demotjänsten på :8790, kräver npm run dev
 npm start              # server för drift, se docs/teknik/drift.md
 ```
