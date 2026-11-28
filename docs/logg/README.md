@@ -17,7 +17,7 @@ Posterna ändras inte i efterhand. Om något ändras senare skriver den nya PR:e
 Filnamn: `ÅÅÅÅ-MM-DD-kort-namn.md`.
 
 ```markdown
-# Rubrik (PR #NN)
+# Rubrik (PR #183)
 
 **Datum:** … **ADR:** … **Moduler:** …
 
@@ -43,7 +43,7 @@ Senaste först.
 
 | Datum | Post | PR |
 | --- | --- | --- |
-| 2026-11-28 | [Demotjänsten, fas 1](2026-11-28-demotjanst-fas1.md) | #NN |
+| 2026-11-28 | [Demotjänsten, fas 1](2026-11-28-demotjanst-fas1.md) | #183 |
 | 2026-11-28 | [Testprodukter](2026-11-28-testprodukter.md) | #182 |
 | 2026-11-26 | [Formulär för teckningsregler](2026-11-26-formular-for-teckning.md) | #181 |
 | 2026-11-26 | [Formulär för tariffer och prisvillkor](2026-11-26-formular-for-pris.md) | #180 |

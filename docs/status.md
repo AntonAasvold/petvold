@@ -5,7 +5,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 ## 2026-11-22 – 2026-11-28 (pass 28)
 
 **Gjort**
-- Demotjänsten, fas 1, PR #NN: `apps/demo` prenumererar på alla händelser, kontrollerar signaturen och visar händelserna live med filter, avvisade anrop och dubbletter. Den finns i demons Compose på `/demo/` och får hela historiken efter `reset.sh`.
+- Demotjänsten, fas 1, PR #183: `apps/demo` prenumererar på alla händelser, kontrollerar signaturen och visar händelserna live med filter, avvisade anrop och dubbletter. Den finns i demons Compose på `/demo/` och får hela historiken efter `reset.sh`.
 - Testprodukter, PR #182: Hund Extra, Hund Mini, Katt Extra och Katt Enkel med egna serier för skaderegler, tariff, prisvillkor och teckning, publicerade genom granskning. `npm run catalog:seed` lägger till dem i en installation med data, till exempel demon.
 - Formulär för teckningsregler, PR #181: åldersgränser och raser en per rad, hälsofrågor med text per språk och regler för vad ett ja leder till, med motorns kontroller innan något skickas.
 - Formulär för tariffer och prisvillkor, PR #180: belopp i kronor, faktorer som decimaltal, rabatter i procent och tabeller en rad per post, med kontroller innan något skickas.
