@@ -172,7 +172,10 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [ ] Rabatter som regler
 
 **Referensprodukter** ([kravunderlag](referensprodukter/README.md): hund, katt, häst och brittisk livstid)
-- [ ] ADR: kodsystem för diagnoser (F20) och insjuknandedag på skadan (F6)
+- [x] ADR 0042: kodsystem för diagnoser (F20), föreslagen
+- [ ] Kodverk i `catalog` enligt ADR 0042: utgåvor, koder per art, mappningar, fyra ögon, och `diagnosis: { system, code }` på skadan
+- [ ] Jordbruksverkets lista över behandlingsorsaker som kodverket `se-sjv`, med ett skript som läser in filen från Jordbruksverket
+- [ ] ADR: insjuknandedag på skadan (F6)
 - [ ] Livförsäkring som moment, med nedtrappning efter ålder och slutålder per art och ras (F1)
 - [ ] Användbarhet och avelsförmåga, med delersättning och förbehåll efteråt (F2)
 - [ ] Delbelopp per år och kategori, och belopp per livstid för en diagnos (F3, F4)

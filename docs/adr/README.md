@@ -43,5 +43,6 @@
 | [0039](0039-partens-livscykel.md) | Partens livscykel: sökning på namn, nummer som tas bort, begränsning och avslut | Beslutad |
 | [0040](0040-premier-fakturor-och-utbetalningar.md) | Pengar: premieplaner, fakturor, inbetalningar, utbetalningar och bokföring | Beslutad |
 | [0041](0041-demoinstallation.md) | Demon: en installation på en egen server, med demoanvändare och testdata | Beslutad |
+| [0042](0042-kodsystem-for-diagnoser.md) | Kodsystem för diagnoser: kodverk i utgåvor, kod och kodverk på skadan, och Jordbruksverket först | Föreslagen |
 
 Nytt beslut: kopiera `0000-mall.md`, nästa lediga nummer, och lägg till raden här.
