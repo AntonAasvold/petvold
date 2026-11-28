@@ -180,12 +180,14 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
 - [x] Testdata: `npm run demo:seed`, sex månader dag för dag
 - [x] `deploy/demo/` med Compose, Caddy och återställning
 - [x] Demon på en annan port, med certifikat från DuckDNS
-- [ ] Demotjänsten, fas 1: ta emot och visa händelserna
+- [x] Demotjänsten, fas 1: ta emot och visa händelserna
+- [ ] Demotjänsten, fas 2: kontrollerna och vyerna för policy, skada och kund
+- [ ] Demotjänsten, fas 3: låtsasbanken och kontrollerna för pengarna
 
 **M5 – Pengar**
 - [x] ADR 0040: premieplaner, fakturor, inbetalningar, utbetalningar och bokföring (beslutad 2026-11-21). Byggs i åtta steg:
   - [x] `billing-core`: premieplan, fördelning av betalningar och avräkning vid avslut
-  - [ ] `billing`:
+  - [x] `billing`:
     - [x] 2a: betalarkonton och premieplaner från `policy.issued` och `policy.renewed`, produktens inställningar för betalning, läsning i API:et
     - [x] 2b-1: fakturering som körning, nummerserie, betalningsreferens (OCR och RF) och `invoice.issued`
     - [x] 2b-2: fakturan som meddelande till kunden
@@ -210,7 +212,7 @@ I dag finns förnyelse, gallring och utgång av ansökningar och förslag bara s
     - [x] 7b: utbetalningar som `pain.001`, och bankens bekräftelse i `camt.054`
     - [x] 7c: Stripe Checkout för kort och Swish, en betalsida per faktura
     - [ ] Autogiro via Bankgirot och SEPA-autogiro, och Swish direkt utan Stripe
-  - [ ] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav:
+  - [x] Back office: betalarens konto, fakturor, okopplade inbetalningar, utbetalningar och återkrav:
     - [x] 8a: köerna i **Pengar**: okopplade inbetalningar, spärrade utbetalningar och kreditförslag
     - [x] 8b: betalarens konto på partens sida, med fakturor, saldo, kreditnota och återbetalning
     - [x] 8c: betaluppgifter och avtal med kliniker

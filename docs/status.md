@@ -2,9 +2,10 @@
 
 Läses i början och uppdateras i slutet av varje arbetspass. Här står bara det senaste passet, med nästa steg och det som är öppet. Äldre pass finns i [statusarkivet](status-arkiv.md), och detaljerna i [byggloggen](logg/README.md).
 
-## 2026-11-22 – 2026-11-24 (pass 28)
+## 2026-11-22 – 2026-11-28 (pass 28)
 
 **Gjort**
+- Demotjänsten, fas 1, PR #183: `apps/demo` prenumererar på alla händelser, kontrollerar signaturen och visar händelserna live med filter, avvisade anrop och dubbletter. Den finns i demons Compose på `/demo/` och får hela historiken efter `reset.sh`.
 - Testprodukter, PR #182: Hund Extra, Hund Mini, Katt Extra och Katt Enkel med egna serier för skaderegler, tariff, prisvillkor och teckning, publicerade genom granskning. `npm run catalog:seed` lägger till dem i en installation med data, till exempel demon.
 - Formulär för teckningsregler, PR #181: åldersgränser och raser en per rad, hälsofrågor med text per språk och regler för vad ett ja leder till, med motorns kontroller innan något skickas.
 - Formulär för tariffer och prisvillkor, PR #180: belopp i kronor, faktorer som decimaltal, rabatter i procent och tabeller en rad per post, med kontroller innan något skickas.
@@ -46,7 +47,7 @@ Läses i början och uppdateras i slutet av varje arbetspass. Här står bara de
 - Pengar, steg 3b, PR #145: inbetalningar kopplas till fakturan med OCR eller RF, först den fakturan och sedan äldsta förfallna, resten blir tillgodohavande. Kön med okopplade inbetalningar och koppling för hand (`billing:write`). `invoice.paid`, och fakturans status och kontots saldo i API:t. Egenskapstest för fördelningen. Migration 0055.
 
 **Nästa steg**
-1. Demotjänstens fas 1 enligt [specen](teknik/demotjanst.md): ta emot och visa händelserna, och lägga den i demons Compose. Demon kör i Proxmox med DuckDNS sedan 2026-11-23.
+1. Demotjänstens fas 2 enligt [specen](teknik/demotjanst.md): översikten, vyerna för policy, skada och kund, och kontrollerna H1–M1. Fas 1 prövas på servern med `./reset.sh`.
 2. ADR 0040, steg 7: Autogiro via Bankgirot och SEPA-autogiro, och Swish direkt utan Stripe. Bankfiler och Stripe är byggda.
 
 **Öppet**

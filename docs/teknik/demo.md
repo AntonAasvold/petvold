@@ -59,7 +59,7 @@ Varje merge till `main` publicerar nya avbildningar (`Images` i Actions). På se
 cd ~/petvold && git pull
 cd deploy/demo && ./reset.sh                                   # ny testdata
 # eller, med datan kvar:
-docker compose pull api web && docker compose up -d
+docker compose pull api web demo && docker compose up -d
 ```
 
 ### Nya produkter och regler, med datan kvar
@@ -76,6 +76,10 @@ docker compose --profile seed run --rm seed node --import tsx modules/api/script
 Kommandot ändrar aldrig något som finns, och produkterna går genom granskningen. Det kan köras medan Petvold är igång.
 
 `git pull` behövs när `deploy/demo` har ändrats. Med datan kvar körs först tjänsten `roles`, som skapar de modulroller som saknas, och sedan `migrate`. En ny modul med en egen roll fungerar alltså utan att datan rensas. Rollerna skapas av samma skript som när databasen skapas (`initdb/01-roles.sh`), så listan finns på ett ställe.
+
+### Demotjänsten
+
+[Demotjänsten](demotjanst.md) finns på `/demo/` bakom samma lösenord. Den tar emot alla Petvolds händelser på det interna nätet och visar dem. Efter `reset.sh` har den hela historiken från testdatan. En demo som uppdateras med datan kvar får en ny prenumeration och ser bara händelserna från och med uppdateringen.
 
 ### Lokalt
 

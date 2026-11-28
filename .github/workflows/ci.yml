@@ -20,6 +20,12 @@ jobs:
       - run: npm run lint:openapi
       - run: npm run lint:lang
       - run: npm run site
+      - name: The demo service's API types match openapi.yaml
+        run: |
+          npm run types -w @petvold/demo
+          git diff --exit-code -- apps/demo/src/api/schema.d.ts
+      - run: npm run typecheck -w @petvold/demo
+      - run: npm test -w @petvold/demo
 
   ui:
     # The back office (ADR 0035): types from the contract, checks, tests, flows in a browser, build.
@@ -61,6 +67,10 @@ jobs:
       - run: cp .env.example .env
       - run: npm run dev:up
       - run: npm run test:db
+      - name: The demo service's database
+        run: |
+          npm run db:migrate -w @petvold/demo
+          npm run test:db -w @petvold/demo
       - name: The latest migration can be rolled back and reapplied with data in the tables
         run: |
           npx dbmate --env TEST_DATABASE_URL --no-dump-schema rollback
