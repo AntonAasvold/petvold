@@ -237,5 +237,470 @@
         "installmentFee": 0
       }
     }
+  },
+  {
+    "product": "SE-HUND-EXTRA",
+    "version": "2026.1",
+    "salesFrom": "2026-01-01",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "species": [
+        "dog"
+      ],
+      "names": {
+        "sv": "Hund Extra",
+        "en": "Dog Extra"
+      },
+      "ruleSeries": "SE-HUND-EXTRA-VV",
+      "tariffSeries": "SE-HUND-EXTRA-TARIFF",
+      "priceTermsSeries": "SE-HUND-EXTRA-TERMS",
+      "underwritingSeries": "SE-HUND-EXTRA-UW",
+      "vetCare": {
+        "annualLimits": [
+          3000000,
+          6000000,
+          12000000
+        ],
+        "defaultAnnualLimit": 6000000,
+        "deductibles": [
+          {
+            "code": "f1600-v15",
+            "labels": {
+              "sv": "1 600 kr + 15 %",
+              "en": "SEK 1,600 + 15%"
+            },
+            "terms": {
+              "fixed": 160000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 1500
+            }
+          },
+          {
+            "code": "f1600-v25",
+            "labels": {
+              "sv": "1 600 kr + 25 %",
+              "en": "SEK 1,600 + 25%"
+            },
+            "terms": {
+              "fixed": 160000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 2500
+            }
+          },
+          {
+            "code": "f2700-v15",
+            "labels": {
+              "sv": "2 700 kr + 15 %",
+              "en": "SEK 2,700 + 15%"
+            },
+            "terms": {
+              "fixed": 270000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 1500
+            }
+          },
+          {
+            "code": "f2700-v25",
+            "labels": {
+              "sv": "2 700 kr + 25 %",
+              "en": "SEK 2,700 + 25%"
+            },
+            "terms": {
+              "fixed": 270000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 2500
+            }
+          },
+          {
+            "code": "f3600-v15",
+            "labels": {
+              "sv": "3 600 kr + 15 %",
+              "en": "SEK 3,600 + 15%"
+            },
+            "terms": {
+              "fixed": 360000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 1500
+            }
+          },
+          {
+            "code": "f3600-v25",
+            "labels": {
+              "sv": "3 600 kr + 25 %",
+              "en": "SEK 3,600 + 25%"
+            },
+            "terms": {
+              "fixed": 360000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 2500
+            }
+          }
+        ],
+        "defaultDeductible": "f2700-v15",
+        "waitingPeriodDays": 30
+      },
+      "policy": {
+        "termMonths": 12,
+        "midTermCancellation": "immediate",
+        "maxStartAheadDays": 90,
+        "applicationExpiryDays": 30,
+        "renewalLeadDays": 45
+      },
+      "billing": {
+        "paymentIntervals": [
+          "year",
+          "quarter",
+          "month"
+        ],
+        "defaultPaymentInterval": "year",
+        "installmentFee": 0
+      },
+      "documents": [
+        {
+          "type": "terms",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-hund-extra/2026.1/terms-sv.pdf",
+          "sha256": "2a26faa798016155be2f6e8cd358a13517c0c17ac3f16dfebb6dc23953bf39b1"
+        },
+        {
+          "type": "pre-contract",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-hund-extra/2026.1/pre-contract-sv.pdf",
+          "sha256": "12fbb3b76b4ff4f9d2bc0b9cfc4a6c26e414bb484f47a89a221769369211e627"
+        },
+        {
+          "type": "ipid",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-hund-extra/2026.1/ipid-sv.pdf",
+          "sha256": "39d9be496c43ab26259e95413ad25e6c249069f35c33141cf31fc4908b0cb899"
+        }
+      ]
+    }
+  },
+  {
+    "product": "SE-HUND-MINI",
+    "version": "2026.1",
+    "salesFrom": "2026-01-01",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "species": [
+        "dog"
+      ],
+      "names": {
+        "sv": "Hund Mini",
+        "en": "Dog Mini"
+      },
+      "ruleSeries": "SE-HUND-MINI-VV",
+      "tariffSeries": "SE-HUND-MINI-TARIFF",
+      "priceTermsSeries": "SE-HUND-MINI-TERMS",
+      "underwritingSeries": "SE-HUND-EXTRA-UW",
+      "vetCare": {
+        "annualLimits": [
+          3000000,
+          6000000
+        ],
+        "defaultAnnualLimit": 3000000,
+        "deductibles": [
+          {
+            "code": "f2700-v25",
+            "labels": {
+              "sv": "2 700 kr + 25 %",
+              "en": "SEK 2,700 + 25%"
+            },
+            "terms": {
+              "fixed": 270000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 2500
+            }
+          },
+          {
+            "code": "f3600-v25",
+            "labels": {
+              "sv": "3 600 kr + 25 %",
+              "en": "SEK 3,600 + 25%"
+            },
+            "terms": {
+              "fixed": 360000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 2500
+            }
+          }
+        ],
+        "defaultDeductible": "f2700-v25",
+        "waitingPeriodDays": 30
+      },
+      "policy": {
+        "termMonths": 12,
+        "midTermCancellation": "immediate",
+        "maxStartAheadDays": 90,
+        "applicationExpiryDays": 30,
+        "renewalLeadDays": 45
+      },
+      "billing": {
+        "paymentIntervals": [
+          "year",
+          "quarter",
+          "month"
+        ],
+        "defaultPaymentInterval": "year",
+        "installmentFee": 0
+      },
+      "documents": [
+        {
+          "type": "terms",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-hund-mini/2026.1/terms-sv.pdf",
+          "sha256": "1bf0e910d182c5b0e369c4a484fdaeafc109dfd4b9b6626f1de05f8637311750"
+        },
+        {
+          "type": "pre-contract",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-hund-mini/2026.1/pre-contract-sv.pdf",
+          "sha256": "d4346cb37aeeacbc26de9c426c149bffaae1de5eff653a4922a28ef98ed1b1db"
+        },
+        {
+          "type": "ipid",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-hund-mini/2026.1/ipid-sv.pdf",
+          "sha256": "bcdb3e6bd7b70775317073b421e4680349462483031d70378ff0a3ce29aa4668"
+        }
+      ]
+    }
+  },
+  {
+    "product": "SE-KATT-EXTRA",
+    "version": "2026.1",
+    "salesFrom": "2026-01-01",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "species": [
+        "cat"
+      ],
+      "names": {
+        "sv": "Katt Extra",
+        "en": "Cat Extra"
+      },
+      "ruleSeries": "SE-KATT-EXTRA-VV",
+      "tariffSeries": "SE-KATT-EXTRA-TARIFF",
+      "priceTermsSeries": "SE-KATT-EXTRA-TERMS",
+      "underwritingSeries": "SE-KATT-UW",
+      "vetCare": {
+        "annualLimits": [
+          3000000,
+          6000000,
+          12000000
+        ],
+        "defaultAnnualLimit": 6000000,
+        "deductibles": [
+          {
+            "code": "f1600-v15",
+            "labels": {
+              "sv": "1 600 kr + 15 %",
+              "en": "SEK 1,600 + 15%"
+            },
+            "terms": {
+              "fixed": 160000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 1500
+            }
+          },
+          {
+            "code": "f1600-v25",
+            "labels": {
+              "sv": "1 600 kr + 25 %",
+              "en": "SEK 1,600 + 25%"
+            },
+            "terms": {
+              "fixed": 160000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 2500
+            }
+          },
+          {
+            "code": "f2700-v15",
+            "labels": {
+              "sv": "2 700 kr + 15 %",
+              "en": "SEK 2,700 + 15%"
+            },
+            "terms": {
+              "fixed": 270000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 1500
+            }
+          },
+          {
+            "code": "f2700-v25",
+            "labels": {
+              "sv": "2 700 kr + 25 %",
+              "en": "SEK 2,700 + 25%"
+            },
+            "terms": {
+              "fixed": 270000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 2500
+            }
+          },
+          {
+            "code": "f3600-v15",
+            "labels": {
+              "sv": "3 600 kr + 15 %",
+              "en": "SEK 3,600 + 15%"
+            },
+            "terms": {
+              "fixed": 360000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 1500
+            }
+          },
+          {
+            "code": "f3600-v25",
+            "labels": {
+              "sv": "3 600 kr + 25 %",
+              "en": "SEK 3,600 + 25%"
+            },
+            "terms": {
+              "fixed": 360000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 2500
+            }
+          }
+        ],
+        "defaultDeductible": "f2700-v15",
+        "waitingPeriodDays": 30
+      },
+      "policy": {
+        "termMonths": 12,
+        "midTermCancellation": "immediate",
+        "maxStartAheadDays": 90,
+        "applicationExpiryDays": 30,
+        "renewalLeadDays": 45
+      },
+      "billing": {
+        "paymentIntervals": [
+          "year",
+          "quarter",
+          "month"
+        ],
+        "defaultPaymentInterval": "year",
+        "installmentFee": 0
+      },
+      "documents": [
+        {
+          "type": "terms",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-katt-extra/2026.1/terms-sv.pdf",
+          "sha256": "f12c6d4bdbfc927723fc34ea823ac5bcc0979daf0a0e6d6c96925125d8d65930"
+        },
+        {
+          "type": "pre-contract",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-katt-extra/2026.1/pre-contract-sv.pdf",
+          "sha256": "5502bad5c1f8ed23cf180669f6fc1bb3e5449d614a6331250413378ed6733e39"
+        },
+        {
+          "type": "ipid",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-katt-extra/2026.1/ipid-sv.pdf",
+          "sha256": "44b1bf13260a1384d173df57a6a17c8fc006cc5abd2aae9f4f7d4d91cf98c664"
+        }
+      ]
+    }
+  },
+  {
+    "product": "SE-KATT-ENKEL",
+    "version": "2026.1",
+    "salesFrom": "2026-01-01",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "species": [
+        "cat"
+      ],
+      "names": {
+        "sv": "Katt Enkel",
+        "en": "Cat Simple"
+      },
+      "ruleSeries": "SE-KATT-ENKEL-VV",
+      "tariffSeries": "SE-KATT-ENKEL-TARIFF",
+      "priceTermsSeries": "SE-KATT-ENKEL-TERMS",
+      "underwritingSeries": "SE-KATT-UW",
+      "vetCare": {
+        "annualLimits": [
+          1500000,
+          3000000
+        ],
+        "defaultAnnualLimit": 3000000,
+        "deductibles": [
+          {
+            "code": "fixed",
+            "labels": {
+              "sv": "1 200 kr + 25 %",
+              "en": "SEK 1,200 + 25%"
+            },
+            "terms": {
+              "fixed": 120000,
+              "fixedPer": "period",
+              "periodDays": 135,
+              "variableBp": 2500
+            }
+          }
+        ],
+        "defaultDeductible": "fixed",
+        "waitingPeriodDays": 30
+      },
+      "policy": {
+        "termMonths": 12,
+        "midTermCancellation": "immediate",
+        "maxStartAheadDays": 90,
+        "applicationExpiryDays": 30,
+        "renewalLeadDays": 45
+      },
+      "billing": {
+        "paymentIntervals": [
+          "year",
+          "quarter",
+          "month"
+        ],
+        "defaultPaymentInterval": "year",
+        "installmentFee": 0
+      },
+      "documents": [
+        {
+          "type": "terms",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-katt-enkel/2026.1/terms-sv.pdf",
+          "sha256": "6b9c69611a4f1aa50e0d8510d466665f88dcfa5113756b72e9b1918d05a2d6f8"
+        },
+        {
+          "type": "pre-contract",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-katt-enkel/2026.1/pre-contract-sv.pdf",
+          "sha256": "29c5ab9438ebd1ec62b4151128ffbd4dd70dd7b7a323159b5871861690b97bc4"
+        },
+        {
+          "type": "ipid",
+          "language": "sv",
+          "uri": "https://documents.example.com/se-katt-enkel/2026.1/ipid-sv.pdf",
+          "sha256": "0cfcb9b91274f74d4ce4b7712434f5a46522b1007039c59118480bde315ab69d"
+        }
+      ]
+    }
   }
 ]

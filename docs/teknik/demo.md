@@ -62,6 +62,19 @@ cd deploy/demo && ./reset.sh                                   # ny testdata
 docker compose pull api web && docker compose up -d
 ```
 
+### Nya produkter och regler, med datan kvar
+
+En ny version kan ha nya produkter och regelserier i exempeldatan, till exempel [testprodukterna](../funktion/testprodukter.md). `reset.sh` tar med dem men tar bort datan. Med datan kvar läggs bara det som saknas till:
+
+```
+cd ~/petvold/deploy/demo
+docker compose pull api && docker compose up -d
+docker compose --profile seed run --rm seed node --import tsx modules/api/scripts/catalog-seed.ts            # visar vad som saknas
+docker compose --profile seed run --rm seed node --import tsx modules/api/scripts/catalog-seed.ts --apply    # lägger till det
+```
+
+Kommandot ändrar aldrig något som finns, och produkterna går genom granskningen. Det kan köras medan Petvold är igång.
+
 `git pull` behövs när `deploy/demo` har ändrats. Med datan kvar körs först tjänsten `roles`, som skapar de modulroller som saknas, och sedan `migrate`. En ny modul med en egen roll fungerar alltså utan att datan rensas. Rollerna skapas av samma skript som när databasen skapas (`initdb/01-roles.sh`), så listan finns på ett ställe.
 
 ### Lokalt

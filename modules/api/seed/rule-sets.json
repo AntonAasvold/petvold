@@ -1,0 +1,629 @@
+[
+  {
+    "series": "SE-HUND-EXTRA-VV",
+    "calculationModel": "vet-care.v1",
+    "content": {
+      "market": "SE",
+      "vatReimbursable": true,
+      "nonReimbursableCategories": [
+        "food"
+      ],
+      "diagnosisGroups": {
+        "ORT-KORSBAND-V": "ortopedi-bakben",
+        "ORT-KORSBAND-H": "ortopedi-bakben",
+        "ORT-HALTA-HB-H": "ortopedi-bakben",
+        "ORA-OTIT": "ora",
+        "GI-ENTERIT": "mag-tarm",
+        "DER-ALLERGI": "hud"
+      },
+      "autoSettleMax": 1500000
+    }
+  },
+  {
+    "series": "SE-HUND-MINI-VV",
+    "calculationModel": "vet-care.v1",
+    "content": {
+      "market": "SE",
+      "vatReimbursable": true,
+      "nonReimbursableCategories": [
+        "food",
+        "dental-cleaning"
+      ],
+      "diagnosisGroups": {
+        "ORT-KORSBAND-V": "ortopedi-bakben",
+        "ORT-KORSBAND-H": "ortopedi-bakben",
+        "ORT-HALTA-HB-H": "ortopedi-bakben",
+        "ORA-OTIT": "ora",
+        "GI-ENTERIT": "mag-tarm",
+        "DER-ALLERGI": "hud"
+      },
+      "autoSettleMax": 800000
+    }
+  },
+  {
+    "series": "SE-KATT-EXTRA-VV",
+    "calculationModel": "vet-care.v1",
+    "content": {
+      "market": "SE",
+      "vatReimbursable": true,
+      "nonReimbursableCategories": [
+        "food"
+      ],
+      "diagnosisGroups": {
+        "URO-FLUTD": "urinvagar",
+        "URO-CKD": "urinvagar",
+        "TAND-FORL": "tander",
+        "GI-ENTERIT": "mag-tarm",
+        "DER-ALLERGI": "hud"
+      },
+      "autoSettleMax": 1500000
+    }
+  },
+  {
+    "series": "SE-KATT-ENKEL-VV",
+    "calculationModel": "vet-care.v1",
+    "content": {
+      "market": "SE",
+      "vatReimbursable": true,
+      "nonReimbursableCategories": [
+        "food",
+        "dental-cleaning"
+      ],
+      "diagnosisGroups": {
+        "URO-FLUTD": "urinvagar",
+        "URO-CKD": "urinvagar",
+        "TAND-FORL": "tander",
+        "GI-ENTERIT": "mag-tarm",
+        "DER-ALLERGI": "hud"
+      },
+      "autoSettleMax": 800000
+    }
+  },
+  {
+    "series": "SE-HUND-EXTRA-TARIFF",
+    "calculationModel": "tariff.v1",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "basePremiums": [
+        {
+          "species": "dog",
+          "annualLimit": 3000000,
+          "amount": 420000
+        },
+        {
+          "species": "dog",
+          "annualLimit": 6000000,
+          "amount": 520000
+        },
+        {
+          "species": "dog",
+          "annualLimit": 12000000,
+          "amount": 650000
+        }
+      ],
+      "ageBands": [
+        {
+          "species": "dog",
+          "fromYears": 0,
+          "bp": 9000
+        },
+        {
+          "species": "dog",
+          "fromYears": 3,
+          "bp": 10000
+        },
+        {
+          "species": "dog",
+          "fromYears": 6,
+          "bp": 12000
+        },
+        {
+          "species": "dog",
+          "fromYears": 8,
+          "bp": 14500
+        },
+        {
+          "species": "dog",
+          "fromYears": 10,
+          "bp": 17000
+        }
+      ],
+      "breedGroups": {
+        "dog-labrador-retriever": "B",
+        "dog-golden-retriever": "B",
+        "dog-german-shepherd": "C"
+      },
+      "defaultBreedGroup": "A",
+      "breedGroupFactors": {
+        "A": 10000,
+        "B": 11500,
+        "C": 13000
+      },
+      "deductibleFactors": {
+        "f1600-v15": 11500,
+        "f1600-v25": 10500,
+        "f2700-v15": 10000,
+        "f2700-v25": 9200,
+        "f3600-v15": 9000,
+        "f3600-v25": 8300
+      },
+      "zones": {
+        "1": "city",
+        "41": "city",
+        "411": "centre"
+      },
+      "defaultZone": "rural",
+      "zoneFactors": {
+        "city": 11500,
+        "centre": 12000,
+        "rural": 9500
+      },
+      "minimumAnnual": 150000,
+      "roundTo": 100
+    }
+  },
+  {
+    "series": "SE-HUND-MINI-TARIFF",
+    "calculationModel": "tariff.v1",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "basePremiums": [
+        {
+          "species": "dog",
+          "annualLimit": 3000000,
+          "amount": 300000
+        },
+        {
+          "species": "dog",
+          "annualLimit": 6000000,
+          "amount": 380000
+        }
+      ],
+      "ageBands": [
+        {
+          "species": "dog",
+          "fromYears": 0,
+          "bp": 9000
+        },
+        {
+          "species": "dog",
+          "fromYears": 3,
+          "bp": 10000
+        },
+        {
+          "species": "dog",
+          "fromYears": 6,
+          "bp": 12000
+        },
+        {
+          "species": "dog",
+          "fromYears": 8,
+          "bp": 14500
+        },
+        {
+          "species": "dog",
+          "fromYears": 10,
+          "bp": 17000
+        }
+      ],
+      "breedGroups": {
+        "dog-labrador-retriever": "B",
+        "dog-golden-retriever": "B",
+        "dog-german-shepherd": "C"
+      },
+      "defaultBreedGroup": "A",
+      "breedGroupFactors": {
+        "A": 10000,
+        "B": 11500,
+        "C": 13000
+      },
+      "deductibleFactors": {
+        "f2700-v25": 10000,
+        "f3600-v25": 9000
+      },
+      "zones": {
+        "1": "city",
+        "41": "city",
+        "411": "centre"
+      },
+      "defaultZone": "rural",
+      "zoneFactors": {
+        "city": 11500,
+        "centre": 12000,
+        "rural": 9500
+      },
+      "minimumAnnual": 120000,
+      "roundTo": 100
+    }
+  },
+  {
+    "series": "SE-KATT-EXTRA-TARIFF",
+    "calculationModel": "tariff.v1",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "basePremiums": [
+        {
+          "species": "cat",
+          "annualLimit": 3000000,
+          "amount": 260000
+        },
+        {
+          "species": "cat",
+          "annualLimit": 6000000,
+          "amount": 320000
+        },
+        {
+          "species": "cat",
+          "annualLimit": 12000000,
+          "amount": 400000
+        }
+      ],
+      "ageBands": [
+        {
+          "species": "cat",
+          "fromYears": 0,
+          "bp": 9000
+        },
+        {
+          "species": "cat",
+          "fromYears": 3,
+          "bp": 10000
+        },
+        {
+          "species": "cat",
+          "fromYears": 8,
+          "bp": 12000
+        },
+        {
+          "species": "cat",
+          "fromYears": 12,
+          "bp": 14000
+        }
+      ],
+      "breedGroups": {
+        "cat-maine-coon": "B"
+      },
+      "defaultBreedGroup": "A",
+      "breedGroupFactors": {
+        "A": 10000,
+        "B": 11500
+      },
+      "deductibleFactors": {
+        "f1600-v15": 11500,
+        "f1600-v25": 10500,
+        "f2700-v15": 10000,
+        "f2700-v25": 9200,
+        "f3600-v15": 9000,
+        "f3600-v25": 8300
+      },
+      "zones": {
+        "1": "city",
+        "41": "city",
+        "411": "centre"
+      },
+      "defaultZone": "rural",
+      "zoneFactors": {
+        "city": 11500,
+        "centre": 12000,
+        "rural": 9500
+      },
+      "minimumAnnual": 100000,
+      "roundTo": 100
+    }
+  },
+  {
+    "series": "SE-KATT-ENKEL-TARIFF",
+    "calculationModel": "tariff.v1",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "basePremiums": [
+        {
+          "species": "cat",
+          "annualLimit": 1500000,
+          "amount": 130000
+        },
+        {
+          "species": "cat",
+          "annualLimit": 3000000,
+          "amount": 170000
+        }
+      ],
+      "ageBands": [
+        {
+          "species": "cat",
+          "fromYears": 0,
+          "bp": 9000
+        },
+        {
+          "species": "cat",
+          "fromYears": 3,
+          "bp": 10000
+        },
+        {
+          "species": "cat",
+          "fromYears": 8,
+          "bp": 12000
+        },
+        {
+          "species": "cat",
+          "fromYears": 12,
+          "bp": 14000
+        }
+      ],
+      "breedGroups": {
+        "cat-maine-coon": "B"
+      },
+      "defaultBreedGroup": "A",
+      "breedGroupFactors": {
+        "A": 10000,
+        "B": 11500
+      },
+      "deductibleFactors": {
+        "fixed": 10000
+      },
+      "zones": {
+        "1": "city",
+        "41": "city",
+        "411": "centre"
+      },
+      "defaultZone": "rural",
+      "zoneFactors": {
+        "city": 11500,
+        "centre": 12000,
+        "rural": 9500
+      },
+      "minimumAnnual": 80000,
+      "roundTo": 100
+    }
+  },
+  {
+    "series": "SE-HUND-EXTRA-TERMS",
+    "calculationModel": "price-terms.v1",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "groupDiscounts": [
+        {
+          "kind": "any",
+          "fromMember": 2,
+          "bp": 1000
+        },
+        {
+          "kind": "litter",
+          "fromMember": 2,
+          "bp": 1500
+        }
+      ],
+      "campaigns": [
+        {
+          "code": "PUPPY30",
+          "validFrom": "2026-01-01",
+          "validTo": "2028-01-01",
+          "bp": 3000,
+          "newPoliciesOnly": true
+        }
+      ],
+      "maxTotalDiscountBp": 5000
+    }
+  },
+  {
+    "series": "SE-HUND-MINI-TERMS",
+    "calculationModel": "price-terms.v1",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "groupDiscounts": [
+        {
+          "kind": "any",
+          "fromMember": 2,
+          "bp": 1000
+        },
+        {
+          "kind": "litter",
+          "fromMember": 2,
+          "bp": 1500
+        }
+      ],
+      "campaigns": [
+        {
+          "code": "PUPPY30",
+          "validFrom": "2026-01-01",
+          "validTo": "2028-01-01",
+          "bp": 3000,
+          "newPoliciesOnly": true
+        }
+      ],
+      "maxTotalDiscountBp": 5000
+    }
+  },
+  {
+    "series": "SE-KATT-EXTRA-TERMS",
+    "calculationModel": "price-terms.v1",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "groupDiscounts": [
+        {
+          "kind": "any",
+          "fromMember": 2,
+          "bp": 1000
+        },
+        {
+          "kind": "litter",
+          "fromMember": 2,
+          "bp": 1500
+        }
+      ],
+      "campaigns": [
+        {
+          "code": "KITTEN30",
+          "validFrom": "2026-01-01",
+          "validTo": "2028-01-01",
+          "bp": 3000,
+          "newPoliciesOnly": true
+        }
+      ],
+      "maxTotalDiscountBp": 5000
+    }
+  },
+  {
+    "series": "SE-KATT-ENKEL-TERMS",
+    "calculationModel": "price-terms.v1",
+    "content": {
+      "market": "SE",
+      "currency": "SEK",
+      "groupDiscounts": [
+        {
+          "kind": "any",
+          "fromMember": 2,
+          "bp": 1000
+        },
+        {
+          "kind": "litter",
+          "fromMember": 2,
+          "bp": 1500
+        }
+      ],
+      "campaigns": [],
+      "maxTotalDiscountBp": 1500
+    }
+  },
+  {
+    "series": "SE-HUND-EXTRA-UW",
+    "calculationModel": "underwriting.v1",
+    "content": {
+      "market": "SE",
+      "ageLimits": [
+        {
+          "species": "dog",
+          "minAgeDays": 28
+        }
+      ],
+      "questions": [
+        {
+          "id": "previous-illness",
+          "type": "diagnoses",
+          "labels": {
+            "sv": "Har hunden varit sjuk, skadad eller behandlad av veterinär de senaste två åren?",
+            "en": "Has the dog been ill, injured or treated by a vet in the last two years?"
+          }
+        },
+        {
+          "id": "ongoing-symptoms",
+          "type": "boolean",
+          "labels": {
+            "sv": "Har hunden symtom just nu som en veterinär inte har undersökt?",
+            "en": "Does the dog have symptoms right now that a vet has not examined?"
+          }
+        },
+        {
+          "id": "ongoing-treatment",
+          "type": "boolean",
+          "labels": {
+            "sv": "Får hunden medicin eller behandling just nu?",
+            "en": "Is the dog on medication or under treatment right now?"
+          }
+        }
+      ],
+      "answerRules": [
+        {
+          "question": "previous-illness",
+          "outcome": "decline",
+          "reason": "serious-illness",
+          "onlyFor": [
+            "CAR-MITRAL",
+            "CAR-DCM"
+          ]
+        },
+        {
+          "question": "previous-illness",
+          "outcome": "rider",
+          "reason": "previous-illness",
+          "riderDescription": "Uppgiven vid ansökan"
+        },
+        {
+          "question": "ongoing-symptoms",
+          "outcome": "refer",
+          "reason": "ongoing-symptoms"
+        },
+        {
+          "question": "ongoing-treatment",
+          "outcome": "refer",
+          "reason": "ongoing-treatment"
+        }
+      ],
+      "breedRules": []
+    }
+  },
+  {
+    "series": "SE-KATT-UW",
+    "calculationModel": "underwriting.v1",
+    "content": {
+      "market": "SE",
+      "ageLimits": [
+        {
+          "species": "cat",
+          "minAgeDays": 28
+        }
+      ],
+      "questions": [
+        {
+          "id": "previous-illness",
+          "type": "diagnoses",
+          "labels": {
+            "sv": "Har katten varit sjuk, skadad eller behandlad av veterinär de senaste två åren?",
+            "en": "Has the cat been ill, injured or treated by a vet in the last two years?"
+          }
+        },
+        {
+          "id": "ongoing-symptoms",
+          "type": "boolean",
+          "labels": {
+            "sv": "Har katten symtom just nu som en veterinär inte har undersökt?",
+            "en": "Does the cat have symptoms right now that a vet has not examined?"
+          }
+        },
+        {
+          "id": "ongoing-treatment",
+          "type": "boolean",
+          "labels": {
+            "sv": "Får katten medicin eller behandling just nu?",
+            "en": "Is the cat on medication or under treatment right now?"
+          }
+        }
+      ],
+      "answerRules": [
+        {
+          "question": "previous-illness",
+          "outcome": "decline",
+          "reason": "serious-illness",
+          "onlyFor": [
+            "CAR-HCM",
+            "URO-CKD"
+          ]
+        },
+        {
+          "question": "previous-illness",
+          "outcome": "rider",
+          "reason": "previous-illness",
+          "riderDescription": "Uppgiven vid ansökan"
+        },
+        {
+          "question": "ongoing-symptoms",
+          "outcome": "refer",
+          "reason": "ongoing-symptoms"
+        },
+        {
+          "question": "ongoing-treatment",
+          "outcome": "refer",
+          "reason": "ongoing-treatment"
+        }
+      ],
+      "breedRules": []
+    }
+  }
+]
