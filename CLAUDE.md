@@ -32,6 +32,7 @@ npm run lint:lang
 npm run site           # bygger dokumentationssajten i _site/
 npm run roles:sync     # nya standardroller till sparad rollinställning (-- --apply sparar)
 npm run erasures:reapply  # efter återställning från säkerhetskopia (ADR 0028)
+npm run catalog:seed   # nya serier och produkter från exempeldatan till en installation med data (-- --apply lägger till)
 npm run dev
 npm start              # server för drift, se docs/teknik/drift.md
 ```

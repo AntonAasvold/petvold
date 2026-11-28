@@ -20,6 +20,7 @@ import { PRICE_TERMS, TARIFF } from '@petvold/pricing-core/fixtures';
 import referenceSeed from '@petvold/catalog/seed/reference-data.json' with { type: 'json' };
 import productSeed from '@petvold/catalog/seed/products.json' with { type: 'json' };
 import underwritingSeed from '../seed/underwriting-rules.json' with { type: 'json' };
+import ruleSetSeed from '../seed/rule-sets.json' with { type: 'json' };
 import type { Installation } from './composition.ts';
 
 export const SAMPLE_RULE_SERIES = 'SE-HUND-VV';
@@ -116,6 +117,10 @@ export async function seedInstallation(inst: Installation, clock: { now(): strin
   await publishSeries(stores.rules, 'SE-HUND-TARIFF', TARIFF, 'tariff.v1', now);
   await publishSeries(stores.rules, 'SE-HUND-TERMS', PRICE_TERMS, 'price-terms.v1', now);
   await publishSeries(stores.rules, 'SE-HUND-UW', underwritingSeed, 'underwriting.v1', now);
+  // The products for testing a sales flow end to end (docs/funktion/testprodukter.md).
+  for (const r of ruleSetSeed as { series: string; calculationModel: string; content: unknown }[]) {
+    await publishSeries(stores.rules, r.series, r.content, r.calculationModel, now);
+  }
 
   // Reference data: parents come first in the file.
   for (const [kind, items] of Object.entries(referenceSeed)) {
@@ -126,20 +131,16 @@ export async function seedInstallation(inst: Installation, clock: { now(): strin
     }
   }
 
+  // Products go through review like any other: the checks find a tariff, terms or
+  // underwriting rules that do not cover the product. Submitted by the seed,
+  // published by the installation (four eyes).
+  const products = inst.deps.products;
   for (const p of productSeed as Pick<ProductVersion, 'product' | 'version' | 'salesFrom' | 'content'>[]) {
     if (await stores.products.get(p.product, p.version)) continue;
-    const draft: ProductVersion = { ...p, status: 'draft', revision: 1, createdBy: by, createdAt: now };
-    await stores.products.create(draft);
-    await stores.products.update({
-      ...draft,
-      status: 'published',
-      checksum: productChecksum(draft),
-      revision: 2,
-      submittedBy: by,
-      submittedAt: now,
-      publishedBy: 'petvold-install',
-      publishedAt: now,
-    });
+    if (!products) throw new Error('The installation has no product service');
+    await products.createDraft(p.product, { version: p.version, content: p.content, salesFrom: p.salesFrom }, by);
+    await products.submit(p.product, p.version, by);
+    await products.publish(p.product, p.version, 'petvold-install');
   }
 }
 

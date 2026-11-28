@@ -20,6 +20,7 @@ const ALLOWED: Record<string, string> = {
   'modules/catalog/seed/reference-data.json': 'sample reference data with Swedish labels (sv)',
   'modules/catalog/seed/products.json': 'sample product with Swedish names (sv)',
   'modules/api/seed/underwriting-rules.json': 'sample underwriting rules with Swedish questions (sv)',
+  'modules/api/seed/rule-sets.json': 'the test products\' rule series, with Swedish health questions (sv)',
   'modules/api/seed/demo-notice-texts.json': "the demo insurer's texts in notices (sv)",
   'apps/backoffice/src/locales/sv.ts': 'Swedish texts of the back office (sv)',
   'modules/documents/src/templates/texts-sv.ts': 'Swedish texts of the document templates (sv)',

@@ -10,6 +10,7 @@ För försäkringsbolag, produktägare och handläggare. Ingen kod krävs för a
 - [Översikt](funktion/README.md): vad Petvold är, vilka delar som finns och vad som är byggt
 - [Skadereglering](funktion/skadereglering.md): hur ett ärende bedöms, beräknas och beslutas
 - [Produktkonfiguration](funktion/produktkonfiguration.md): produkter, regeluppsättningar, policyns villkor och produktens dokument
+- [Testprodukter](funktion/testprodukter.md): fyra produkter för hund och katt att prova ett säljflöde med
 - [Referensdata](funktion/referensdata.md): arter, raser och kön
 - [Djurregister](funktion/djurregister.md): djur, id-nummer, ägare och klinikens uppslag
 - [Parter](funktion/parter.md): personer och organisationer, radering och gallring
