@@ -1,4 +1,4 @@
-# Testprodukter (PR #NN)
+# Testprodukter (PR #182)
 
 **Datum:** 2026-11-28 **ADR:** 0009, 0021, 0023, 0030, 0031, 0032 **Moduler:** `catalog` (seed), `api` (seed och skript)
 
